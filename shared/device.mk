@@ -46,6 +46,10 @@ PRODUCT_PROPERTY_OVERRIDES += \
 PRODUCT_PROPERTY_OVERRIDES += \
     persist.media.treble_omx=false
 
+# Enable Perfetto traced
+PRODUCT_PROPERTY_OVERRIDES += \
+    persist.traced.enable=1
+
 #
 # Packages for various cuttlefish-specific tests
 #
@@ -235,9 +239,7 @@ PRODUCT_PACKAGES += \
 # GPS
 #
 PRODUCT_PACKAGES += \
-    gps.vsoc \
-    android.hardware.gnss@1.0-impl \
-    android.hardware.gnss@1.0-service
+    android.hardware.gnss@2.0-service
 
 # Health
 PRODUCT_PACKAGES += \
