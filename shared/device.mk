@@ -170,6 +170,12 @@ PRODUCT_COPY_FILES += \
 # Packages for HAL implementations
 
 #
+# Atrace HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.atrace@1.0-service
+
+#
 # Hardware Composer HAL
 #
 PRODUCT_PACKAGES += \
@@ -200,8 +206,8 @@ PRODUCT_PACKAGES += \
 #
 PRODUCT_PACKAGES += \
     audio.primary.vsoc \
-    android.hardware.audio@4.0-impl \
-    android.hardware.audio.effect@4.0-impl \
+    android.hardware.audio@5.0-impl \
+    android.hardware.audio.effect@5.0-impl \
     android.hardware.audio@2.0-service
 
 #
@@ -245,6 +251,10 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     android.hardware.health@2.0-service.cuttlefish
 
+# Health Storage
+PRODUCT_PACKAGES += \
+    android.hardware.health.storage@1.0-service.cuttlefish
+
 #
 # Sensors
 #
@@ -252,6 +262,11 @@ PRODUCT_PACKAGES += \
     sensors.vsoc \
     android.hardware.sensors@1.0-impl \
     android.hardware.sensors@1.0-service
+#
+# Thermal (mock)
+#
+PRODUCT_PACKAGES += \
+    android.hardware.thermal@2.0-service.mock
 
 #
 # Lights
@@ -282,7 +297,6 @@ PRODUCT_PACKAGES += \
     android.hardware.usb@1.0-service
 
 # TODO vibrator HAL
-# TODO thermal
 
 PRODUCT_PACKAGES += \
     cuttlefish_dtb
