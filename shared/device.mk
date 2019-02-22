@@ -259,9 +259,7 @@ PRODUCT_PACKAGES += \
 # Sensors
 #
 PRODUCT_PACKAGES += \
-    sensors.vsoc \
-    android.hardware.sensors@1.0-impl \
-    android.hardware.sensors@1.0-service
+    android.hardware.sensors@2.0-service
 #
 # Thermal (mock)
 #
@@ -291,12 +289,31 @@ PRODUCT_PACKAGES += \
     android.hardware.power@1.0-impl \
     android.hardware.power@1.0-service
 
+
+#
+# PowerStats HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.power.stats@1.0-service.mock
+
+#
+# NeuralNetworks HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.neuralnetworks@1.2-service-sample-all \
+    android.hardware.neuralnetworks@1.2-service-sample-float-fast \
+    android.hardware.neuralnetworks@1.2-service-sample-float-slow \
+    android.hardware.neuralnetworks@1.2-service-sample-minimal \
+    android.hardware.neuralnetworks@1.2-service-sample-quant
+
 #
 # USB
 PRODUCT_PACKAGES += \
     android.hardware.usb@1.0-service
 
-# TODO vibrator HAL
+# Vibrator HAL
+PRODUCT_PACKAGES += \
+    android.hardware.vibrator@1.3-service.example
 
 PRODUCT_PACKAGES += \
     cuttlefish_dtb
