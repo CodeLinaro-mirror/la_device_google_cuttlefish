@@ -46,6 +46,10 @@ PRODUCT_PROPERTY_OVERRIDES += \
 PRODUCT_PROPERTY_OVERRIDES += \
     persist.media.treble_omx=false
 
+# Enable Perfetto traced
+PRODUCT_PROPERTY_OVERRIDES += \
+    persist.traced.enable=1
+
 #
 # Packages for various cuttlefish-specific tests
 #
@@ -166,6 +170,12 @@ PRODUCT_COPY_FILES += \
 # Packages for HAL implementations
 
 #
+# Atrace HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.atrace@1.0-service
+
+#
 # Hardware Composer HAL
 #
 PRODUCT_PACKAGES += \
@@ -196,8 +206,8 @@ PRODUCT_PACKAGES += \
 #
 PRODUCT_PACKAGES += \
     audio.primary.vsoc \
-    android.hardware.audio@4.0-impl \
-    android.hardware.audio.effect@4.0-impl \
+    android.hardware.audio@5.0-impl \
+    android.hardware.audio.effect@5.0-impl \
     android.hardware.audio@2.0-service
 
 #
@@ -235,21 +245,26 @@ PRODUCT_PACKAGES += \
 # GPS
 #
 PRODUCT_PACKAGES += \
-    gps.vsoc \
-    android.hardware.gnss@1.0-impl \
-    android.hardware.gnss@1.0-service
+    android.hardware.gnss@2.0-service
 
 # Health
 PRODUCT_PACKAGES += \
     android.hardware.health@2.0-service.cuttlefish
 
+# Health Storage
+PRODUCT_PACKAGES += \
+    android.hardware.health.storage@1.0-service.cuttlefish
+
 #
 # Sensors
 #
 PRODUCT_PACKAGES += \
-    sensors.vsoc \
-    android.hardware.sensors@1.0-impl \
-    android.hardware.sensors@1.0-service
+    android.hardware.sensors@2.0-service
+#
+# Thermal (mock)
+#
+PRODUCT_PACKAGES += \
+    android.hardware.thermal@2.0-service.mock
 
 #
 # Lights
@@ -274,13 +289,31 @@ PRODUCT_PACKAGES += \
     android.hardware.power@1.0-impl \
     android.hardware.power@1.0-service
 
+
+#
+# PowerStats HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.power.stats@1.0-service.mock
+
+#
+# NeuralNetworks HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.neuralnetworks@1.2-service-sample-all \
+    android.hardware.neuralnetworks@1.2-service-sample-float-fast \
+    android.hardware.neuralnetworks@1.2-service-sample-float-slow \
+    android.hardware.neuralnetworks@1.2-service-sample-minimal \
+    android.hardware.neuralnetworks@1.2-service-sample-quant
+
 #
 # USB
 PRODUCT_PACKAGES += \
     android.hardware.usb@1.0-service
 
-# TODO vibrator HAL
-# TODO thermal
+# Vibrator HAL
+PRODUCT_PACKAGES += \
+    android.hardware.vibrator@1.3-service.example
 
 PRODUCT_PACKAGES += \
     cuttlefish_dtb
