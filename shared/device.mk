@@ -46,9 +46,10 @@ PRODUCT_PROPERTY_OVERRIDES += \
 PRODUCT_PROPERTY_OVERRIDES += \
     persist.media.treble_omx=false
 
-# Enable Perfetto traced
+# Enable Perfetto traced and heapprofd
 PRODUCT_PROPERTY_OVERRIDES += \
-    persist.traced.enable=1
+    persist.traced.enable=1 \
+    persist.heapprofd.enable=1
 
 #
 # Packages for various cuttlefish-specific tests
@@ -72,6 +73,7 @@ PRODUCT_PACKAGES += \
     vport_trigger \
     rename_netiface \
     ip_link_add \
+    setup_wifi \
 
 #
 # Packages for AOSP-available stuff we use from the framework
@@ -255,11 +257,15 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     android.hardware.health.storage@1.0-service.cuttlefish
 
+# Input Classifier HAL
+PRODUCT_PACKAGES += \
+    android.hardware.input.classifier@1.0-service.default
+
 #
 # Sensors
 #
 PRODUCT_PACKAGES += \
-    android.hardware.sensors@2.0-service
+    android.hardware.sensors@2.0-service.mock
 #
 # Thermal (mock)
 #
