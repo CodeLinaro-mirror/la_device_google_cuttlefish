@@ -202,6 +202,7 @@ PRODUCT_PACKAGES += \
 #
 PRODUCT_PACKAGES += \
     android.hardware.bluetooth@1.0-service.sim \
+    android.hardware.bluetooth.audio@2.0
 
 #
 # Audio HAL
@@ -327,3 +328,6 @@ PRODUCT_PACKAGES += \
 # WLAN driver configuration files
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/wpa_supplicant_overlay.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wifi/wpa_supplicant_overlay.conf
+
+# Host packages to install
+PRODUCT_HOST_PACKAGES += socket_forward_proxy
