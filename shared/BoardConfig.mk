@@ -32,7 +32,6 @@ BOARD_USES_GENERIC_AUDIO := false
 USE_CAMERA_STUB := true
 TARGET_USERIMAGES_USE_EXT4 := true
 TARGET_USERIMAGES_SPARSE_EXT_DISABLED := true
-BOARD_EGL_CFG := device/google/cuttlefish/shared/config/egl.cfg
 TARGET_USES_64_BIT_BINDER := true
 
 # Hardware composer configuration
@@ -76,8 +75,6 @@ BOARD_FLASH_BLOCK_SIZE := 512
 WITH_DEXPREOPT := true
 
 USE_OPENGL_RENDERER := true
-
-BOARD_SWIFTSHADER_RELATIVE_PATH := gl_impl/swiftshader
 
 # Wifi.
 BOARD_WLAN_DEVICE           := wlan0
@@ -134,3 +131,6 @@ BOARD_VNDK_VERSION := current
 
 # TODO(b/73078796): remove
 BOARD_PROPERTY_OVERRIDES_SPLIT_ENABLED := true
+
+# TODO(b/129092102): Remove workaround flag when LOCAL_MODULE_TAGS are addressed
+BUILD_BROKEN_ENG_DEBUG_TAGS := true
