@@ -95,29 +95,11 @@ PRODUCT_PACKAGES += \
 # Packages for the OpenGL implementation
 #
 
-# Placeholder to ensure that /vendor/lib/egl exists
-PRODUCT_COPY_FILES += \
-    device/google/cuttlefish/shared/config/README_egl.md:$(TARGET_COPY_OUT_VENDOR)/lib/egl/README.md
-
-# Guest side SwiftShader
+# SwiftShader provides a software-only implementation that is not thread-safe
 PRODUCT_PACKAGES += \
     libEGL_swiftshader \
     libGLESv1_CM_swiftshader \
     libGLESv2_swiftshader
-
-# The locking_wrapper puts a lock around all of the SwiftShader entry points to
-# serialize all access to the library, reducing the chances for races.
-# Applies only to guest-side SwiftShader
-PRODUCT_PACKAGES += \
-    libEGL_locking_wrapper \
-    libGLESv1_CM_locking_wrapper \
-    libGLESv2_locking_wrapper
-
-# GLES encoder, reused from goldfish
-PRODUCT_PACKAGES += \
-    libEGL_emulation \
-    libGLESv1_CM_emulation \
-    libGLESv2_emulation \
 
 DEVICE_PACKAGE_OVERLAYS := device/google/cuttlefish/shared/overlay
 PRODUCT_AAPT_CONFIG := normal large xlarge hdpi xhdpi
@@ -135,7 +117,7 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/media_codecs_performance.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_performance.xml \
     device/google/cuttlefish/shared/config/media_profiles.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_profiles_V1_0.xml \
     device/google/cuttlefish/shared/config/fstab.vsoc:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.vsoc \
-    frameworks/av/media/libeffects/data/audio_effects.conf:system/etc/audio_effects.conf \
+    frameworks/av/media/libeffects/data/audio_effects.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects.xml \
     frameworks/av/media/libstagefright/data/media_codecs_google_audio.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_audio.xml \
     frameworks/av/media/libstagefright/data/media_codecs_google_telephony.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_telephony.xml \
     frameworks/av/media/libstagefright/data/media_codecs_google_video.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_video.xml \
@@ -160,7 +142,7 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.usb.accessory.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.usb.accessory.xml \
     frameworks/native/data/etc/android.hardware.wifi.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.wifi.xml \
     frameworks/native/data/etc/android.software.app_widgets.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.app_widgets.xml \
-    system/bt/vendor_libs/test_vendor_lib/data/controller_properties.json:system/etc/bluetooth/controller_properties.json \
+    system/bt/vendor_libs/test_vendor_lib/data/controller_properties.json:vendor/etc/bluetooth/controller_properties.json \
 
 
 #
@@ -202,7 +184,7 @@ PRODUCT_PACKAGES += \
 #
 PRODUCT_PACKAGES += \
     android.hardware.bluetooth@1.0-service.sim \
-    android.hardware.bluetooth.audio@2.0
+    android.hardware.bluetooth.audio@2.0-impl
 
 #
 # Audio HAL
