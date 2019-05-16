@@ -20,6 +20,8 @@
 DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/config/manifest.xml
 DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/auto/manifest.xml
 
+TARGET_BUILD_SYSTEM_ROOT_IMAGE ?= true
+
 $(call inherit-product, $(SRC_TARGET_DIR)/product/aosp_base_telephony.mk)
 $(call inherit-product, device/google/cuttlefish/shared/device.mk)
 
@@ -64,9 +66,7 @@ PRODUCT_PACKAGES += android.hardware.automotive.vehicle@2.0-service
 PRODUCT_PACKAGES += android.hardware.broadcastradio@2.0-service
 
 # DRM HAL
-PRODUCT_PACKAGES += \
-    android.hardware.drm@1.2-impl \
-    android.hardware.drm@1.2-service
+PRODUCT_PACKAGES += android.hardware.drm@1.2-service.clearkey
 
 # GPS HAL
 PRODUCT_PACKAGES += \
@@ -85,11 +85,6 @@ PRODUCT_PACKAGES += \
 # DRM Properities
 PRODUCT_PROPERTY_OVERRIDES += \
     drm.service.enabled=true
-
-# Add car related sepolicy
-# TODO: Now use sepolicies from car emulator for test. Create a separate one for GCE
-BOARD_SEPOLICY_DIRS += \
-    device/generic/car/common/sepolicy \
 
 BOARD_IS_AUTOMOTIVE := true
 
