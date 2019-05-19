@@ -18,21 +18,29 @@
 # Common BoardConfig for all supported architectures.
 #
 
+TARGET_BOOTLOADER_BOARD_NAME := cutf
+
 # Build a separate vendor.img partition
 BOARD_USES_VENDORIMAGE := true
 BOARD_VENDORIMAGE_FILE_SYSTEM_TYPE := ext4
-BOARD_VENDORIMAGE_PARTITION_SIZE := 100663296 # 96MB
+BOARD_VENDORIMAGE_PARTITION_SIZE := 536870912 # 512MB
 TARGET_COPY_OUT_VENDOR := vendor
 
-TARGET_NO_RECOVERY := true
-ifneq (,$(CUTTLEFISH_SYSTEM_AS_ROOT))
+BOARD_USES_METADATA_PARTITION := true
+
+# Build a separate product.img partition
+BOARD_USES_PRODUCTIMAGE := true
+BOARD_PRODUCTIMAGE_FILE_SYSTEM_TYPE := ext4
+BOARD_PRODUCTIMAGE_PARTITION_SIZE := 1610612736 # 1.5GB
+TARGET_COPY_OUT_PRODUCT := product
+
+ifeq ($(TARGET_BUILD_SYSTEM_ROOT_IMAGE),true)
 BOARD_BUILD_SYSTEM_ROOT_IMAGE := true
 endif
 BOARD_USES_GENERIC_AUDIO := false
 USE_CAMERA_STUB := true
 TARGET_USERIMAGES_USE_EXT4 := true
 TARGET_USERIMAGES_SPARSE_EXT_DISABLED := true
-BOARD_EGL_CFG := device/google/cuttlefish/shared/config/egl.cfg
 TARGET_USES_64_BIT_BINDER := true
 
 # Hardware composer configuration
@@ -41,8 +49,7 @@ TARGET_USES_HWC2 := true
 # The compiler will occasionally generate movaps, etc.
 BOARD_MALLOC_ALIGNMENT := 16
 
-# System partition size: 3.0G
-BOARD_SYSTEMIMAGE_PARTITION_SIZE := 3221225472
+BOARD_SYSTEMIMAGE_PARTITION_SIZE := 4294967296 # 4 GB
 # Make the userdata partition 4G to accomodate ASAN and CTS
 BOARD_USERDATAIMAGE_PARTITION_SIZE := 4294967296
 
@@ -50,9 +57,6 @@ BOARD_USERDATAIMAGE_PARTITION_SIZE := 4294967296
 BOARD_CACHEIMAGE_PARTITION_SIZE := 67108864
 BOARD_CACHEIMAGE_FILE_SYSTEM_TYPE := ext4
 
-BOARD_DRM_HWCOMPOSER_BUFFER_IMPORTER := minigbm
-BOARD_USES_DRM_HWCOMPOSER := true
-BOARD_USES_MINIGBM := true
 BOARD_GPU_DRIVERS := virgl
 # This prevents mesa3d from unconditionally pulling in some modules
 BOARD_USE_CUSTOMIZED_MESA := true
@@ -76,8 +80,6 @@ BOARD_FLASH_BLOCK_SIZE := 512
 WITH_DEXPREOPT := true
 
 USE_OPENGL_RENDERER := true
-
-BOARD_SWIFTSHADER_RELATIVE_PATH := gl_impl/swiftshader
 
 # Wifi.
 BOARD_WLAN_DEVICE           := wlan0
@@ -103,6 +105,9 @@ VSOC_TEST_INCLUDES := external/googletest/googlemock/include external/googletest
 VSOC_TEST_LIBRARIES := libgmock_main_host libgtest_host libgmock_host
 VSOC_LIBCXX_STATIC := libc++_static
 VSOC_PROTOBUF_SHARED_LIB := libprotobuf-cpp-full
+
+CUTTLEFISH_LIBRIL_NAME := libril-cuttlefish-fork
+ENABLE_CUTTLEFISH_RILD := true
 
 # TODO(ender): Remove all these once we stop depending on GCE code.
 GCE_VERSION_CFLAGS := -DGCE_PLATFORM_SDK_VERSION=${PLATFORM_SDK_VERSION}
@@ -134,3 +139,18 @@ BOARD_VNDK_VERSION := current
 
 # TODO(b/73078796): remove
 BOARD_PROPERTY_OVERRIDES_SPLIT_ENABLED := true
+
+TARGET_NO_RECOVERY ?= true
+TARGET_RECOVERY_PIXEL_FORMAT := ABGR_8888
+ifeq ($(TARGET_BUILD_SYSTEM_ROOT_IMAGE),true)
+TARGET_RECOVERY_FSTAB := device/google/cuttlefish/shared/config/fstab.dtb
+else
+TARGET_RECOVERY_FSTAB := device/google/cuttlefish/shared/config/fstab.initrd
+endif
+
+# To see full logs from init, disable ratelimiting.
+# The default is 5 messages per second amortized, with a burst of up to 10.
+BOARD_KERNEL_CMDLINE += printk.devkmsg=on
+
+# TODO(b/129092102): Remove workaround flag when LOCAL_MODULE_TAGS are addressed
+BUILD_BROKEN_ENG_DEBUG_TAGS := true

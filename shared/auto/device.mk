@@ -18,7 +18,9 @@
 # Begin GCE specific configurations
 
 DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/config/manifest.xml
-DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/auto/manifest-extra.xml
+DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/auto/manifest.xml
+
+TARGET_BUILD_SYSTEM_ROOT_IMAGE ?= true
 
 $(call inherit-product, $(SRC_TARGET_DIR)/product/aosp_base_telephony.mk)
 $(call inherit-product, device/google/cuttlefish/shared/device.mk)
@@ -53,14 +55,9 @@ PRODUCT_COPY_FILES += \
 
 PRODUCT_PROPERTY_OVERRIDES += \
     keyguard.no_require_sim=true \
-    rild.libpath=libvsoc-ril.so \
     ro.cdma.home.operator.alpha=Android \
     ro.cdma.home.operator.numeric=302780 \
-    ro.gsm.home.operator.alpha=Android \
-    ro.gsm.home.operator.numeric=302780 \
-    gsm.sim.operator.numeric=302780 \
-    gsm.sim.operator.alpha=Android \
-    gsm.sim.operator.iso-country=us
+    vendor.rild.libpath=libcuttlefish-ril.so \
 
 # vehicle HAL
 PRODUCT_PACKAGES += android.hardware.automotive.vehicle@2.0-service
@@ -69,14 +66,11 @@ PRODUCT_PACKAGES += android.hardware.automotive.vehicle@2.0-service
 PRODUCT_PACKAGES += android.hardware.broadcastradio@2.0-service
 
 # DRM HAL
-PRODUCT_PACKAGES += \
-    android.hardware.drm@1.0-impl \
-    android.hardware.drm@1.0-service
+PRODUCT_PACKAGES += android.hardware.drm@1.2-service.clearkey
 
 # GPS HAL
 PRODUCT_PACKAGES += \
-    gps.vsoc_x86 \
-    android.hardware.gnss@1.0-impl
+    android.hardware.gnss@2.0-service
 
 # Cell network connection
 PRODUCT_PACKAGES += \
@@ -85,17 +79,12 @@ PRODUCT_PACKAGES += \
     PhoneService \
     Telecom \
     TeleService \
-    libvsoc-ril \
+    libcuttlefish-ril \
     rild \
 
 # DRM Properities
 PRODUCT_PROPERTY_OVERRIDES += \
     drm.service.enabled=true
-
-# Add car related sepolicy
-# TODO: Now use sepolicies from car emulator for test. Create a separate one for GCE
-BOARD_SEPOLICY_DIRS += \
-    device/generic/car/common/sepolicy \
 
 BOARD_IS_AUTOMOTIVE := true
 
@@ -105,3 +94,6 @@ $(call inherit-product, packages/services/Car/car_product/build/car.mk)
 
 # Placed here due to b/110784510
 PRODUCT_BRAND := generic
+
+PRODUCT_ENFORCE_RRO_TARGETS := framework-res
+PRODUCT_ENFORCE_RRO_EXCLUDED_OVERLAYS := device/google/cuttlefish/shared/overlay
