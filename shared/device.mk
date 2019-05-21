@@ -14,6 +14,9 @@
 # limitations under the License.
 #
 
+# Enable updating of APEXes
+$(call inherit-product, $(SRC_TARGET_DIR)/product/updatable_apex.mk)
+
 PRODUCT_COPY_FILES += device/google/cuttlefish_kernel/4.14-x86_64/kernel:kernel
 
 PRODUCT_SHIPPING_API_LEVEL := 29
@@ -114,6 +117,7 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/init.common.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/hw/init.common.rc \
     device/google/cuttlefish/shared/config/init.cutf_ivsh.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/hw/init.cutf_ivsh.rc \
     device/google/cuttlefish/shared/config/init.cutf_cvm.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/hw/init.cutf_cvm.rc \
+    device/google/cuttlefish/shared/config/init.product.rc:$(TARGET_COPY_OUT_PRODUCT)/etc/init/init.rc \
     device/google/cuttlefish/shared/config/ueventd.rc:$(TARGET_COPY_OUT_VENDOR)/ueventd.rc \
     device/google/cuttlefish/shared/config/media_codecs.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs.xml \
     device/google/cuttlefish/shared/config/media_codecs_google_video.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_video.xml \
@@ -188,6 +192,12 @@ PRODUCT_PACKAGES += \
     android.hardware.atrace@1.0-service
 
 #
+# Authsecret HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.authsecret@1.0-service
+
+#
 # Hardware Composer HAL
 #
 PRODUCT_PACKAGES += \
@@ -204,7 +214,7 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     gralloc.minigbm \
     gralloc.cutf \
-    android.hardware.graphics.mapper@2.0-impl \
+    android.hardware.graphics.mapper@2.0-impl-2.1 \
     android.hardware.graphics.allocator@2.0-impl \
     android.hardware.graphics.allocator@2.0-service
 
@@ -230,8 +240,7 @@ PRODUCT_PACKAGES += \
 # Drm HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.drm@1.0-impl \
-    android.hardware.drm@1.0-service
+    android.hardware.drm@1.2-service.clearkey
 
 #
 # Dumpstate HAL
@@ -298,8 +307,8 @@ PRODUCT_PACKAGES += \
 # Keymaster HAL
 #
 PRODUCT_PACKAGES += \
-     android.hardware.keymaster@3.0-impl \
-     android.hardware.keymaster@3.0-service
+     android.hardware.keymaster@4.0-impl \
+     android.hardware.keymaster@4.0-service
 
 #
 # Power HAL
