@@ -174,6 +174,3 @@ endif
 # To see full logs from init, disable ratelimiting.
 # The default is 5 messages per second amortized, with a burst of up to 10.
 BOARD_KERNEL_CMDLINE += printk.devkmsg=on
-
-# TODO(b/129092102): Remove workaround flag when LOCAL_MODULE_TAGS are addressed
-BUILD_BROKEN_ENG_DEBUG_TAGS := true
