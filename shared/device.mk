@@ -16,6 +16,7 @@
 
 # Enable updating of APEXes
 $(call inherit-product, $(SRC_TARGET_DIR)/product/updatable_apex.mk)
+PRODUCT_PACKAGES := com.android.apex.cts.shim.v1_prebuilt
 
 PRODUCT_COPY_FILES += device/google/cuttlefish_kernel/4.14-x86_64/kernel:kernel
 
@@ -30,7 +31,6 @@ DISABLE_RILD_OEM_HOOK := true
 PRODUCT_PRODUCT_PROPERTIES := \
     persist.adb.tcp.port=5555 \
     persist.traced.enable=1 \
-    persist.heapprofd.enable=1 \
     ro.com.google.locationfeatures=1 \
  
 # Explanation of specific properties:
@@ -63,9 +63,6 @@ PRODUCT_PACKAGES += \
 # Packages for various GCE-specific utilities
 #
 PRODUCT_PACKAGES += \
-    audiotop \
-    dhcpcd_wlan0 \
-    gce_fs_monitor \
     socket_forward_proxy \
     socket_vsock_proxy \
     usbforward \
@@ -82,13 +79,8 @@ PRODUCT_PACKAGES += \
 # Packages for AOSP-available stuff we use from the framework
 #
 PRODUCT_PACKAGES += \
-    dhcpcd-6.8.2 \
-    dhcpcd-6.8.2.conf \
     e2fsck \
     ip \
-    network \
-    perf \
-    scp \
     sleep \
     tcpdump \
     wpa_supplicant \
@@ -212,8 +204,8 @@ PRODUCT_PACKAGES += \
     hwcomposer.cutf_ivsh \
     hwcomposer.cutf_cvm \
     hwcomposer-stats \
-    android.hardware.graphics.composer@2.1-impl \
-    android.hardware.graphics.composer@2.1-service
+    android.hardware.graphics.composer@2.2-impl \
+    android.hardware.graphics.composer@2.2-service
 
 #
 # Gralloc HAL
