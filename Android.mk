@@ -14,8 +14,11 @@
 # limitations under the License.
 #
 
-ifneq ($(filter $(TARGET_DEVICE), vsoc_arm vsoc_arm64 vsoc_x86 vsoc_x86_64),)
+ifneq ($(filter $(TARGET_DEVICE), vsoc_arm vsoc_arm64 vsoc_x86 vsoc_x86_64 vsoc_x86_noapex),)
 LOCAL_PATH:= $(call my-dir)
+
+include $(CLEAR_VARS)
+include $(LOCAL_PATH)/fetcher.mk
 
 include $(CLEAR_VARS)
 include $(LOCAL_PATH)/host_package.mk

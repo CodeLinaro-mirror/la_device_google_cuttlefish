@@ -23,8 +23,8 @@ TARGET_BOOTLOADER_BOARD_NAME := cutf
 # Boot partition size: 32M
 # This is only used for OTA update packages. The image size on disk
 # will not change (as is it not a filesystem.)
-BOARD_BOOTIMAGE_PARTITION_SIZE := 33554432
-BOARD_RECOVERYIMAGE_PARTITION_SIZE := 33554432
+BOARD_BOOTIMAGE_PARTITION_SIZE := 67108864
+BOARD_RECOVERYIMAGE_PARTITION_SIZE := 67108864
 
 # Build a separate vendor.img partition
 BOARD_USES_VENDORIMAGE := true
@@ -37,6 +37,11 @@ BOARD_USES_METADATA_PARTITION := true
 BOARD_USES_PRODUCTIMAGE := true
 BOARD_PRODUCTIMAGE_FILE_SYSTEM_TYPE := ext4
 TARGET_COPY_OUT_PRODUCT := product
+
+# Build a separate system_ext.img partition
+BOARD_USES_SYSTEM_EXTIMAGE := true
+BOARD_SYSTEM_EXTIMAGE_FILE_SYSTEM_TYPE := ext4
+TARGET_COPY_OUT_SYSTEM_EXT := system_ext
 
 ifeq ($(TARGET_BUILD_SYSTEM_ROOT_IMAGE),true)
 BOARD_BUILD_SYSTEM_ROOT_IMAGE := true
@@ -61,8 +66,6 @@ BOARD_CACHEIMAGE_PARTITION_SIZE := 67108864
 BOARD_CACHEIMAGE_FILE_SYSTEM_TYPE := ext4
 
 BOARD_GPU_DRIVERS := virgl
-# This prevents mesa3d from unconditionally pulling in some modules
-BOARD_USE_CUSTOMIZED_MESA := true
 
 # Enable goldfish's encoder.
 # TODO(b/113617962) Remove this if we decide to use
@@ -88,14 +91,16 @@ USE_OPENGL_RENDERER := true
 BOARD_WLAN_DEVICE           := wlan0
 BOARD_HOSTAPD_DRIVER        := NL80211
 BOARD_WPA_SUPPLICANT_DRIVER := NL80211
-BOARD_HOSTAPD_PRIVATE_LIB   := lib_driver_cmd_simulated
-BOARD_WPA_SUPPLICANT_PRIVATE_LIB := lib_driver_cmd_simulated
 WPA_SUPPLICANT_VERSION      := VER_0_8_X
 WIFI_DRIVER_FW_PATH_PARAM   := "/dev/null"
 WIFI_DRIVER_FW_PATH_STA     := "/dev/null"
 WIFI_DRIVER_FW_PATH_AP      := "/dev/null"
 
-BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy
+BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor
+BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor/google
+PRODUCT_PRIVATE_SEPOLICY_DIRS := device/google/cuttlefish/shared/sepolicy/private
+# TODO(b/131193755) remove the following line.
+PRODUCT_PUBLIC_SEPOLICY_DIRS := device/google/cuttlefish/shared/sepolicy/public
 
 # master has breaking changes in dlfcn.h, but the platform SDK hasn't been
 # bumped. Restore the line below when it is.
@@ -157,7 +162,7 @@ endif
 ifeq ($(TARGET_USE_DYNAMIC_PARTITIONS),true)
   BOARD_SUPER_PARTITION_SIZE := 6442450944
   BOARD_SUPER_PARTITION_GROUPS := google_dynamic_partitions
-  BOARD_GOOGLE_DYNAMIC_PARTITIONS_PARTITION_LIST := system vendor product
+  BOARD_GOOGLE_DYNAMIC_PARTITIONS_PARTITION_LIST := system vendor product system_ext
   BOARD_GOOGLE_DYNAMIC_PARTITIONS_SIZE := 6442450944
   BOARD_SUPER_PARTITION_METADATA_DEVICE := vda
   BOARD_BUILD_SUPER_IMAGE_BY_DEFAULT := true
@@ -165,9 +170,10 @@ ifeq ($(TARGET_USE_DYNAMIC_PARTITIONS),true)
   TARGET_RELEASETOOLS_EXTENSIONS := device/google/cuttlefish/shared
 else
   # No dynamic partitions support; we must specify maximum sizes
-  BOARD_SYSTEMIMAGE_PARTITION_SIZE := 4294967296 # 4 GB
+  BOARD_SYSTEMIMAGE_PARTITION_SIZE := 2147483648 # 2GB
   BOARD_VENDORIMAGE_PARTITION_SIZE := 536870912 # 512MB
-  BOARD_PRODUCTIMAGE_PARTITION_SIZE := 1610612736 # 1.5GB
+  BOARD_PRODUCTIMAGE_PARTITION_SIZE := 2147483648 # 2GB
+  BOARD_SYSTEM_EXTIMAGE_PARTITION_SIZE := 1610612736 # 1.5GB
   TARGET_NO_RECOVERY ?= true
 endif
 

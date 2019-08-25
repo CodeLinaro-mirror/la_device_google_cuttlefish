@@ -18,8 +18,6 @@
 $(call inherit-product, $(SRC_TARGET_DIR)/product/updatable_apex.mk)
 PRODUCT_PACKAGES := com.android.apex.cts.shim.v1_prebuilt
 
-PRODUCT_COPY_FILES += device/google/cuttlefish_kernel/4.14-x86_64/kernel:kernel
-
 PRODUCT_SHIPPING_API_LEVEL := 29
 PRODUCT_OTA_ENFORCE_VINTF_KERNEL_REQUIREMENTS := false
 PRODUCT_BUILD_BOOT_IMAGE := true
@@ -32,7 +30,7 @@ PRODUCT_PRODUCT_PROPERTIES := \
     persist.adb.tcp.port=5555 \
     persist.traced.enable=1 \
     ro.com.google.locationfeatures=1 \
- 
+
 # Explanation of specific properties:
 #   debug.hwui.swap_with_damage avoids boot failure on M http://b/25152138
 #   ro.opengles.version OpenGLES 3.0
@@ -46,6 +44,7 @@ PRODUCT_PROPERTY_OVERRIDES += \
     ro.logd.size=1M \
     ro.opengles.version=196608 \
     wifi.interface=wlan0 \
+    persist.sys.zram_enabled=1 \
 
 # Below is a list of properties we probably should get rid of.
 PRODUCT_PROPERTY_OVERRIDES += \
@@ -66,14 +65,16 @@ PRODUCT_PACKAGES += \
     socket_forward_proxy \
     socket_vsock_proxy \
     usbforward \
-    VSoCService \
+    CuttlefishService \
     wpa_supplicant.vsoc.conf \
     vsoc_input_service \
     vport_trigger \
     rename_netiface \
     ip_link_add \
     setup_wifi \
+    tombstone_transmit \
     vsock_logcat \
+    tombstone_producer \
 
 #
 # Packages for AOSP-available stuff we use from the framework
@@ -96,9 +97,13 @@ PRODUCT_PACKAGES += \
     libGLESv1_CM_swiftshader \
     libGLESv2_swiftshader
 
+# GL implementation for virgl
+PRODUCT_PACKAGES += \
+    libGLES_mesa
+
 DEVICE_PACKAGE_OVERLAYS := device/google/cuttlefish/shared/overlay
-PRODUCT_AAPT_CONFIG := normal large xlarge hdpi xhdpi
-# PRODUCT_AAPT_PREF_CONFIG is intentionally not set to pick up every density resources.
+# PRODUCT_AAPT_CONFIG and PRODUCT_AAPT_PREF_CONFIG are intentionally not set to
+# pick up every density resources.
 
 #
 # General files
@@ -158,6 +163,8 @@ ifeq ($(TARGET_BUILD_SYSTEM_ROOT_IMAGE),true)
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/fstab.dtb:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_ivsh \
     device/google/cuttlefish/shared/config/fstab.dtb:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_cvm \
+    device/google/cuttlefish/shared/config/composite-fstab.dtb:$(TARGET_COPY_OUT_VENDOR)/etc/composite-fstab.cutf_ivsh \
+    device/google/cuttlefish/shared/config/composite-fstab.dtb:$(TARGET_COPY_OUT_VENDOR)/etc/composite-fstab.cutf_cvm \
 
 else ifeq ($(TARGET_USE_DYNAMIC_PARTITIONS),true)
 PRODUCT_COPY_FILES += \
@@ -165,6 +172,8 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/fstab.initrd-dynamic-partitions:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_ivsh \
     device/google/cuttlefish/shared/config/fstab.initrd-dynamic-partitions:$(TARGET_COPY_OUT_RAMDISK)/fstab.cutf_cvm \
     device/google/cuttlefish/shared/config/fstab.initrd-dynamic-partitions:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_cvm \
+    device/google/cuttlefish/shared/config/composite-fstab.initrd-dynamic-partitions:$(TARGET_COPY_OUT_VENDOR)/etc/composite-fstab.cutf_ivsh \
+    device/google/cuttlefish/shared/config/composite-fstab.initrd-dynamic-partitions:$(TARGET_COPY_OUT_VENDOR)/etc/composite-fstab.cutf_cvm \
 
 else
 PRODUCT_COPY_FILES += \
@@ -201,8 +210,8 @@ PRODUCT_PACKAGES += \
 #
 PRODUCT_PACKAGES += \
     hwcomposer.drm_minigbm \
-    hwcomposer.cutf_ivsh \
-    hwcomposer.cutf_cvm \
+    hwcomposer.cutf_cvm_ashmem \
+    hwcomposer.cutf_ivsh_ashmem \
     hwcomposer-stats \
     android.hardware.graphics.composer@2.2-impl \
     android.hardware.graphics.composer@2.2-service
@@ -212,7 +221,7 @@ PRODUCT_PACKAGES += \
 #
 PRODUCT_PACKAGES += \
     gralloc.minigbm \
-    gralloc.cutf \
+    gralloc.cutf_ashmem \
     android.hardware.graphics.mapper@2.0-impl-2.1 \
     android.hardware.graphics.allocator@2.0-impl \
     android.hardware.graphics.allocator@2.0-service
@@ -261,9 +270,7 @@ PRODUCT_PACKAGES += \
 # Gatekeeper
 #
 PRODUCT_PACKAGES += \
-    gatekeeper.cutf \
-    android.hardware.gatekeeper@1.0-impl \
-    android.hardware.gatekeeper@1.0-service
+    android.hardware.gatekeeper@1.0-service.software
 
 #
 # GPS
@@ -359,6 +366,12 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/init.recovery.cutf_cvm.rc:recovery/root/init.recovery.cutf_cvm.rc \
 
 endif
+
+#
+# Shell script Vendor Module Loading
+#
+PRODUCT_COPY_FILES += \
+   $(LOCAL_PATH)/config/init.insmod.sh:$(TARGET_COPY_OUT_VENDOR)/bin/init.insmod.sh \
 
 # Host packages to install
 PRODUCT_HOST_PACKAGES += socket_forward_proxy socket_vsock_proxy

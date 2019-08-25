@@ -17,8 +17,28 @@
 DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/config/manifest.xml
 DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/tv/manifest.xml
 
-TARGET_BUILD_SYSTEM_ROOT_IMAGE ?= true
-
 $(call inherit-product, $(SRC_TARGET_DIR)/product/core_minimal.mk)
 $(call inherit-product, device/google/cuttlefish/shared/device.mk)
 
+PRODUCT_PROPERTY_OVERRIDES += \
+    ro.lmk.kill_heaviest_task=true \
+    ro.lmk.kill_timeout_ms=100 \
+    ro.lmk.use_minfree_levels=true \
+
+# HDMI CEC HAL
+PRODUCT_PACKAGES += android.hardware.tv.cec@1.0-service.mock
+
+# Tuner HAL
+PRODUCT_PACKAGES += android.hardware.tv.tuner@1.0-service
+
+TARGET_USE_DYNAMIC_PARTITIONS ?= true
+ifeq ($(TARGET_USE_DYNAMIC_PARTITIONS),true)
+  PRODUCT_USE_DYNAMIC_PARTITIONS := true
+  TARGET_BUILD_SYSTEM_ROOT_IMAGE := false
+else
+  TARGET_BUILD_SYSTEM_ROOT_IMAGE ?= true
+endif
+
+# Enabling managed profiles
+PRODUCT_COPY_FILES += frameworks/native/data/etc/android.software.managed_users.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.managed_users.xml
+DEVICE_PACKAGE_OVERLAYS += device/google/cuttlefish/shared/tv/overlay
