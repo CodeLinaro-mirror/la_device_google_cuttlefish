@@ -20,9 +20,6 @@
 DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/config/manifest.xml
 DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/auto/manifest.xml
 
-TARGET_BUILD_SYSTEM_ROOT_IMAGE ?= true
-
-$(call inherit-product, $(SRC_TARGET_DIR)/product/aosp_base_telephony.mk)
 $(call inherit-product, device/google/cuttlefish/shared/device.mk)
 
 ################################################
@@ -31,10 +28,6 @@ $(call inherit-product, device/google/cuttlefish/shared/device.mk)
 PRODUCT_COPY_FILES += \
     packages/services/Car/car_product/init/init.bootstat.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/hw//init.bootstat.rc \
     packages/services/Car/car_product/init/init.car.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/hw//init.car.rc
-
-
-PRODUCT_COPY_FILES += \
-    frameworks/native/data/etc/android.hardware.telephony.gsm.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.telephony.gsm.xml
 
 # Auto core hardware permissions
 PRODUCT_COPY_FILES += \
@@ -58,6 +51,9 @@ PRODUCT_PROPERTY_OVERRIDES += \
     ro.cdma.home.operator.alpha=Android \
     ro.cdma.home.operator.numeric=302780 \
     vendor.rild.libpath=libcuttlefish-ril.so \
+    ro.lmk.kill_heaviest_task=true \
+    ro.lmk.kill_timeout_ms=100 \
+    ro.lmk.use_minfree_levels=true \
 
 # vehicle HAL
 PRODUCT_PACKAGES += android.hardware.automotive.vehicle@2.0-service
@@ -72,15 +68,11 @@ PRODUCT_PACKAGES += android.hardware.drm@1.2-service.clearkey
 PRODUCT_PACKAGES += \
     android.hardware.gnss@2.0-service
 
-# Cell network connection
-PRODUCT_PACKAGES += \
-    MmsService \
-    Phone \
-    PhoneService \
-    Telecom \
-    TeleService \
-    libcuttlefish-ril \
-    libcuttlefish-rild \
+# CAN bus HAL
+PRODUCT_PACKAGES += android.hardware.automotive.can@1.0-service
+PRODUCT_PACKAGES_DEBUG += canhalctrl \
+    canhaldump \
+    canhalsend
 
 # DRM Properities
 PRODUCT_PROPERTY_OVERRIDES += \
@@ -97,3 +89,13 @@ PRODUCT_BRAND := generic
 
 PRODUCT_ENFORCE_RRO_TARGETS := framework-res
 PRODUCT_ENFORCE_RRO_EXCLUDED_OVERLAYS := device/google/cuttlefish/shared/overlay
+
+TARGET_USE_DYNAMIC_PARTITIONS ?= true
+TARGET_NO_TELEPHONY := true
+
+ifeq ($(TARGET_USE_DYNAMIC_PARTITIONS),true)
+  PRODUCT_USE_DYNAMIC_PARTITIONS := true
+  TARGET_BUILD_SYSTEM_ROOT_IMAGE := false
+else
+  TARGET_BUILD_SYSTEM_ROOT_IMAGE ?= true
+endif

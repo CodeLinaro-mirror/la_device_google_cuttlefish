@@ -142,10 +142,12 @@
         <version>1.2</version>
         <interface>
             <name>ICryptoFactory</name>
+            <instance>clearkey</instance>
             <instance>default</instance>
         </interface>
         <interface>
             <name>IDrmFactory</name>
+            <instance>clearkey</instance>
             <instance>default</instance>
         </interface>
     </hal>
@@ -155,15 +157,6 @@
         <version>1.0</version>
         <interface>
             <name>IDumpstateDevice</name>
-            <instance>default</instance>
-        </interface>
-    </hal>
-    <hal format="hidl">
-        <name>android.hardware.gatekeeper</name>
-        <transport>hwbinder</transport>
-        <version>1.0</version>
-        <interface>
-            <name>IGatekeeper</name>
             <instance>default</instance>
         </interface>
     </hal>
@@ -329,17 +322,15 @@
         </interface>
     </hal>
     -->
-    <!-- TODO (b/130078389):
     <hal format="hidl">
         <name>android.hardware.soundtrigger</name>
         <transport>hwbinder</transport>
-        <version>2.2</version>
+        <version>2.0</version>
         <interface>
             <name>ISoundTriggerHw</name>
             <instance>default</instance>
         </interface>
     </hal>
-    -->
     <!-- TODO (b/130079321):
     <hal format="hidl">
         <name>android.hardware.tetheroffload.config</name>
