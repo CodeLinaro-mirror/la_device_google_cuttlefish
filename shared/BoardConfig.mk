@@ -60,8 +60,8 @@ TARGET_USES_HWC2 := true
 # The compiler will occasionally generate movaps, etc.
 BOARD_MALLOC_ALIGNMENT := 16
 
-# Make the userdata partition 4G to accomodate ASAN and CTS
-BOARD_USERDATAIMAGE_PARTITION_SIZE := 4294967296
+# Make the userdata partition 4.25G to accomodate ASAN and CTS
+BOARD_USERDATAIMAGE_PARTITION_SIZE := 4563402752
 
 # Cache partition size: 64M
 BOARD_CACHEIMAGE_PARTITION_SIZE := 67108864
@@ -99,13 +99,7 @@ WIFI_DRIVER_FW_PATH_AP      := "/dev/null"
 BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor
 BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor/google
 PRODUCT_PRIVATE_SEPOLICY_DIRS := device/google/cuttlefish/shared/sepolicy/private
-# TODO(b/131193755) remove the following line.
-PRODUCT_PUBLIC_SEPOLICY_DIRS := device/google/cuttlefish/shared/sepolicy/public
 
-# master has breaking changes in dlfcn.h, but the platform SDK hasn't been
-# bumped. Restore the line below when it is.
-VSOC_VERSION_CFLAGS := -DVSOC_PLATFORM_SDK_VERSION=29
-# VSOC_VERSION_CFLAGS := -DVSOC_PLATFORM_SDK_VERSION=${PLATFORM_SDK_VERSION}
 VSOC_STLPORT_INCLUDES :=
 VSOC_STLPORT_LIBS :=
 VSOC_STLPORT_STATIC_LIBS :=
@@ -146,11 +140,10 @@ TARGET_RECOVERY_PIXEL_FORMAT := ABGR_8888
 
 TARGET_RECOVERY_FSTAB ?= device/google/cuttlefish/shared/config/fstab
 
-BOARD_SUPER_PARTITION_SIZE := 6442450944
+BOARD_SUPER_PARTITION_SIZE := 12348030976
 BOARD_SUPER_PARTITION_GROUPS := google_dynamic_partitions
 BOARD_GOOGLE_DYNAMIC_PARTITIONS_PARTITION_LIST := system vendor product system_ext
-BOARD_GOOGLE_DYNAMIC_PARTITIONS_SIZE := 6442450944
-BOARD_SUPER_PARTITION_METADATA_DEVICE := vda
+BOARD_GOOGLE_DYNAMIC_PARTITIONS_SIZE := 6174015488
 BOARD_BUILD_SUPER_IMAGE_BY_DEFAULT := true
 BOARD_SUPER_IMAGE_IN_UPDATE_PACKAGE := true
 TARGET_RELEASETOOLS_EXTENSIONS := device/google/cuttlefish/shared
@@ -158,3 +151,10 @@ TARGET_RELEASETOOLS_EXTENSIONS := device/google/cuttlefish/shared
 # To see full logs from init, disable ratelimiting.
 # The default is 5 messages per second amortized, with a burst of up to 10.
 BOARD_KERNEL_CMDLINE += printk.devkmsg=on
+
+BOARD_INCLUDE_DTB_IN_BOOTIMG := true
+BOARD_BOOT_HEADER_VERSION := 3
+BOARD_USES_RECOVERY_AS_BOOT := true
+BOARD_MKBOOTIMG_ARGS += --header_version $(BOARD_BOOT_HEADER_VERSION)
+PRODUCT_COPY_FILES += device/google/cuttlefish/dtb.img:dtb.img
+BOARD_BUILD_SYSTEM_ROOT_IMAGE := false
