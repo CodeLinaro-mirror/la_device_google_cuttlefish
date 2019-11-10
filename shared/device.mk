@@ -16,12 +16,21 @@
 
 # Enable updating of APEXes
 $(call inherit-product, $(SRC_TARGET_DIR)/product/updatable_apex.mk)
-PRODUCT_PACKAGES := com.android.apex.cts.shim.v1_prebuilt
 
 PRODUCT_SHIPPING_API_LEVEL := 29
 PRODUCT_BUILD_BOOT_IMAGE := true
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
+
+AB_OTA_UPDATER := true
+AB_OTA_PARTITIONS += \
+    product \
+    system \
+    system_ext \
+    vendor
+
+# Enable Virtual A/B
+$(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota.mk)
 
 # Properties that are not vendor-specific. These will go in the product
 # partition, instead of the vendor partition, and do not need vendor
@@ -153,8 +162,12 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_ivsh \
     device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_RAMDISK)/fstab.cutf_cvm \
     device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_cvm \
+    device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.cutf_ivsh \
+    device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.cutf_cvm \
     device/google/cuttlefish/shared/config/fstab.composite:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.composite.cutf_ivsh \
     device/google/cuttlefish/shared/config/fstab.composite:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.composite.cutf_cvm \
+    device/google/cuttlefish/shared/config/fstab.composite:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.composite.cutf_ivsh \
+    device/google/cuttlefish/shared/config/fstab.composite:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.composite.cutf_cvm \
 
 #
 # USB Specific
@@ -308,11 +321,11 @@ PRODUCT_PACKAGES += \
 # NeuralNetworks HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.neuralnetworks@1.2-service-sample-all \
-    android.hardware.neuralnetworks@1.2-service-sample-float-fast \
-    android.hardware.neuralnetworks@1.2-service-sample-float-slow \
-    android.hardware.neuralnetworks@1.2-service-sample-minimal \
-    android.hardware.neuralnetworks@1.2-service-sample-quant
+    android.hardware.neuralnetworks@1.3-service-sample-all \
+    android.hardware.neuralnetworks@1.3-service-sample-float-fast \
+    android.hardware.neuralnetworks@1.3-service-sample-float-slow \
+    android.hardware.neuralnetworks@1.3-service-sample-minimal \
+    android.hardware.neuralnetworks@1.3-service-sample-quant
 
 #
 # USB
@@ -321,10 +334,13 @@ PRODUCT_PACKAGES += \
 
 # Vibrator HAL
 PRODUCT_PACKAGES += \
-    android.hardware.vibrator@1.3-service.example
+    android.hardware.vibrator@1.x-service.example
 
+# BootControl HAL
 PRODUCT_PACKAGES += \
-    cuttlefish_dtb
+    android.hardware.boot@1.1-impl \
+    android.hardware.boot@1.1-impl.recovery \
+    android.hardware.boot@1.1-service
 
 # WLAN driver configuration files
 PRODUCT_COPY_FILES += \
