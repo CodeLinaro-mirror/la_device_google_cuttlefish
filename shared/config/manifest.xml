@@ -69,7 +69,7 @@
     <hal format="hidl">
         <name>android.hardware.bluetooth</name>
         <transport>hwbinder</transport>
-        <version>1.0</version>
+        <version>1.1</version>
         <interface>
             <name>IBluetoothHci</name>
             <instance>default</instance>
@@ -187,7 +187,7 @@
     <hal format="hidl">
         <name>android.hardware.keymaster</name>
         <transport>hwbinder</transport>
-        <version>4.0</version>
+        <version>4.1</version>
         <interface>
             <name>IKeymasterDevice</name>
             <instance>default</instance>
@@ -274,17 +274,6 @@
         </interface>
         -->
     </hal>
-    <!-- TODO (b/130076972):
-    <hal format="hidl">
-        <name>android.hardware.radio.config</name>
-        <transport>hwbinder</transport>
-        <version>1.2</version>
-        <interface>
-            <name>IRadioConfig</name>
-            <instance>default</instance>
-        </interface>
-    </hal>
-    -->
     <!-- TODO (b/130079239):
     <hal format="hidl">
         <name>android.hardware.secure_element</name>
