@@ -1,5 +1,4 @@
-#
-# Copyright 2017 The Android Open-Source Project
+# Copyright (C) 2017 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,9 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-
-ifneq ($(filter $(TARGET_BOARD_PLATFORM), vsoc_arm64 vsoc_x86 vsoc_x86_64),)
+ifneq ($(filter vsoc_arm64 vsoc_x86 vsoc_x86_64, $(TARGET_BOARD_PLATFORM)),)
 LOCAL_PATH:= $(call my-dir)
 
 include $(CLEAR_VARS)
@@ -23,5 +20,5 @@ include $(LOCAL_PATH)/fetcher.mk
 include $(CLEAR_VARS)
 include $(LOCAL_PATH)/host_package.mk
 
-include $(call all-makefiles-under,$(LOCAL_PATH))
+include $(call first-makefiles-under,$(LOCAL_PATH))
 endif

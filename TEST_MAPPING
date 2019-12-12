@@ -1,4 +1,9 @@
 {
+  "postsubmit" : [
+    {
+      "name": "tombstone_transmit_tests"
+    }
+  ],
   "presubmit": [
     {
       "name": "vts_treble_vintf_framework_test"
@@ -11,4 +16,3 @@
     }
   ]
 }
-
