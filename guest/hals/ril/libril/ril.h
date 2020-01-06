@@ -2040,6 +2040,8 @@ typedef enum {
     RIL_APN_TYPE_EMERGENCY    = 0x200,        // APN type for Emergency PDN. This is not an IA apn,
                                               // but is used for access to carrier services in an
                                               // emergency call situation.
+    RIL_APN_TYPE_MCX          = 0x400,        // APN type for Mission Critical Service
+    RIL_APN_TYPE_XCAP         = 0x800,        // APN type for XCAP
     RIL_APN_TYPE_ALL          = 0xFFFFFFFF    // All APN types
 } RIL_ApnTypes;
 
@@ -6707,6 +6709,21 @@ typedef struct {
  *
  */
 #define RIL_REQUEST_START_NETWORK_SCAN_1_5 159
+
+
+/**
+ * RIL_REQUEST_SET_RADIO_POWER_1_5
+ *
+ * Turn on or off radio power. It can also specify whether turning on radio power is to place an
+ * emergency call and whether the call will be placed on this logical modem.
+ *
+ * Valid errors:
+ *  SUCCESS
+ *  INTERNAL_ERR
+ *  INVALID_ARGUMENTS
+ *
+ */
+#define RIL_REQUEST_SET_RADIO_POWER_1_5 160
 
 /***********************************************************************/
 

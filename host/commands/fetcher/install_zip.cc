@@ -20,6 +20,7 @@
 #include <string>
 #include <vector>
 
+#include <android-base/strings.h>
 #include <glog/logging.h>
 
 #include "common/libs/utils/archive.h"
@@ -41,6 +42,9 @@ std::vector<std::string> ExtractImages(const std::string& archive_file,
   bool extraction_success = true;
   std::vector<std::string> files =
       images.size() > 0 ? images : archive.Contents();
+  for (auto it = files.begin(); it != files.end();) {
+    it = (*it == "" || android::base::EndsWith(*it, "/")) ? files.erase(it) : ++it;
+  }
   for (const auto& file : files) {
     if (file.find(".img") == std::string::npos) {
       continue;
@@ -76,9 +80,6 @@ std::vector<std::string> ExtractImages(const std::string& archive_file,
       LOG(ERROR) << "Unable to rename deflated version of " << file;
       extraction_success = false;
     }
-  }
-  for (auto& file : files) {
-    file = target_directory + "/" + file;
   }
   return extraction_success ? files : std::vector<std::string>{};
 }

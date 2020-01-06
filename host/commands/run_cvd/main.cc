@@ -42,10 +42,13 @@
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/fs/shared_select.h"
+#include "common/libs/fs/tee.h"
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
+#include "common/libs/utils/network.h"
 #include "common/libs/utils/subprocess.h"
 #include "common/libs/utils/size_utils.h"
+#include "host/commands/run_cvd/kernel_args.h"
 #include "host/commands/run_cvd/launch.h"
 #include "host/commands/run_cvd/runner_defs.h"
 #include "host/commands/run_cvd/process_monitor.h"
@@ -158,13 +161,7 @@ bool WriteCuttlefishEnvironment(const vsoc::CuttlefishConfig& config) {
   }
   std::string config_env = "export CUTTLEFISH_PER_INSTANCE_PATH=\"" +
                            config.PerInstancePath(".") + "\"\n";
-  config_env += "export ANDROID_SERIAL=";
-  if (config.adb_mode().count(vsoc::AdbMode::Usb) > 0) {
-    config_env += config.serial_number();
-  } else {
-    config_env += config.adb_ip_and_port();
-  }
-  config_env += "\n";
+  config_env += "export ANDROID_SERIAL=" + config.adb_ip_and_port() + "\n";
   env->Write(config_env.c_str(), config_env.size());
   return true;
 }
@@ -277,80 +274,6 @@ std::string GetConfigFilePath(const vsoc::CuttlefishConfig& config) {
   return config.PerInstancePath("cuttlefish_config.json");
 }
 
-template<typename T>
-void AppendVector(std::vector<T>* destination, const std::vector<T>& source) {
-  destination->insert(destination->end(), source.begin(), source.end());
-}
-
-template<typename S, typename T>
-static std::string concat(const S& s, const T& t) {
-  std::ostringstream os;
-  os << s << t;
-  return os.str();
-}
-
-std::vector<std::string> KernelCommandLineFromConfig(const vsoc::CuttlefishConfig& config) {
-  std::vector<std::string> kernel_cmdline;
-
-  AppendVector(&kernel_cmdline, config.boot_image_kernel_cmdline());
-  AppendVector(&kernel_cmdline,
-               vm_manager::VmManager::ConfigureGpuMode(config.vm_manager(), config.gpu_mode()));
-  AppendVector(&kernel_cmdline, vm_manager::VmManager::ConfigureBootDevices(config.vm_manager()));
-
-  kernel_cmdline.push_back(concat("androidboot.serialno=", config.serial_number()));
-  kernel_cmdline.push_back(concat("androidboot.lcd_density=", config.dpi()));
-  if (config.logcat_mode() == cvd::kLogcatVsockMode) {
-    kernel_cmdline.push_back(concat("androidboot.vsock_logcat_port=", config.logcat_vsock_port()));
-  }
-  if (config.enable_vnc_server()) {
-    kernel_cmdline.push_back(concat("androidboot.vsock_frames_port=", config.frames_vsock_port()));
-  }
-  if (config.enable_tombstone_receiver()) {
-    kernel_cmdline.push_back("androidboot.tombstone_transmit=1");
-    kernel_cmdline.push_back(concat(
-        "androidboot.vsock_tombstone_port=",
-        config.tombstone_receiver_port()));
-    // TODO (b/128842613) populate a cid flag to read the host CID during
-    // runtime
-  } else {
-    kernel_cmdline.push_back("androidboot.tombstone_transmit=0");
-  }
-  kernel_cmdline.push_back(concat(
-      "androidboot.cuttlefish_config_server_port=", config.config_server_port()));
-  kernel_cmdline.push_back(concat(
-      "androidboot.setupwizard_mode=", config.setupwizard_mode()));
-  if (!config.use_bootloader()) {
-    std::string slot_suffix;
-    if (config.boot_slot().empty()) {
-      slot_suffix = "_a";
-    } else {
-      slot_suffix = "_" + config.boot_slot();
-    }
-    kernel_cmdline.push_back(concat("androidboot.slot_suffix=", slot_suffix));
-  }
-  if (config.vm_manager() == vm_manager::QemuManager::name()) {
-    kernel_cmdline.push_back(concat("androidboot.vsock_touch_port=", config.touch_socket_port()));
-    kernel_cmdline.push_back(concat(
-        "androidboot.vsock_keyboard_port=", config.keyboard_socket_port()));
-  }
-  kernel_cmdline.push_back(concat("loop.max_part=", config.loop_max_part()));
-  if (config.guest_enforce_security()) {
-    kernel_cmdline.push_back("enforcing=1");
-  } else {
-    kernel_cmdline.push_back("enforcing=0");
-    kernel_cmdline.push_back("androidboot.selinux=permissive");
-  }
-  if (config.guest_audit_security()) {
-    kernel_cmdline.push_back("audit=1");
-  } else {
-    kernel_cmdline.push_back("audit=0");
-  }
-
-  AppendVector(&kernel_cmdline, config.extra_kernel_cmdline());
-
-  return kernel_cmdline;
-}
-
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -369,6 +292,8 @@ int main(int argc, char** argv) {
       return cvd::RunnerExitCodes::kInvalidHostConfiguration;
     }
   }
+
+  cvd::TeeStderrToFile stderr_tee;
 
   std::string input_files_str;
   {
@@ -392,6 +317,9 @@ int main(int argc, char** argv) {
 
   auto config = vsoc::CuttlefishConfig::Get();
 
+  auto runner_log_path = config->PerInstancePath("run_cvd.log");
+  stderr_tee.SetFile(cvd::SharedFD::Creat(runner_log_path.c_str(), 0755));
+
   // Change working directory to the instance directory as early as possible to
   // ensure all host processes have the same working dir. This helps stop_cvd
   // find the running processes when it can't establish a communication with the
@@ -402,6 +330,15 @@ int main(int argc, char** argv) {
     LOG(ERROR) << "Unable to change dir into instance directory ("
                << config->instance_dir() << "): " << strerror(error);
     return RunnerExitCodes::kInstanceDirCreationError;
+  }
+
+  auto used_tap_devices = cvd::TapInterfacesInUse();
+  if (used_tap_devices.count(config->wifi_tap_name())) {
+    LOG(ERROR) << "Wifi TAP device already in use";
+    return RunnerExitCodes::kTapDeviceInUse;
+  } else if (used_tap_devices.count(config->mobile_tap_name())) {
+    LOG(ERROR) << "Mobile TAP device already in use";
+    return RunnerExitCodes::kTapDeviceInUse;
   }
 
   auto vm_manager = vm_manager::VmManager::Get(config->vm_manager(), config);
@@ -472,26 +409,43 @@ int main(int argc, char** argv) {
   cvd::SharedFD adbd_events_pipe = event_pipes[1];
   event_pipes.clear();
 
+  std::set<std::string> extra_kernel_cmdline;
+
   SetUpHandlingOfBootEvents(&process_monitor, boot_events_pipe,
                             boot_state_machine);
 
-  LaunchLogcatReceiverIfEnabled(*config, &process_monitor);
+  auto logcat_server = LaunchLogcatReceiverIfEnabled(*config, &process_monitor);
+  auto logcat_server_args = KernelCommandLineFromLogcatServer(logcat_server);
 
-  LaunchConfigServer(*config, &process_monitor);
+  auto config_server = LaunchConfigServer(*config, &process_monitor);
+  auto config_server_args = KernelCommandLineFromConfigServer(config_server);
 
-  LaunchTombstoneReceiverIfEnabled(*config, &process_monitor);
+  auto tombstone_server = LaunchTombstoneReceiverIfEnabled(*config, &process_monitor);
+  auto tombstone_kernel_args = KernelCommandLineFromTombstone(tombstone_server);
 
-  LaunchUsbServerIfEnabled(*config, &process_monitor);
-
-  // The vnc server needs to be launched after the ivserver because it connects
-  // to it when using qemu. It needs to launch before the VMM because it serves
-  // on several sockets (input devices, vsock frame server) when using crosvm.
-  auto frontend_enabled = LaunchVNCServerIfEnabled(
+  // The streamer needs to launch before the VMM because it serves on several
+  // sockets (input devices, vsock frame server) when using crosvm.
+  StreamerLaunchResult streamer_config;
+  if (config->enable_vnc_server()) {
+    streamer_config = LaunchVNCServer(
       *config, &process_monitor, GetOnSubprocessExitCallback(*config));
+  }
+  if (config->enable_webrtc()) {
+    streamer_config = LaunchWebRTC(&process_monitor, *config);
+  }
+
+  auto streamer_kernel_args = KernelCommandLineFromStreamer(streamer_config);
+
+  auto kernel_args = KernelCommandLineFromConfig(*config);
+  kernel_args.insert(kernel_args.end(), streamer_kernel_args.begin(),
+                     streamer_kernel_args.end());
+  kernel_args.insert(kernel_args.end(), tombstone_kernel_args.begin(),
+                     tombstone_kernel_args.end());
+  kernel_args.insert(kernel_args.end(), config_server_args.begin(), config_server_args.end());
+  kernel_args.insert(kernel_args.end(), logcat_server_args.begin(), logcat_server_args.end());
 
   // Start the guest VM
-  vm_manager->WithFrontend(frontend_enabled);
-  auto kernel_args = KernelCommandLineFromConfig(*config);
+  vm_manager->WithFrontend(streamer_config.launched);
   vm_manager->WithKernelCommandLine(android::base::Join(kernel_args, " "));
   auto vmm_commands = vm_manager->StartCommands();
   for (auto& vmm_cmd: vmm_commands) {

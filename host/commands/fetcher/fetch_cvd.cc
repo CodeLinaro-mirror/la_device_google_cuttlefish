@@ -23,6 +23,7 @@
 #include "gflags/gflags.h"
 #include <glog/logging.h>
 
+#include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/archive.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/subprocess.h"
@@ -68,33 +69,37 @@ const std::string OTA_TOOLS_DIR = "/otatools/";
  * For example, for a target "aosp_cf_x86_phone-userdebug" at a build "5824130",
  * the image zip file would be "aosp_cf_x86_phone-img-5824130.zip"
  */
-std::string target_build_zip(const DeviceBuild& build, const std::string& name) {
-  std::string target = build.target;
+std::string TargetBuildZipFromArtifacts(
+    const Build& build, const std::string& name,
+    const std::vector<Artifact>& artifacts) {
+  std::string target = std::visit([](auto&& arg) { return arg.target; }, build);
   size_t dash_pos = target.find("-");
   if (dash_pos != std::string::npos) {
     target.replace(dash_pos, target.size() - dash_pos, "");
   }
-  return target + "-" + name + "-" + build.id + ".zip";
+  auto id = std::visit([](auto&& arg) { return arg.id; }, build);
+  auto match = target + "-" + name + "-" + id;
+  for (const auto& artifact : artifacts) {
+    if (artifact.Name().find(match) != std::string::npos) {
+      return artifact.Name();
+    }
+  }
+  return "";
 }
 
 std::vector<std::string> download_images(BuildApi* build_api,
-                                         const DeviceBuild& build,
+                                         const Build& build,
                                          const std::string& target_directory,
                                          const std::vector<std::string>& images) {
-  std::string img_zip_name = target_build_zip(build, "img");
   auto artifacts = build_api->Artifacts(build);
-  bool has_image_zip = false;
-  for (const auto& artifact : artifacts) {
-    has_image_zip |= artifact.Name() == img_zip_name;
-  }
-  if (!has_image_zip) {
-    LOG(FATAL) << "Target " << build.target << " at id " << build.id
-               << " did not have " << img_zip_name;
+  std::string img_zip_name = TargetBuildZipFromArtifacts(build, "img", artifacts);
+  if (img_zip_name.size() == 0) {
+    LOG(ERROR) << "Target " << build << " did not have an img zip";
     return {};
   }
   std::string local_path = target_directory + "/" + img_zip_name;
   if (!build_api->ArtifactToFile(build, img_zip_name, local_path)) {
-    LOG(FATAL) << "Unable to download " << build << ":" << img_zip_name << " to "
+    LOG(ERROR) << "Unable to download " << build << ":" << img_zip_name << " to "
                << local_path;
     return {};
   }
@@ -111,28 +116,23 @@ std::vector<std::string> download_images(BuildApi* build_api,
   return files;
 }
 std::vector<std::string> download_images(BuildApi* build_api,
-                                         const DeviceBuild& build,
+                                         const Build& build,
                                          const std::string& target_directory) {
   return download_images(build_api, build, target_directory, {});
 }
 
 std::vector<std::string> download_target_files(BuildApi* build_api,
-                                               const DeviceBuild& build,
+                                               const Build& build,
                                                const std::string& target_directory) {
-  std::string target_zip = target_build_zip(build, "target_files");
   auto artifacts = build_api->Artifacts(build);
-  bool has_target_zip = false;
-  for (const auto& artifact : artifacts) {
-    has_target_zip |= artifact.Name() == target_zip;
-  }
-  if (!has_target_zip) {
-    LOG(FATAL) << "Target " << build.target << " at id " << build.id
-        << " did not have " << target_zip;
+  std::string target_zip = TargetBuildZipFromArtifacts(build, "target_files", artifacts);
+  if (target_zip.size() == 0) {
+    LOG(ERROR) << "Target " << build << " did not have a target files zip";
     return {};
   }
   std::string local_path = target_directory + "/" + target_zip;
   if (!build_api->ArtifactToFile(build, target_zip, local_path)) {
-    LOG(FATAL) << "Unable to download " << build << ":" << target_zip << " to "
+    LOG(ERROR) << "Unable to download " << build << ":" << target_zip << " to "
                << local_path;
     return {};
   }
@@ -140,7 +140,7 @@ std::vector<std::string> download_target_files(BuildApi* build_api,
 }
 
 std::vector<std::string> download_host_package(BuildApi* build_api,
-                                               const DeviceBuild& build,
+                                               const Build& build,
                                                const std::string& target_directory) {
   auto artifacts = build_api->Artifacts(build);
   bool has_host_package = false;
@@ -148,21 +148,20 @@ std::vector<std::string> download_host_package(BuildApi* build_api,
     has_host_package |= artifact.Name() == HOST_TOOLS;
   }
   if (!has_host_package) {
-    LOG(FATAL) << "Target " << build.target << " at id " << build.id
-               << " did not have " << HOST_TOOLS;
+    LOG(ERROR) << "Target " << build << " did not have " << HOST_TOOLS;
     return {};
   }
   std::string local_path = target_directory + "/" + HOST_TOOLS;
 
   if (!build_api->ArtifactToFile(build, HOST_TOOLS, local_path)) {
-    LOG(FATAL) << "Unable to download " << build << ":" << HOST_TOOLS << " to "
+    LOG(ERROR) << "Unable to download " << build << ":" << HOST_TOOLS << " to "
                << local_path;
     return {};
   }
 
   cvd::Archive archive(local_path);
   if (!archive.ExtractAll(target_directory)) {
-    LOG(FATAL) << "Could not extract " << local_path;
+    LOG(ERROR) << "Could not extract " << local_path;
     return {};
   }
   std::vector<std::string> files = archive.Contents();
@@ -192,7 +191,7 @@ bool desparse(const std::string& file) {
 }
 
 std::vector<std::string> download_ota_tools(BuildApi* build_api,
-                                            const DeviceBuild& build,
+                                            const Build& build,
                                             const std::string& target_directory) {
   auto artifacts = build_api->Artifacts(build);
   bool has_host_package = false;
@@ -200,8 +199,7 @@ std::vector<std::string> download_ota_tools(BuildApi* build_api,
     has_host_package |= artifact.Name() == OTA_TOOLS;
   }
   if (!has_host_package) {
-    LOG(ERROR) << "Target " << build.target << " at id " << build.id
-        << " did not have " << OTA_TOOLS;
+    LOG(ERROR) << "Target " << build << " did not have " << OTA_TOOLS;
     return {};
   }
   std::string local_path = target_directory + "/" + OTA_TOOLS;
@@ -214,12 +212,12 @@ std::vector<std::string> download_ota_tools(BuildApi* build_api,
 
   std::string otatools_dir = target_directory + OTA_TOOLS_DIR;
   if (!cvd::DirectoryExists(otatools_dir) && mkdir(otatools_dir.c_str(), 0777) != 0) {
-    LOG(FATAL) << "Could not create " << otatools_dir;
+    LOG(ERROR) << "Could not create " << otatools_dir;
     return {};
   }
   cvd::Archive archive(local_path);
   if (!archive.ExtractAll(otatools_dir)) {
-    LOG(FATAL) << "Could not extract " << local_path;
+    LOG(ERROR) << "Could not extract " << local_path;
     return {};
   }
   std::vector<std::string> files = archive.Contents();
@@ -230,11 +228,14 @@ std::vector<std::string> download_ota_tools(BuildApi* build_api,
   return files;
 }
 
-void AddFilesToConfig(cvd::FileSource purpose, const DeviceBuild& build,
+void AddFilesToConfig(cvd::FileSource purpose, const Build& build,
                       const std::vector<std::string>& paths, cvd::FetcherConfig* config,
                       bool override_entry = false) {
   for (const std::string& path : paths) {
-    cvd::CvdFile file(purpose, build.id, build.target, path);
+    // TODO(schuffelen): Do better for local builds here.
+    auto id = std::visit([](auto&& arg) { return arg.id; }, build);
+    auto target = std::visit([](auto&& arg) { return arg.target; }, build);
+    cvd::CvdFile file(purpose, id, target, path);
     bool added = config->add_cvd_file(file, override_entry);
     if (!added) {
       LOG(ERROR) << "Duplicate file " << file;
@@ -279,9 +280,9 @@ int main(int argc, char** argv) {
     }
     BuildApi build_api(std::move(credential_source));
 
-    DeviceBuild default_build = ArgumentToBuild(&build_api, FLAGS_default_build,
-                                                DEFAULT_BUILD_TARGET,
-                                                retry_period);
+    auto default_build = ArgumentToBuild(&build_api, FLAGS_default_build,
+                                         DEFAULT_BUILD_TARGET,
+                                         retry_period);
 
     std::vector<std::string> host_package_files =
         download_host_package(&build_api, default_build, target_dir);
@@ -291,7 +292,7 @@ int main(int argc, char** argv) {
     AddFilesToConfig(cvd::FileSource::DEFAULT_BUILD, default_build, host_package_files, &config);
 
     if (FLAGS_system_build != "" || FLAGS_kernel_build != "" || FLAGS_otatools_build != "") {
-      DeviceBuild ota_build = default_build;
+      auto ota_build = default_build;
       if (FLAGS_otatools_build != "") {
         ota_build = ArgumentToBuild(&build_api, FLAGS_otatools_build,
                                     DEFAULT_BUILD_TARGET, retry_period);
@@ -310,21 +311,31 @@ int main(int argc, char** argv) {
         LOG(FATAL) << "Could not download images for " << default_build;
       }
       desparse(target_dir + "/userdata.img");
+      LOG(INFO) << "Adding img-zip files for default build";
+      for (auto& file : image_files) {
+        LOG(INFO) << file;
+      }
       AddFilesToConfig(cvd::FileSource::DEFAULT_BUILD, default_build, image_files, &config);
     }
     if (FLAGS_system_build != "" || FLAGS_download_target_files_zip) {
+      std::string default_target_dir = target_dir + "/default";
+      if (mkdir(default_target_dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) < 0) {
+        LOG(FATAL) << "Could not create " << default_target_dir;
+      }
       std::vector<std::string> target_files =
-          download_target_files(&build_api, default_build, target_dir);
+          download_target_files(&build_api, default_build, default_target_dir);
       if (target_files.empty()) {
         LOG(FATAL) << "Could not download target files for " << default_build;
       }
+      LOG(INFO) << "Adding target files for default build";
       AddFilesToConfig(cvd::FileSource::DEFAULT_BUILD, default_build, target_files, &config);
     }
 
     if (FLAGS_system_build != "") {
-      DeviceBuild system_build = ArgumentToBuild(&build_api, FLAGS_system_build,
-                                                 DEFAULT_BUILD_TARGET,
-                                                 retry_period);
+      auto system_build = ArgumentToBuild(&build_api, FLAGS_system_build,
+                                          DEFAULT_BUILD_TARGET,
+                                          retry_period);
+      bool system_in_img_zip = true;
       if (FLAGS_download_img_zip) {
         std::vector<std::string> image_files =
             download_images(&build_api, system_build, target_dir, {"system.img"});
@@ -332,22 +343,56 @@ int main(int argc, char** argv) {
           LOG(INFO) << "Could not find system image for " << system_build
                     << "in the img zip. Assuming a super image build, which will "
                     << "get the super image from the target zip.";
+          system_in_img_zip = false;
         } else {
+          LOG(INFO) << "Adding img-zip files for system build";
           AddFilesToConfig(cvd::FileSource::SYSTEM_BUILD, system_build, image_files,
                            &config, true);
         }
       }
+      std::string system_target_dir = target_dir + "/system";
+      if (mkdir(system_target_dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) < 0) {
+        LOG(FATAL) << "Could not create " << system_target_dir;
+      }
       std::vector<std::string> target_files =
-          download_target_files(&build_api, system_build, target_dir);
+          download_target_files(&build_api, system_build, system_target_dir);
       if (target_files.empty()) {
         LOG(FATAL) << "Could not download target files for " << system_build;
+        return -1;
       }
       AddFilesToConfig(cvd::FileSource::SYSTEM_BUILD, system_build, target_files, &config);
+      if (!system_in_img_zip) {
+        std::vector<std::string> wanted_images = {"IMAGES/system.img", "IMAGES/product.img"};
+        auto images = ExtractImages(target_files[0], target_dir, wanted_images);
+        if (images.size() != 2) {
+          LOG(FATAL) << "Could not get system.img, product.img from target zip";
+          return -1;
+        }
+        std::string extracted_system = target_dir + "/IMAGES/system.img";
+        std::string target_system = target_dir + "/system.img";
+        if (rename(extracted_system.c_str(), target_system.c_str())) {
+          int error_num = errno;
+          LOG(FATAL) << "Could not replace system.img in target directory: "
+              << strerror(error_num);
+          return -1;
+        }
+        std::string extracted_product = target_dir + "/IMAGES/product.img";
+        std::string target_product = target_dir + "/product.img";
+        if (rename(extracted_product.c_str(), target_product.c_str())) {
+          int error_num = errno;
+          LOG(FATAL) << "Could not replace product.img in target directory"
+              << strerror(error_num);
+          return -1;
+        }
+        // This should technically call AddFilesToConfig with the produced files,
+        // but it will conflict with the ones produced from the default system image
+        // and pie doesn't care about the produced file list anyway.
+      }
     }
 
     if (FLAGS_kernel_build != "") {
-      DeviceBuild kernel_build = ArgumentToBuild(&build_api, FLAGS_kernel_build,
-                                                 "kernel", retry_period);
+      auto kernel_build = ArgumentToBuild(&build_api, FLAGS_kernel_build,
+                                          "kernel", retry_period);
 
       std::string local_path = target_dir + "/kernel";
       if (build_api.ArtifactToFile(kernel_build, "bzImage", local_path)) {
@@ -390,15 +435,9 @@ int main(int argc, char** argv) {
     return 0;
   }
 
-  if (chdir(target_dir.c_str()) != 0) {
-    int error_num = errno;
-    LOG(FATAL) << "Could not change directory to \"" << target_dir << "\"."
-        << "errno was " << error_num << " \"" << strerror(error_num) << "\"";
-  }
-
   // Ignore return code. We want to make sure there is no running instance,
   // and stop_cvd will exit with an error code if there is already no running instance.
-  cvd::Command stop_cmd("bin/stop_cvd");
+  cvd::Command stop_cmd(target_dir + "/bin/stop_cvd");
   stop_cmd.RedirectStdIO(cvd::Subprocess::StdIOChannel::kStdOut,
                          cvd::Subprocess::StdIOChannel::kStdErr);
   stop_cmd.Start().Wait();
@@ -406,9 +445,35 @@ int main(int argc, char** argv) {
   // gflags::ParseCommandLineFlags will remove fetch_cvd's flags from this.
   // This depends the remove_flags argument (3rd) is "true".
 
+  auto filelist_fd = cvd::SharedFD::MemfdCreate("files_list");
+  if (!filelist_fd->IsOpen()) {
+    LOG(FATAL) << "Unable to create temp file to write file list. "
+               << filelist_fd->StrError() << " (" << filelist_fd->GetErrno() << ")";
+  }
+
+  for (const auto& file : config.get_cvd_files()) {
+    std::string file_entry = file.second.file_path + "\n";
+    auto chars_written = filelist_fd->Write(file_entry.c_str(), file_entry.size());
+    if (chars_written != file_entry.size()) {
+      LOG(FATAL) << "Unable to write entry to file list. Expected to write "
+                 << file_entry.size() << " but wrote " << chars_written << ". "
+                 << filelist_fd->StrError() << " (" << filelist_fd->GetErrno() << ")";
+    }
+  }
+  auto seek_result = filelist_fd->LSeek(0, SEEK_SET);
+  if (seek_result != 0) {
+    LOG(FATAL) << "Unable to seek on file list file. Expected 0, received " << seek_result
+               << filelist_fd->StrError() << " (" << filelist_fd->GetErrno() << ")";
+  }
+
+  if (filelist_fd->UNMANAGED_Dup2(0) == -1) {
+    LOG(FATAL) << "Unable to set file list to stdin. "
+               << filelist_fd->StrError() << " (" << filelist_fd->GetErrno() << ")";
+  }
+
   // TODO(b/139199114): Go into assemble_cvd when the interface is stable and implemented.
 
-  std::string next_stage = "bin/launch_cvd";
+  std::string next_stage = target_dir + "/bin/launch_cvd";
   std::vector<const char*> next_stage_argv = {"launch_cvd"};
   LOG(INFO) << "Running " << next_stage;
   for (int i = 1; i < argc; i++) {
