@@ -54,6 +54,7 @@ PRODUCT_PROPERTY_OVERRIDES += \
     ro.opengles.version=196608 \
     wifi.interface=wlan0 \
     persist.sys.zram_enabled=1 \
+    ro.apk_verity.mode=2 \
 
 # Below is a list of properties we probably should get rid of.
 PRODUCT_PROPERTY_OVERRIDES += \
@@ -78,6 +79,7 @@ PRODUCT_PACKAGES += \
     tombstone_transmit \
     vsock_logcat \
     tombstone_producer \
+    suspend_blocker \
 
 #
 # Packages for AOSP-available stuff we use from the framework
@@ -167,10 +169,6 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_cvm \
     device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.cutf_ivsh \
     device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.cutf_cvm \
-    device/google/cuttlefish/shared/config/fstab.composite:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.composite.cutf_ivsh \
-    device/google/cuttlefish/shared/config/fstab.composite:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.composite.cutf_cvm \
-    device/google/cuttlefish/shared/config/fstab.composite:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.composite.cutf_ivsh \
-    device/google/cuttlefish/shared/config/fstab.composite:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.composite.cutf_cvm \
 
 #
 # USB Specific
@@ -264,7 +262,7 @@ PRODUCT_PACKAGES += \
 # GPS
 #
 PRODUCT_PACKAGES += \
-    android.hardware.gnss@2.0-service
+    android.hardware.gnss@2.1-service
 
 # Health
 PRODUCT_PACKAGES += \

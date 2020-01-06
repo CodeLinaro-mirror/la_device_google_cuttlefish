@@ -62,9 +62,6 @@ BOARD_MALLOC_ALIGNMENT := 16
 
 # Make the userdata partition 4.25G to accomodate ASAN and CTS
 BOARD_USERDATAIMAGE_PARTITION_SIZE := 4563402752
-TARGET_USERIMAGES_SPARSE_F2FS_DISABLED := true
-BOARD_USERDATAIMAGE_FILE_SYSTEM_TYPE := f2fs
-TARGET_USERIMAGES_USE_F2FS := true
 
 # Cache partition size: 64M
 BOARD_CACHEIMAGE_PARTITION_SIZE := 67108864
@@ -155,6 +152,13 @@ TARGET_RELEASETOOLS_EXTENSIONS := device/google/cuttlefish/shared
 # The default is 5 messages per second amortized, with a burst of up to 10.
 BOARD_KERNEL_CMDLINE += printk.devkmsg=on
 BOARD_KERNEL_CMDLINE += firmware_class.path=/vendor/etc/
+
+BOARD_KERNEL_CMDLINE += init=/init
+BOARD_KERNEL_CMDLINE += androidboot.hardware=cutf_cvm
+BOARD_KERNEL_CMDLINE += security=selinux
+BOARD_KERNEL_CMDLINE += androidboot.console=ttyS1
+# Boot as recovery is set so normal boot needs to be forced every boot
+BOARD_KERNEL_CMDLINE += androidboot.force_normal_boot=1
 
 BOARD_INCLUDE_DTB_IN_BOOTIMG := true
 BOARD_BOOT_HEADER_VERSION := 3
