@@ -2269,7 +2269,7 @@ static void request_set_system_selection_channels(int /*request*/, RIL_Token t) 
   return;
 }
 
-// New functions after Q
+// New functions after Q.
 static void request_set_signal_strength_reporting_criteria_1_5(int /*request*/, void* /*data*/,
                                                                size_t /*datalen*/, RIL_Token t) {
   ALOGV("request_set_signal_strength_reporting_criteria_1_5 - void");
@@ -2285,6 +2285,12 @@ static void request_set_system_selection_channels_1_5(int /*request*/, RIL_Token
 
 static void request_start_network_scan_1_5(RIL_Token t) {
   ALOGV("request_start_network_scan_1_5");
+  gce_ril_env->OnRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+  return;
+}
+
+static void request_set_radio_power_1_5(RIL_Token t) {
+  ALOGV("request_set_radio_power_1_5");
   gce_ril_env->OnRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
   return;
 }
@@ -2587,6 +2593,9 @@ static void gce_ril_on_request(int request, void* data, size_t datalen,
       break;
     case RIL_REQUEST_START_NETWORK_SCAN_1_5:
       request_start_network_scan_1_5(t);
+      break;
+    case RIL_REQUEST_SET_RADIO_POWER_1_5:
+      request_set_radio_power_1_5(t);
       break;
     default:
       ALOGE("Request %d not supported.", request);

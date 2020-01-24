@@ -14,6 +14,7 @@ $(call dist-for-goals, dist_files, $(cvd_host_package_tar))
 bin_path := $(notdir $(HOST_OUT_EXECUTABLES))
 lib_path := $(notdir $(HOST_OUT_SHARED_LIBRARIES))
 tests_path := $(notdir $(HOST_OUT_NATIVE_TESTS))
+webrtc_files_path := usr/share/webrtc
 
 cvd_host_executables := \
     adb \
@@ -27,7 +28,6 @@ cvd_host_executables := \
     vnc_server \
     cf_qemu.sh \
     cf_bpttool \
-    virtual_usb_manager \
     kernel_log_monitor \
     extract-vmlinux \
     crosvm \
@@ -40,7 +40,7 @@ cvd_host_executables := \
     x86_64-linux-gnu/libepoxy.so.0 \
     x86_64-linux-gnu/libgbm.so.1 \
     x86_64-linux-gnu/libminijail.so \
-    x86_64-linux-gnu/libvirglrenderer.so.0 \
+    x86_64-linux-gnu/libvirglrenderer.so.1 \
     logcat_receiver \
     config_server \
     tombstone_receiver \
@@ -48,6 +48,7 @@ cvd_host_executables := \
     assemble_cvd \
     run_cvd \
     cvd_status \
+    webRTC \
 
 cvd_host_tests := \
     cuttlefish_thread_test \
@@ -76,12 +77,33 @@ cvd_host_shared_libraries := \
     cdisk_spec.so \
     libprotobuf-cpp-full.so \
     libziparchive.so \
+    libvpx.so \
+    libssl-host.so \
+    libopus.so \
+    libyuv.so \
+    libjpeg.so \
 
+webrtc_assets := \
+    index.html \
+    style.css \
+    js/receive.js \
+    js/logcat.js \
+
+webrtc_certs := \
+    server.crt \
+    server.key \
+    server.p12 \
+    trusted.pem \
+
+cvd_host_webrtc_files := \
+    $(addprefix assets/,$(webrtc_assets)) \
+    $(addprefix certs/,$(webrtc_certs)) \
 
 cvd_host_package_files := \
      $(addprefix $(bin_path)/,$(cvd_host_executables)) \
      $(addprefix $(lib_path)/,$(cvd_host_shared_libraries)) \
      $(foreach test,$(cvd_host_tests), ${tests_path}/$(test)/$(test)) \
+     $(addprefix $(webrtc_files_path)/,$(cvd_host_webrtc_files)) \
 
 $(cvd_host_package_tar): PRIVATE_FILES := $(cvd_host_package_files)
 $(cvd_host_package_tar): $(addprefix $(HOST_OUT)/,$(cvd_host_package_files))

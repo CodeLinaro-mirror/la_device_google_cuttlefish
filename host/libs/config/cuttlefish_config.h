@@ -42,7 +42,6 @@ enum class AdbMode {
   VsockTunnel,
   VsockHalfTunnel,
   NativeVsock,
-  Usb,
   Unknown,
 };
 
@@ -64,11 +63,6 @@ class CuttlefishConfig {
 
   std::string instance_name() const;
 
-  void disable_usb_adb() {
-    // This seems to be the way usb is being disbled in the launcher
-    set_usb_v1_socket_name("");
-  }
-
   std::string instance_dir() const;
   void set_instance_dir(const std::string& instance_dir);
 
@@ -79,12 +73,6 @@ class CuttlefishConfig {
 
   std::string gpu_mode() const;
   void set_gpu_mode(const std::string& name);
-
-  std::string wayland_socket() const;
-  void set_wayland_socket(const std::string& path);
-
-  std::string x_display() const;
-  void set_x_display(const std::string& address);
 
   std::string serial_number() const;
   void set_serial_number(const std::string& serial_number);
@@ -103,9 +91,6 @@ class CuttlefishConfig {
 
   int y_res() const;
   void set_y_res(int y_res);
-
-  int num_screen_buffers() const;
-  void set_num_screen_buffers(int num_screen_buffers);
 
   int refresh_rate_hz() const;
   void set_refresh_rate_hz(int refresh_rate_hz);
@@ -153,31 +138,16 @@ class CuttlefishConfig {
   std::vector<std::string> virtual_disk_paths() const;
   void set_virtual_disk_paths(const std::vector<std::string>& disk_paths);
 
-  // The name of the socket that will be used to forward access to USB gadget.
-  // This is for V1 of the USB bus.
-  std::string usb_v1_socket_name() const;
-  void set_usb_v1_socket_name(const std::string& usb_v1_socket_name);
-
-  int vhci_port() const;
-  void set_vhci_port(int vhci_port);
-
-  std::string usb_ip_socket_name() const;
-  void set_usb_ip_socket_name(const std::string& usb_ip_socket_name);
-
   std::string kernel_log_pipe_name() const;
-  void set_kernel_log_pipe_name(const std::string& kernel_log_pipe_name);
 
   std::string console_pipe_name() const;
-  void set_console_pipe_name(const std::string& console_pipe_name);
 
   bool deprecated_boot_completed() const;
   void set_deprecated_boot_completed(bool deprecated_boot_completed);
 
   std::string console_path() const;
-  void set_console_path(const std::string& console_path);
 
   std::string logcat_path() const;
-  void set_logcat_path(const std::string& logcat_path);
 
   std::string logcat_receiver_binary() const;
   void set_logcat_receiver_binary(const std::string& binary);
@@ -186,11 +156,8 @@ class CuttlefishConfig {
   void set_config_server_binary(const std::string& binary);
 
   std::string launcher_log_path() const;
-  void set_launcher_log_path(const std::string& launcher_log_path);
 
   std::string launcher_monitor_socket_path() const;
-  void set_launcher_monitor_socket_path(
-      const std::string& launhcer_monitor_path);
 
   std::string mobile_bridge_name() const;
   void set_mobile_bridge_name(const std::string& mobile_bridge_name);
@@ -249,6 +216,21 @@ class CuttlefishConfig {
   void set_vnc_server_binary(const std::string& vnc_server_binary);
   std::string vnc_server_binary() const;
 
+  void set_enable_webrtc(bool enable_webrtc);
+  bool enable_webrtc() const;
+
+  void set_webrtc_binary(const std::string& webrtc_binary);
+  std::string webrtc_binary() const;
+
+  void set_webrtc_assets_dir(const std::string& webrtc_binary);
+  std::string webrtc_assets_dir() const;
+
+  void set_webrtc_public_ip(const std::string& webrtc_public_ip);
+  std::string webrtc_public_ip() const;
+
+  void set_webrtc_enable_adb_websocket(bool enable);
+  bool webrtc_enable_adb_websocket() const;
+
   void set_restart_subprocesses(bool restart_subprocesses);
   bool restart_subprocesses() const;
 
@@ -257,12 +239,6 @@ class CuttlefishConfig {
 
   void set_adb_connector_binary(const std::string& adb_connector_binary);
   std::string adb_connector_binary() const;
-
-  void set_virtual_usb_manager_binary(const std::string& binary);
-  std::string virtual_usb_manager_binary() const;
-
-  void set_socket_forward_proxy_binary(const std::string& binary);
-  std::string socket_forward_proxy_binary() const;
 
   void set_socket_vsock_proxy_binary(const std::string& binary);
   std::string socket_vsock_proxy_binary() const;
@@ -282,23 +258,11 @@ class CuttlefishConfig {
   void set_logcat_mode(const std::string& mode);
   std::string logcat_mode() const;
 
-  void set_logcat_vsock_port(int port);
-  int logcat_vsock_port() const;
-
-  void set_config_server_port(int port);
-  int config_server_port() const;
-
-  void set_frames_vsock_port(int port);
-  int frames_vsock_port() const;
-
   void set_enable_tombstone_receiver(bool enable_tombstone_receiver);
   bool enable_tombstone_receiver() const;
 
   void set_tombstone_receiver_binary(const std::string& binary);
   std::string tombstone_receiver_binary() const;
-
-  void set_tombstone_receiver_port(int port);
-  int tombstone_receiver_port() const;
 
   void set_use_bootloader(bool use_bootloader);
   bool use_bootloader() const;
@@ -311,12 +275,7 @@ class CuttlefishConfig {
 
   std::string touch_socket_path() const;
   std::string keyboard_socket_path() const;
-
-  void set_touch_socket_port(int touch_socket_port);
-  int touch_socket_port() const;
-
-  void set_keyboard_socket_port(int keyboard_socket_port);
-  int keyboard_socket_port() const;
+  std::string frames_socket_path() const;
 
   void set_loop_max_part(int loop_max_part);
   int loop_max_part() const;
@@ -327,11 +286,20 @@ class CuttlefishConfig {
   void set_guest_audit_security(bool guest_audit_security);
   bool guest_audit_security() const;
 
+  void set_guest_force_normal_boot(bool guest_force_normal_boot);
+  bool guest_force_normal_boot() const;
+
   void set_boot_image_kernel_cmdline(std::string boot_image_kernel_cmdline);
   std::vector<std::string> boot_image_kernel_cmdline() const;
 
   void set_extra_kernel_cmdline(std::string extra_cmdline);
   std::vector<std::string> extra_kernel_cmdline() const;
+
+  void set_webrtc_certs_dir(const std::string& certs_dir);
+  std::string webrtc_certs_dir() const;
+
+  void set_dialog_certs_dir(const std::string& certs_dir);
+  std::string dialog_certs_dir() const;
 
  private:
   std::unique_ptr<Json::Value> dictionary_;
