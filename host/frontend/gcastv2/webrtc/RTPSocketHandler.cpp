@@ -1,3 +1,19 @@
+/*
+ * Copyright (C) 2019 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #include <webrtc/RTPSocketHandler.h>
 
 #include <webrtc/MyWebSocketHandler.h>
@@ -20,6 +36,10 @@
 
 DECLARE_string(public_ip);
 
+// These are the ports we currently open in the firewall (15550..15557)
+static constexpr int kPortRangeBegin = 15550;
+static constexpr int kPortRangeEnd = 15558;
+
 static socklen_t getSockAddrLen(const sockaddr_storage &addr) {
     switch (addr.ss_family) {
         case AF_INET:
@@ -32,16 +52,53 @@ static socklen_t getSockAddrLen(const sockaddr_storage &addr) {
     }
 }
 
+static int acquirePort(int sockfd, int domain) {
+    sockaddr_storage addr;
+    uint16_t* port_ptr;
+
+    if (domain == PF_INET) {
+        sockaddr_in addrV4;
+        memset(addrV4.sin_zero, 0, sizeof(addrV4.sin_zero));
+        addrV4.sin_family = AF_INET;
+        addrV4.sin_addr.s_addr = INADDR_ANY;
+        memcpy(&addr, &addrV4, sizeof(addrV4));
+        port_ptr = &(reinterpret_cast<sockaddr_in*>(&addr)->sin_port);
+    } else {
+        CHECK_EQ(domain, PF_INET6);
+        sockaddr_in6 addrV6;
+        addrV6.sin6_family = AF_INET6;
+        addrV6.sin6_addr = in6addr_any;
+        addrV6.sin6_scope_id = 0;
+        memcpy(&addr, &addrV6, sizeof(addrV6));
+        port_ptr = &(reinterpret_cast<sockaddr_in6*>(&addr)->sin6_port);
+    }
+
+    int port = kPortRangeBegin;
+    for (;port < kPortRangeEnd; ++port) {
+        *port_ptr = htons(port);
+        errno = 0;
+        int res = bind(sockfd, reinterpret_cast<const sockaddr *>(&addr),
+                       getSockAddrLen(addr));
+        if (res == 0) {
+            return port;
+        }
+        if (errno != EADDRINUSE) {
+            return -1;
+        }
+        // else try the next port
+    }
+
+    return -1;
+}
+
 RTPSocketHandler::RTPSocketHandler(
         std::shared_ptr<RunLoop> runLoop,
         std::shared_ptr<ServerState> serverState,
         int domain,
-        uint16_t port,
         uint32_t trackMask,
         std::shared_ptr<RTPSession> session)
     : mRunLoop(runLoop),
       mServerState(serverState),
-      mLocalPort(port),
       mTrackMask(trackMask),
       mSession(session),
       mSendPending(false),
@@ -51,32 +108,9 @@ RTPSocketHandler::RTPSocketHandler(
     makeFdNonblocking(sock);
     mSocket = std::make_shared<PlainSocket>(mRunLoop, sock);
 
-    sockaddr_storage addr;
+    mLocalPort = acquirePort(sock, domain);
 
-    if (domain == PF_INET) {
-        sockaddr_in addrV4;
-        memset(addrV4.sin_zero, 0, sizeof(addrV4.sin_zero));
-        addrV4.sin_family = AF_INET;
-        addrV4.sin_port = htons(port);
-        addrV4.sin_addr.s_addr = INADDR_ANY;
-        memcpy(&addr, &addrV4, sizeof(addrV4));
-    } else {
-        CHECK_EQ(domain, PF_INET6);
-
-        sockaddr_in6 addrV6;
-        addrV6.sin6_family = AF_INET6;
-        addrV6.sin6_port = htons(port);
-        addrV6.sin6_addr = in6addr_any;
-        addrV6.sin6_scope_id = 0;
-        memcpy(&addr, &addrV6, sizeof(addrV6));
-    }
-
-    int res = bind(
-            sock,
-            reinterpret_cast<const sockaddr *>(&addr),
-            getSockAddrLen(addr));
-
-    CHECK(!res);
+    CHECK(mLocalPort > 0);
 
     auto videoPacketizer =
         (trackMask & TRACK_VIDEO)
@@ -97,14 +131,10 @@ RTPSocketHandler::RTPSocketHandler(
         mRTPSender->addSource(0xcafeb0b0);
 
         mRTPSender->addRetransInfo(0xdeadbeef, 96, 0xcafeb0b0, 97);
-
-        videoPacketizer->addSender(mRTPSender);
     }
 
     if (trackMask & TRACK_AUDIO) {
         mRTPSender->addSource(0x8badf00d);
-
-        audioPacketizer->addSender(mRTPSender);
     }
 }
 
@@ -475,6 +505,14 @@ void RTPSocketHandler::notifyDTLSConnected() {
     LOG(INFO) << "TDLS says that it's now connected.";
 
     mDTLSConnected = true;
+
+    if (mTrackMask & TRACK_VIDEO) {
+        mServerState->getVideoPacketizer()->addSender(mRTPSender);
+    }
+
+    if (mTrackMask & TRACK_AUDIO) {
+        mServerState->getAudioPacketizer()->addSender(mRTPSender);
+    }
 
     if (mTrackMask & TRACK_DATA) {
         mSCTPHandler = std::make_shared<SCTPHandler>(mRunLoop, mDTLS);

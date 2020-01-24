@@ -1,4 +1,6 @@
-body,
+body {
+    background-color:black
+},
 html {
 #    position: fixed;
 }
@@ -20,3 +22,8 @@ html {
     padding: 10px;
 }
 
+button.selected {
+    background-color: #aaaaaa;
+    border-style: solid;
+    border-color: #aaaaaa;
+}

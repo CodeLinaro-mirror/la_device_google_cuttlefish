@@ -1,3 +1,19 @@
+/*
+ * Copyright (C) 2019 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #pragma once
 
 #include <atomic>
@@ -35,6 +51,12 @@ struct RunLoop {
     typedef int32_t Token;
 
     Token post(AsyncFunction fn);
+    // Post a callback to the run loop and wait for it to be executed. Returns
+    // whether it actually waited for the execution to happen (if posted from
+    // the same run loop's thread it won't wait to avoid a deadlock).
+    // WARNING: This function can cause the calling thread to wait forever if
+    // the run loop is stopped.
+    bool postAndAwait(AsyncFunction fn);
 
     Token postWithDelay(
             std::chrono::steady_clock::duration delay, AsyncFunction fn);

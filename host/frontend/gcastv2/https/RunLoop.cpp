@@ -1,3 +1,19 @@
+/*
+ * Copyright (C) 2019 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #include <https/RunLoop.h>
 
 #include <https/Support.h>
@@ -8,6 +24,9 @@
 #include <fcntl.h>
 #include <iostream>
 #include <unistd.h>
+
+#include <mutex>
+#include <condition_variable>
 
 bool RunLoop::QueueElem::operator<=(const QueueElem &other) const {
     if (mWhen) {
@@ -70,6 +89,35 @@ RunLoop::Token RunLoop::post(AsyncFunction fn) {
     insert({ std::nullopt, fn, token });
 
     return token;
+}
+
+bool RunLoop::postAndAwait(AsyncFunction fn) {
+    if (isCurrentThread()) {
+        // To wait from the runloop's thread would cause deadlock
+        post(fn);
+        return false;
+    }
+
+    std::mutex mtx;
+    bool ran = false;
+    std::condition_variable cond_var;
+
+    post([&cond_var, &mtx, &ran, fn](){
+        fn();
+        {
+            std::unique_lock<std::mutex> lock(mtx);
+            ran = true;
+            // Notify while holding the mutex, otherwise the condition variable
+            // could be destroyed before the call to notify_all.
+            cond_var.notify_all();
+        }
+    });
+
+    {
+        std::unique_lock<std::mutex> lock(mtx);
+        cond_var.wait(lock, [&ran](){ return ran;});
+    }
+    return ran;
 }
 
 RunLoop::Token RunLoop::postWithDelay(
