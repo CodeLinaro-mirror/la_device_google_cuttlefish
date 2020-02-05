@@ -119,7 +119,7 @@ void convertRilDataCallToHal(RIL_Data_Call_Response_v11 *dcResponse,
 void convertRilDataCallToHal(RIL_Data_Call_Response_v11 *dcResponse,
         ::android::hardware::radio::V1_4::SetupDataCallResult& dcResult);
 
-void convertRilDataCallToHal(RIL_Data_Call_Response_v11 *dcResponse,
+void convertRilDataCallToHal(RIL_Data_Call_Response_v12 *dcResponse,
         ::android::hardware::radio::V1_5::SetupDataCallResult& dcResult);
 
 void convertRilDataCallListToHal(void *response, size_t responseLen,
@@ -556,6 +556,13 @@ struct RadioImpl_1_5 : public V1_5::IRadio {
             const hidl_vec<::android::hardware::radio::V1_5::DataProfileInfo>& profiles);
     Return<void> setRadioPower_1_5(int32_t serial, bool powerOn, bool forEmergencyCall,
             bool preferredForEmergencyCall);
+    Return<void> setIndicationFilter_1_5(int32_t serial,
+            hidl_bitfield<::android::hardware::radio::V1_5::IndicationFilter> indicationFilter);
+    Return<void> getBarringInfo(int32_t serial);
+    Return<void> getVoiceRegistrationState_1_5(int32_t serial);
+    Return<void> getDataRegistrationState_1_5(int32_t serial);
+    Return<void> setNetworkSelectionModeManual_1_5(int32_t serial,
+            const hidl_string& operatorNumeric, V1_5::RadioAccessNetworks ran);
 };
 
 struct OemHookImpl : public IOemHook {
@@ -1162,6 +1169,22 @@ Return<void> RadioImpl_1_5::getVoiceRegistrationState(int32_t serial) {
 }
 
 Return<void> RadioImpl_1_5::getDataRegistrationState(int32_t serial) {
+#if VDBG
+    RLOGD("getDataRegistrationState: serial %d", serial);
+#endif
+    dispatchVoid(serial, mSlotId, RIL_REQUEST_DATA_REGISTRATION_STATE);
+    return Void();
+}
+
+Return<void> RadioImpl_1_5::getVoiceRegistrationState_1_5(int32_t serial) {
+#if VDBG
+    RLOGD("getVoiceRegistrationState: serial %d", serial);
+#endif
+    dispatchVoid(serial, mSlotId, RIL_REQUEST_VOICE_REGISTRATION_STATE);
+    return Void();
+}
+
+Return<void> RadioImpl_1_5::getDataRegistrationState_1_5(int32_t serial) {
 #if VDBG
     RLOGD("getDataRegistrationState: serial %d", serial);
 #endif
@@ -3689,17 +3712,18 @@ Return<void> RadioImpl_1_5::setupDataCall_1_5(int32_t serial ,
     }
     dispatchStrings(serial, mSlotId, RIL_REQUEST_SETUP_DATA_CALL, true, 15,
         std::to_string((int) RadioTechnology::UNKNOWN + 2).c_str(),
-        std::to_string((int) dataProfileInfo.base.profileId).c_str(),
-        dataProfileInfo.base.apn.c_str(),
-        dataProfileInfo.base.user.c_str(),
-        dataProfileInfo.base.password.c_str(),
-        std::to_string((int) dataProfileInfo.base.authType).c_str(),
-        getProtocolString(dataProfileInfo.base.protocol),
-        getProtocolString(dataProfileInfo.base.roamingProtocol),
+        std::to_string((int) dataProfileInfo.profileId).c_str(),
+        dataProfileInfo.apn.c_str(),
+        dataProfileInfo.user.c_str(),
+        dataProfileInfo.password.c_str(),
+        std::to_string((int) dataProfileInfo.authType).c_str(),
+        getProtocolString(dataProfileInfo.protocol),
+        getProtocolString(dataProfileInfo.roamingProtocol),
         std::to_string(dataProfileInfo.supportedApnTypesBitmap).c_str(),
-        std::to_string(dataProfileInfo.base.bearerBitmap).c_str(),
-        dataProfileInfo.base.persistent ? "1" : "0",
-        std::to_string(dataProfileInfo.base.mtu).c_str(),
+        std::to_string(dataProfileInfo.bearerBitmap).c_str(),
+        dataProfileInfo.persistent ? "1" : "0",
+        std::to_string(dataProfileInfo.mtuV4).c_str(),
+        std::to_string(dataProfileInfo.mtuV6).c_str(),
         mvnoTypeStr,
         "302720x94",
         roamingAllowed ? "1" : "0");
@@ -3761,6 +3785,32 @@ Return<void> RadioImpl_1_5::setDataProfile_1_5(int32_t  serial ,
         RLOGE("setDataProfileResponse: radioService[%d]->mRadioResponse == NULL", mSlotId);
     }
 
+    return Void();
+}
+
+Return<void> RadioImpl_1_5::setIndicationFilter_1_5(int32_t /* serial */,
+        hidl_bitfield<::android::hardware::radio::V1_5::IndicationFilter> /* indicationFilter */) {
+    // TODO implement
+#if VDBG
+    RLOGE("[%04d]< %s", serial, "Method is not implemented");
+#endif
+    return Void();
+}
+
+Return<void> RadioImpl_1_5::getBarringInfo(int32_t /* serial */) {
+    // TODO implement
+#if VDBG
+    RLOGE("[%04d]< %s", serial, "Method is not implemented");
+#endif
+    return Void();
+}
+
+Return<void> RadioImpl_1_5::setNetworkSelectionModeManual_1_5(int32_t serial,
+        const hidl_string& operatorNumeric, V1_5::RadioAccessNetworks ran) {
+#if VDBG
+    RLOGD("setNetworkSelectionModeManual_1_5: serial %d", serial);
+#endif
+    dispatchVoid(serial, mSlotId, RIL_REQUEST_SET_NETWORK_SELECTION_MANUAL);
     return Void();
 }
 
@@ -4796,7 +4846,7 @@ int radio_1_5::getDataRegistrationStateResponse(int slotId,
                 if (e == RIL_E_SUCCESS) responseInfo.error = RadioError::INVALID_RESPONSE;
             } else {
                 dataRegResponse.regState = (RegState) dataRegState->regState;
-                dataRegResponse.rat = dataRegState->rat;;
+                dataRegResponse.rat = dataRegState->rat;
                 dataRegResponse.reasonDataDenied = dataRegState->reasonDataDenied;
                 dataRegResponse.maxDataCalls = dataRegState->maxDataCalls;
                 fillCellIdentityResponse(dataRegResponse.cellIdentity, dataRegState->cellIdentity);
@@ -4804,8 +4854,8 @@ int radio_1_5::getDataRegistrationStateResponse(int slotId,
         }
 
         Return<void> retStatus =
-                radioService[slotId]->mRadioResponse->getDataRegistrationStateResponse(responseInfo,
-                dataRegResponse);
+                radioService[slotId]->mRadioResponse->getDataRegistrationStateResponse(
+                        responseInfo, dataRegResponse);
         radioService[slotId]->checkReturnStatus(retStatus);
     } else {
         RLOGE("getDataRegistrationStateResponse: radioService[%d]->mRadioResponse == NULL",
@@ -4975,7 +5025,7 @@ int radio_1_5::setupDataCallResponse(int slotId,
             result.gateways = hidl_vec<hidl_string>();
             result.pcscf = hidl_vec<hidl_string>();
         } else {
-            convertRilDataCallToHal((RIL_Data_Call_Response_v11 *) response, result);
+            convertRilDataCallToHal((RIL_Data_Call_Response_v12 *) response, result);
         }
 
         Return<void> retStatus = radioService[slotId]->mRadioResponseV1_5->setupDataCallResponse_1_5(
@@ -8108,6 +8158,78 @@ int radio_1_5::setRadioPowerResponse_1_5(int slotId, int responseType, int seria
     return 0;
 }
 
+int radio_1_5::setIndicationFilterResponse_1_5(int slotId,
+                              int responseType, int serial, RIL_Errno e,
+                              void *response, size_t responselen) {
+#if VDBG
+    RLOGD("setIndicationFilterResponse_1_5: serial %d", serial);
+#endif
+
+    if (radioService[slotId]->mRadioResponseV1_5 != NULL) {
+        RadioResponseInfo responseInfo = {};
+        populateResponseInfo(responseInfo, serial, responseType, e);
+        Return<void> retStatus
+                = radioService[slotId]->mRadioResponseV1_5->
+                        setIndicationFilterResponse_1_5(responseInfo);
+        radioService[slotId]->checkReturnStatus(retStatus);
+    } else {
+        RLOGE("setIndicationFilterResponse_1_5: radioService[%d]->mRadioResponse == NULL",
+                slotId);
+    }
+
+    return 0;
+}
+
+int radio_1_5::getBarringInfoResponse(int slotId,
+                              int responseType, int serial, RIL_Errno e,
+                              void *response, size_t responselen) {
+#if VDBG
+    RLOGD("getBarringInfoResponse: serial %d", serial);
+#endif
+
+    if (radioService[slotId]->mRadioResponseV1_5 != NULL) {
+        RadioResponseInfo responseInfo = {};
+        populateResponseInfo(responseInfo, serial, responseType, e);
+        hidl_vec<::android::hardware::radio::V1_5::BarringInfo> barringInfo;
+        Return<void> retStatus
+                = radioService[slotId]->mRadioResponseV1_5->
+                        getBarringInfoResponse(responseInfo, barringInfo);
+        radioService[slotId]->checkReturnStatus(retStatus);
+    } else {
+        RLOGE("getBarringInfoResponse: radioService[%d]->mRadioResponse == NULL",
+                slotId);
+    }
+
+    return 0;
+}
+
+int radio_1_5::setNetworkSelectionModeManualResponse_1_5(int slotId,
+                             int responseType, int serial, RIL_Errno e,
+                             void *response, size_t responseLen) {
+#if VDBG
+    RLOGD("setNetworkSelectionModeManualResponse_1_5: serial %d", serial);
+#endif
+
+    if (radioService[slotId]->mRadioResponseV1_5 != NULL) {
+        RadioResponseInfo responseInfo = {};
+        populateResponseInfo(responseInfo, serial, responseType, e);
+        Return<void> retStatus = radioService[slotId]->mRadioResponseV1_5
+                ->setNetworkSelectionModeManualResponse_1_5(responseInfo);
+        radioService[slotId]->checkReturnStatus(retStatus);
+    } else if (radioService[slotId]->mRadioResponse != NULL) {
+        RadioResponseInfo responseInfo = {};
+        populateResponseInfo(responseInfo, serial, responseType, e);
+        Return<void> retStatus = radioService[slotId]->mRadioResponse
+                ->setNetworkSelectionModeManualResponse(responseInfo);
+        radioService[slotId]->checkReturnStatus(retStatus);
+    } else {
+        RLOGE("acceptCallResponse: radioService[%d]->setNetworkSelectionModeManualResponse_1_5 "
+                "== NULL", slotId);
+    }
+
+    return 0;
+}
+
 /***************************************************************************************************
  * INDICATION FUNCTIONS
  * The below function handle unsolicited messages coming from the Radio
@@ -8472,7 +8594,7 @@ void convertRilDataCallToHal(RIL_Data_Call_Response_v11 *dcResponse,
     dcResult.mtu = dcResponse->mtu;
 }
 
-void convertRilDataCallToHal(RIL_Data_Call_Response_v11 *dcResponse,
+void convertRilDataCallToHal(RIL_Data_Call_Response_v12 *dcResponse,
         ::android::hardware::radio::V1_5::SetupDataCallResult& dcResult) {
     dcResult.cause = (::android::hardware::radio::V1_4::DataCallFailCause) dcResponse->status;
     dcResult.suggestedRetryTime = dcResponse->suggestedRetryTime;
@@ -8497,7 +8619,8 @@ void convertRilDataCallToHal(RIL_Data_Call_Response_v11 *dcResponse,
     dcResult.dnses = split(convertCharPtrToHidlString(dcResponse->dnses));
     dcResult.gateways = split(convertCharPtrToHidlString(dcResponse->gateways));
     dcResult.pcscf = split(convertCharPtrToHidlString(dcResponse->pcscf));
-    dcResult.mtu = dcResponse->mtu;
+    dcResult.mtuV4 = dcResponse->mtuV4;
+    dcResult.mtuV6 = dcResponse->mtuV6;
 }
 
 
@@ -9929,7 +10052,7 @@ void radio_1_5::registerService(RIL_RadioFunctions *callbacks, CommandInfo *comm
         RLOGD("registerService: starting android::hardware::radio::V1_5::IRadio %s for slot %d",
                 serviceNames[i], i);
         android::status_t status = radioService[i]->registerAsService(serviceNames[i]);
-        assert(status == android::OK);
+        LOG_ALWAYS_FATAL_IF(status != android::OK, "status %d", status);
 
         RLOGD("registerService: OemHook is enabled = %s", kOemHookEnabled ? "true" : "false");
         if (kOemHookEnabled) {

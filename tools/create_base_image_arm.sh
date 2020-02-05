@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+
 source "${ANDROID_BUILD_TOP}/external/shflags/src/shflags"
 
 DEFINE_boolean p1 \
@@ -142,7 +144,6 @@ scan_for_boot_part=part list mmc ${devnum} -bootable devplist; env exists devpli
 find_script=if test -e mmc ${devnum}:${distro_bootpart} /boot/boot.scr; then echo Found U-Boot script /boot/boot.scr; run run_scr; fi
 run_scr=load mmc ${devnum}:${distro_bootpart} ${scriptaddr} /boot/boot.scr; source ${scriptaddr}
 EOF
-	script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 	echo "Sha=`${script_dir}/gen_sha.sh --kernel ${KERNEL_DIR}`" >> ${tmpfile}
 	${ANDROID_HOST_OUT}/bin/mkenvimage -s 32768 -o ${bootenv} - < ${tmpfile}
 fi
@@ -181,6 +182,8 @@ if [ ${FLAGS_p5} -eq ${FLAGS_TRUE} ]; then
 	fi
 
 	cat > ${mntdir}/boot/boot.cmd << "EOF"
+setenv start_poe 'gpio set 150; gpio clear 146'
+run start_poe
 setenv bootcmd_dhcp '
 mw.b ${scriptaddr} 0 0x8000
 mmc dev 0 0
@@ -327,6 +330,66 @@ EOT
 	cd ${mntdir}/home/vsoc-01
 	git clone https://github.com/google/android-cuttlefish.git
 	cd -
+
+	echo "Creating PoE script..."
+	cat > ${mntdir}/usr/local/bin/poe << "EOF"
+#!/bin/bash
+
+if [ "$1" == "--start" ]; then
+	echo 146 > /sys/class/gpio/export
+	echo out > /sys/class/gpio/gpio146/direction
+	echo 0 > /sys/class/gpio/gpio146/value
+	echo 150 > /sys/class/gpio/export
+	echo out > /sys/class/gpio/gpio150/direction
+	echo 1 > /sys/class/gpio/gpio150/value
+	exit 0
+fi
+
+if [ "$1" == "--stop" ]; then
+	echo 0 > /sys/class/gpio/gpio146/value
+	echo 146 > /sys/class/gpio/unexport
+	echo 0 > /sys/class/gpio/gpio150/value
+	echo 150 > /sys/class/gpio/unexport
+	exit 0
+fi
+
+if [ ! -e /sys/class/gpio/gpio146/value ] || [ ! -e /sys/class/gpio/gpio150/value ]; then
+	echo "error: PoE service not initialized"
+	exit 1
+fi
+
+if [ "$1" == "0" ] || [ "$1" == "off" ] || [ "$1" == "OFF" ]; then
+	echo 0 > /sys/class/gpio/gpio150/value
+	exit 0
+fi
+
+if [ "$1" == "1" ] || [ "$1" == "on" ] || [ "$1" == "ON" ]; then
+	echo 1 > /sys/class/gpio/gpio150/value
+	exit 0
+fi
+
+echo "usage: poe <0|1>"
+exit 1
+EOF
+	chown root:root ${mntdir}/usr/local/bin/poe
+	chmod 755 ${mntdir}/usr/local/bin/poe
+
+	echo "Creating PoE service..."
+	cat > ${mntdir}/etc/systemd/system/poe.service << EOF
+[Unit]
+ Description=PoE service
+ ConditionPathExists=/usr/local/bin/poe
+
+[Service]
+ Type=oneshot
+ ExecStart=/usr/local/bin/poe --start
+ ExecStop=/usr/local/bin/poe --stop
+ RemainAfterExit=true
+ StandardOutput=journal
+
+[Install]
+ WantedBy=multi-user.target
+EOF
 
 	echo "Creating led script..."
 	cat > ${mntdir}/usr/local/bin/led << "EOF"
@@ -513,6 +576,7 @@ EOF
 
 	chroot ${mntdir} /bin/bash << "EOT"
 echo "Enabling services..."
+systemctl enable poe
 systemctl enable led
 systemctl enable sd-dupe
 

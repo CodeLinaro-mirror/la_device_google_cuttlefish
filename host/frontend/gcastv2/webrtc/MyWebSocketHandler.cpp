@@ -1,15 +1,29 @@
+/*
+ * Copyright (C) 2019 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #include <webrtc/MyWebSocketHandler.h>
 
 #include "Utils.h"
-
-#include <media/stagefright/foundation/hexdump.h>
 
 #include <json/json.h>
 
 #include <netdb.h>
 #include <openssl/rand.h>
 
-using android::InputEvent;
+#include <webrtc/Keyboard.h>
 
 MyWebSocketHandler::MyWebSocketHandler(
         std::shared_ptr<RunLoop> runLoop,
@@ -19,14 +33,11 @@ MyWebSocketHandler::MyWebSocketHandler(
       mServerState(serverState),
       mId(handlerId),
       mOptions(OptionBits::useSingleCertificateForAllTracks),
-      mTouchSink(mServerState->getTouchSink()) {
+      mTouchSink(mServerState->getTouchSink()),
+      mKeyboardSink(mServerState->getKeyboardSink()) {
 }
 
 MyWebSocketHandler::~MyWebSocketHandler() {
-    for (auto rtp : mRTPs) {
-        mServerState->releasePort(rtp->getLocalPort());
-    }
-
     mServerState->releaseHandlerId(mId);
 }
 
@@ -232,9 +243,7 @@ int MyWebSocketHandler::handleMessage(
         LOG(VERBOSE)
             << "set-mouse-position(" << down << ", " << x << ", " << y << ")";
 
-        std::shared_ptr<InputEvent> accessUnit(new InputEvent(down, x, y));
-
-        mTouchSink->onAccessUnit(accessUnit);
+        mTouchSink->injectTouchEvent(x, y, down != 0);
     } else if (type == "inject-multi-touch") {
         CHECK(obj.isMember("id"));
         CHECK(obj.isMember("initialDown"));
@@ -259,19 +268,14 @@ int MyWebSocketHandler::handleMessage(
             << ", slot="
             << slot;
 
-        std::shared_ptr<InputEvent> accessUnit(new InputEvent(initialDown != 0, x, y));
-        accessUnit->down = (initialDown != 0);
-        accessUnit->x = x;
-        accessUnit->y = y;
-        // TODO(jemoreira): revive for multitouch
-        // int32_t *data = reinterpret_cast<int32_t *>(accessUnit->data());
-        // data[0] = id;
-        // data[1] = (initialDown != 0);
-        // data[2] = x;
-        // data[3] = y;
-        // data[4] = slot;
-
-        mTouchSink->onAccessUnit(accessUnit);
+        mTouchSink->injectMultiTouchEvent(id, slot, x, y, initialDown);
+    } else if (type == "key-event") {
+        CHECK(obj.isMember("event_type"));
+        auto down = obj["event_type"].asString() == std::string("keydown");
+        CHECK(obj.isMember("keycode"));
+        auto code = DomKeyCodeToLinux(obj["keycode"].asString());
+        CHECK(code);
+        mKeyboardSink->injectEvent(down, code);
     }
 
     return 0;
@@ -329,12 +333,6 @@ bool MyWebSocketHandler::getCandidate(int32_t mid) {
     if (!(mOptions & OptionBits::bundleTracks) || mRTPs.empty()) {
         // Only allocate a local port once if we bundle tracks.
 
-        auto localPort = mServerState->acquirePort();
-
-        if (!localPort) {
-            return false;
-        }
-
         size_t sessionIndex = mlineIndex;
 
         uint32_t trackMask = 0;
@@ -364,7 +362,6 @@ bool MyWebSocketHandler::getCandidate(int32_t mid) {
                 mRunLoop,
                 mServerState,
                 PF_INET,
-                localPort,
                 trackMask,
                 session);
 
