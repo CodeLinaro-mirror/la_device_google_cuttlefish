@@ -538,6 +538,11 @@ struct RadioImpl_1_5 : public V1_5::IRadio {
     Return<void> setSignalStrengthReportingCriteria_1_5(int32_t serial,
             const ::android::hardware::radio::V1_5::SignalThresholdInfo& signalThresholdInfo,
             const ::android::hardware::radio::V1_5::AccessNetwork accessNetwork);
+    Return<void> setLinkCapacityReportingCriteria_1_5(int32_t serial, int32_t hysteresisMs,
+            int32_t hysteresisDlKbps, int32_t hysteresisUlKbps,
+            const hidl_vec<int32_t>& thresholdsDownlinkKbps,
+            const hidl_vec<int32_t>& thresholdsUplinkKbps,
+            V1_5::AccessNetwork accessNetwork);
     Return<void> enableUiccApplications(int32_t serial, bool detach);
     Return<void> areUiccApplicationsEnabled(int32_t serial);
     Return<void> setSystemSelectionChannels_1_5(int32_t serial, bool specifyChannels,
@@ -1932,6 +1937,12 @@ Return<void> RadioImpl_1_5::setGsmBroadcastConfig(int32_t serial,
     }
 
     int num = configInfo.size();
+    if (num > MAX_BROADCAST_SMS_CONFIG_INFO) {
+        RLOGE("setGsmBroadcastConfig: Invalid configInfo length %s",
+                requestToString(pRI->pCI->requestNumber));
+        sendErrorResponse(pRI, RIL_E_INVALID_ARGUMENTS);
+        return Void();
+    }
     RIL_GSM_BroadcastSmsConfigInfo gsmBci[num];
     RIL_GSM_BroadcastSmsConfigInfo *gsmBciPtrs[num];
 
@@ -1979,6 +1990,12 @@ Return<void> RadioImpl_1_5::setCdmaBroadcastConfig(int32_t serial,
     }
 
     int num = configInfo.size();
+    if (num > MAX_BROADCAST_SMS_CONFIG_INFO) {
+        RLOGE("setCdmaBroadcastConfig: Invalid configInfo length %s",
+                requestToString(pRI->pCI->requestNumber));
+        sendErrorResponse(pRI, RIL_E_INVALID_ARGUMENTS);
+        return Void();
+    }
     RIL_CDMA_BroadcastSmsConfigInfo cdmaBci[num];
     RIL_CDMA_BroadcastSmsConfigInfo *cdmaBciPtrs[num];
 
@@ -3509,6 +3526,18 @@ Return<void> RadioImpl_1_5::getSignalStrength_1_4(int32_t serial) {
 Return<void> RadioImpl_1_5::setSignalStrengthReportingCriteria_1_5(int32_t /* serial */,
         const ::android::hardware::radio::V1_5::SignalThresholdInfo& /* signalThresholdInfo */,
         const ::android::hardware::radio::V1_5::AccessNetwork /* accessNetwork */) {
+    // TODO implement
+#if VDBG
+    RLOGE("[%04d]< %s", serial, "Method is not implemented");
+#endif
+    return Void();
+}
+
+Return<void> RadioImpl_1_5::setLinkCapacityReportingCriteria_1_5(int32_t /* serial */,
+        int32_t /* hysteresisMs */, int32_t /* hysteresisDlKbps */, int32_t /* hysteresisUlKbps */,
+        const hidl_vec<int32_t>& /* thresholdsDownlinkKbps */,
+        const hidl_vec<int32_t>& /* thresholdsUplinkKbps */,
+        V1_5::AccessNetwork /* accessNetwork */) {
     // TODO implement
 #if VDBG
     RLOGE("[%04d]< %s", serial, "Method is not implemented");
@@ -8037,6 +8066,30 @@ int radio_1_5::setSignalStrengthReportingCriteriaResponse(int slotId, int respon
     return 0;
 }
 
+int radio_1_5::setLinkCapacityReportingCriteriaResponse(int slotId, int responseType, int serial,
+                                        RIL_Errno e, void* /* response */, size_t responseLen) {
+#if VDBG
+    RLOGD("setLinkCapacityReportingCriteriaResponse: serial %d", serial);
+#endif
+    RadioResponseInfo responseInfo = {};
+    populateResponseInfo(responseInfo, serial, responseType, e);
+
+    if (radioService[slotId]->mRadioResponseV1_5 != NULL) {
+        Return<void> retStatus = radioService[slotId]->mRadioResponseV1_5
+                ->setLinkCapacityReportingCriteriaResponse_1_5(responseInfo);
+        radioService[slotId]->checkReturnStatus(retStatus);
+    } else if (radioService[slotId]->mRadioResponseV1_2 != NULL) {
+        Return<void> retStatus = radioService[slotId]->mRadioResponseV1_2
+                ->setLinkCapacityReportingCriteriaResponse(responseInfo);
+        radioService[slotId]->checkReturnStatus(retStatus);
+    } else {
+        RLOGE("setLinkCapacityReportingCriteriaResponse: radioService[%d]->mRadioResponse "
+                "== NULL", slotId);
+    }
+
+    return 0;
+}
+
 int radio_1_5::enableUiccApplicationsResponse(int slotId, int responseType, int serial,
                                     RIL_Errno e, void* /* response */, size_t responseLen) {
 #if VDBG
@@ -8096,10 +8149,11 @@ int radio_1_5::getBarringInfoResponse(int slotId,
     if (radioService[slotId]->mRadioResponseV1_5 != NULL) {
         RadioResponseInfo responseInfo = {};
         populateResponseInfo(responseInfo, serial, responseType, e);
+        ::android::hardware::radio::V1_5::CellIdentity cellIdentity;
         hidl_vec<::android::hardware::radio::V1_5::BarringInfo> barringInfo;
         Return<void> retStatus
                 = radioService[slotId]->mRadioResponseV1_5->
-                        getBarringInfoResponse(responseInfo, barringInfo);
+                        getBarringInfoResponse(responseInfo, cellIdentity, barringInfo);
         radioService[slotId]->checkReturnStatus(retStatus);
     } else {
         RLOGE("getBarringInfoResponse: radioService[%d]->mRadioResponse == NULL",
