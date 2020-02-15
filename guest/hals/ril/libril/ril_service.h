@@ -195,23 +195,11 @@ int setNetworkSelectionModeManualResponse(int slotId,
                                          int responseType, int serial, RIL_Errno e, void *response,
                                          size_t responselen);
 
-int setNetworkSelectionModeManualResponse_1_5(int slotId,
-                                             int responseType, int serial, RIL_Errno e,
-                                             void *response, size_t responselen);
-
 int getAvailableNetworksResponse(int slotId,
                                 int responseType, int serial, RIL_Errno e, void *response,
                                 size_t responselen);
 
 int startNetworkScanResponse(int slotId,
-                             int responseType, int serial, RIL_Errno e, void *response,
-                             size_t responselen);
-
-int startNetworkScanResponse4(int slotId,
-                             int responseType, int serial, RIL_Errno e, void *response,
-                             size_t responselen);
-
-int startNetworkScanResponse_1_5(int slotId,
                              int responseType, int serial, RIL_Errno e, void *response,
                              size_t responselen);
 
@@ -776,23 +764,8 @@ int setSystemSelectionChannelsResponse(int slotId,
                                int responseType, int serial, RIL_Errno e,
                                void *response, size_t responseLen);
 
-int setSystemSelectionChannelsResponse_1_5(int slotId,
-                               int responseType, int serial, RIL_Errno e,
-                               void *response, size_t responseLen);
-
-int setAllowedCarriersResponse4(int slotId,
-                                int responseType, int serial, RIL_Errno e,
-                                void *response,
-                                size_t responselen);
-
-int getAllowedCarriersResponse4(int slotId,
-                                int responseType, int serial, RIL_Errno e,
-                                void *response,
-                                size_t responselen);
-
-int setSignalStrengthReportingCriteriaResponse_1_5(int slotId,
-                          int responseType, int serial, RIL_Errno e,
-                          void *response, size_t responselen);
+int setSignalStrengthReportingCriteriaResponse(int slotId, int responseType, int serial,
+                                               RIL_Errno e, void *response, size_t responselen);
 
 int enableUiccApplicationsResponse(int slotId,
                                  int responseType, int serial, RIL_Errno e,
@@ -802,14 +775,17 @@ int areUiccApplicationsEnabledResponse(int slotId,
                                      int responseType, int serial, RIL_Errno e,
                                      void *response, size_t responselen);
 
-int setRadioPowerResponse_1_5(int slotId, int responseType, int serial, RIL_Errno e,
-                              void *response, size_t responselen);
+int setRadioPowerResponse(int slotId, int responseType, int serial, RIL_Errno e, void *response,
+                          size_t responselen);
 
-int setIndicationFilterResponse_1_5(int slotId, int responseType, int serial, RIL_Errno e,
-                              void *response, size_t responselen);
+int getBarringInfoResponse(int slotId, int responseType, int serial, RIL_Errno e, void *response,
+                           size_t responselen);
 
-int getBarringInfoResponse(int slotId, int responseType, int serial, RIL_Errno e,
-                              void *response, size_t responselen);
+int sendCdmaSmsExpectMoreResponse(int slotId, int responseType, int serial, RIL_Errno e,
+                                  void *response, size_t responselen);
+
+int supplySimDepersonalizationResponse(int slotId, int responseType, int serial, RIL_Errno e,
+                                       void *response, size_t responselen);
 
 pthread_rwlock_t * getRadioServiceRwlock(int slotId);
 

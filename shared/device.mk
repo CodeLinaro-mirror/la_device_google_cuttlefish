@@ -17,7 +17,10 @@
 # Enable updating of APEXes
 $(call inherit-product, $(SRC_TARGET_DIR)/product/updatable_apex.mk)
 
-PRODUCT_SHIPPING_API_LEVEL := 29
+# Enable userspace reboot
+$(call inherit-product, $(SRC_TARGET_DIR)/product/userspace_reboot.mk)
+
+PRODUCT_SHIPPING_API_LEVEL := 30
 PRODUCT_BUILD_BOOT_IMAGE := true
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
@@ -54,6 +57,7 @@ PRODUCT_PROPERTY_OVERRIDES += \
     wifi.interface=wlan0 \
     persist.sys.zram_enabled=1 \
     ro.apk_verity.mode=2 \
+    ro.rebootescrow.device=/dev/block/pmem0 \
 
 # Below is a list of properties we probably should get rid of.
 PRODUCT_PROPERTY_OVERRIDES += \
@@ -67,7 +71,6 @@ PRODUCT_SOONG_NAMESPACES += hardware/google/camera/devices/EmulatedCamera
 #
 PRODUCT_PACKAGES += \
     socket_vsock_proxy \
-    usbforward \
     CuttlefishService \
     wpa_supplicant.vsoc.conf \
     vsoc_input_service \
@@ -111,6 +114,12 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     vulkan.pastel
 
+#
+# Packages for testing
+#
+PRODUCT_PACKAGES += \
+    aidl_lazy_test_server
+
 DEVICE_PACKAGE_OVERLAYS := device/google/cuttlefish/shared/overlay
 # PRODUCT_AAPT_CONFIG and PRODUCT_AAPT_PREF_CONFIG are intentionally not set to
 # pick up every density resources.
@@ -148,6 +157,7 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.camera.raw.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.raw.xml \
     frameworks/native/data/etc/android.hardware.ethernet.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.ethernet.xml \
     frameworks/native/data/etc/android.hardware.location.gps.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.location.gps.xml \
+    frameworks/native/data/etc/android.hardware.reboot_escrow.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.reboot_escrow.xml \
     frameworks/native/data/etc/android.hardware.sensor.accelerometer.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.accelerometer.xml \
     frameworks/native/data/etc/android.hardware.sensor.barometer.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.barometer.xml \
     frameworks/native/data/etc/android.hardware.sensor.compass.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.compass.xml \
@@ -213,10 +223,16 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     audio.primary.cutf \
     audio.r_submix.default \
-    android.hardware.audio@5.0-impl:32 \
-    android.hardware.audio.effect@5.0-impl:32 \
+    android.hardware.audio@6.0-impl:32 \
+    android.hardware.audio.effect@6.0-impl:32 \
     android.hardware.audio@2.0-service \
     android.hardware.soundtrigger@2.3-impl \
+
+#
+# BiometricsFace HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.biometrics.face@1.1-service.example
 
 #
 # Drm HAL
@@ -231,15 +247,15 @@ PRODUCT_PACKAGES += \
 # Dumpstate HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.dumpstate@1.0-service.cuttlefish
+    android.hardware.dumpstate@1.1-service.cuttlefish
 
 #
 # Camera
 #
 PRODUCT_PACKAGES += \
-    android.hardware.camera.provider@2.4-service-google \
+    android.hardware.camera.provider@2.6-service-google \
     libgooglecamerahwl_impl \
-    android.hardware.camera.provider@2.4-impl-google \
+    android.hardware.camera.provider@2.6-impl-google \
 
 #
 # Gatekeeper
@@ -364,3 +380,5 @@ PRODUCT_COPY_FILES += \
 PRODUCT_HOST_PACKAGES += socket_vsock_proxy
 
 PRODUCT_EXTRA_VNDK_VERSIONS := 28 29
+
+PRODUCT_SOONG_NAMESPACES += external/mesa3d
