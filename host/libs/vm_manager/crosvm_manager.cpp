@@ -69,6 +69,23 @@ std::vector<std::string> CrosvmManager::ConfigureGpu(const std::string& gpu_mode
   // the HAL search path allows for fallbacks, and fallbacks in conjunction
   // with properities lead to non-deterministic behavior while loading the
   // HALs.
+  if (gpu_mode == vsoc::kGpuModeGuestSwiftshader) {
+    return {
+        "androidboot.hardware.gralloc=cutf_ashmem",
+        "androidboot.hardware.hwcomposer=cutf_cvm_ashmem",
+        "androidboot.hardware.egl=swiftshader",
+        "androidboot.hardware.vulkan=pastel",
+    };
+  }
+
+  // Try to load the Nvidia modeset kernel module. Running Crosvm with Nvidia's EGL library on a
+  // fresh machine after a boot will fail because the Nvidia EGL library will fork to run the
+  // nvidia-modprobe command and the main Crosvm process will abort after receiving the exit signal
+  // of the forked child which is interpreted as a failure.
+  cvd::Command modprobe_cmd("/usr/bin/nvidia-modprobe");
+  modprobe_cmd.AddParameter("--modeset");
+  modprobe_cmd.Start().Wait();
+
   if (gpu_mode == vsoc::kGpuModeDrmVirgl) {
     return {
       "androidboot.hardware.gralloc=minigbm",
@@ -76,12 +93,13 @@ std::vector<std::string> CrosvmManager::ConfigureGpu(const std::string& gpu_mode
       "androidboot.hardware.egl=mesa",
     };
   }
-  if (gpu_mode == vsoc::kGpuModeGuestSwiftshader) {
+  if (gpu_mode == vsoc::kGpuModeGfxStream) {
     return {
-        "androidboot.hardware.gralloc=cutf_ashmem",
-        "androidboot.hardware.hwcomposer=cutf_cvm_ashmem",
-        "androidboot.hardware.egl=swiftshader",
-        "androidboot.hardware.vulkan=pastel",
+        "androidboot.hardware.gralloc=minigbm",
+        "androidboot.hardware.hwcomposer=drm_minigbm",
+        "androidboot.hardware.egl=emulation",
+        "androidboot.hardware.vulkan=ranchu",
+        "androidboot.hardware.gltransport=virtio-gpu-pipe",
     };
   }
   return {};
@@ -108,11 +126,15 @@ std::vector<cvd::Command> CrosvmManager::StartCommands() {
   });
   crosvm_cmd.AddParameter("run");
 
-  if (config_->gpu_mode() == vsoc::kGpuModeDrmVirgl) {
-    crosvm_cmd.AddParameter("--gpu=",
+  auto gpu_mode = config_->gpu_mode();
+
+  if (gpu_mode == vsoc::kGpuModeDrmVirgl ||
+      gpu_mode == vsoc::kGpuModeGfxStream) {
+    crosvm_cmd.AddParameter(gpu_mode == vsoc::kGpuModeGfxStream ?
+                                "--gpu=gfxstream," : "--gpu=",
                             "width=", config_->x_res(), ",",
                             "height=", config_->y_res(), ",",
-                            "egl=true,surfaceless=true,glx=false,gles=false");
+                            "egl=true,surfaceless=true,glx=false,gles=true");
     crosvm_cmd.AddParameter("--wayland-sock=", instance.frames_socket_path());
   }
   if (!config_->final_ramdisk_path().empty()) {
@@ -122,7 +144,7 @@ std::vector<cvd::Command> CrosvmManager::StartCommands() {
   crosvm_cmd.AddParameter("--mem=", config_->memory_mb());
   crosvm_cmd.AddParameter("--cpus=", config_->cpus());
   crosvm_cmd.AddParameter("--params=", kernel_cmdline_);
-  for (const auto& disk : config_->virtual_disk_paths()) {
+  for (const auto& disk : instance.virtual_disk_paths()) {
     crosvm_cmd.AddParameter("--rwdisk=", disk);
   }
   crosvm_cmd.AddParameter("--socket=", GetControlSocketPath(config_));

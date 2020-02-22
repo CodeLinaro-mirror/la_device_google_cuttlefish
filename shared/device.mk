@@ -63,6 +63,9 @@ PRODUCT_PROPERTY_OVERRIDES += \
 PRODUCT_PROPERTY_OVERRIDES += \
     wlan.driver.status=ok
 
+# aes-256-heh default is not supported in standard kernels.
+PRODUCT_PROPERTY_OVERRIDES += ro.crypto.volume.filenames_mode=aes-256-cts
+
 PRODUCT_SOONG_NAMESPACES += hardware/google/camera
 PRODUCT_SOONG_NAMESPACES += hardware/google/camera/devices/EmulatedCamera
 
@@ -106,7 +109,22 @@ PRODUCT_PACKAGES += \
 
 # GL implementation for virgl
 PRODUCT_PACKAGES += \
-    libGLES_mesa
+    libGLES_mesa \
+
+# GL/Vk implementation for gfxstream
+PRODUCT_PACKAGES += \
+    vulkan.ranchu \
+    hwcomposer.ranchu \
+    libandroidemu \
+    libOpenglCodecCommon \
+    libOpenglSystemCommon \
+    libGLESv1_CM_emulation \
+    lib_renderControl_enc \
+    libEGL_emulation \
+    libGLESv2_enc \
+    libvulkan_enc \
+    libGLESv2_emulation \
+    libGLESv1_enc
 
 #
 # Packages for the Vulkan implementation
@@ -238,8 +256,6 @@ PRODUCT_PACKAGES += \
 # Drm HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.drm@1.0-impl \
-    android.hardware.drm@1.0-service \
     android.hardware.drm@1.3-service.clearkey \
     android.hardware.drm@1.3-service.widevine
 
@@ -382,3 +398,7 @@ PRODUCT_HOST_PACKAGES += socket_vsock_proxy
 PRODUCT_EXTRA_VNDK_VERSIONS := 28 29
 
 PRODUCT_SOONG_NAMESPACES += external/mesa3d
+
+# Need this so that the application's loop on reading input can be synchronized
+# with HW VSYNC
+PRODUCT_DEFAULT_PROPERTY_OVERRIDES += ro.surface_flinger.running_without_sync_framework=true
