@@ -188,6 +188,7 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.vulkan.version-1_0_3.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.vulkan.version.xml \
     frameworks/native/data/etc/android.hardware.wifi.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.wifi.xml \
     frameworks/native/data/etc/android.software.app_widgets.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.app_widgets.xml \
+    frameworks/native/data/etc/android.software.vulkan.deqp.level-2020-03-01.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.vulkan.deqp.level.xml \
     system/bt/vendor_libs/test_vendor_lib/data/controller_properties.json:vendor/etc/bluetooth/controller_properties.json \
     device/google/cuttlefish/shared/config/task_profiles.json:$(TARGET_COPY_OUT_VENDOR)/etc/task_profiles.json \
     device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_RAMDISK)/fstab.cutf_cvm \
@@ -253,6 +254,12 @@ PRODUCT_PACKAGES += \
     android.hardware.biometrics.face@1.1-service.example
 
 #
+# Contexthub HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.contexthub@1.1-service.mock
+
+#
 # Drm HAL
 #
 PRODUCT_PACKAGES += \
@@ -296,21 +303,17 @@ PRODUCT_PACKAGES += \
 
 # Identity Credential
 PRODUCT_PACKAGES += \
-    android.hardware.identity@1.0-service.example
+    android.hardware.identity-service.example
 
 # Input Classifier HAL
 PRODUCT_PACKAGES += \
     android.hardware.input.classifier@1.0-service.default
 
-# Radio Config HAL
-PRODUCT_PACKAGES += \
-    android.hardware.radio.config@1.3-service
-
 #
 # Sensors
 #
 PRODUCT_PACKAGES += \
-    android.hardware.sensors@2.0-service.mock
+    android.hardware.sensors@2.1-service.mock
 #
 # Thermal (mock)
 #
@@ -321,9 +324,7 @@ PRODUCT_PACKAGES += \
 # Lights
 #
 PRODUCT_PACKAGES += \
-    lights.cutf \
-    android.hardware.light@2.0-impl \
-    android.hardware.light@2.0-service
+    android.hardware.lights-service.example \
 
 #
 # Keymaster HAL

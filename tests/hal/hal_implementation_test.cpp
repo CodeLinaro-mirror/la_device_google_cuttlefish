@@ -48,7 +48,6 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.broadcastradio@2.0",
     "android.hardware.cas.native@1.0",
     "android.hardware.confirmationui@1.0",
-    "android.hardware.contexthub@1.0",
     "android.hardware.configstore@1.1", // deprecated, see b/149050985, b/149050733
     "android.hardware.fastboot@1.0",
     "android.hardware.gnss.measurement_corrections@1.1", // is sub-interface of gnss
@@ -64,12 +63,14 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.health@1.0",
     "android.hardware.ir@1.0",
     "android.hardware.keymaster@3.0",
+    "android.hardware.light@2.0",
     "android.hardware.media.bufferpool@1.0",
     "android.hardware.media.bufferpool@2.0",
     "android.hardware.memtrack@1.0",
     "android.hardware.nfc@1.2",
     "android.hardware.oemlock@1.0",
     "android.hardware.power@1.3",
+    "android.hardware.radio.config@1.2",
     "android.hardware.radio.deprecated@1.0",
     "android.hardware.renderscript@1.0",
     "android.hardware.secure_element@1.2",
@@ -95,11 +96,16 @@ static const std::set<std::string> kKnownMissingHidl = {
 };
 
 static const std::set<std::string> kKnownMissingAidl = {
-    "android.hardware.light.ILights",
-
     // types-only packages, which never expect a default implementation
     "android.hardware.common.NativeHandle",
     "android.hardware.graphics.common.ExtendableType",
+
+    // These KeyMaster types are in an AIDL types-only HAL because they're used
+    // by the Identity Credential AIDL HAL. Remove this when fully porting
+    // KeyMaster to AIDL.
+    "android.hardware.keymaster.HardwareAuthToken",
+    "android.hardware.keymaster.HardwareAuthenticatorType",
+    "android.hardware.keymaster.Timestamp",
 };
 
 // AOSP packages which are never considered
