@@ -260,7 +260,7 @@ PRODUCT_PACKAGES += \
 # BiometricsFace HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.biometrics.face@1.1-service.example
+    android.hardware.biometrics.face@1.0-service.example
 
 #
 # Contexthub HAL
@@ -279,7 +279,7 @@ PRODUCT_PACKAGES += \
 # Dumpstate HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.dumpstate@1.1-service.cuttlefish
+    android.hardware.dumpstate@1.1-service.example
 
 #
 # Camera
