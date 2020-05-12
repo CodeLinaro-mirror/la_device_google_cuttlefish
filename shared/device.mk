@@ -69,7 +69,6 @@ PRODUCT_PROPERTY_OVERRIDES += \
     ro.opengles.version=196608 \
     wifi.interface=wlan0 \
     persist.sys.zram_enabled=1 \
-    ro.apk_verity.mode=2 \
     ro.rebootescrow.device=/dev/block/pmem0 \
     ro.incremental.enable=1 \
 
@@ -85,6 +84,9 @@ PRODUCT_PROPERTY_OVERRIDES += ro.crypto.volume.filenames_mode=aes-256-cts
 
 # Copy preopted files from system_b on first boot
 PRODUCT_PROPERTY_OVERRIDES += ro.cp_system_other_odex=1
+
+# DRM service opt-in
+PRODUCT_PROPERTY_OVERRIDES += drm.service.enabled=true
 
 PRODUCT_SOONG_NAMESPACES += hardware/google/camera
 PRODUCT_SOONG_NAMESPACES += hardware/google/camera/devices/EmulatedCamera

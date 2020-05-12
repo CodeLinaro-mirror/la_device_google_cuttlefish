@@ -54,11 +54,13 @@ PRODUCT_PROPERTY_OVERRIDES += \
     keyguard.no_require_sim=true \
     ro.cdma.home.operator.alpha=Android \
     ro.cdma.home.operator.numeric=302780 \
+    ro.com.android.dataroaming=true \
     vendor.rild.libpath=libcuttlefish-ril.so \
 
 # vehicle HAL
 ifeq ($(LOCAL_VHAL_PRODUCT_PACKAGE),)
     LOCAL_VHAL_PRODUCT_PACKAGE := android.hardware.automotive.vehicle@2.0-service
+    BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy
 endif
 PRODUCT_PACKAGES += $(LOCAL_VHAL_PRODUCT_PACKAGE)
 
@@ -71,9 +73,6 @@ ifeq ($(LOCAL_AUDIOCONTROL_HAL_PRODUCT_PACKAGE),)
 endif
 PRODUCT_PACKAGES += $(LOCAL_AUDIOCONTROL_HAL_PRODUCT_PACKAGE)
 
-# DRM HAL
-PRODUCT_PACKAGES += android.hardware.drm@1.3-service.clearkey
-
 # CAN bus HAL
 PRODUCT_PACKAGES += android.hardware.automotive.can@1.0-service
 PRODUCT_PACKAGES_DEBUG += canhalctrl \
@@ -83,10 +82,6 @@ PRODUCT_PACKAGES_DEBUG += canhalctrl \
 PRODUCT_PACKAGES += \
     libcuttlefish-ril \
     libcuttlefish-rild
-
-# DRM Properities
-PRODUCT_PROPERTY_OVERRIDES += \
-    drm.service.enabled=true
 
 BOARD_IS_AUTOMOTIVE := true
 
