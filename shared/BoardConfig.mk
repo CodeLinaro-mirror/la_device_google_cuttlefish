@@ -21,9 +21,6 @@
 include build/make/target/board/BoardConfigMainlineCommon.mk
 
 # Reset CF unsupported settings
-TARGET_NO_RECOVERY := false
-BOARD_USES_SYSTEM_OTHER_ODEX :=
-WITH_DEXPREOPT := true
 BOARD_AVB_ENABLE := false
 
 
@@ -104,9 +101,15 @@ WIFI_DRIVER_FW_PATH_PARAM   := "/dev/null"
 WIFI_DRIVER_FW_PATH_STA     := "/dev/null"
 WIFI_DRIVER_FW_PATH_AP      := "/dev/null"
 
-BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor
-BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor/google
-PRODUCT_PRIVATE_SEPOLICY_DIRS := device/google/cuttlefish/shared/sepolicy/private
+# vendor sepolicy
+BOARD_VENDOR_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor
+BOARD_VENDOR_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor/google
+# product sepolicy
+PRODUCT_PRIVATE_SEPOLICY_DIRS := device/google/cuttlefish/shared/sepolicy/product/private
+# PRODUCT_PUBLIC_SEPOLICY_DIRS := device/google/cuttlefish/shared/sepolicy/product/public
+# system_ext sepolicy
+BOARD_PLAT_PRIVATE_SEPOLICY_DIR := device/google/cuttlefish/shared/sepolicy/system_ext/private
+# BOARD_PLAT_PUBLIC_SEPOLICY_DIR := device/google/cuttlefish/shared/sepolicy/system_ext/public
 
 VSOC_STLPORT_INCLUDES :=
 VSOC_STLPORT_LIBS :=
