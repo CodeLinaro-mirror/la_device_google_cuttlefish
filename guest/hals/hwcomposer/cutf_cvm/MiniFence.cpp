@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 The Android Open Source Project
+ * Copyright (C) 2017 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,25 +13,30 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#pragma once
 
-#include <string>
-#include <vector>
+#include "MiniFence.h"
 
-namespace cvd {
+#include <unistd.h>
 
-// Operations on archive files
-class Archive {
-  std::string file;
-public:
-  Archive(const std::string& file);
-  ~Archive();
+namespace android {
 
-  std::vector<std::string> Contents();
-  bool ExtractAll(const std::string& target_directory = ".");
-  bool ExtractFiles(const std::vector<std::string>& files,
-                    const std::string& target_directory = ".");
-  std::string ExtractToMemory(const std::string& path);
-};
+const sp<MiniFence> MiniFence::NO_FENCE = sp<MiniFence>(new MiniFence);
 
-} // namespace cvd
+MiniFence::MiniFence() :
+    mFenceFd(-1) {
+}
+
+MiniFence::MiniFence(int fenceFd) :
+    mFenceFd(fenceFd) {
+}
+
+MiniFence::~MiniFence() {
+    if (mFenceFd != -1) {
+        close(mFenceFd);
+    }
+}
+
+int MiniFence::dup() const {
+    return ::dup(mFenceFd);
+}
+}

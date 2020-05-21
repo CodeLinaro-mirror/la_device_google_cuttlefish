@@ -133,7 +133,7 @@ static bool isAospHidlInterface(const FQName& name) {
         "android.system",
     };
     for (const std::string& package : kAospPackages) {
-        if (name.inPackage(package) && !isHidlPackageWhitelist(name)) {
+        if (name.inPackage(package)) {
             return true;
         }
     }
@@ -167,7 +167,8 @@ static std::set<FQName> allHidlManifestInterfaces() {
 static bool isAospAidlInterface(const std::string& name) {
     return base::StartsWith(name, "android.") &&
         !base::StartsWith(name, "android.automotive.") &&
-        !base::StartsWith(name, "android.hardware.automotive.");
+        !base::StartsWith(name, "android.hardware.automotive.") &&
+        !base::StartsWith(name, "android.hardware.tests.");
 }
 
 static std::set<std::string> allAidlManifestInterfaces() {
@@ -196,6 +197,7 @@ TEST(Hal, HidlInterfacesImplemented) {
 
     for (const FQName& f : allTreeHidlInterfaces()) {
         if (!isAospHidlInterface(f)) continue;
+        if (isHidlPackageWhitelist(f)) continue;
 
         unimplemented[f.package()][f.getPackageMajorVersion()].insert(f.getPackageMinorVersion());
     }
@@ -254,7 +256,7 @@ TEST(Hal, AidlInterfacesImplemented) {
 
     for (const auto& iface : AidlInterfaceMetadata::all()) {
         ASSERT_FALSE(iface.types.empty()) << iface.name;  // sanity
-        if (!isAospAidlInterface(iface.name)) continue;
+        if (std::none_of(iface.types.begin(), iface.types.end(), isAospAidlInterface)) continue;
         if (iface.stability != "vintf") continue;
 
         bool hasRegistration = false;
