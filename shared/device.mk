@@ -54,7 +54,6 @@ endif
 PRODUCT_PRODUCT_PROPERTIES += \
     persist.adb.tcp.port=5555 \
     ro.com.google.locationfeatures=1 \
-    ro.incremental.enable=1
 
 # Explanation of specific properties:
 #   debug.hwui.swap_with_damage avoids boot failure on M http://b/25152138
@@ -72,6 +71,7 @@ PRODUCT_PROPERTY_OVERRIDES += \
     persist.sys.zram_enabled=1 \
     ro.apk_verity.mode=2 \
     ro.rebootescrow.device=/dev/block/pmem0 \
+    ro.incremental.enable=1 \
 
 # Below is a list of properties we probably should get rid of.
 PRODUCT_PROPERTY_OVERRIDES += \
@@ -196,6 +196,7 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.camera.full.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.full.xml \
     frameworks/native/data/etc/android.hardware.camera.front.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.front.xml \
     frameworks/native/data/etc/android.hardware.camera.raw.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.raw.xml \
+    frameworks/native/data/etc/android.hardware.camera.concurrent.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.concurrent.xml \
     frameworks/native/data/etc/android.hardware.ethernet.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.ethernet.xml \
     frameworks/native/data/etc/android.hardware.location.gps.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.location.gps.xml \
     frameworks/native/data/etc/android.hardware.reboot_escrow.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.reboot_escrow.xml \
