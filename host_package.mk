@@ -40,6 +40,11 @@ cvd_host_executables := \
     x86_64-linux-gnu/libgbm.so.1 \
     x86_64-linux-gnu/libminijail.so \
     x86_64-linux-gnu/libvirglrenderer.so.1 \
+    x86_64-linux-gnu/libc++.so.1 \
+    x86_64-linux-gnu/libandroid-emu-shared.so \
+    x86_64-linux-gnu/libemugl_common.so \
+    x86_64-linux-gnu/libOpenglRender.so \
+    x86_64-linux-gnu/libgfxstream_backend.so \
     logcat_receiver \
     config_server \
     tombstone_receiver \
