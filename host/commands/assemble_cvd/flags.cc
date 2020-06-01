@@ -34,6 +34,8 @@ DEFINE_string(metadata_image, "", "Location of the metadata partition image "
               "to be generated.");
 DEFINE_int32(blank_metadata_image_mb, 16,
              "The size of the blank metadata image to generate, MB.");
+DEFINE_int32(blank_sdcard_image_mb, 2048,
+             "The size of the blank sdcard image to generate, MB.");
 DEFINE_int32(cpus, 2, "Virtual CPU count.");
 DEFINE_string(data_image, "", "Location of the data partition image.");
 DEFINE_string(data_policy, "use_existing", "How to handle userdata partition."
@@ -396,7 +398,10 @@ vsoc::CuttlefishConfig InitializeCuttlefishConfiguration(
 
     instance.set_device_title(FLAGS_device_title);
 
-    instance.set_virtual_disk_paths({const_instance.PerInstancePath("overlay.img")});
+    instance.set_virtual_disk_paths({
+      const_instance.PerInstancePath("overlay.img"),
+      const_instance.sdcard_path(),
+    });
   }
 
   return tmp_config_obj;
@@ -742,6 +747,7 @@ const vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(
       preserving.insert("gpt_header.img");
       preserving.insert("gpt_footer.img");
       preserving.insert("composite.img");
+      preserving.insert("sdcard.img");
       preserving.insert("access-kregistry");
     }
     if (!CleanPriorFiles(config, preserving)) {
@@ -871,7 +877,12 @@ const vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(
 
   for (const auto& instance : config->Instances()) {
     if (!cvd::FileExists(instance.access_kregistry_path())) {
-      CreateBlankImage(instance.access_kregistry_path(), 2, "none", "1M");
+      CreateBlankImage(instance.access_kregistry_path(), 2 /* mb */, "none");
+    }
+
+    if (!cvd::FileExists(instance.sdcard_path())) {
+      CreateBlankImage(instance.sdcard_path(),
+                       FLAGS_blank_sdcard_image_mb, "sdcard");
     }
   }
 
@@ -897,7 +908,7 @@ const vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(
                      << "newer than its underlying composite disk. Wiping the overlay.";
       }
       CreateQcowOverlay(config->crosvm_binary(), config->composite_disk_path(), overlay_path);
-      CreateBlankImage(instance.access_kregistry_path(), 2, "none", "1M");
+      CreateBlankImage(instance.access_kregistry_path(), 2 /* mb */, "none");
     }
   }
 
