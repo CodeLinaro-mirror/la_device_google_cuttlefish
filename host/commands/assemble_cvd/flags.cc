@@ -26,6 +26,9 @@
 #include "host/libs/vm_manager/qemu_manager.h"
 #include "host/libs/vm_manager/vm_manager.h"
 
+// Taken from external/avb/libavb/avb_slot_verify.c; this define is not in the headers
+#define VBMETA_MAX_SIZE 65536ul
+
 using vsoc::ForCurrentInstance;
 using cvd::AssemblerExitCodes;
 
@@ -34,6 +37,8 @@ DEFINE_string(metadata_image, "", "Location of the metadata partition image "
               "to be generated.");
 DEFINE_int32(blank_metadata_image_mb, 16,
              "The size of the blank metadata image to generate, MB.");
+DEFINE_int32(blank_sdcard_image_mb, 2048,
+             "The size of the blank sdcard image to generate, MB.");
 DEFINE_int32(cpus, 2, "Virtual CPU count.");
 DEFINE_string(data_image, "", "Location of the data partition image.");
 DEFINE_string(data_policy, "use_existing", "How to handle userdata partition."
@@ -70,6 +75,12 @@ DEFINE_string(boot_image, "",
 DEFINE_string(vendor_boot_image, "",
               "Location of cuttlefish vendor boot image. If empty it is assumed to "
               "be vendor_boot.img in the directory specified by -system_image_dir.");
+DEFINE_string(vbmeta_image, "",
+              "Location of cuttlefish vbmeta image. If empty it is assumed to "
+              "be vbmeta.img in the directory specified by -system_image_dir.");
+DEFINE_string(vbmeta_system_image, "",
+              "Location of cuttlefish vbmeta_system image. If empty it is assumed to "
+              "be vbmeta_system.img in the directory specified by -system_image_dir.");
 DEFINE_int32(memory_mb, 2048,
              "Total amount of memory available for guest, MB.");
 DEFINE_string(serial_number, ForCurrentInstance("CUTTLEFISHCVD"),
@@ -206,6 +217,14 @@ bool ResolveInstanceFiles() {
                                         + "/vendor_boot.img";
   SetCommandLineOptionWithMode("vendor_boot_image",
                                default_vendor_boot_image.c_str(),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  std::string default_vbmeta_image = FLAGS_system_image_dir + "/vbmeta.img";
+  SetCommandLineOptionWithMode("vbmeta_image", default_vbmeta_image.c_str(),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  std::string default_vbmeta_system_image = FLAGS_system_image_dir
+                                          + "/vbmeta_system.img";
+  SetCommandLineOptionWithMode("vbmeta_system_image",
+                               default_vbmeta_system_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
 
   return true;
@@ -396,7 +415,10 @@ vsoc::CuttlefishConfig InitializeCuttlefishConfiguration(
 
     instance.set_device_title(FLAGS_device_title);
 
-    instance.set_virtual_disk_paths({const_instance.PerInstancePath("overlay.img")});
+    instance.set_virtual_disk_paths({
+      const_instance.PerInstancePath("overlay.img"),
+      const_instance.sdcard_path(),
+    });
   }
 
   return tmp_config_obj;
@@ -608,6 +630,42 @@ namespace {
 std::vector<ImagePartition> disk_config() {
   std::vector<ImagePartition> partitions;
   partitions.push_back(ImagePartition {
+    .label = "misc",
+    .image_file_path = FLAGS_misc_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "boot_a",
+    .image_file_path = FLAGS_boot_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "boot_b",
+    .image_file_path = FLAGS_boot_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "vendor_boot_a",
+    .image_file_path = FLAGS_vendor_boot_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "vendor_boot_b",
+    .image_file_path = FLAGS_vendor_boot_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "vbmeta_a",
+    .image_file_path = FLAGS_vbmeta_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "vbmeta_b",
+    .image_file_path = FLAGS_vbmeta_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "vbmeta_system_a",
+    .image_file_path = FLAGS_vbmeta_system_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "vbmeta_system_b",
+    .image_file_path = FLAGS_vbmeta_system_image,
+  });
+  partitions.push_back(ImagePartition {
     .label = "super",
     .image_file_path = FLAGS_super_image,
   });
@@ -622,14 +680,6 @@ std::vector<ImagePartition> disk_config() {
   partitions.push_back(ImagePartition {
     .label = "metadata",
     .image_file_path = FLAGS_metadata_image,
-  });
-  partitions.push_back(ImagePartition {
-    .label = "boot",
-    .image_file_path = FLAGS_boot_image,
-  });
-  partitions.push_back(ImagePartition {
-    .label = "misc",
-    .image_file_path = FLAGS_misc_image
   });
   return partitions;
 }
@@ -742,6 +792,7 @@ const vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(
       preserving.insert("gpt_header.img");
       preserving.insert("gpt_footer.img");
       preserving.insert("composite.img");
+      preserving.insert("sdcard.img");
       preserving.insert("access-kregistry");
     }
     if (!CleanPriorFiles(config, preserving)) {
@@ -871,7 +922,25 @@ const vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(
 
   for (const auto& instance : config->Instances()) {
     if (!cvd::FileExists(instance.access_kregistry_path())) {
-      CreateBlankImage(instance.access_kregistry_path(), 2, "none", "1M");
+      CreateBlankImage(instance.access_kregistry_path(), 2 /* mb */, "none");
+    }
+
+    if (!cvd::FileExists(instance.sdcard_path())) {
+      CreateBlankImage(instance.sdcard_path(),
+                       FLAGS_blank_sdcard_image_mb, "sdcard");
+    }
+  }
+
+  // libavb expects to be able to read the maximum vbmeta size, so we must
+  // provide a partition which matches this or the read will fail
+  for (const auto& vbmeta_image : { FLAGS_vbmeta_image, FLAGS_vbmeta_system_image }) {
+    if (cvd::FileSize(vbmeta_image) != VBMETA_MAX_SIZE) {
+      auto fd = cvd::SharedFD::Open(vbmeta_image, O_RDWR);
+      if (fd->Truncate(VBMETA_MAX_SIZE) != 0) {
+        LOG(ERROR) << "`truncate --size=" << VBMETA_MAX_SIZE << " "
+                   << vbmeta_image << "` failed: " << fd->StrError();
+        exit(cvd::kCuttlefishConfigurationInitError);
+      }
     }
   }
 
@@ -897,7 +966,7 @@ const vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(
                      << "newer than its underlying composite disk. Wiping the overlay.";
       }
       CreateQcowOverlay(config->crosvm_binary(), config->composite_disk_path(), overlay_path);
-      CreateBlankImage(instance.access_kregistry_path(), 2, "none", "1M");
+      CreateBlankImage(instance.access_kregistry_path(), 2 /* mb */, "none");
     }
   }
 

@@ -71,6 +71,11 @@
         <install-in user-type="FULL" />
         <install-in user-type="SYSTEM" />
     </install-in-user-type>
+    <!-- Required when sysui queries for system user apps to handle the home intent -->
+    <install-in-user-type package="com.android.car.carlauncher">
+        <install-in user-type="FULL" />
+        <install-in user-type="SYSTEM" />
+    </install-in-user-type>
 
 <!--
   Apps that do need to run on SYSTEM and evaluated by package owner.
@@ -150,13 +155,22 @@
     <install-in-user-type package="com.android.theme.font.notoserifsource">
         <install-in user-type="FULL" />
     </install-in-user-type>
+    <install-in-user-type package="com.android.theme.icon.pebble">
+        <install-in user-type="FULL" />
+    </install-in-user-type>
     <install-in-user-type package="com.android.theme.icon.roundedrect">
         <install-in user-type="FULL" />
     </install-in-user-type>
     <install-in-user-type package="com.android.theme.icon.squircle">
         <install-in user-type="FULL" />
     </install-in-user-type>
+    <install-in-user-type package="com.android.theme.icon.taperedrect">
+        <install-in user-type="FULL" />
+    </install-in-user-type>
     <install-in-user-type package="com.android.theme.icon.teardrop">
+        <install-in user-type="FULL" />
+    </install-in-user-type>
+    <install-in-user-type package="com.android.theme.icon.vessel">
         <install-in user-type="FULL" />
     </install-in-user-type>
     <install-in-user-type package="com.android.theme.icon_pack.circular.android">
@@ -201,13 +215,13 @@
     <install-in-user-type package="com.android.theme.icon_pack.rounded.systemui">
         <install-in user-type="FULL" />
     </install-in-user-type>
-    <install-in-user-type package="com.android.car.carlauncher">
-        <install-in user-type="FULL" />
-    </install-in-user-type>
     <install-in-user-type package="com.android.car.linkviewer">
         <install-in user-type="FULL" />
     </install-in-user-type>
     <install-in-user-type package="com.android.car.retaildemo">
+        <install-in user-type="FULL" />
+    </install-in-user-type>
+    <install-in-user-type package="com.android.car.voicecontrol">
         <install-in user-type="FULL" />
     </install-in-user-type>
     <install-in-user-type package="com.android.documentsui">

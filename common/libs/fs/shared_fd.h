@@ -119,18 +119,18 @@ class SharedFD {
   static SharedFD Dup(int unmanaged_fd);
   // All SharedFDs have the O_CLOEXEC flag after creation. To remove use the
   // Fcntl or Dup functions.
-  static SharedFD Open(const char* pathname, int flags, mode_t mode = 0);
-  static SharedFD Creat(const char* pathname, mode_t mode);
+  static SharedFD Open(const std::string& pathname, int flags, mode_t mode = 0);
+  static SharedFD Creat(const std::string& pathname, mode_t mode);
   static bool Pipe(SharedFD* fd0, SharedFD* fd1);
   static SharedFD Event(int initval = 0, int flags = 0);
-  static SharedFD MemfdCreate(const char* name, unsigned int flags = 0);
+  static SharedFD MemfdCreate(const std::string& name, unsigned int flags = 0);
   static bool SocketPair(int domain, int type, int protocol, SharedFD* fd0,
                          SharedFD* fd1);
   static SharedFD Socket(int domain, int socket_type, int protocol);
-  static SharedFD SocketLocalClient(const char* name, bool is_abstract,
+  static SharedFD SocketLocalClient(const std::string& name, bool is_abstract,
                                     int in_type);
   static SharedFD SocketLocalClient(int port, int type);
-  static SharedFD SocketLocalServer(const char* name, bool is_abstract,
+  static SharedFD SocketLocalServer(const std::string& name, bool is_abstract,
                                     int in_type, mode_t mode);
   static SharedFD SocketLocalServer(int port, int type);
   static SharedFD VsockServer(unsigned int port, int type);
