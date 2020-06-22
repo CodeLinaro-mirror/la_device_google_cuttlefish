@@ -25,9 +25,11 @@
 #include <android-base/strings.h>
 #include <glog/logging.h>
 
+#include "common/libs/fs/shared_buf.h"
 #include "common/libs/utils/archive.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/subprocess.h"
+#include "host/commands/assemble_cvd/misc_info.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/fetcher_config.h"
 
@@ -56,10 +58,27 @@ const std::string kMiscInfoPath = "META/misc_info.txt";
 const std::set<std::string> kDefaultTargetImages = {
   "IMAGES/boot.img",
   "IMAGES/cache.img",
+  "IMAGES/odm.img",
   "IMAGES/recovery.img",
   "IMAGES/userdata.img",
+  "IMAGES/vbmeta.img",
   "IMAGES/vendor.img",
 };
+const std::set<std::string> kDefaultTargetBuildProp = {
+  "ODM/etc/build.prop",
+  "VENDOR/build.prop",
+};
+
+void FindImports(cvd::Archive* archive, const std::string& build_prop_file) {
+  auto contents = archive->ExtractToMemory(build_prop_file);
+  auto lines = android::base::Split(contents, "\n");
+  for (const auto& line : lines) {
+    auto parts = android::base::Split(line, " ");
+    if (parts.size() >= 2 && parts[0] == "import") {
+      LOG(INFO) << build_prop_file << ": " << line;
+    }
+  }
+}
 
 bool CombineTargetZipFiles(const std::string& default_target_zip,
                            const std::string& system_target_zip,
@@ -81,14 +100,53 @@ bool CombineTargetZipFiles(const std::string& default_target_zip,
     LOG(ERROR) << "Could not create directory " << output_path;
     return false;
   }
+  std::string output_meta = output_path + "/META";
+  if (mkdir(output_meta.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) < 0) {
+    LOG(ERROR) << "Could not create directory " << output_meta;
+    return false;
+  }
 
   if (std::find(default_target_contents.begin(), default_target_contents.end(), kMiscInfoPath)
       == default_target_contents.end()) {
     LOG(ERROR) << "Default target files zip does not have " << kMiscInfoPath;
     return false;
   }
-  if (!default_target_archive.ExtractFiles({kMiscInfoPath}, output_path)) {
-    LOG(ERROR) << "Failed to write misc info to output directory";
+  if (std::find(system_target_contents.begin(), system_target_contents.end(), kMiscInfoPath)
+      == system_target_contents.end()) {
+    LOG(ERROR) << "System target files zip does not have " << kMiscInfoPath;
+    return false;
+  }
+  const auto default_misc =
+      ParseMiscInfo(default_target_archive.ExtractToMemory(kMiscInfoPath));
+  if (default_misc.size() == 0) {
+    LOG(ERROR) << "Could not read the default misc_info.txt file.";
+    return false;
+  }
+  const auto system_misc =
+      ParseMiscInfo(system_target_archive.ExtractToMemory(kMiscInfoPath));
+  if (system_misc.size() == 0) {
+    LOG(ERROR) << "Could not read the system misc_info.txt file.";
+    return false;
+  }
+  auto output_misc = default_misc;
+  auto system_super_partitions = SuperPartitionComponents(system_misc);
+  if (std::find(system_super_partitions.begin(), system_super_partitions.end(),
+                "odm") == system_super_partitions.end()) {
+    // odm is not one of the partitions skipped by the system check
+    system_super_partitions.push_back("odm");
+  }
+  SetSuperPartitionComponents(system_super_partitions, &output_misc);
+  auto misc_output_path = output_path + "/" + kMiscInfoPath;
+  cvd::SharedFD misc_output_file =
+      cvd::SharedFD::Creat(misc_output_path.c_str(), 0644);
+  if (!misc_output_file->IsOpen()) {
+    LOG(ERROR) << "Failed to open output misc file: "
+               << misc_output_file->StrError();
+    return false;
+  }
+  if (cvd::WriteAll(misc_output_file, WriteMiscInfo(output_misc)) < 0) {
+    LOG(ERROR) << "Failed to write output misc file contents: "
+               << misc_output_file->StrError();
     return false;
   }
 
@@ -100,6 +158,19 @@ bool CombineTargetZipFiles(const std::string& default_target_zip,
     } else if (kDefaultTargetImages.count(name) == 0) {
       continue;
     }
+    LOG(INFO) << "Writing " << name;
+    if (!default_target_archive.ExtractFiles({name}, output_path)) {
+      LOG(ERROR) << "Failed to extract " << name << " from the default target zip";
+      return false;
+    }
+  }
+  for (const auto& name : default_target_contents) {
+    if (!android::base::EndsWith(name, "build.prop")) {
+      continue;
+    } else if (kDefaultTargetBuildProp.count(name) == 0) {
+      continue;
+    }
+    FindImports(&default_target_archive, name);
     LOG(INFO) << "Writing " << name;
     if (!default_target_archive.ExtractFiles({name}, output_path)) {
       LOG(ERROR) << "Failed to extract " << name << " from the default target zip";
@@ -118,6 +189,19 @@ bool CombineTargetZipFiles(const std::string& default_target_zip,
     LOG(INFO) << "Writing " << name;
     if (!system_target_archive.ExtractFiles({name}, output_path)) {
       LOG(ERROR) << "Failed to extract " << name << " from the system target zip";
+      return false;
+    }
+  }
+  for (const auto& name : system_target_contents) {
+    if (!android::base::EndsWith(name, "build.prop")) {
+      continue;
+    } else if (kDefaultTargetBuildProp.count(name) > 0) {
+      continue;
+    }
+    FindImports(&default_target_archive, name);
+    LOG(INFO) << "Writing " << name;
+    if (!default_target_archive.ExtractFiles({name}, output_path)) {
+      LOG(ERROR) << "Failed to extract " << name << " from the default target zip";
       return false;
     }
   }
