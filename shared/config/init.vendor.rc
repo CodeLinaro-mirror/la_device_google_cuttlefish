@@ -1,6 +1,5 @@
 on early-init
 #    loglevel 8
-    symlink /sdcard /storage/sdcard0
     mkdir /var/run 0755 root root
     mkdir /var/run/media 0755 media root
     mkdir /var/run/system 0755 system root
@@ -49,7 +48,7 @@ on init
 
 on fs
     # Mount everything that does not require fsck
-    mount_all /vendor/etc/fstab.${ro.hardware} --early
+    mount_all --early
     restorecon_recursive /vendor
 
     start setup_wifi
@@ -87,7 +86,7 @@ on late-fs
     exec_start wait_for_keymaster
 
     # Mount RW partitions which need run fsck
-    mount_all /vendor/etc/fstab.${ro.hardware} --late
+    mount_all --late
 
     write /dev/kmsg "GUEST_BUILD_FINGERPRINT: ${ro.build.fingerprint}"
 
@@ -117,7 +116,7 @@ on property:sys.boot_completed=1
 # persist.sys.zram_enabled becomes true after boot,
 # we don't want to run swapon_all at that time.
 on sys-boot-completed-set && property:persist.sys.zram_enabled=1
-    swapon_all /vendor/etc/${ro.boot.fstab_name}.${ro.hardware}
+    swapon_all
 
 service vendor.insmod_sh /vendor/bin/init.insmod.sh
     class main

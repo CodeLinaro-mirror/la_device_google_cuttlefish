@@ -22,6 +22,9 @@ DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/auto/manifest.xml
 
 $(call inherit-product, device/google/cuttlefish/shared/device.mk)
 
+# Extend cuttlefish common sepolicy with auto-specific functionality
+BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy/vendor
+
 ################################################
 # Begin general Android Auto Embedded configurations
 
@@ -47,7 +50,7 @@ PRODUCT_PROPERTY_OVERRIDES += \
 # vehicle HAL
 ifeq ($(LOCAL_VHAL_PRODUCT_PACKAGE),)
     LOCAL_VHAL_PRODUCT_PACKAGE := android.hardware.automotive.vehicle@2.0-service
-    BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy
+    BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy/vhal
 endif
 PRODUCT_PACKAGES += $(LOCAL_VHAL_PRODUCT_PACKAGE)
 
@@ -69,6 +72,10 @@ PRODUCT_PACKAGES_DEBUG += canhalctrl \
 PRODUCT_PACKAGES += \
     libcuttlefish-ril \
     libcuttlefish-rild
+
+# system_other support
+PRODUCT_PACKAGES += \
+    cppreopts.sh \
 
 BOARD_IS_AUTOMOTIVE := true
 

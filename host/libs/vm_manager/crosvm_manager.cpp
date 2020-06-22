@@ -25,6 +25,7 @@
 #include <android-base/strings.h>
 #include <glog/logging.h>
 
+#include "common/libs/utils/environment.h"
 #include "common/libs/utils/network.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/libs/config/cuttlefish_config.h"
@@ -71,7 +72,7 @@ std::vector<std::string> CrosvmManager::ConfigureGpu(const std::string& gpu_mode
   // HALs.
   if (gpu_mode == vsoc::kGpuModeGuestSwiftshader) {
     return {
-        "androidboot.hardware.gralloc=cutf_ashmem",
+        "androidboot.hardware.gralloc=minigbm",
         "androidboot.hardware.hwcomposer=cutf_hwc2",
         "androidboot.hardware.egl=swiftshader",
         "androidboot.hardware.vulkan=pastel",
@@ -108,7 +109,11 @@ std::vector<std::string> CrosvmManager::ConfigureGpu(const std::string& gpu_mode
 std::vector<std::string> CrosvmManager::ConfigureBootDevices() {
   // PCI domain 0, bus 0, device 1, function 0
   // TODO There is no way to control this assignment with crosvm (yet)
-  return { "androidboot.boot_devices=pci0000:00/0000:00:01.0" };
+  if (cvd::HostArch() == "x86_64") {
+    return { "androidboot.boot_devices=pci0000:00/0000:00:01.0" };
+  } else {
+    return { "androidboot.boot_devices=10000.pci" };
+  }
 }
 
 CrosvmManager::CrosvmManager(const vsoc::CuttlefishConfig* config)
@@ -128,8 +133,12 @@ std::vector<cvd::Command> CrosvmManager::StartCommands() {
 
   auto gpu_mode = config_->gpu_mode();
 
-  if (gpu_mode == vsoc::kGpuModeDrmVirgl ||
-      gpu_mode == vsoc::kGpuModeGfxStream) {
+  if (gpu_mode == vsoc::kGpuModeGuestSwiftshader) {
+    crosvm_cmd.AddParameter("--gpu=2D,",
+                            "width=", config_->x_res(), ",",
+                            "height=", config_->y_res());
+  } else if (gpu_mode == vsoc::kGpuModeDrmVirgl ||
+             gpu_mode == vsoc::kGpuModeGfxStream) {
     crosvm_cmd.AddParameter(gpu_mode == vsoc::kGpuModeGfxStream ?
                                 "--gpu=gfxstream," : "--gpu=",
                             "width=", config_->x_res(), ",",
@@ -140,7 +149,6 @@ std::vector<cvd::Command> CrosvmManager::StartCommands() {
   if (!config_->final_ramdisk_path().empty()) {
     crosvm_cmd.AddParameter("--initrd=", config_->final_ramdisk_path());
   }
-  crosvm_cmd.AddParameter("--null-audio");
   crosvm_cmd.AddParameter("--mem=", config_->memory_mb());
   crosvm_cmd.AddParameter("--cpus=", config_->cpus());
   crosvm_cmd.AddParameter("--params=", kernel_cmdline_);
