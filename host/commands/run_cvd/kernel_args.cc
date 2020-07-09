@@ -16,9 +16,12 @@
 
 #include "host/commands/run_cvd/kernel_args.h"
 
+#include <array>
+#include <sstream>
 #include <string>
 #include <vector>
 
+#include "common/libs/utils/files.h"
 #include "host/commands/run_cvd/launch.h"
 #include "host/commands/run_cvd/runner_defs.h"
 #include "host/libs/config/cuttlefish_config.h"
@@ -34,6 +37,15 @@ static std::string concat(const S& s, const T& t) {
   std::ostringstream os;
   os << s << t;
   return os.str();
+}
+
+static std::string mac_to_str(const std::array<unsigned char, 6>& mac) {
+  std::ostringstream stream;
+  stream << std::hex << (int) mac[0];
+  for (int i = 1; i < 6; i++) {
+    stream << ":" << std::hex << (int) mac[i];
+  }
+  return stream.str();
 }
 
 std::vector<std::string> KernelCommandLineFromConfig(const vsoc::CuttlefishConfig& config) {
@@ -75,6 +87,17 @@ std::vector<std::string> KernelCommandLineFromConfig(const vsoc::CuttlefishConfi
   if (config.guest_force_normal_boot()) {
     kernel_cmdline.push_back("androidboot.force_normal_boot=1");
   }
+
+  if (config.enable_vehicle_hal_grpc_server() && instance.vehicle_hal_server_port() &&
+      cvd::FileExists(config.vehicle_hal_grpc_server_binary())) {
+    constexpr int vehicle_hal_server_cid = 2;
+    kernel_cmdline.push_back(concat("androidboot.vendor.vehiclehal.server.cid=", vehicle_hal_server_cid));
+    kernel_cmdline.push_back(concat("androidboot.vendor.vehiclehal.server.port=", instance.vehicle_hal_server_port()));
+  }
+
+  // TODO(b/158131610): Set this in crosvm instead
+  kernel_cmdline.push_back(concat("androidboot.wifi_mac_address=",
+                                  mac_to_str(instance.wifi_mac_address())));
 
   AppendVector(&kernel_cmdline, config.extra_kernel_cmdline());
 
