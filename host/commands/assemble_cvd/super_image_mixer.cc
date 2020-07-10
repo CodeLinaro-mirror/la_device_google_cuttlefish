@@ -15,6 +15,7 @@
 
 #include "super_image_mixer.h"
 
+#include <errno.h>
 #include <sys/stat.h>
 
 #include <algorithm>
@@ -65,8 +66,10 @@ const std::set<std::string> kDefaultTargetImages = {
   "IMAGES/vendor.img",
 };
 const std::set<std::string> kDefaultTargetBuildProp = {
+  "ODM/build.prop",
   "ODM/etc/build.prop",
   "VENDOR/build.prop",
+  "VENDOR/etc/build.prop",
 };
 
 void FindImports(cvd::Archive* archive, const std::string& build_prop_file) {
@@ -198,9 +201,9 @@ bool CombineTargetZipFiles(const std::string& default_target_zip,
     } else if (kDefaultTargetBuildProp.count(name) > 0) {
       continue;
     }
-    FindImports(&default_target_archive, name);
+    FindImports(&system_target_archive, name);
     LOG(INFO) << "Writing " << name;
-    if (!default_target_archive.ExtractFiles({name}, output_path)) {
+    if (!system_target_archive.ExtractFiles({name}, output_path)) {
       LOG(ERROR) << "Failed to extract " << name << " from the default target zip";
       return false;
     }
