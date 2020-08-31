@@ -13,12 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-subdirs = [
-    "common",
-    "guest",
-    "host",
-]
-
 cc_library_headers {
     name: "cuttlefish_common_headers",
     vendor: true,
@@ -30,22 +24,6 @@ cc_library_headers {
     name: "cuttlefish_common_headers_product",
     product_specific: true,
     export_include_dirs: ["."],
-    host_supported: true,
-}
-
-// TODO(b/67435044) Update the include paths and remove this
-cc_library_headers {
-    name: "cuttlefish_glog",
-    vendor: true,
-    export_include_dirs: ["common/libs"],
-    host_supported: true,
-}
-
-// TODO(b/67435044) Update the include paths and remove this
-cc_library_headers {
-    name: "cuttlefish_glog_product",
-    product_specific: true,
-    export_include_dirs: ["common/libs"],
     host_supported: true,
 }
 

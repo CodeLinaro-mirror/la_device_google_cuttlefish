@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 The Android Open Source Project
+ * Copyright 2020 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -2800,14 +2800,14 @@ static int hwc2DevOpen(const struct hw_module_t *module, const char *name,
         return -EINVAL;
     }
 
-    std::unique_ptr<cvd::ScreenView> screen_view(new cvd::VsocketScreenView());
+    std::unique_ptr<cuttlefish::ScreenView> screen_view(new cuttlefish::VsocketScreenView());
     if (!screen_view) {
       ALOGE("Failed to instantiate screen view");
       return -1;
     }
 
     hw_device_t* device;
-    int error = cvd::cvd_hwc_open(std::move(screen_view), module, name, &device);
+    int error = cuttlefish::cvd_hwc_open(std::move(screen_view), module, name, &device);
     if (error) {
         ALOGE("failed to open hwcomposer device: %s", strerror(-error));
         return -1;

@@ -16,8 +16,7 @@
 ** limitations under the License.
 */
 -->
-<manifest version="1.0" type="device" target-level="5">
-    <kernel  target-level="5" />
+<manifest version="1.0" type="device" target-level="6">
     <hal format="hidl">
         <name>android.hardware.audio</name>
         <transport>hwbinder</transport>
@@ -146,19 +145,6 @@
         </interface>
     </hal>
     -->
-    <hal format="hidl">
-        <name>android.hardware.media.omx</name>
-        <transport>hwbinder</transport>
-        <version>1.0</version>
-        <interface>
-            <name>IOmx</name>
-            <instance>default</instance>
-        </interface>
-        <interface>
-            <name>IOmxStore</name>
-            <instance>default</instance>
-        </interface>
-    </hal>
     <!-- TODO (b/130079342):
     <hal format="hidl">
         <name>android.hardware.memtrack</name>
@@ -195,7 +181,7 @@
     <hal format="hidl">
         <name>android.hardware.radio</name>
         <transport>hwbinder</transport>
-        <version>1.5</version>
+        <version>1.6</version>
         <interface>
             <name>IRadio</name>
             <instance>slot1</instance>

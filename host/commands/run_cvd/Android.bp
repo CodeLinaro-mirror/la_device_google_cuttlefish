@@ -16,13 +16,9 @@
 cc_binary_host {
     name: "run_cvd",
     srcs: [
-        "kernel_args.cc",
         "launch.cc",
         "main.cc",
         "process_monitor.cc",
-    ],
-    header_libs: [
-        "cuttlefish_glog",
     ],
     shared_libs: [
         "libcuttlefish_fs",

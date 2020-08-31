@@ -18,9 +18,6 @@ cc_binary_host {
     srcs: [
         "main.cpp",
     ],
-    header_libs: [
-        "cuttlefish_glog",
-    ],
     shared_libs: [
         "libbase",
         "libcuttlefish_fs",
@@ -28,6 +25,8 @@ cc_binary_host {
         "libcuttlefish_utils",
     ],
     static_libs: [
+        "libcuttlefish_host_config",
+        "libjsoncpp",
         "libgflags",
     ],
     defaults: ["cuttlefish_host_only"],

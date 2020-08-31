@@ -21,7 +21,11 @@
 #include <cstdio>
 #include <ctype.h>
 #include <fcntl.h>
+#include <iomanip>
+#include <ios>
+#include <iostream>
 #include <sys/errno.h>
+#include <sstream>
 
 void makeFdNonblocking(int fd) {
     int flags = fcntl(fd, F_GETFL, 0);
@@ -30,86 +34,41 @@ void makeFdNonblocking(int fd) {
     assert(res >= 0);
 }
 
-void hexdump(const void *_data, size_t size) {
+std::string hexdump(const void* _data, size_t size) {
+  std::stringstream ss;
   const uint8_t *data = static_cast<const uint8_t *>(_data);
 
   size_t offset = 0;
   while (offset < size) {
-    printf("%08zx: ", offset);
+    ss << "0x" << std::hex << std::setw(8) << std::setfill('0') << offset << ": ";
 
     for (size_t col = 0; col < 16; ++col) {
       if (offset + col < size) {
-        printf("%02x ", data[offset + col]);
+        ss << std::setw(2) << static_cast<int>(data[offset + col]) << " ";
       } else {
-        printf("   ");
+        ss << "   ";
       }
 
       if (col == 7) {
-        printf(" ");
+        ss <<  " ";
       }
     }
 
-    printf(" ");
+    ss << " ";
 
     for (size_t col = 0; col < 16; ++col) {
       if (offset + col < size && isprint(data[offset + col])) {
-        printf("%c", data[offset + col]);
+        ss << static_cast<char>(data[offset + col]);
       } else if (offset + col < size) {
-        printf(".");
+        ss << ".";
       }
     }
 
-    printf("\n");
+    ss << std::endl;
 
     offset += 16;
   }
-}
-
-static char encode6Bit(unsigned x) {
-  static char base64[] =
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  return base64[x & 63];
-}
-
-void encodeBase64(const void *_data, size_t size, std::string *out) {
-    out->clear();
-    out->reserve(((size+2)/3)*4);
-
-    const uint8_t *data = (const uint8_t *)_data;
-
-    size_t i;
-    for (i = 0; i < (size / 3) * 3; i += 3) {
-        uint8_t x1 = data[i];
-        uint8_t x2 = data[i + 1];
-        uint8_t x3 = data[i + 2];
-
-        out->append(1, encode6Bit(x1 >> 2));
-        out->append(1, encode6Bit((x1 << 4 | x2 >> 4) & 0x3f));
-        out->append(1, encode6Bit((x2 << 2 | x3 >> 6) & 0x3f));
-        out->append(1, encode6Bit(x3 & 0x3f));
-    }
-    switch (size % 3) {
-        case 0:
-            break;
-        case 2:
-        {
-            uint8_t x1 = data[i];
-            uint8_t x2 = data[i + 1];
-            out->append(1, encode6Bit(x1 >> 2));
-            out->append(1, encode6Bit((x1 << 4 | x2 >> 4) & 0x3f));
-            out->append(1, encode6Bit((x2 << 2) & 0x3f));
-            out->append(1, '=');
-            break;
-        }
-        default:
-        {
-            uint8_t x1 = data[i];
-            out->append(1, encode6Bit(x1 >> 2));
-            out->append(1, encode6Bit((x1 << 4) & 0x3f));
-            out->append("==");
-            break;
-        }
-    }
+  return ss.str();
 }
 
 uint16_t U16_AT(const uint8_t *ptr) {
@@ -134,4 +93,8 @@ uint32_t U32LE_AT(const uint8_t *ptr) {
 
 uint64_t U64LE_AT(const uint8_t *ptr) {
     return ((uint64_t)U32LE_AT(ptr + 4)) << 32 | U32LE_AT(ptr);
+}
+
+std::string STR_AT(const uint8_t *ptr, size_t size) {
+  return std::string((const char*)ptr, size);
 }

@@ -22,11 +22,12 @@
 
 #include <android-base/strings.h>
 #include <gflags/gflags.h>
-#include <glog/logging.h>
+#include <android-base/logging.h>
 
 #include <common/libs/fs/shared_fd.h>
 #include <common/libs/fs/shared_select.h>
 #include <host/libs/config/cuttlefish_config.h>
+#include <host/libs/config/logging.h>
 #include "host/commands/kernel_log_monitor/kernel_log_server.h"
 
 DEFINE_int32(log_pipe_fd, -1,
@@ -37,7 +38,7 @@ DEFINE_string(subscriber_fds, "",
              "A comma separated list of file descriptors (most likely pipes) to"
              " send boot events to.");
 
-std::vector<cvd::SharedFD> SubscribersFromCmdline() {
+std::vector<cuttlefish::SharedFD> SubscribersFromCmdline() {
   // Validate the parameter
   std::string fd_list = FLAGS_subscriber_fds;
   for (auto c: fd_list) {
@@ -48,10 +49,10 @@ std::vector<cvd::SharedFD> SubscribersFromCmdline() {
   }
 
   auto fds = android::base::Split(FLAGS_subscriber_fds, ",");
-  std::vector<cvd::SharedFD> shared_fds;
+  std::vector<cuttlefish::SharedFD> shared_fds;
   for (auto& fd_str: fds) {
     auto fd = std::stoi(fd_str);
-    auto shared_fd = cvd::SharedFD::Dup(fd);
+    auto shared_fd = cuttlefish::SharedFD::Dup(fd);
     close(fd);
     shared_fds.push_back(shared_fd);
   }
@@ -60,8 +61,14 @@ std::vector<cvd::SharedFD> SubscribersFromCmdline() {
 }
 
 int main(int argc, char** argv) {
-  ::android::base::InitLogging(argv, android::base::StderrLogger);
+  cuttlefish::DefaultSubprocessLogging(argv);
   google::ParseCommandLineFlags(&argc, &argv, true);
+
+  auto config = cuttlefish::CuttlefishConfig::Get();
+
+  CHECK(config) << "Could not open cuttlefish config";
+
+  auto instance = config->ForDefaultInstance();
 
   auto subscriber_fds = SubscribersFromCmdline();
 
@@ -71,19 +78,12 @@ int main(int argc, char** argv) {
   new_action.sa_handler = SIG_IGN;
   sigaction(SIGPIPE, &new_action, &old_action);
 
-  auto config = vsoc::CuttlefishConfig::Get();
-  if (!config) {
-    LOG(ERROR) << "Unable to get config object";
-    return 1;
-  }
-  auto instance = config->ForDefaultInstance();
-
-  cvd::SharedFD pipe;
+  cuttlefish::SharedFD pipe;
   if (FLAGS_log_pipe_fd < 0) {
     auto log_name = instance.kernel_log_pipe_name();
-    pipe = cvd::SharedFD::Open(log_name.c_str(), O_RDONLY);
+    pipe = cuttlefish::SharedFD::Open(log_name.c_str(), O_RDONLY);
   } else {
-    pipe = cvd::SharedFD::Dup(FLAGS_log_pipe_fd);
+    pipe = cuttlefish::SharedFD::Dup(FLAGS_log_pipe_fd);
     close(FLAGS_log_pipe_fd);
   }
 
@@ -116,12 +116,12 @@ int main(int argc, char** argv) {
   }
 
   for (;;) {
-    cvd::SharedFDSet fd_read;
+    cuttlefish::SharedFDSet fd_read;
     fd_read.Zero();
 
     klog.BeforeSelect(&fd_read);
 
-    int ret = cvd::Select(&fd_read, nullptr, nullptr, nullptr);
+    int ret = cuttlefish::Select(&fd_read, nullptr, nullptr, nullptr);
     if (ret <= 0) continue;
 
     klog.AfterSelect(fd_read);

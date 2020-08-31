@@ -17,7 +17,6 @@
 ################################################
 # Begin GCE specific configurations
 
-DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/config/manifest.xml
 DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/auto/manifest.xml
 
 $(call inherit-product, device/google/cuttlefish/shared/device.mk)
@@ -34,6 +33,7 @@ PRODUCT_COPY_FILES += \
 
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.broadcastradio.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.broadcastradio.xml \
+    frameworks/native/data/etc/android.hardware.faketouch.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.faketouch.xml \
     frameworks/native/data/etc/android.hardware.screen.landscape.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.screen.landscape.xml \
     frameworks/native/data/etc/android.hardware.sensor.accelerometer.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.accelerometer.xml \
     frameworks/native/data/etc/android.hardware.sensor.compass.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.compass.xml \
@@ -85,6 +85,8 @@ $(call inherit-product, packages/services/Car/car_product/build/car.mk)
 
 # Placed here due to b/110784510
 PRODUCT_BRAND := generic
+
+DEVICE_PACKAGE_OVERLAYS += device/google/cuttlefish/shared/auto/overlay
 
 PRODUCT_ENFORCE_RRO_TARGETS := framework-res
 

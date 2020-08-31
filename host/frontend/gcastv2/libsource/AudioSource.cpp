@@ -110,7 +110,7 @@ struct gce_audio_message {
     time_presented.tv_nsec = 0;
   }
 };
-  
+
 }
 
 struct AudioSource::Encoder {
@@ -771,7 +771,7 @@ int32_t AudioSource::start() {
                         uint8_t buffer[4096];
 
                         struct timespec absTimeLimit;
-                        vsoc::RegionView::GetFutureTime(
+                        cuttlefish::RegionView::GetFutureTime(
                                 1000000000ll ns_from_now, &absTimeLimit);
 
                         intptr_t res = mRegionView->data()->audio_queue.Read(

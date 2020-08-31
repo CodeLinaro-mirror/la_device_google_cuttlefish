@@ -15,7 +15,7 @@
  */
 
 #include <arpa/inet.h>
-#include <glog/logging.h>
+#include <android-base/logging.h>
 #include <ifaddrs.h>
 #include <stdio.h>
 #include <string.h>
@@ -23,7 +23,7 @@
 
 #include "device_config.h"
 
-namespace cvd {
+namespace cuttlefish {
 
 namespace {
 
@@ -41,18 +41,19 @@ class NetConfig {
   uint8_t ril_prefixlen = -1;
   std::string ril_ipaddr;
   std::string ril_gateway;
-  std::string ril_dns = "8.8.8.8";
+  std::string ril_dns;
   std::string ril_broadcast;
 
-  bool ObtainConfig(const std::string& interface) {
+  bool ObtainConfig(const std::string& interface, const std::string& dns) {
     bool ret = ParseInterfaceAttributes(interface);
     if (ret) {
-      LOG(INFO) << "Network config:";
-      LOG(INFO) << "ipaddr = " << ril_ipaddr;
-      LOG(INFO) << "gateway = " << ril_gateway;
-      LOG(INFO) << "dns = " << ril_dns;
-      LOG(INFO) << "broadcast = " << ril_broadcast;
-      LOG(INFO) << "prefix length = " << static_cast<int>(ril_prefixlen);
+      ril_dns = dns;
+      LOG(DEBUG) << "Network config:";
+      LOG(DEBUG) << "ipaddr = " << ril_ipaddr;
+      LOG(DEBUG) << "gateway = " << ril_gateway;
+      LOG(DEBUG) << "dns = " << ril_dns;
+      LOG(DEBUG) << "broadcast = " << ril_broadcast;
+      LOG(DEBUG) << "prefix length = " << static_cast<int>(ril_prefixlen);
     }
     return ret;
   }
@@ -138,7 +139,7 @@ inline void CopyChars(char* dest, size_t size, const char* src) {
 }  // namespace
 
 std::unique_ptr<DeviceConfig> DeviceConfig::Get() {
-  auto config = vsoc::CuttlefishConfig::Get();
+  auto config = CuttlefishConfig::Get();
   if (!config) return nullptr;
   std::unique_ptr<DeviceConfig> dev_config(new DeviceConfig());
   if (!dev_config->InitializeNetworkConfiguration(*config)) {
@@ -149,15 +150,16 @@ std::unique_ptr<DeviceConfig> DeviceConfig::Get() {
 }
 
 bool DeviceConfig::InitializeNetworkConfiguration(
-    const vsoc::CuttlefishConfig& config) {
+    const CuttlefishConfig& config) {
   auto instance = config.ForDefaultInstance();
   NetConfig netconfig;
   // Check the mobile bridge first; this was the traditional way we configured
   // the mobile interface. If that fails, it probably means we are using a
   // newer version of cuttlefish-common, and we can use the tap device
   // directly instead.
-  if (!netconfig.ObtainConfig(instance.mobile_bridge_name())) {
-    if (!netconfig.ObtainConfig(instance.mobile_tap_name())) {
+  if (!netconfig.ObtainConfig(instance.mobile_bridge_name(),
+                              config.ril_dns())) {
+    if (!netconfig.ObtainConfig(instance.mobile_tap_name(), config.ril_dns())) {
       LOG(ERROR) << "Unable to obtain the network configuration";
       return false;
     }
@@ -182,11 +184,11 @@ bool DeviceConfig::InitializeNetworkConfiguration(
 }
 
 void DeviceConfig::InitializeScreenConfiguration(
-    const vsoc::CuttlefishConfig& config) {
+    const CuttlefishConfig& config) {
   data_.screen.x_res = config.x_res();
   data_.screen.y_res = config.y_res();
   data_.screen.dpi = config.dpi();
   data_.screen.refresh_rate = config.refresh_rate_hz();
 }
 
-}  // namespace cvd
+}  // namespace cuttlefish

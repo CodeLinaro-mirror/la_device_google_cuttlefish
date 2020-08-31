@@ -24,10 +24,11 @@
 #include <thread>
 
 #include <android-base/strings.h>
-#include <glog/logging.h>
+#include <android-base/logging.h>
 
 #include "common/libs/utils/files.h"
 
+namespace cuttlefish {
 namespace {
 
 const std::string BUILD_API =
@@ -72,6 +73,12 @@ std::ostream& operator<<(std::ostream& out, const Build& build) {
   return out;
 }
 
+DirectoryBuild::DirectoryBuild(const std::vector<std::string>& paths,
+                               const std::string& target)
+    : paths(paths), target(target), id("eng") {
+  product = getenv("TARGET_PRODUCT");
+}
+
 BuildApi::BuildApi(std::unique_ptr<CredentialSource> credential_source)
     : credential_source(std::move(credential_source)) {}
 
@@ -108,6 +115,15 @@ std::string BuildApi::BuildStatus(const DeviceBuild& build) {
       << "build " << build << ". Response was " << response_json;
 
   return response_json["buildAttemptStatus"].asString();
+}
+
+std::string BuildApi::ProductName(const DeviceBuild& build) {
+  std::string url = BUILD_API + "/builds/" + build.id + "/" + build.target;
+  auto response_json = curl.DownloadToJson(url, Headers());
+  CHECK(!response_json.isMember("error")) << "Error fetching the status of "
+      << "build " << build << ". Response was " << response_json;
+  CHECK(response_json.isMember("target")) << "Build was missing target field.";
+  return response_json["target"]["product"].asString();
 }
 
 std::vector<Artifact> BuildApi::Artifacts(const DeviceBuild& build) {
@@ -157,7 +173,7 @@ bool BuildApi::ArtifactToFile(const DirectoryBuild& build,
                               const std::string& destination) {
   for (const auto& path : build.paths) {
     auto source = path + "/" + artifact;
-    if (!cvd::FileExists(source)) {
+    if (!FileExists(source)) {
       continue;
     }
     unlink(destination.c_str());
@@ -213,5 +229,8 @@ Build ArgumentToBuild(BuildApi* build_api, const std::string& arg,
     status = build_api->BuildStatus(proposed_build);
   }
   LOG(INFO) << "Status for build " << proposed_build << " is " << status;
+  proposed_build.product = build_api->ProductName(proposed_build);
   return proposed_build;
 }
+
+} // namespace cuttlefish

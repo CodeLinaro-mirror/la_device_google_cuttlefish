@@ -16,11 +16,11 @@
 
 #include "host/libs/screen_connector/socket_based_screen_connector.h"
 
-#include <glog/logging.h>
+#include <android-base/logging.h>
 
 #include "common/libs/fs/shared_fd.h"
 
-namespace cvd {
+namespace cuttlefish {
 
 SocketBasedScreenConnector::SocketBasedScreenConnector(int frames_fd) {
 screen_server_thread_ =
@@ -65,7 +65,7 @@ void SocketBasedScreenConnector::ServerLoop(int frames_fd) {
   int current_buffer = 0;
 
   while (1) {
-    LOG(INFO) << "Screen Connector accepting connections...";
+    LOG(DEBUG) << "Screen Connector accepting connections...";
     auto conn = SharedFD::Accept(*server);
     if (!conn->IsOpen()) {
       LOG(ERROR) << "Disconnected fd returned from accept";
@@ -102,4 +102,4 @@ void SocketBasedScreenConnector::BroadcastNewFrame(int buffer_idx) {
   }
   new_frame_cond_var_.notify_all();
 }
-} // namespace cvd
+} // namespace cuttlefish

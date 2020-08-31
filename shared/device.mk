@@ -20,10 +20,9 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/languages_full.mk)
 # Enable updating of APEXes
 $(call inherit-product, $(SRC_TARGET_DIR)/product/updatable_apex.mk)
 
-# Enable userspace reboot
-$(call inherit-product, $(SRC_TARGET_DIR)/product/userspace_reboot.mk)
+PRODUCT_SOONG_NAMESPACES += device/generic/goldfish-opengl # for vulkan
 
-PRODUCT_SHIPPING_API_LEVEL := 30
+PRODUCT_SHIPPING_API_LEVEL := 31
 PRODUCT_BUILD_BOOT_IMAGE := true
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
@@ -32,17 +31,17 @@ PRODUCT_SOONG_NAMESPACES += device/generic/goldfish-opengl # for vulkan
 
 TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE ?= f2fs
 
-TARGET_VULKAN_SUPPORT ?= true
-
 AB_OTA_UPDATER := true
 AB_OTA_PARTITIONS += \
     odm \
+    odm_dlkm \
     product \
     system \
     system_ext \
     vbmeta \
     vbmeta_system \
-    vendor
+    vendor \
+    vendor_dlkm \
 
 # Enable Virtual A/B
 $(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota.mk)
@@ -62,10 +61,10 @@ PRODUCT_PRODUCT_PROPERTIES += \
 #   ro.opengles.version OpenGLES 3.0
 PRODUCT_PROPERTY_OVERRIDES += \
     tombstoned.max_tombstone_count=500 \
-    bt.rootcanal_test_console=off \
+    vendor.bt.rootcanal_test_console=off \
     debug.hwui.swap_with_damage=0 \
     ro.carrier=unknown \
-    ro.com.android.dataroaming=false \
+    ro.com.android.dataroaming?=false \
     ro.hardware.virtual_device=1 \
     ro.logd.size=1M \
     ro.opengles.version=196608 \
@@ -78,11 +77,16 @@ PRODUCT_PROPERTY_OVERRIDES += \
 PRODUCT_PROPERTY_OVERRIDES += \
     wlan.driver.status=ok
 
-# Codec 2.0 is unstable on x86
+ifeq ($(LOCAL_ENABLE_CODEC2),)
+# Codec 2.0 is unstable on x86; disable it
 PRODUCT_PROPERTY_OVERRIDES += \
     debug.stagefright.ccodec=0
+# Codec 1.0 requires the OMX services
+DEVICE_MANIFEST_FILE += \
+    device/google/cuttlefish/shared/config/android.hardware.media.omx@1.0.xml
+endif
 
-# Enforce privapp-permissions whitelist.
+# Enforce privapp permissions control.
 PRODUCT_PROPERTY_OVERRIDES += ro.control_privapp_permissions=enforce
 
 # aes-256-heh default is not supported in standard kernels.
@@ -105,14 +109,13 @@ PRODUCT_PACKAGES += \
     CuttlefishService \
     wpa_supplicant.vsoc.conf \
     vsoc_input_service \
-    vport_trigger \
     rename_netiface \
     ip_link_add \
     setup_wifi \
     tombstone_transmit \
-    vsock_logcat \
     tombstone_producer \
     suspend_blocker \
+    vtpm_manager \
 
 #
 # Packages for AOSP-available stuff we use from the framework
@@ -139,18 +142,9 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     libGLES_mesa \
 
-#
-# Packages for the Vulkan implementation
-#
-ifeq ($(TARGET_VULKAN_SUPPORT),true)
-PRODUCT_PACKAGES += \
-    vulkan.ranchu \
-    libvulkan_enc \
-    vulkan.pastel
-endif
-
 # GL/Vk implementation for gfxstream
 PRODUCT_PACKAGES += \
+    vulkan.ranchu \
     libandroidemu \
     libOpenglCodecCommon \
     libOpenglSystemCommon \
@@ -158,8 +152,15 @@ PRODUCT_PACKAGES += \
     lib_renderControl_enc \
     libEGL_emulation \
     libGLESv2_enc \
+    libvulkan_enc \
     libGLESv2_emulation \
     libGLESv1_enc
+
+#
+# Packages for the Vulkan implementation
+#
+PRODUCT_PACKAGES += \
+    vulkan.pastel
 
 #
 # Packages for testing
@@ -171,6 +172,11 @@ PRODUCT_PACKAGES += \
 DEVICE_PACKAGE_OVERLAYS := device/google/cuttlefish/shared/overlay
 # PRODUCT_AAPT_CONFIG and PRODUCT_AAPT_PREF_CONFIG are intentionally not set to
 # pick up every density resources.
+
+#
+# Common manifest for all targets
+#
+DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/config/manifest.xml
 
 #
 # General files
@@ -206,7 +212,6 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.camera.full.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.full.xml \
     frameworks/native/data/etc/android.hardware.camera.raw.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.raw.xml \
     frameworks/native/data/etc/android.hardware.ethernet.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.ethernet.xml \
-    frameworks/native/data/etc/android.hardware.faketouch.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.faketouch.xml \
     frameworks/native/data/etc/android.hardware.location.gps.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.location.gps.xml \
     frameworks/native/data/etc/android.hardware.reboot_escrow.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.reboot_escrow.xml \
     frameworks/native/data/etc/android.hardware.sensor.ambient_temperature.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.ambient_temperature.xml \
@@ -217,10 +222,13 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.sensor.proximity.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.proximity.xml \
     frameworks/native/data/etc/android.hardware.sensor.relative_humidity.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.relative_humidity.xml \
     frameworks/native/data/etc/android.hardware.usb.accessory.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.usb.accessory.xml \
+    frameworks/native/data/etc/android.hardware.vulkan.level-0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.vulkan.level.xml \
+    frameworks/native/data/etc/android.hardware.vulkan.version-1_0_3.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.vulkan.version.xml \
     frameworks/native/data/etc/android.hardware.wifi.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.wifi.xml \
     frameworks/native/data/etc/android.software.ipsec_tunnels.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.ipsec_tunnels.xml \
     frameworks/native/data/etc/android.software.sip.voip.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.sip.voip.xml \
     frameworks/native/data/etc/android.software.verified_boot.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.verified_boot.xml \
+    frameworks/native/data/etc/android.software.vulkan.deqp.level-2020-03-01.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.vulkan.deqp.level.xml \
     system/bt/vendor_libs/test_vendor_lib/data/controller_properties.json:vendor/etc/bluetooth/controller_properties.json \
     device/google/cuttlefish/shared/config/task_profiles.json:$(TARGET_COPY_OUT_VENDOR)/etc/task_profiles.json \
     device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_RAMDISK)/fstab.f2fs \
@@ -229,13 +237,6 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_RAMDISK)/fstab.ext4 \
     device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.ext4 \
     device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.ext4
-
-ifeq ($(TARGET_VULKAN_SUPPORT),true)
-PRODUCT_COPY_FILES += \
-    frameworks/native/data/etc/android.hardware.vulkan.level-0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.vulkan.level.xml \
-    frameworks/native/data/etc/android.hardware.vulkan.version-1_0_3.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.vulkan.version.xml \
-    frameworks/native/data/etc/android.software.vulkan.deqp.level-2020-03-01.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.vulkan.deqp.level.xml
-endif
 
 # Packages for HAL implementations
 
@@ -279,18 +280,21 @@ PRODUCT_PACKAGES += \
 #
 # Audio HAL
 #
-PRODUCT_PACKAGES += \
+ifeq ($(LOCAL_AUDIO_PRODUCT_PACKAGE),)
+LOCAL_AUDIO_PRODUCT_PACKAGE := \
     audio.primary.cutf \
     audio.r_submix.default \
-    android.hardware.audio@6.0-impl:32 \
-    android.hardware.audio.effect@6.0-impl:32 \
-    android.hardware.audio@2.0-service \
+    android.hardware.audio@6.0-impl \
+    android.hardware.audio.effect@6.0-impl \
+    android.hardware.audio@2.0-service
+endif
+PRODUCT_PACKAGES += $(LOCAL_AUDIO_PRODUCT_PACKAGE)
 
 #
 # BiometricsFace HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.biometrics.face@1.0-service.example
+    android.hardware.biometrics.face@1.1-service.example
 
 #
 # Contexthub HAL
@@ -331,7 +335,7 @@ PRODUCT_PACKAGES += \
 # GPS
 #
 PRODUCT_PACKAGES += \
-    android.hardware.gnss@2.1-service
+    android.hardware.gnss@3.0-service
 
 # Health
 ifeq ($(LOCAL_HEALTH_PRODUCT_PACKAGE),)
@@ -377,7 +381,7 @@ PRODUCT_PACKAGES += \
 # Keymaster HAL
 #
 PRODUCT_PACKAGES += \
-     android.hardware.keymaster@4.1-service
+     android.hardware.keymaster@4.1-service.remote
 
 #
 # Power HAL
@@ -443,9 +447,12 @@ PRODUCT_COPY_FILES += \
 # Host packages to install
 PRODUCT_HOST_PACKAGES += socket_vsock_proxy
 
-PRODUCT_EXTRA_VNDK_VERSIONS := 28 29
+PRODUCT_EXTRA_VNDK_VERSIONS := 28 29 30
 
 PRODUCT_SOONG_NAMESPACES += external/mesa3d
+
+#for Confirmation UI
+PRODUCT_SOONG_NAMESPACES += vendor/google_devices/common/proprietary/confirmatioui_hal
 
 # Need this so that the application's loop on reading input can be synchronized
 # with HW VSYNC

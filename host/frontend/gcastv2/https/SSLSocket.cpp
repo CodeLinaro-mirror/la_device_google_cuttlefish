@@ -18,7 +18,7 @@
 
 #include <https/SafeCallbackable.h>
 #include <https/Support.h>
-#include <glog/logging.h>
+#include <android-base/logging.h>
 #include <sstream>
 #include <sys/socket.h>
 
@@ -362,7 +362,7 @@ void SSLSocket::sendOutputData() {
 
     while (offset < size) {
         ssize_t n = ::send(
-                fd(), mOutBuffer.data() + offset, size - offset, 0);
+                fd(), mOutBuffer.data() + offset, size - offset, MSG_NOSIGNAL);
 
         if (n < 0) {
             if (errno == EINTR) {

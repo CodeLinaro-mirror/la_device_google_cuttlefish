@@ -22,11 +22,11 @@
 #include <sstream>
 
 #include <bootimg.h>
-#include <glog/logging.h>
+#include <android-base/logging.h>
 
 #include "common/libs/utils/subprocess.h"
 
-namespace cvd {
+namespace cuttlefish {
 
 namespace {
 
@@ -153,4 +153,4 @@ bool BootImageUnpacker::Unpack(const std::string& ramdisk_image_path,
   return true;
 }
 
-}  // namespace cvd
+}  // namespace cuttlefish

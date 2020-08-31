@@ -21,7 +21,7 @@
 #include <thread>
 #include <vector>
 
-#include <glog/logging.h>
+#include <android-base/logging.h>
 #include <gflags/gflags.h>
 
 #include <unistd.h>
@@ -30,6 +30,7 @@
 #include "common/libs/fs/shared_fd.h"
 #include "host/frontend/adb_connector/adb_connection_maintainer.h"
 #include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/config/logging.h"
 
 DEFINE_string(addresses, "", "Comma-separated list of addresses to "
                              "'adb connect' to");
@@ -39,7 +40,7 @@ DEFINE_int32(adbd_events_fd, -1, "A file descriptor. If set it will wait for "
 
 namespace {
 void LaunchConnectionMaintainerThread(const std::string& address) {
-  std::thread(cvd::EstablishAndMaintainConnection, address).detach();
+  std::thread(cuttlefish::EstablishAndMaintainConnection, address).detach();
 }
 
 std::vector<std::string> ParseAddressList(std::string ports) {
@@ -56,7 +57,7 @@ std::vector<std::string> ParseAddressList(std::string ports) {
 }
 
 void WaitForAdbdToBeStarted(int events_fd) {
-  auto evt_shared_fd = cvd::SharedFD::Dup(events_fd);
+  auto evt_shared_fd = cuttlefish::SharedFD::Dup(events_fd);
   close(events_fd);
   while (evt_shared_fd->IsOpen()) {
     monitor::BootEvent event;
@@ -69,7 +70,7 @@ void WaitForAdbdToBeStarted(int events_fd) {
       return;
     }
     if (event == monitor::BootEvent::AdbdStarted) {
-      LOG(INFO) << "Adbd has started in the guest, connecting adb";
+      LOG(DEBUG) << "Adbd has started in the guest, connecting adb";
       return;
     }
   }
@@ -77,6 +78,7 @@ void WaitForAdbdToBeStarted(int events_fd) {
 }  // namespace
 
 int main(int argc, char* argv[]) {
+  cuttlefish::DefaultSubprocessLogging(argv);
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   CHECK(!FLAGS_addresses.empty()) << "Must specify --addresses flag";
 
