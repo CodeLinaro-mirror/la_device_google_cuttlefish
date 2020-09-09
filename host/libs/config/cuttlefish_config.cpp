@@ -403,6 +403,10 @@ std::string CuttlefishConfig::InstanceSpecific::sdcard_path() const {
   return cvd::AbsolutePath(PerInstancePath("sdcard.img"));
 }
 
+std::string CuttlefishConfig::InstanceSpecific::composite_disk_path() const {
+  return cvd::AbsolutePath(PerInstancePath("composite.img"));
+}
+
 std::string CuttlefishConfig::InstanceSpecific::mobile_bridge_name() const {
   return (*Dictionary())[kMobileBridgeName].asString();
 }
@@ -933,10 +937,6 @@ bool CuttlefishConfig::SaveToFile(const std::string& file) const {
 std::string CuttlefishConfig::AssemblyPath(
     const std::string& file_name) const {
   return cvd::AbsolutePath(assembly_dir() + "/" + file_name);
-}
-
-std::string CuttlefishConfig::composite_disk_path() const {
-  return AssemblyPath("composite.img");
 }
 
 std::string CuttlefishConfig::InstanceSpecific::PerInstancePath(

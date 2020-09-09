@@ -66,8 +66,6 @@ class CuttlefishConfig {
 
   std::string AssemblyPath(const std::string&) const;
 
-  std::string composite_disk_path() const;
-
   std::string vm_manager() const;
   void set_vm_manager(const std::string& name);
 
@@ -331,6 +329,8 @@ class CuttlefishConfig {
     std::string launcher_monitor_socket_path() const;
 
     std::string sdcard_path() const;
+
+    std::string composite_disk_path() const;
 
     // Wifi MAC address inside the guest
     std::array<unsigned char, 6> wifi_mac_address() const;
