@@ -19,15 +19,15 @@ cc_binary_host {
         "adb_connection_maintainer.cpp",
         "main.cpp"
     ],
-    header_libs: [
-        "cuttlefish_glog",
-    ],
     static_libs: [
+        "libcuttlefish_host_config",
         "libgflags",
+        "libjsoncpp",
     ],
     shared_libs: [
         "libbase",
         "libcuttlefish_fs",
+        "libcuttlefish_utils",
         "liblog",
     ],
     defaults: ["cuttlefish_host_only"],

@@ -49,6 +49,16 @@ BOARD_USES_ODMIMAGE := true
 BOARD_ODMIMAGE_FILE_SYSTEM_TYPE := ext4
 TARGET_COPY_OUT_ODM := odm
 
+# Build a separate vendor_dlkm partition
+BOARD_USES_VENDOR_DLKMIMAGE := true
+BOARD_VENDOR_DLKMIMAGE_FILE_SYSTEM_TYPE := ext4
+TARGET_COPY_OUT_VENDOR_DLKM := vendor_dlkm
+
+# Build a separate odm_dlkm partition
+BOARD_USES_ODM_DLKMIMAGE := true
+BOARD_ODM_DLKMIMAGE_FILE_SYSTEM_TYPE := ext4
+TARGET_COPY_OUT_ODM_DLKM := odm_dlkm
+
 # FIXME: Remove this once we generate the vbmeta digest correctly
 BOARD_AVB_MAKE_VBMETA_IMAGE_ARGS += --flag 2
 
@@ -151,12 +161,12 @@ DHCPCD_USE_SCRIPT := yes
 
 
 TARGET_RECOVERY_PIXEL_FORMAT := ABGR_8888
-
+TARGET_RECOVERY_UI_LIB := librecovery_ui_cuttlefish
 TARGET_RECOVERY_FSTAB ?= device/google/cuttlefish/shared/config/fstab.f2fs
 
 BOARD_SUPER_PARTITION_SIZE := 6442450944
 BOARD_SUPER_PARTITION_GROUPS := google_dynamic_partitions
-BOARD_GOOGLE_DYNAMIC_PARTITIONS_PARTITION_LIST := odm product system system_ext vendor
+BOARD_GOOGLE_DYNAMIC_PARTITIONS_PARTITION_LIST := odm product system system_ext vendor vendor_dlkm odm_dlkm
 BOARD_GOOGLE_DYNAMIC_PARTITIONS_SIZE := 6442450944
 BOARD_BUILD_SUPER_IMAGE_BY_DEFAULT := true
 BOARD_SUPER_IMAGE_IN_UPDATE_PACKAGE := true
@@ -171,8 +181,6 @@ BOARD_KERNEL_CMDLINE += firmware_class.path=/vendor/etc/
 
 BOARD_KERNEL_CMDLINE += init=/init
 BOARD_KERNEL_CMDLINE += androidboot.hardware=cutf_cvm
-BOARD_KERNEL_CMDLINE += security=selinux
-BOARD_KERNEL_CMDLINE += androidboot.console=ttyS1
 
 ifeq ($(TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE),f2fs)
 BOARD_KERNEL_CMDLINE += androidboot.fstab_suffix=f2fs
@@ -186,5 +194,8 @@ BOARD_INCLUDE_DTB_IN_BOOTIMG := true
 BOARD_BOOT_HEADER_VERSION := 3
 BOARD_USES_RECOVERY_AS_BOOT := true
 BOARD_MKBOOTIMG_ARGS += --header_version $(BOARD_BOOT_HEADER_VERSION)
-PRODUCT_COPY_FILES += device/google/cuttlefish/dtb.img:dtb.img
+PRODUCT_COPY_FILES += \
+    device/google/cuttlefish/dtb.img:dtb.img \
+    device/google/cuttlefish/required_images:required_images \
+
 BOARD_BUILD_SYSTEM_ROOT_IMAGE := false

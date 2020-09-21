@@ -32,8 +32,8 @@ cc_binary_host {
     name: "assemble_cvd",
     srcs: [
         "assemble_cvd.cc",
+        "boot_config.cc",
         "boot_image_unpacker.cc",
-        "data_image.cc",
         "flags.cc",
         "image_aggregator.cc",
         "misc_info.cc",
@@ -41,7 +41,6 @@ cc_binary_host {
     ],
     header_libs: [
         "bootimg_headers",
-        "cuttlefish_glog",
     ],
     shared_libs: [
         "cdisk_spec",
@@ -54,6 +53,7 @@ cc_binary_host {
         "libz",
     ],
     static_libs: [
+        "libext2_uuid",
         "libsparse",
         "libcuttlefish_host_config",
         "libcuttlefish_vm_manager",
@@ -62,10 +62,4 @@ cc_binary_host {
         "libjsoncpp",
     ],
     defaults: ["cuttlefish_host_only", "cuttlefish_libicuuc"],
-}
-
-python_binary_host {
-    name: "cf_bpttool",
-    srcs: [ "cf_bpttool.py" ],
-    defaults: ["py2_only"],
 }

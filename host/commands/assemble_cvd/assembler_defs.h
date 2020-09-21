@@ -15,10 +15,7 @@
  */
 #pragma once
 
-namespace cvd {
-
-constexpr char kLogcatSerialMode[] = "serial";
-constexpr char kLogcatVsockMode[] = "vsock";
+namespace cuttlefish {
 
 enum AssemblerExitCodes : int {
   kSuccess = 0,
@@ -48,4 +45,4 @@ enum AssemblerExitCodes : int {
   kDiskSpaceError = 24,
 };
 
-}  // namespace cvd
+}  // namespace cuttlefish

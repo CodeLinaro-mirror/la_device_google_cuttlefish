@@ -40,9 +40,7 @@ $(call inherit-product, device/google/cuttlefish/shared/phone/device_vendor.mk)
 #
 # Special settings for the target
 #
-DEVICE_PACKAGE_OVERLAYS += device/google/cuttlefish/vsoc_x86/phone/overlay
-
-$(call inherit-product, device/google/cuttlefish/vsoc_x86/device.mk)
+$(call inherit-product, device/google/cuttlefish/vsoc_x86_64/kernel.mk)
 
 # Exclude features that are not available on AOSP devices.
 PRODUCT_COPY_FILES += \

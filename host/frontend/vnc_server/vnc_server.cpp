@@ -16,7 +16,7 @@
 
 #include "host/frontend/vnc_server/vnc_server.h"
 
-#include <glog/logging.h>
+#include <android-base/logging.h>
 #include "common/libs/tcp_socket/tcp_socket.h"
 #include "host/frontend/vnc_server/blackboard.h"
 #include "host/frontend/vnc_server/frame_buffer_watcher.h"
@@ -25,7 +25,7 @@
 #include "host/frontend/vnc_server/vnc_client_connection.h"
 #include "host/frontend/vnc_server/vnc_utils.h"
 
-using cvd::vnc::VncServer;
+using cuttlefish::vnc::VncServer;
 
 VncServer::VncServer(int port, bool aggressive)
     : server_(port),
@@ -35,9 +35,9 @@ VncServer::VncServer(int port, bool aggressive)
 
 void VncServer::MainLoop() {
   while (true) {
-    LOG(INFO) << "Awaiting connections";
+    LOG(DEBUG) << "Awaiting connections";
     auto connection = server_.Accept();
-    LOG(INFO) << "Accepted a client connection";
+    LOG(DEBUG) << "Accepted a client connection";
     StartClient(std::move(connection));
   }
 }

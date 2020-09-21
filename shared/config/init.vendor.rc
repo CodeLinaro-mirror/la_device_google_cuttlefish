@@ -6,6 +6,8 @@ on early-init
     mkdir /dev/gce 0750
     chown system system /dev/gce
 
+    mount securityfs securityfs /sys/kernel/security
+
     # For KCOV
     mount debugfs debugfs /sys/kernel/debug
     chmod 0755 /sys/kernel/debug
@@ -75,8 +77,6 @@ on post-fs
 
 
 on post-fs-data
-    start vport_trigger
-
     mkdir /data/vendor/modem_dump 0777 system system
     mkdir /data/vendor/radio 0777 system system
 
@@ -128,29 +128,20 @@ service vendor.insmod_sh /vendor/bin/init.insmod.sh
 service socket_vsock_proxy /vendor/bin/socket_vsock_proxy -server=vsock -tcp_port=5555 -vsock_port=6520
 
 
-service vport_trigger /vendor/bin/vport_trigger
-    oneshot
-
-
-on property:vendor.ser.cf-logcat=*
-    symlink ${vendor.ser.cf-logcat} /dev/cf-logcat
-    enable seriallogging
-
-
-service seriallogging /system/bin/logcat -b all -v threadtime -f /dev/cf-logcat *:V
+service seriallogging /system/bin/logcat -b all -v threadtime -f /dev/hvc2 *:V
     class main
-    user root
-    disabled
+    user logd
+    group root logd
 
 
-on property:ro.boot.vsock_logcat_port=*
-   enable vsock_logcat
+on property:ro.boot.tpm_vsock_port=*
+  enable vtpm_manager
 
+service vtpm_manager /vendor/bin/vtpm_manager -tpm_vsock_port=${ro.boot.tpm_vsock_port}
+  class main
+  user root
+  disabled
 
-service vsock_logcat /vendor/bin/vsock_logcat
-    class main
-    user root
-    disabled
 
 service vsoc_input_service /vendor/bin/vsoc_input_service -touch_port=${ro.boot.vsock_touch_port} -keyboard_port=${ro.boot.vsock_keyboard_port}
     group root uhid
