@@ -27,4 +27,6 @@ int at_tok_nextstr(char **p_cur, char **out);
 
 int at_tok_hasmore(char **p_cur);
 
+void skipNextComma(char **p_cur);
+
 #endif /*AT_TOK_H */

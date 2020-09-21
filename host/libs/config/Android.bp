@@ -13,13 +13,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-cc_library_host_static {
+cc_library_static {
     name: "libcuttlefish_host_config",
     srcs: [
         "cuttlefish_config.cpp",
+        "cuttlefish_config_instance.cpp",
         "data_image.cpp",
         "fetcher_config.cpp",
         "kernel_args.cpp",
+        "known_paths.cpp",
         "logging.cpp",
     ],
     shared_libs: [
@@ -27,10 +29,8 @@ cc_library_host_static {
         "libcuttlefish_utils",
         "libbase",
         "libgflags",
-    ],
-    static_libs: [
-        "libxml2",
         "libjsoncpp",
+        "libxml2",
     ],
-    defaults: ["cuttlefish_host_only"],
+    defaults: ["cuttlefish_host_and_guest"],
 }

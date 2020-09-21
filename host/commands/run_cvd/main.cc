@@ -65,6 +65,9 @@ using cuttlefish::vm_manager::VmManager;
 
 namespace {
 
+constexpr char kGreenColor[] = "\033[1;32m";
+constexpr char kResetColor[] = "\033[0m";
+
 cuttlefish::OnSocketReadyCb GetOnSubprocessExitCallback(
     const cuttlefish::CuttlefishConfig& config) {
   if (config.restart_subprocesses()) {
@@ -144,9 +147,9 @@ void SetUpHandlingOfBootEvents(
     cuttlefish::ProcessMonitor* process_monitor, cuttlefish::SharedFD boot_events_pipe,
     std::shared_ptr<CvdBootStateMachine> state_machine) {
   process_monitor->MonitorExistingSubprocess(
-      // A dummy command, so logs are desciptive
+      // An unused command, so logs are desciptive
       cuttlefish::Command("boot_events_listener"),
-      // A dummy subprocess, with the boot events pipe as control socket
+      // An unused subprocess, with the boot events pipe as control socket
       cuttlefish::Subprocess(-1, boot_events_pipe),
       [boot_events_pipe, state_machine](cuttlefish::MonitorEntry*) {
         auto sent_code = state_machine->OnBootEvtReceived(boot_events_pipe);
@@ -300,7 +303,7 @@ bool PowerwashFiles() {
   auto overlay_path = instance.PerInstancePath("overlay.img");
   unlink(overlay_path.c_str());
   if (!CreateQcowOverlay(
-      config->crosvm_binary(), config->composite_disk_path(), overlay_path)) {
+      config->crosvm_binary(), instance.composite_disk_path(), overlay_path)) {
     LOG(ERROR) << "CreateQcowOverlay failed";
     return false;
   }
@@ -385,6 +388,21 @@ std::string GetConfigFilePath(const cuttlefish::CuttlefishConfig& config) {
   return instance.PerInstancePath("cuttlefish_config.json");
 }
 
+void PrintStreamingInformation(const cuttlefish::CuttlefishConfig& config) {
+  if (config.ForDefaultInstance().start_webrtc_sig_server()) {
+    // TODO (jemoreira): Change this when webrtc is moved to the debian package.
+    LOG(INFO) << kGreenColor << "Point your browser to https://"
+              << config.sig_server_address() << ":" << config.sig_server_port()
+              << " to interact with the device." << kResetColor;
+  } else if (config.enable_vnc_server()) {
+    LOG(INFO) << kGreenColor << "VNC server started on port "
+              << config.ForDefaultInstance().vnc_server_port() << kResetColor;
+  }
+  // When WebRTC is enabled but an operator other than the one launched by
+  // run_cvd is used there is no way to know the url to which to point the
+  // browser to.
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -432,8 +450,12 @@ int main(int argc, char** argv) {
 
   {
     std::ofstream launcher_log_ofstream(log_path.c_str());
-    auto assemble_log = cuttlefish::ReadFile(config->AssemblyPath("assemble_cvd.log"));
-    launcher_log_ofstream << assemble_log;
+    auto assembly_path = config->AssemblyPath("assemble_cvd.log");
+    std::ifstream assembly_log_ifstream(assembly_path);
+    if (assembly_log_ifstream) {
+      auto assemble_log = cuttlefish::ReadFile(assembly_path);
+      launcher_log_ofstream << assemble_log;
+    }
   }
   ::android::base::SetLogger(cuttlefish::LogToStderrAndFiles({log_path}));
 
@@ -477,15 +499,35 @@ int main(int argc, char** argv) {
     LOG(ERROR) << "Unable to write cuttlefish environment file";
   }
 
-  LOG(INFO) << "The following files contain useful debugging information:";
-  if (config->run_as_daemon()) {
-    LOG(INFO) << "  Launcher log: " << instance.launcher_log_path();
+  PrintStreamingInformation(*config);
+
+  if (config->console()) {
+    LOG(INFO) << kGreenColor << "To access the console run: screen "
+              << instance.console_path() << kResetColor;
+  } else {
+    LOG(INFO) << kGreenColor
+              << "Serial console is disabled; use -console=true to enable it"
+              << kResetColor;
   }
-  LOG(INFO) << "  Android's logcat output: " << instance.logcat_path();
-  LOG(INFO) << "  Kernel log: " << instance.PerInstancePath("kernel.log");
-  LOG(INFO) << "  Instance configuration: " << GetConfigFilePath(*config);
-  LOG(INFO) << "  Instance environment: " << config->cuttlefish_env_path();
-  LOG(INFO) << "To access the console run: screen " << instance.console_path();
+
+  LOG(INFO) << kGreenColor
+            << "The following files contain useful debugging information:"
+            << kResetColor;
+  LOG(INFO) << kGreenColor
+            << "  Launcher log: " << instance.launcher_log_path()
+            << kResetColor;
+  LOG(INFO) << kGreenColor
+            << "  Android's logcat output: " << instance.logcat_path()
+            << kResetColor;
+  LOG(INFO) << kGreenColor
+            << "  Kernel log: " << instance.PerInstancePath("kernel.log")
+            << kResetColor;
+  LOG(INFO) << kGreenColor
+            << "  Instance configuration: " << GetConfigFilePath(*config)
+            << kResetColor;
+  LOG(INFO) << kGreenColor
+            << "  Instance environment: " << config->cuttlefish_env_path()
+            << kResetColor;
 
   auto launcher_monitor_path = instance.launcher_monitor_socket_path();
   auto launcher_monitor_socket = cuttlefish::SharedFD::SocketLocalServer(
@@ -522,6 +564,7 @@ int main(int argc, char** argv) {
   if (config->enable_metrics() == cuttlefish::CuttlefishConfig::kYes) {
     LaunchMetrics(&process_monitor, *config);
   }
+  LaunchModemSimulatorIfEnabled(*config, &process_monitor);
 
   auto event_pipes =
       LaunchKernelLogMonitor(*config, &process_monitor, 2);
@@ -534,10 +577,11 @@ int main(int argc, char** argv) {
 
   LaunchLogcatReceiver(*config, &process_monitor);
   LaunchConfigServer(*config, &process_monitor);
-  LaunchTombstoneReceiverIfEnabled(*config, &process_monitor);
-  LaunchTpm(&process_monitor, *config);
+  LaunchTombstoneReceiver(*config, &process_monitor);
+  LaunchGnssGrpcProxyServerIfEnabled(*config, &process_monitor);
   LaunchSecureEnvironment(&process_monitor, *config);
   LaunchVerhicleHalServerIfEnabled(*config, &process_monitor);
+  LaunchConsoleForwarderIfEnabled(*config, &process_monitor);
 
   // The streamer needs to launch before the VMM because it serves on several
   // sockets (input devices, vsock frame server) when using crosvm.
@@ -550,7 +594,7 @@ int main(int argc, char** argv) {
     streamer_config = LaunchWebRTC(&process_monitor, *config);
   }
 
-  auto kernel_args = KernelCommandLineFromConfig(*config);
+  auto kernel_args = KernelCommandLineFromConfig(*config, config->ForDefaultInstance());
 
   // Start the guest VM
   vm_manager->WithFrontend(streamer_config.launched);

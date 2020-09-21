@@ -18,7 +18,7 @@
 # All components inherited here go to system image (same as GSI system)
 #
 $(call inherit-product, $(SRC_TARGET_DIR)/product/core_64_bit_only.mk)
-$(call inherit-product, $(SRC_TARGET_DIR)/product/mainline_system.mk)
+$(call inherit-product, $(SRC_TARGET_DIR)/product/generic_system.mk)
 
 PRODUCT_ENFORCE_ARTIFACT_PATH_REQUIREMENTS := relaxed
 
@@ -36,7 +36,7 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/aosp_product.mk)
 #
 # All components inherited here go to vendor image
 #
-LOCAL_ENABLE_CODEC2 := true
+LOCAL_DISABLE_OMX := true
 $(call inherit-product, device/google/cuttlefish/shared/phone/device_vendor.mk)
 
 #

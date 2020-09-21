@@ -33,6 +33,7 @@ TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE ?= f2fs
 
 AB_OTA_UPDATER := true
 AB_OTA_PARTITIONS += \
+    boot \
     odm \
     odm_dlkm \
     product \
@@ -41,6 +42,7 @@ AB_OTA_PARTITIONS += \
     vbmeta \
     vbmeta_system \
     vendor \
+    vendor_boot \
     vendor_dlkm \
 
 # Enable Virtual A/B
@@ -59,6 +61,7 @@ PRODUCT_PRODUCT_PROPERTIES += \
 # Explanation of specific properties:
 #   debug.hwui.swap_with_damage avoids boot failure on M http://b/25152138
 #   ro.opengles.version OpenGLES 3.0
+#   ro.hardware.keystore_desede=true needed for CtsKeystoreTestCases
 PRODUCT_PROPERTY_OVERRIDES += \
     tombstoned.max_tombstone_count=500 \
     vendor.bt.rootcanal_test_console=off \
@@ -70,6 +73,7 @@ PRODUCT_PROPERTY_OVERRIDES += \
     ro.opengles.version=196608 \
     wifi.interface=wlan0 \
     persist.sys.zram_enabled=1 \
+    ro.hardware.keystore_desede=true \
     ro.rebootescrow.device=/dev/block/pmem0 \
     ro.incremental.enable=1 \
 
@@ -77,10 +81,7 @@ PRODUCT_PROPERTY_OVERRIDES += \
 PRODUCT_PROPERTY_OVERRIDES += \
     wlan.driver.status=ok
 
-ifeq ($(LOCAL_ENABLE_CODEC2),)
-# Codec 2.0 is unstable on x86; disable it
-PRODUCT_PROPERTY_OVERRIDES += \
-    debug.stagefright.ccodec=0
+ifneq ($(LOCAL_DISABLE_OMX),true)
 # Codec 1.0 requires the OMX services
 DEVICE_MANIFEST_FILE += \
     device/google/cuttlefish/shared/config/android.hardware.media.omx@1.0.xml
@@ -110,7 +111,6 @@ PRODUCT_PACKAGES += \
     wpa_supplicant.vsoc.conf \
     vsoc_input_service \
     rename_netiface \
-    ip_link_add \
     setup_wifi \
     tombstone_transmit \
     tombstone_producer \
@@ -181,8 +181,20 @@ DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/config/manifest.xml
 #
 # General files
 #
+
+
+ifneq ($(LOCAL_SENSOR_FILE_OVERRIDES),true)
+    PRODUCT_COPY_FILES += \
+        frameworks/native/data/etc/android.hardware.sensor.ambient_temperature.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.ambient_temperature.xml \
+        frameworks/native/data/etc/android.hardware.sensor.barometer.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.barometer.xml \
+        frameworks/native/data/etc/android.hardware.sensor.gyroscope.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.gyroscope.xml \
+        frameworks/native/data/etc/android.hardware.sensor.hinge_angle.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.hinge_angle.xml \
+        frameworks/native/data/etc/android.hardware.sensor.light.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.light.xml \
+        frameworks/native/data/etc/android.hardware.sensor.proximity.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.proximity.xml \
+        frameworks/native/data/etc/android.hardware.sensor.relative_humidity.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.relative_humidity.xml
+endif
+
 PRODUCT_COPY_FILES += \
-    device/google/cuttlefish/shared/config/audio_policy.conf:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy.conf \
     hardware/google/camera/devices/EmulatedCamera/hwl/configs/emu_camera_back.json:$(TARGET_COPY_OUT_VENDOR)/etc/config/emu_camera_back.json \
     hardware/google/camera/devices/EmulatedCamera/hwl/configs/emu_camera_front.json:$(TARGET_COPY_OUT_VENDOR)/etc/config/emu_camera_front.json \
     hardware/google/camera/devices/EmulatedCamera/hwl/configs/emu_camera_depth.json:$(TARGET_COPY_OUT_VENDOR)/etc/config/emu_camera_depth.json \
@@ -198,8 +210,6 @@ PRODUCT_COPY_FILES += \
     frameworks/av/media/libeffects/data/audio_effects.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects.xml \
     frameworks/av/media/libstagefright/data/media_codecs_google_audio.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_audio.xml \
     frameworks/av/media/libstagefright/data/media_codecs_google_telephony.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_telephony.xml \
-    frameworks/av/services/audiopolicy/config/audio_policy_configuration_generic.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy_configuration.xml \
-    frameworks/av/services/audiopolicy/config/primary_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/primary_audio_policy_configuration.xml \
     frameworks/av/services/audiopolicy/config/r_submix_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/r_submix_audio_policy_configuration.xml \
     frameworks/av/services/audiopolicy/config/audio_policy_volumes.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy_volumes.xml \
     frameworks/av/services/audiopolicy/config/default_volume_tables.xml:$(TARGET_COPY_OUT_VENDOR)/etc/default_volume_tables.xml \
@@ -214,14 +224,8 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.ethernet.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.ethernet.xml \
     frameworks/native/data/etc/android.hardware.location.gps.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.location.gps.xml \
     frameworks/native/data/etc/android.hardware.reboot_escrow.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.reboot_escrow.xml \
-    frameworks/native/data/etc/android.hardware.sensor.ambient_temperature.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.ambient_temperature.xml \
-    frameworks/native/data/etc/android.hardware.sensor.barometer.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.barometer.xml \
-    frameworks/native/data/etc/android.hardware.sensor.gyroscope.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.gyroscope.xml \
-    frameworks/native/data/etc/android.hardware.sensor.hinge_angle.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.hinge_angle.xml \
-    frameworks/native/data/etc/android.hardware.sensor.light.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.light.xml \
-    frameworks/native/data/etc/android.hardware.sensor.proximity.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.proximity.xml \
-    frameworks/native/data/etc/android.hardware.sensor.relative_humidity.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.relative_humidity.xml \
     frameworks/native/data/etc/android.hardware.usb.accessory.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.usb.accessory.xml \
+    frameworks/native/data/etc/android.hardware.usb.host.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.usb.host.xml \
     frameworks/native/data/etc/android.hardware.vulkan.level-0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.vulkan.level.xml \
     frameworks/native/data/etc/android.hardware.vulkan.version-1_0_3.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.vulkan.version.xml \
     frameworks/native/data/etc/android.hardware.wifi.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.wifi.xml \
@@ -257,8 +261,7 @@ PRODUCT_PACKAGES += \
 #
 PRODUCT_PACKAGES += \
     hwcomposer.drm_minigbm \
-    hwcomposer.cutf_cvm_ashmem \
-    hwcomposer.cutf_hwc2 \
+    hwcomposer.cutf \
     hwcomposer-stats \
     android.hardware.graphics.composer@2.2-impl \
     android.hardware.graphics.composer@2.2-service
@@ -280,21 +283,35 @@ PRODUCT_PACKAGES += \
 #
 # Audio HAL
 #
-ifeq ($(LOCAL_AUDIO_PRODUCT_PACKAGE),)
-LOCAL_AUDIO_PRODUCT_PACKAGE := \
+LOCAL_AUDIO_PRODUCT_PACKAGE ?= \
     audio.primary.cutf \
     audio.r_submix.default \
     android.hardware.audio@6.0-impl \
     android.hardware.audio.effect@6.0-impl \
     android.hardware.audio@2.0-service
-endif
+
+LOCAL_AUDIO_PRODUCT_COPY_FILES ?= \
+    device/google/cuttlefish/shared/config/audio_policy.conf:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy.conf \
+    frameworks/av/services/audiopolicy/config/audio_policy_configuration_generic.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy_configuration.xml \
+    frameworks/av/services/audiopolicy/config/primary_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/primary_audio_policy_configuration.xml
+
+LOCAL_AUDIO_DEVICE_PACKAGE_OVERLAYS ?=
+
 PRODUCT_PACKAGES += $(LOCAL_AUDIO_PRODUCT_PACKAGE)
+PRODUCT_COPY_FILES += $(LOCAL_AUDIO_PRODUCT_COPY_FILES)
+DEVICE_PACKAGE_OVERLAYS += $(LOCAL_AUDIO_DEVICE_PACKAGE_OVERLAYS)
 
 #
 # BiometricsFace HAL
 #
 PRODUCT_PACKAGES += \
     android.hardware.biometrics.face@1.1-service.example
+
+#
+# BiometricsFingerprint HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.biometrics.fingerprint-service.example
 
 #
 # Contexthub HAL
@@ -328,8 +345,11 @@ PRODUCT_PACKAGES += \
 #
 # Gatekeeper
 #
+ifeq ($(LOCAL_GATEKEEPER_PRODUCT_PACKAGE),)
+       LOCAL_GATEKEEPER_PRODUCT_PACKAGE := android.hardware.gatekeeper@1.0-service.remote
+endif
 PRODUCT_PACKAGES += \
-    android.hardware.gatekeeper@1.0-service.software
+    $(LOCAL_GATEKEEPER_PRODUCT_PACKAGE)
 
 #
 # GPS
@@ -380,8 +400,11 @@ PRODUCT_PACKAGES += \
 #
 # Keymaster HAL
 #
+ifeq ($(LOCAL_KEYMASTER_PRODUCT_PACKAGE),)
+       LOCAL_KEYMASTER_PRODUCT_PACKAGE := android.hardware.keymaster@4.1-service.remote
+endif
 PRODUCT_PACKAGES += \
-     android.hardware.keymaster@4.1-service.remote
+    $(LOCAL_KEYMASTER_PRODUCT_PACKAGE)
 
 #
 # Power HAL
@@ -393,7 +416,7 @@ PRODUCT_PACKAGES += \
 # PowerStats HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.power.stats@1.0-service.mock
+    android.hardware.powerstats-service.example
 
 #
 # NeuralNetworks HAL
@@ -426,7 +449,7 @@ PRODUCT_PACKAGES += \
 
 # WLAN driver configuration files
 PRODUCT_COPY_FILES += \
-    $(LOCAL_PATH)/wpa_supplicant_overlay.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wifi/wpa_supplicant_overlay.conf
+    $(LOCAL_PATH)/config/wpa_supplicant_overlay.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wifi/wpa_supplicant_overlay.conf
 
 # Recovery mode
 ifneq ($(TARGET_NO_RECOVERY),true)
@@ -457,3 +480,36 @@ PRODUCT_SOONG_NAMESPACES += vendor/google_devices/common/proprietary/confirmatio
 # Need this so that the application's loop on reading input can be synchronized
 # with HW VSYNC
 PRODUCT_DEFAULT_PROPERTY_OVERRIDES += ro.surface_flinger.running_without_sync_framework=true
+
+# b/143977934: Remove coverage allowlist after switching to Clang coverage.
+NATIVE_COVERAGE_PATHS := \
+    external/aac \
+    external/libaom \
+    external/libavc \
+    external/libgav1 \
+    external/libgsm \
+    external/libhevc \
+    external/libmpeg2 \
+    external/libopus \
+    external/libvpx \
+    external/libxaac \
+    external/rust \
+    external/sonivox \
+    external/tremolo \
+    frameworks/av \
+    frameworks/base/media \
+    frameworks/ml/nn \
+    packages/modules/DnsResolver \
+    system/netd
+
+# Set support one-handed mode
+ PRODUCT_PRODUCT_PROPERTIES += \
+    ro.support_one_handed_mode=true
+
+# Set one_handed_mode screen translate offset percentage
+PRODUCT_PRODUCT_PROPERTIES += \
+    persist.debug.one_handed_offset_percentage=50
+
+# Set one_handed_mode translate animation duration milliseconds
+PRODUCT_PRODUCT_PROPERTIES += \
+    persist.debug.one_handed_translate_animation_duration=300
