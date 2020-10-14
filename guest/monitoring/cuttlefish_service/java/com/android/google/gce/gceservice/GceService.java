@@ -67,10 +67,11 @@ public class GceService extends Service {
             mWifiManager = new GceWifiManager(this, mBootReporter, mExecutor);
 
             mExecutor.schedule(mWifiManager);
-            mExecutor.schedule(mBluetoothChecker);
+            // TODO(b/169348344): Re-enable bluetooth checker.
+            //mExecutor.schedule(mBluetoothChecker);
             mExecutor.schedule(mConnChecker);
 
-            mExecutor.schedule(mBootReporter, mBluetoothChecker.getEnabled());
+            mExecutor.schedule(mBootReporter);
 
             NotificationManager notificationManager =
                     (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
