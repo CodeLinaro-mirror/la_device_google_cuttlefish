@@ -18,8 +18,10 @@
 #include <map>
 #include <vector>
 
+#include <keymaster/attestation_record.h>
 #include <keymaster/keymaster_context.h>
 
+class TpmAttestationRecordContext;
 class TpmResourceManager;
 class TpmKeyBlobMaker;
 class TpmRandomSource;
@@ -32,16 +34,17 @@ class TpmRandomSource;
  */
 class TpmKeymasterContext : public keymaster::KeymasterContext {
 private:
-  TpmResourceManager* resource_manager_;
+  TpmResourceManager& resource_manager_;
+  keymaster::KeymasterEnforcement& enforcement_;
   std::unique_ptr<TpmKeyBlobMaker> key_blob_maker_;
   std::unique_ptr<TpmRandomSource> random_source_;
-  std::unique_ptr<keymaster::KeymasterEnforcement> enforcement_;
+  std::unique_ptr<TpmAttestationRecordContext> attestation_context_;
   std::map<keymaster_algorithm_t, std::unique_ptr<keymaster::KeyFactory>> key_factories_;
   std::vector<keymaster_algorithm_t> supported_algorithms_;
   uint32_t os_version_;
   uint32_t os_patchlevel_;
 public:
-  TpmKeymasterContext(TpmResourceManager* resource_manager);
+  TpmKeymasterContext(TpmResourceManager&, keymaster::KeymasterEnforcement&);
   ~TpmKeymasterContext() = default;
 
   keymaster_error_t SetSystemVersion(

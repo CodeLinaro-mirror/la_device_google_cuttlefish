@@ -38,6 +38,7 @@
 #include "common/libs/utils/subprocess.h"
 #include "common/libs/utils/users.h"
 #include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/config/known_paths.h"
 
 namespace cuttlefish {
 namespace vm_manager {
@@ -88,19 +89,28 @@ bool Stop() {
 const std::string QemuManager::name() { return "qemu_cli"; }
 
 std::vector<std::string> QemuManager::ConfigureGpu(const std::string& gpu_mode) {
-  if (gpu_mode != cuttlefish::kGpuModeGuestSwiftshader) {
-    return {};
-  }
-  // Override the default HAL search paths in all cases. We do this because
-  // the HAL search path allows for fallbacks, and fallbacks in conjunction
-  // with properities lead to non-deterministic behavior while loading the
-  // HALs.
-  return {
+  if (gpu_mode == cuttlefish::kGpuModeGuestSwiftshader) {
+    // Override the default HAL search paths in all cases. We do this because
+    // the HAL search path allows for fallbacks, and fallbacks in conjunction
+    // with properities lead to non-deterministic behavior while loading the
+    // HALs.
+    return {
       "androidboot.hardware.gralloc=minigbm",
-      "androidboot.hardware.hwcomposer=cutf_cvm_ashmem",
+      "androidboot.hardware.hwcomposer=cutf",
       "androidboot.hardware.egl=swiftshader",
       "androidboot.hardware.vulkan=pastel",
-  };
+    };
+  }
+
+  if (gpu_mode == cuttlefish::kGpuModeDrmVirgl) {
+    return {
+      "androidboot.hardware.gralloc=minigbm",
+      "androidboot.hardware.hwcomposer=drm_minigbm",
+      "androidboot.hardware.egl=mesa",
+    };
+  }
+
+  return {};
 }
 
 std::vector<std::string> QemuManager::ConfigureBootDevices() {
@@ -166,9 +176,6 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
   qemu_cmd.AddParameter("-uuid");
   qemu_cmd.AddParameter(instance.uuid());
 
-  qemu_cmd.AddParameter("-display");
-  qemu_cmd.AddParameter("none");
-
   qemu_cmd.AddParameter("-no-user-config");
   qemu_cmd.AddParameter("-nodefaults");
   qemu_cmd.AddParameter("-no-shutdown");
@@ -194,21 +201,17 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
 
   // In kgdb mode, earlycon is an interactive console, and so early
   // dmesg will go there instead of the kernel.log
-  if (config_->kgdb() || config_->use_bootloader()) {
-    qemu_cmd.AddParameter("-chardev");
-    qemu_cmd.AddParameter("socket,id=earlycon,path=",
-                          instance.console_path(), ",server,nowait");
-  } else {
+  if (!(config_->console() && (config_->kgdb() || config_->use_bootloader()))) {
     qemu_cmd.AddParameter("-chardev");
     qemu_cmd.AddParameter("file,id=earlycon,path=",
                           instance.kernel_log_pipe_name(), ",append=on");
-  }
 
-  // On ARM, -serial will imply an AMBA pl011 serial port. On x86, -serial
-  // will imply an ISA serial port. We have set up earlycon for each of these
-  // port types, so the setting here should match
-  qemu_cmd.AddParameter("-serial");
-  qemu_cmd.AddParameter("chardev:earlycon");
+    // On ARM, -serial will imply an AMBA pl011 serial port. On x86, -serial
+    // will imply an ISA serial port. We have set up earlycon for each of these
+    // port types, so the setting here should match
+    qemu_cmd.AddParameter("-serial");
+    qemu_cmd.AddParameter("chardev:earlycon");
+  }
 
   // This sets up the HVC (virtio-serial / virtio-console) port for the kernel
   // logging. This will take over the earlycon logging when the module is
@@ -225,18 +228,34 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
 
   // This handles the Android interactive serial console - /dev/hvc1
 
-  // In kgdb mode, we have the interactive console on ttyS0 (both Android's
-  // console and kdb), so we can disable the virtio-console port usually
-  // allocated to Android's serial console, and redirect it to a sink. This
-  // ensures that that the PCI device assignments (and thus sepolicy) don't
-  // have to change
-  if (config_->kgdb() || config_->use_bootloader()) {
+  if (config_->console()) {
+    if (config_->kgdb() || config_->use_bootloader()) {
+      qemu_cmd.AddParameter("-chardev");
+      qemu_cmd.AddParameter("pipe,id=earlycon,path=", instance.console_pipe_prefix());
+
+      // On ARM, -serial will imply an AMBA pl011 serial port. On x86, -serial
+      // will imply an ISA serial port. We have set up earlycon for each of these
+      // port types, so the setting here should match
+      qemu_cmd.AddParameter("-serial");
+      qemu_cmd.AddParameter("chardev:earlycon");
+
+      // In kgdb mode, we have the interactive console on ttyS0 (both Android's
+      // console and kdb), so we can disable the virtio-console port usually
+      // allocated to Android's serial console, and redirect it to a sink. This
+      // ensures that that the PCI device assignments (and thus sepolicy) don't
+      // have to change
+      qemu_cmd.AddParameter("-chardev");
+      qemu_cmd.AddParameter("null,id=hvc1");
+    } else {
+      qemu_cmd.AddParameter("-chardev");
+      qemu_cmd.AddParameter("pipe,id=hvc1,path=", instance.console_pipe_prefix());
+    }
+  } else {
+    // as above, create a fake virtio-console 'sink' port when the serial
+    // console is disabled, so the PCI device ID assignments don't move
+    // around
     qemu_cmd.AddParameter("-chardev");
     qemu_cmd.AddParameter("null,id=hvc1");
-  } else {
-    qemu_cmd.AddParameter("-chardev");
-    qemu_cmd.AddParameter("socket,id=hvc1,path=", instance.console_path(),
-                          ",server,nowait");
   }
 
   qemu_cmd.AddParameter("-device");
@@ -244,6 +263,14 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
 
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("virtconsole,bus=virtio-serial1.0,chardev=hvc1");
+
+  if (config_->enable_gnss_grpc_proxy()) {
+      qemu_cmd.AddParameter("-chardev");
+      qemu_cmd.AddParameter("pipe,id=gnss,path=", instance.gnss_pipe_prefix());
+
+      qemu_cmd.AddParameter("-serial");
+      qemu_cmd.AddParameter("chardev:gnss");
+  }
 
   // If configured, this handles logcat forwarding to the host via serial
   // (instead of vsocket) - /dev/hvc2
@@ -270,6 +297,23 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
                           ",id=virtio-disk", i, bootindex);
   }
 
+  qemu_cmd.AddParameter("-device");
+  qemu_cmd.AddParameter("virtio-mouse-pci");
+
+  qemu_cmd.AddParameter("-device");
+  qemu_cmd.AddParameter("virtio-keyboard-pci");
+
+  if (config_->gpu_mode() == cuttlefish::kGpuModeDrmVirgl) {
+    qemu_cmd.AddParameter("-display");
+    qemu_cmd.AddParameter("egl-headless");
+
+    qemu_cmd.AddParameter("-vnc");
+    qemu_cmd.AddParameter(":", instance.vnc_server_port() - 5900);
+  } else {
+    qemu_cmd.AddParameter("-display");
+    qemu_cmd.AddParameter("none");
+  }
+
   if (!is_arm) {
     // QEMU will assign the NVDIMM (ramoops pstore region) 100000000-1001fffff
     // As we will pass this to ramoops, define this region first so it is always
@@ -282,13 +326,17 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
     qemu_cmd.AddParameter("nvdimm,memdev=objpmem0,id=ramoops");
   }
 
-  qemu_cmd.AddParameter("-object");
-  qemu_cmd.AddParameter("memory-backend-file,id=objpmem1,share,mem-path=",
-                        instance.access_kregistry_path(), ",size=",
-                        access_kregistry_size_bytes);
+  // QEMU does not implement virtio-pmem-pci for ARM64 yet; restore this
+  // when the device has been added
+  if (!is_arm) {
+    qemu_cmd.AddParameter("-object");
+    qemu_cmd.AddParameter("memory-backend-file,id=objpmem1,share,mem-path=",
+                          instance.access_kregistry_path(), ",size=",
+                          access_kregistry_size_bytes);
 
-  qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-pmem-pci,disable-legacy=on,memdev=objpmem1,id=pmem0");
+    qemu_cmd.AddParameter("-device");
+    qemu_cmd.AddParameter("virtio-pmem-pci,disable-legacy=on,memdev=objpmem1,id=pmem0");
+  }
 
   qemu_cmd.AddParameter("-object");
   qemu_cmd.AddParameter("rng-random,id=objrng0,filename=/dev/urandom");

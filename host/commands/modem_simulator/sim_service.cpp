@@ -15,12 +15,14 @@
 
 #include "host/commands/modem_simulator/sim_service.h"
 
+#include <android-base/logging.h>
 #include <tinyxml2.h>
 
 #include "common/libs/utils/files.h"
 #include "host/commands/modem_simulator/device_config.h"
 #include "host/commands/modem_simulator/network_service.h"
 #include "host/commands/modem_simulator/pdu_parser.h"
+#include "host/commands/modem_simulator/nvram_config.h"
 
 namespace cuttlefish {
 
@@ -301,6 +303,10 @@ std::vector<CommandHandler> SimService::InitializeCommandHandlers() {
                      [this](const Client& client, std::string& cmd) {
                        this->HandleSIM_IO(client, cmd);
                      }),
+      CommandHandler("+CSIM=",
+                     [this](const Client& client, std::string& cmd) {
+                     this->HandleCSIM_IO(client, cmd);
+                     }),
       CommandHandler(
           "+CIMI",
           [this](const Client& client) { this->HandleGetIMSI(client); }),
@@ -339,6 +345,10 @@ std::vector<CommandHandler> SimService::InitializeCommandHandlers() {
                      [this](const Client& client, std::string& cmd) {
                        this->HandleCdmaRoamingPreference(client, cmd);
                      }),
+      CommandHandler("^MBAU=",
+                    [this](const Client& client, std::string& cmd) {
+                    this->HandleSimAuthentication(client, cmd);
+                    }),
   };
   return (command_handlers);
 }
@@ -355,8 +365,14 @@ void SimService::InitializeServiceState() {
 }
 
 void SimService::InitializeSimFileSystemAndSimState() {
+  auto nvram_config = NvramConfig::Get();
+  auto sim_type = nvram_config->sim_type();
   std::stringstream ss;
-  ss << "iccprofile_for_sim" << service_id_ << ".xml";
+  if (sim_type == 2) {  // Special sim card for CtsCarrierApiTestCases
+    ss << "iccprofile_for_sim" << service_id_ << "_for_CtsCarrierApiTestCases.xml";
+  } else {
+    ss << "iccprofile_for_sim" << service_id_ << ".xml";
+  }
   auto icc_profile_name = ss.str();
 
   auto icc_profile_path = cuttlefish::modem::DeviceConfig::PerInstancePath(
@@ -367,7 +383,13 @@ void SimService::InitializeSimFileSystemAndSimState() {
       !cuttlefish::FileHasContent(icc_profile_path.c_str())) {
     ss.clear();
     ss.str("");
-    ss << "etc/modem_simulator/files/iccprofile_for_sim" << service_id_ << ".xml";
+
+    if (sim_type == 2) {  // Special sim card for CtsCarrierApiTestCases
+      ss << "etc/modem_simulator/files/iccprofile_for_sim" << service_id_
+          << "_for_CtsCarrierApiTestCases.xml";
+    } else {
+      ss << "etc/modem_simulator/files/iccprofile_for_sim" << service_id_ << ".xml";
+    }
 
     auto etc_file_path =
         cuttlefish::modem::DeviceConfig::DefaultHostArtifactsPath(ss.str());
@@ -813,11 +835,11 @@ void SimService::HandleSIMStatusReq(const Client& client) {
   auto iter = gSimStatusResponse.find(sim_status_);
   if (iter != gSimStatusResponse.end()) {
     responses.push_back(iter->second);
+    responses.push_back("OK");
   } else {
     sim_status_ = SIM_STATUS_ABSENT;
     responses.push_back(kCmeErrorSimNotInserted);
   }
-  responses.push_back("OK");
   client.SendCommandResponse(responses);
 }
 
@@ -865,6 +887,13 @@ void SimService::HandleSIM_IO(const Client& client,
 
   CommandParser cmd(command);
   cmd.SkipPrefix();  // skip "AT+CRSM="
+
+  if (*cmd == "242,0,0,0,0") { //  for cts teset
+    responses.push_back("+CRSM: 144,0,62338202782183023F00A50C80016187010183040007DBF08A01058B062F0601020002C60C90016083010183010A83010D8102FFFF");
+    responses.push_back("OK");
+    client.SendCommandResponse(responses);
+    return;
+  }
 
   auto c = cmd.GetNextStrDeciToHex();
   auto id = cmd.GetNextStrDeciToHex();
@@ -970,6 +999,63 @@ bool SimService::checkPin1AndAdjustSimStatus(std::string_view pin) {
   }
 
   return false;
+}
+
+/* AT+CSIM */
+void SimService::HandleCSIM_IO(const Client& client,
+                              const std::string& command) {
+  std::vector<std::string> responses;
+
+  CommandParser cmd(command);
+  cmd.SkipPrefix();  // skip "AT+CSIM="
+
+  cmd.SkipComma();
+  auto data = cmd.GetNextStr();
+
+  XMLElement *root = sim_file_system_.GetRootElement();
+  if (!root) {
+    LOG(ERROR) << "Unable to find root element: IccProfile";
+    client.SendCommandResponse(kCmeErrorOperationNotAllowed);
+    return;
+  }
+  // Get aid
+  XMLElement* df = SimFileSystem::FindAttribute(root, "aid", "CSIM");
+  if (!df) {
+    client.SendCommandResponse(kCmeErrorNotFound);
+    return;
+  }
+
+  std::string data_value(data);
+  if (data_value.length() > 10) {  // for open channel with csim
+      responses.push_back("+CSIM: 4,9000");
+      responses.push_back("OK");
+      client.SendCommandResponse(responses);
+      return;
+  }
+  XMLElement* final = SimFileSystem::FindAttribute(df, "cmd", data_value);
+  if (!final) {
+    client.SendCommandResponse(kCmeErrorNotFound);
+    return;
+  }
+
+  auto id = data_value.substr(data_value.length() - 2, 2);
+
+  std::vector<LogicalChannel>::iterator iter = logical_channels_.begin();
+  for (; iter != logical_channels_.end(); ++iter) {
+    if (!iter->is_open) break;
+  }
+
+  if (iter != logical_channels_.end() && iter->session_id ==stoi(id)) {
+    iter->is_open = true;
+    iter->df_name = "CSIM";
+  }
+
+  std::stringstream ss;
+  ss << "+CSIM: " << final->GetText();
+
+  responses.push_back(ss.str());
+  responses.push_back("OK");
+  client.SendCommandResponse(responses);
 }
 
 bool SimService::ChangePin1AndAdjustSimStatus(PinStatus::ChangeMode mode,
@@ -1277,6 +1363,19 @@ void SimService::HandleOpenLogicalChannel(const Client& client,
     return;
   }
 
+  XMLElement *root = sim_file_system_.GetRootElement();
+  if (!root) {
+    client.SendCommandResponse(kCmeErrorOperationNotAllowed);
+    return;
+  }
+
+  std::string aid_value(*cmd);
+  XMLElement* df = SimFileSystem::FindAttribute(root, "aid", aid_value);
+  if (!df) {
+    client.SendCommandResponse(kCmeErrorNotFound);
+    return;
+  }
+
   std::vector<LogicalChannel>::iterator iter = logical_channels_.begin();
   for (; iter != logical_channels_.end(); ++iter) {
     if (!iter->is_open) break;
@@ -1322,7 +1421,7 @@ void SimService::HandleCloseLogicalChannel(const Client& client,
     if (iter->session_id == session_id) break;
   }
 
-  if (iter != logical_channels_.end()) {
+  if (iter != logical_channels_.end() && iter->is_open) {
     iter->is_open = false;
     iter->df_name.clear();
     responses.push_back("+CCHC");
@@ -1386,20 +1485,35 @@ void SimService::HandleTransmitLogicalChannel(const Client& client,
     return;
   }
 
+  // Get aid
   XMLElement* df = SimFileSystem::FindAttribute(root, "aid", iter->df_name);
   if (!df) {
     client.SendCommandResponse(kCmeErrorNotFound);
     return;
   }
 
-  std::string attr_value(cmd->substr(2));  // skip session id
-  XMLElement* final = SimFileSystem::FindAttribute(df, "CGLA", attr_value);
+  if (iter->df_name != "CSIM") {
+    std::string command_vaule(*cmd);
+    if (command_vaule.substr(2, 2) == "a4") {
+      last_file_id_ = command_vaule.substr(command_vaule.length() - 4, 4);
+    }
+      df = SimFileSystem::FindAttribute(df, "id", last_file_id_);
+      if (!df) {
+      client.SendCommandResponse(kCmeErrorNotFound);
+      return;
+    }
+  }
+
+  std::string attr_value(*cmd);
+  XMLElement* final = SimFileSystem::FindAttribute(df, "cmd", attr_value);
   if (!final) {
     client.SendCommandResponse(kCmeErrorNotFound);
     return;
   }
 
-  responses.push_back(final->GetText());
+  std::stringstream ss;
+  ss << "+CGLA: " << final->GetText();
+  responses.push_back(ss.str());
   responses.push_back("OK");
   client.SendCommandResponse(responses);
 }
@@ -1506,7 +1620,6 @@ void SimService::HandleCdmaSubscriptionSource(const Client& client,
   std::vector<std::string> responses;
 
   CommandParser cmd(command);
-  cmd.SkipPrefix();
   if (*cmd == "AT+CCSS?") {  // Query
     std::stringstream ss;
     ss << "+CCSS: " << cdma_subscription_source_;
@@ -1528,7 +1641,6 @@ void SimService::HandleCdmaRoamingPreference(const Client& client,
   std::vector<std::string> responses;
 
   CommandParser cmd(command);
-  cmd.SkipPrefix();
   if (*cmd == "AT+WRMP?") {  // Query
     std::stringstream ss;
     ss << "+WRMP: " << cdma_roaming_preference_;
@@ -1539,5 +1651,28 @@ void SimService::HandleCdmaRoamingPreference(const Client& client,
   responses.push_back("OK");
   client.SendCommandResponse(responses);
 }
+
+void SimService::HandleSimAuthentication(const Client& client,
+                                             const std::string& command) {
+  std::vector<std::string> responses;
+
+  CommandParser cmd(command);
+  cmd.SkipPrefix();
+
+  std::stringstream ss;
+  auto cmds = cmd.GetNextStr();
+
+  // for cts
+  if (cmds == "2713AB0BA8E8E7D8F1D74545BA03F563") {
+    ss << "^MBAU: 0,8F2980FC3872FF89,E9620240";
+  } else if (cmds == "C3718EC16B3C2A66F8A7200A64069F04") {
+    ss << "^MBAU: 0,CFDA6C980502DA48,F7E53577";
+  }
+
+  responses.push_back(ss.str());
+  responses.push_back("OK");
+  client.SendCommandResponse(responses);
+}
+
 
 }  // namespace cuttlefish

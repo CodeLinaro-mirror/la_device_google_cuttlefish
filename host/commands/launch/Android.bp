@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-cc_binary_host {
+cc_binary {
     name: "launch_cvd",
     srcs: [
         "filesystem_explorer.cc",
@@ -24,17 +24,17 @@ cc_binary_host {
         "libcuttlefish_fs",
         "libcuttlefish_utils",
         "libbase",
+        "libjsoncpp",
         "libnl",
+        "libxml2",
     ],
     static_libs: [
         "libcuttlefish_host_config",
         "libcuttlefish_vm_manager",
         "libgflags",
-        "libxml2",
-        "libjsoncpp",
     ],
     required: [
         "mkenvimage",
     ],
-    defaults: ["cuttlefish_host_only", "cuttlefish_libicuuc"],
+    defaults: ["cuttlefish_host_and_guest", "cuttlefish_libicuuc"],
 }
