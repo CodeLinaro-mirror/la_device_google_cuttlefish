@@ -15,125 +15,128 @@ bin_path := $(notdir $(HOST_OUT_EXECUTABLES))
 lib_path := $(notdir $(HOST_OUT_SHARED_LIBRARIES))
 tests_path := $(notdir $(HOST_OUT_NATIVE_TESTS))
 webrtc_files_path := usr/share/webrtc
-x86_64_seccomp_files_path := usr/share/cuttlefish/x86_64-linux-gnu/seccomp
-aarch64_seccomp_files_path := usr/share/cuttlefish/aarch64-linux-gnu/seccomp
 modem_simulator_path := etc/modem_simulator
 
 cvd_host_executables := \
-    adb \
-    adbshell \
-    launch_cvd \
-    lpmake \
-    lpunpack \
-    socket_vsock_proxy \
-    adb_connector \
-    stop_cvd \
-    vnc_server \
-    kernel_log_monitor \
-    extract-vmlinux \
-    crosvm \
     aarch64-linux-gnu/crosvm \
     aarch64-linux-gnu/libepoxy.so.0 \
     aarch64-linux-gnu/libgbm.so.1 \
     aarch64-linux-gnu/libminijail.so \
     aarch64-linux-gnu/libvirglrenderer.so.1 \
-    x86_64-linux-gnu/crosvm \
-    x86_64-linux-gnu/libepoxy.so.0 \
-    x86_64-linux-gnu/libgbm.so.1 \
-    x86_64-linux-gnu/libminijail.so \
-    x86_64-linux-gnu/libvirglrenderer.so.1 \
-    x86_64-linux-gnu/libc++.so.1 \
-    x86_64-linux-gnu/libandroid-emu-shared.so \
-    x86_64-linux-gnu/libemugl_common.so \
-    x86_64-linux-gnu/libOpenglRender.so \
-    x86_64-linux-gnu/libgfxstream_backend.so \
-    logcat_receiver \
-    config_server \
-    tombstone_receiver \
-    console_forwarder \
+    adb \
+    adb_connector \
+    adbshell \
+    allocd \
+    allocd_client \
     assemble_cvd \
-    run_cvd \
+    config_server \
+    console_forwarder \
+    crosvm \
     cvd_status \
-    powerwash_cvd \
-    webRTC \
-    webrtc_sig_server \
-    metrics \
+    detect_graphics \
+    extract-vmlinux \
     fsck.f2fs \
-    resize.f2fs \
-    make_f2fs \
-    tpm_simulator_manager \
-    vtpm_passthrough \
-    ms-tpm-20-ref \
-    lz4 \
-    mkenvimage \
-    tapsetiff \
-    newfs_msdos \
-    secure_env \
+    gnss_grpc_proxy \
+    kernel_log_monitor \
+    launch_cvd \
     log_tee \
+    logcat_receiver \
+    lpmake \
+    lpunpack \
+    lz4 \
+    make_f2fs \
+    metrics \
+    mkenvimage \
     modem_simulator \
+    ms-tpm-20-ref \
+    newfs_msdos \
+    powerwash_cvd \
+    resize.f2fs \
+    run_cvd \
+    secure_env \
+    socket_vsock_proxy \
+    stop_cvd \
+    tapsetiff \
+    tombstone_receiver \
+    vnc_server \
+    webRTC \
+    webrtc_operator \
+    x86_64-linux-gnu/crosvm \
+    x86_64-linux-gnu/libOpenglRender.so \
+    x86_64-linux-gnu/libandroid-emu-shared.so \
+    x86_64-linux-gnu/libc++.so.1 \
+    x86_64-linux-gnu/libemugl_common.so \
+    x86_64-linux-gnu/libgfxstream_backend.so \
 
 ifneq ($(wildcard device/google/trout),)
     cvd_host_executables += android.hardware.automotive.vehicle@2.0-virtualization-grpc-server
 endif
 
 cvd_host_tests := \
-    monotonic_time_test \
     cuttlefish_net_tests \
     modem_simulator_test \
 
 cvd_host_shared_libraries := \
-    libbase.so \
-    libcuttlefish_fs.so \
-    libcuttlefish_utils.so \
-    cuttlefish_tcp_socket.so \
+    android.hardware.automotive.vehicle@2.0.so \
     cuttlefish_net.so \
-    liblog.so \
-    libnl.so \
+    libandroidicu-host.so \
+    libbase.so \
     libc++.so \
-    libcutils.so \
-    libpuresoftkeymasterdevice_host.so \
-    liblp.so \
-    libsparse-host.so \
+    libcap.so \
     libcrypto-host.so \
     libcrypto_utils.so \
-    libext4_utils.so \
-    libz-host.so \
-    libicuuc-host.so \
-    libicui18n-host.so \
-    libandroidicu-host.so \
+    libcutils.so \
+    libcuttlefish_allocd_utils.so \
     libcuttlefish_device_config.so \
-    cdisk_spec.so \
-    libprotobuf-cpp-full.so \
-    libziparchive.so \
-    libvpx.so \
-    libssl-host.so \
-    libopus.so \
-    libyuv.so \
+    libcuttlefish_fs.so \
+    libcuttlefish_security.so \
+    libcuttlefish_utils.so \
+    libdrm.so \
+    libepoxy.so \
+    libext4_utils.so \
+    libfdt.so \
+    libgatekeeper.so \
+    libgbm.so \
+    libgrpc++.so \
+    libhidlbase.so \
+    libicui18n-host.so \
+    libicuuc-host.so \
     libjpeg.so \
+    libjsoncpp.so \
     libkeymaster_messages.so \
     libkeymaster_portable.so \
+    liblog.so \
+    liblp.so \
+    libminijail.so \
+    libnl.so \
+    libopus.so \
+    libprotobuf-cpp-full.so \
+    libpuresoftkeymasterdevice_host.so \
     libsoft_attestation_cert.so \
-    libcuttlefish_security.so \
+    libsparse-host.so \
+    libssl-host.so \
+    libutils.so \
+    libvirglrenderer.so \
+    libvpx.so \
+    libwayland_client.so \
+    libxml2.so \
+    libyuv.so \
+    libz-host.so \
+    libziparchive.so \
+    ms-tpm-20-ref-lib.so \
     tpm2-tss2-esys.so \
     tpm2-tss2-mu.so \
     tpm2-tss2-rc.so \
     tpm2-tss2-sys.so \
     tpm2-tss2-tcti.so \
     tpm2-tss2-util.so \
-    libgatekeeper.so \
-    ms-tpm-20-ref-lib.so \
-    libhidlbase.so \
-    libutils.so \
-    libjsoncpp.so \
-    libgrpc++.so \
-    android.hardware.automotive.vehicle@2.0.so \
 
 webrtc_assets := \
     index.html \
-    style.css \
-    js/logcat.js \
     js/app.js \
     js/cf_webrtc.js \
+    js/logcat.js \
+    style.css \
 
 webrtc_certs := \
     server.crt \
@@ -141,65 +144,27 @@ webrtc_certs := \
     server.p12 \
     trusted.pem \
 
-x86_64_seccomp_files := \
-    9p_device.policy \
-    balloon_device.policy \
-    block_device.policy \
-    common_device.policy \
-    cras_audio_device.policy \
-    fs_device.policy \
-    gpu_device.policy \
-    input_device.policy \
-    net_device.policy \
-    null_audio_device.policy \
-    pmem_device.policy \
-    rng_device.policy \
-    serial.policy \
-    tpm_device.policy \
-    vfio_device.policy \
-    vhost_net_device.policy \
-    vhost_vsock_device.policy \
-    wl_device.policy \
-    xhci.policy \
-
-aarch64_seccomp_files := \
-    9p_device.policy \
-    balloon_device.policy \
-    block_device.policy \
-    common_device.policy \
-    cras_audio_device.policy \
-    fs_device.policy \
-    gpu_device.policy \
-    input_device.policy \
-    net_device.policy \
-    null_audio_device.policy \
-    pmem_device.policy \
-    rng_device.policy \
-    serial.policy \
-    tpm_device.policy \
-    vhost_net_device.policy \
-    vhost_vsock_device.policy \
-    wl_device.policy \
-    xhci.policy \
-
 cvd_host_webrtc_files := \
     $(addprefix assets/,$(webrtc_assets)) \
     $(addprefix certs/,$(webrtc_certs)) \
 
 modem_simulator_files := \
      iccprofile_for_sim0.xml \
+     iccprofile_for_sim0_for_CtsCarrierApiTestCases.xml \
      numeric_operator.xml \
+
+include external/crosvm/seccomp/host_package.mk
 
 cvd_host_package_files := \
      $(addprefix $(bin_path)/,$(cvd_host_executables)) \
      $(addprefix $(lib_path)/,$(cvd_host_shared_libraries)) \
      $(foreach test,$(cvd_host_tests), ${tests_path}/$(test)/$(test)) \
      $(addprefix $(webrtc_files_path)/,$(cvd_host_webrtc_files)) \
-     $(addprefix $(x86_64_seccomp_files_path)/,$(x86_64_seccomp_files)) \
-     $(addprefix $(aarch64_seccomp_files_path)/,$(aarch64_seccomp_files)) \
      $(addprefix $(modem_simulator_path)/files/,$(modem_simulator_files)) \
+     $(crosvm_inline_seccomp_policy_x86_64) \
+     $(crosvm_inline_seccomp_policy_aarch64) \
 
 $(cvd_host_package_tar): PRIVATE_FILES := $(cvd_host_package_files)
 $(cvd_host_package_tar): $(addprefix $(HOST_OUT)/,$(cvd_host_package_files))
-	$(hide) rm -rf $@ && tar Scfz $@.tmp -C $(HOST_OUT) $(PRIVATE_FILES)
+	$(hide) rm -rf $@ && tar Scfzh $@.tmp -C $(HOST_OUT) $(PRIVATE_FILES)
 	$(hide) mv $@.tmp $@

@@ -15,6 +15,8 @@
 
 #include "host/commands/modem_simulator/network_service.h"
 
+#include <android-base/logging.h>
+
 #include <map>
 #include <sstream>
 
@@ -22,7 +24,6 @@
 #include "host/commands/modem_simulator/device_config.h"
 #include "host/commands/modem_simulator/nvram_config.h"
 #include "host/commands/modem_simulator/thread_looper.h"
-
 namespace cuttlefish {
 
 // string type; two byte location area code in hexadecimal format
@@ -986,7 +987,7 @@ void NetworkService::HandleSetPreferredNetworkType(const Client& client, std::st
 
     ss << "+CTEC: "<< current_network_mode_;
 
-    thread_looper_->PostWithDelay(std::chrono::seconds(1),
+    thread_looper_->PostWithDelay(std::chrono::milliseconds(200),
         makeSafeCallback(this, &NetworkService::UpdateRegisterState,
             NET_REGISTRATION_HOME));
   } else {

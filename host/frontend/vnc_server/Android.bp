@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-cc_binary_host {
+cc_binary {
     name: "vnc_server",
     srcs: [
         "blackboard.cpp",
@@ -28,8 +28,8 @@ cc_binary_host {
     shared_libs: [
         "libcuttlefish_fs",
         "libcuttlefish_utils",
-        "cuttlefish_tcp_socket",
         "libbase",
+        "libjsoncpp",
         "liblog",
     ],
     static_libs: [
@@ -37,11 +37,10 @@ cc_binary_host {
         "libcuttlefish_screen_connector",
         "libcuttlefish_wayland_server",
         "libffi",
-        "libjsoncpp",
         "libjpeg",
         "libgflags",
         "libwayland_server",
         "libwayland_extension_server_protocols",
     ],
-    defaults: ["cuttlefish_host_only"],
+    defaults: ["cuttlefish_host_and_guest"],
 }
