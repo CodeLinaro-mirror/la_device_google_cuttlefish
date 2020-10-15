@@ -1,4 +1,5 @@
-# Copyright (C) 2016 The Android Open Source Project
+#
+# Copyright 2020 The Android Open-Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,19 +12,20 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
 
-LOCAL_PATH:= $(call my-dir)
+#
+# x86 (32-bit kernel) target for Cuttlefish
+#
 
-include $(CLEAR_VARS)
-LOCAL_MODULE_TAGS := optional
-LOCAL_SRC_FILES := $(call all-java-files-under, java)
-LOCAL_STATIC_JAVA_LIBRARIES := guava
-LOCAL_PACKAGE_NAME := CuttlefishService
-LOCAL_SDK_VERSION := 28
-LOCAL_PRIVILEGED_MODULE := true
-LOCAL_PROGUARD_FLAGS := -include build/core/proguard.flags
-LOCAL_PROGUARD_FLAG_FILES := proguard.flags
-LOCAL_PROGUARD_ENABLED := obfuscation
-LOCAL_VENDOR_MODULE := true
+-include device/google/cuttlefish/shared/BoardConfig.mk
 
-include $(BUILD_PACKAGE)
+TARGET_BOARD_PLATFORM := vsoc_x86
+TARGET_ARCH := x86
+TARGET_ARCH_VARIANT := x86
+TARGET_CPU_ABI := x86
+
+TARGET_NO_BOOTLOADER := false
+BOARD_PREBUILT_BOOTLOADER := device/google/cuttlefish_prebuilts/bootloader/crosvm_x86_64/u-boot.rom
+
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard device/google/cuttlefish_prebuilts/kernel/5.4-i686/*.ko)

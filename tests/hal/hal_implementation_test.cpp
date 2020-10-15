@@ -50,7 +50,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.cas.native@1.0",
     "android.hardware.confirmationui@1.0",
     "android.hardware.configstore@1.1", // deprecated, see b/149050985, b/149050733
-    "android.hardware.fastboot@1.0",
+    "android.hardware.fastboot@1.1",
     "android.hardware.gnss.measurement_corrections@1.1", // is sub-interface of gnss
     "android.hardware.gnss.visibility_control@1.0",
     "android.hardware.graphics.allocator@2.0",
@@ -100,7 +100,13 @@ static const std::set<std::string> kKnownMissingAidl = {
     // types-only packages, which never expect a default implementation
     "android.hardware.biometrics.common.",
     "android.hardware.common.",
+    "android.hardware.common.fmq.",
     "android.hardware.graphics.common.",
+
+    // Temporarily add the keystore2 interface. The service implementation is
+    // in full swing but we cannot register the service by default just yet.
+    // b/170144267
+    "android.system.keystore2.",
 
     // These KeyMaster types are in an AIDL types-only HAL because they're used
     // by the Identity Credential AIDL HAL. Remove this when fully porting

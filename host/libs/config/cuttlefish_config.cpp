@@ -133,6 +133,7 @@ const char* kSigServerPath = "webrtc_sig_server_path";
 const char* kSigServerStrict = "webrtc_sig_server_strict";
 const char* kWebrtcUdpPortRange = "webrtc_udp_port_range";
 const char* kWebrtcTcpPortRange = "webrtc_tcp_port_range";
+const char* kSigServerHeadersPath = "webrtc_sig_server_headers_path";
 
 const char* kBootloader = "bootloader";
 const char* kUseBootloader = "use_bootloader";
@@ -147,7 +148,6 @@ const char* kGuestAuditSecurity = "guest_audit_security";
 const char* kGuestForceNormalBoot = "guest_force_normal_boot";
 const char* kBootImageKernelCmdline = "boot_image_kernel_cmdline";
 const char* kExtraKernelCmdline = "extra_kernel_cmdline";
-const char* kVmManagerKernelCmdline = "vm_manager_kernel_cmdline";
 
 // modem simulator related
 const char* kRunModemSimulator = "enable_modem_simulator";
@@ -161,6 +161,10 @@ const char* kKgdb = "kgdb";
 const char* kEnableMinimalMode = "enable_minimal_mode";
 
 const char* kConsole = "console";
+
+const char* kHostToolsVersion = "host_tools_version";
+
+const char* kVhostNet = "vhost_net";
 
 }  // namespace
 
@@ -604,6 +608,14 @@ bool CuttlefishConfig::sig_server_strict() const {
   return (*dictionary_)[kSigServerStrict].asBool();
 }
 
+void CuttlefishConfig::set_sig_server_headers_path(const std::string& path) {
+  SetPath(kSigServerHeadersPath, path);
+}
+
+std::string CuttlefishConfig::sig_server_headers_path() const {
+  return (*dictionary_)[kSigServerHeadersPath].asString();
+}
+
 bool CuttlefishConfig::enable_modem_simulator() const {
   return (*dictionary_)[kRunModemSimulator].asBool();
 }
@@ -627,6 +639,27 @@ void CuttlefishConfig::set_modem_simulator_sim_type(int sim_type) {
 
 int CuttlefishConfig::modem_simulator_sim_type() const {
   return (*dictionary_)[kModemSimulatorSimType].asInt();
+}
+
+void CuttlefishConfig::set_host_tools_version(
+    const std::map<std::string, uint32_t>& versions) {
+  Json::Value json(Json::objectValue);
+  for (const auto& [key, value] : versions) {
+    json[key] = value;
+  }
+  (*dictionary_)[kHostToolsVersion] = json;
+}
+
+std::map<std::string, uint32_t> CuttlefishConfig::host_tools_version() const {
+  if (!dictionary_->isMember(kHostToolsVersion)) {
+    return {};
+  }
+  std::map<std::string, uint32_t> versions;
+  const auto& elem = (*dictionary_)[kHostToolsVersion];
+  for (auto it = elem.begin(); it != elem.end(); it++) {
+    versions[it.key().asString()] = it->asUInt();
+  }
+  return versions;
 }
 
 void CuttlefishConfig::set_guest_enforce_security(bool guest_enforce_security) {
@@ -708,21 +741,6 @@ std::vector<std::string> CuttlefishConfig::extra_kernel_cmdline() const {
   return cmdline;
 }
 
-void CuttlefishConfig::set_vm_manager_kernel_cmdline(std::string vm_manager_cmdline) {
-  Json::Value args_json_obj(Json::arrayValue);
-  for (const auto& arg : android::base::Split(vm_manager_cmdline, " ")) {
-    args_json_obj.append(arg);
-  }
-  (*dictionary_)[kVmManagerKernelCmdline] = args_json_obj;
-}
-std::vector<std::string> CuttlefishConfig::vm_manager_kernel_cmdline() const {
-  std::vector<std::string> cmdline;
-  for (const Json::Value& arg : (*dictionary_)[kVmManagerKernelCmdline]) {
-    cmdline.push_back(arg.asString());
-  }
-  return cmdline;
-}
-
 void CuttlefishConfig::set_ril_dns(const std::string& ril_dns) {
   (*dictionary_)[kRilDns] = ril_dns;
 }
@@ -750,6 +768,13 @@ void CuttlefishConfig::set_console(bool console) {
 }
 bool CuttlefishConfig::console() const {
   return (*dictionary_)[kConsole].asBool();
+}
+
+void CuttlefishConfig::set_vhost_net(bool vhost_net) {
+  (*dictionary_)[kVhostNet] = vhost_net;
+}
+bool CuttlefishConfig::vhost_net() const {
+  return (*dictionary_)[kVhostNet].asBool();
 }
 
 // Creates the (initially empty) config object and populates it with values from
@@ -843,6 +868,12 @@ std::vector<CuttlefishConfig::InstanceSpecific> CuttlefishConfig::Instances() co
 int GetInstance() {
   static int instance_id = InstanceFromEnvironment();
   return instance_id;
+}
+
+int GetDefaultVsockCid() {
+  // we assume that this function is used to configure CuttlefishConfig once
+  static const int default_vsock_cid = 3 + GetInstance() - 1;
+  return default_vsock_cid;
 }
 
 std::string GetGlobalConfigFileLink() {

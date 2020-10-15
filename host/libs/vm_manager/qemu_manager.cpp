@@ -32,6 +32,7 @@
 
 #include <android-base/strings.h>
 #include <android-base/logging.h>
+#include <vulkan/vulkan.h>
 
 #include "common/libs/fs/shared_select.h"
 #include "common/libs/utils/files.h"
@@ -44,8 +45,8 @@ namespace cuttlefish {
 namespace vm_manager {
 namespace {
 
-std::string GetMonitorPath(const cuttlefish::CuttlefishConfig* config) {
-  return config->ForDefaultInstance()
+std::string GetMonitorPath(const CuttlefishConfig& config) {
+  return config.ForDefaultInstance()
       .PerInstanceInternalPath("qemu_monitor.sock");
 }
 
@@ -55,9 +56,9 @@ void LogAndSetEnv(const char* key, const std::string& value) {
 }
 
 bool Stop() {
-  auto config = cuttlefish::CuttlefishConfig::Get();
-  auto monitor_path = GetMonitorPath(config);
-  auto monitor_sock = cuttlefish::SharedFD::SocketLocalClient(
+  auto config = CuttlefishConfig::Get();
+  auto monitor_path = GetMonitorPath(*config);
+  auto monitor_sock = SharedFD::SocketLocalClient(
       monitor_path.c_str(), false, SOCK_STREAM);
 
   if (!monitor_sock->IsOpen()) {
@@ -86,15 +87,21 @@ bool Stop() {
 
 }  // namespace
 
-const std::string QemuManager::name() { return "qemu_cli"; }
+/* static */ std::string QemuManager::name() { return "qemu_cli"; }
 
-std::vector<std::string> QemuManager::ConfigureGpu(const std::string& gpu_mode) {
-  if (gpu_mode == cuttlefish::kGpuModeGuestSwiftshader) {
+bool QemuManager::IsSupported() {
+  return HostSupportsQemuCli();
+}
+
+std::vector<std::string> QemuManager::ConfigureGpuMode(
+    const std::string& gpu_mode) {
+  if (gpu_mode == kGpuModeGuestSwiftshader) {
     // Override the default HAL search paths in all cases. We do this because
     // the HAL search path allows for fallbacks, and fallbacks in conjunction
     // with properities lead to non-deterministic behavior while loading the
     // HALs.
     return {
+      "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_1),
       "androidboot.hardware.gralloc=minigbm",
       "androidboot.hardware.hwcomposer=cutf",
       "androidboot.hardware.egl=swiftshader",
@@ -102,8 +109,9 @@ std::vector<std::string> QemuManager::ConfigureGpu(const std::string& gpu_mode) 
     };
   }
 
-  if (gpu_mode == cuttlefish::kGpuModeDrmVirgl) {
+  if (gpu_mode == kGpuModeDrmVirgl) {
     return {
+      "androidboot.cpuvulkan.version=0",
       "androidboot.hardware.gralloc=minigbm",
       "androidboot.hardware.hwcomposer=drm_minigbm",
       "androidboot.hardware.egl=mesa",
@@ -118,13 +126,11 @@ std::vector<std::string> QemuManager::ConfigureBootDevices() {
   return { "androidboot.boot_devices=pci0000:00/0000:00:05.0" };
 }
 
-QemuManager::QemuManager(const cuttlefish::CuttlefishConfig* config)
-  : VmManager(config) {}
+std::vector<Command> QemuManager::StartCommands(
+    const CuttlefishConfig& config, bool, const std::string& kernel_cmdline) {
+  auto instance = config.ForDefaultInstance();
 
-std::vector<cuttlefish::Command> QemuManager::StartCommands() {
-  auto instance = config_->ForDefaultInstance();
-
-  auto stop = [](cuttlefish::Subprocess* proc) {
+  auto stop = [](Subprocess* proc) {
     auto stopped = Stop();
     if (stopped) {
       return true;
@@ -134,23 +140,23 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
     return KillSubprocess(proc);
   };
 
-  bool is_arm = android::base::EndsWith(config_->qemu_binary(), "system-aarch64");
+  bool is_arm = android::base::EndsWith(config.qemu_binary(), "system-aarch64");
 
-  auto access_kregistry_size_bytes = cuttlefish::FileSize(instance.access_kregistry_path());
+  auto access_kregistry_size_bytes = FileSize(instance.access_kregistry_path());
   if (access_kregistry_size_bytes & (1024 * 1024 - 1)) {
       LOG(FATAL) << instance.access_kregistry_path() <<  " file size ("
                  << access_kregistry_size_bytes << ") not a multiple of 1MB";
       return {};
   }
 
-  auto pstore_size_bytes = cuttlefish::FileSize(instance.pstore_path());
+  auto pstore_size_bytes = FileSize(instance.pstore_path());
   if (pstore_size_bytes & (1024 * 1024 - 1)) {
       LOG(FATAL) << instance.pstore_path() <<  " file size ("
                  << pstore_size_bytes << ") not a multiple of 1MB";
       return {};
   }
 
-  cuttlefish::Command qemu_cmd(config_->qemu_binary(), stop);
+  Command qemu_cmd(config.qemu_binary(), stop);
   qemu_cmd.AddParameter("-name");
   qemu_cmd.AddParameter("guest=", instance.instance_name(), ",debug-threads=on");
 
@@ -159,18 +165,18 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
   qemu_cmd.AddParameter(machine, ",usb=off,dump-guest-core=off");
 
   qemu_cmd.AddParameter("-m");
-  auto maxmem = config_->memory_mb() +
+  auto maxmem = config.memory_mb() +
                 access_kregistry_size_bytes / 1024 / 1024 +
                 (is_arm ? 0 : pstore_size_bytes / 1024 / 1024);
   auto slots = is_arm ? "" : ",slots=2";
-  qemu_cmd.AddParameter("size=", config_->memory_mb(), "M",
+  qemu_cmd.AddParameter("size=", config.memory_mb(), "M",
                         ",maxmem=", maxmem, "M", slots);
 
   qemu_cmd.AddParameter("-overcommit");
   qemu_cmd.AddParameter("mem-lock=off");
 
   qemu_cmd.AddParameter("-smp");
-  qemu_cmd.AddParameter(config_->cpus(), ",sockets=", config_->cpus(),
+  qemu_cmd.AddParameter(config.cpus(), ",sockets=", config.cpus(),
                         ",cores=1,threads=1");
 
   qemu_cmd.AddParameter("-uuid");
@@ -187,13 +193,13 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
   qemu_cmd.AddParameter("strict=on");
 
   qemu_cmd.AddParameter("-kernel");
-  qemu_cmd.AddParameter(config_->GetKernelImageToUse());
+  qemu_cmd.AddParameter(config.GetKernelImageToUse());
 
   qemu_cmd.AddParameter("-append");
-  qemu_cmd.AddParameter(kernel_cmdline_);
+  qemu_cmd.AddParameter(kernel_cmdline);
 
   qemu_cmd.AddParameter("-chardev");
-  qemu_cmd.AddParameter("socket,id=charmonitor,path=", GetMonitorPath(config_),
+  qemu_cmd.AddParameter("socket,id=charmonitor,path=", GetMonitorPath(config),
                         ",server,nowait");
 
   qemu_cmd.AddParameter("-mon");
@@ -201,7 +207,7 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
 
   // In kgdb mode, earlycon is an interactive console, and so early
   // dmesg will go there instead of the kernel.log
-  if (!(config_->console() && (config_->kgdb() || config_->use_bootloader()))) {
+  if (!(config.console() && (config.kgdb() || config.use_bootloader()))) {
     qemu_cmd.AddParameter("-chardev");
     qemu_cmd.AddParameter("file,id=earlycon,path=",
                           instance.kernel_log_pipe_name(), ",append=on");
@@ -228,8 +234,8 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
 
   // This handles the Android interactive serial console - /dev/hvc1
 
-  if (config_->console()) {
-    if (config_->kgdb() || config_->use_bootloader()) {
+  if (config.console()) {
+    if (config.kgdb() || config.use_bootloader()) {
       qemu_cmd.AddParameter("-chardev");
       qemu_cmd.AddParameter("pipe,id=earlycon,path=", instance.console_pipe_prefix());
 
@@ -264,7 +270,7 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("virtconsole,bus=virtio-serial1.0,chardev=hvc1");
 
-  if (config_->enable_gnss_grpc_proxy()) {
+  if (config.enable_gnss_grpc_proxy()) {
       qemu_cmd.AddParameter("-chardev");
       qemu_cmd.AddParameter("pipe,id=gnss,path=", instance.gnss_pipe_prefix());
 
@@ -303,7 +309,7 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("virtio-keyboard-pci");
 
-  if (config_->gpu_mode() == cuttlefish::kGpuModeDrmVirgl) {
+  if (config.gpu_mode() == kGpuModeDrmVirgl) {
     qemu_cmd.AddParameter("-display");
     qemu_cmd.AddParameter("egl-headless");
 
@@ -345,19 +351,21 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
   qemu_cmd.AddParameter("virtio-rng-pci-non-transitional,rng=objrng0,id=rng0,",
                         "max-bytes=1024,period=2000");
 
+  auto vhost_net = config.vhost_net() ? ",vhost=on" : "";
+
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("virtio-balloon-pci-non-transitional,id=balloon0");
 
   qemu_cmd.AddParameter("-netdev");
   qemu_cmd.AddParameter("tap,id=hostnet0,ifname=", instance.wifi_tap_name(),
-                        ",script=no,downscript=no");
+                        ",script=no,downscript=no", vhost_net);
 
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("virtio-net-pci-non-transitional,netdev=hostnet0,id=net0");
 
   qemu_cmd.AddParameter("-netdev");
   qemu_cmd.AddParameter("tap,id=hostnet1,ifname=", instance.mobile_tap_name(),
-                        ",script=no,downscript=no");
+                        ",script=no,downscript=no", vhost_net);
 
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("virtio-net-pci-non-transitional,netdev=hostnet1,id=net1");
@@ -378,22 +386,22 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("AC97");
 
-  if (config_->use_bootloader()) {
+  if (config.use_bootloader()) {
     qemu_cmd.AddParameter("-bios");
-    qemu_cmd.AddParameter(config_->bootloader());
+    qemu_cmd.AddParameter(config.bootloader());
   }
 
-  if (config_->gdb_flag().size() > 0) {
+  if (config.gdb_flag().size() > 0) {
     qemu_cmd.AddParameter("-gdb");
-    qemu_cmd.AddParameter(config_->gdb_flag());
+    qemu_cmd.AddParameter(config.gdb_flag());
   }
 
   qemu_cmd.AddParameter("-initrd");
-  qemu_cmd.AddParameter(config_->final_ramdisk_path());
+  qemu_cmd.AddParameter(config.final_ramdisk_path());
 
   LogAndSetEnv("QEMU_AUDIO_DRV", "none");
 
-  std::vector<cuttlefish::Command> ret;
+  std::vector<Command> ret;
   ret.push_back(std::move(qemu_cmd));
   return ret;
 }

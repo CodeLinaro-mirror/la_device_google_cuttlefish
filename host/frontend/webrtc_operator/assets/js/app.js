@@ -40,13 +40,36 @@ function ConnectToDevice(device_id) {
   let mouseIsDown = false;
   let deviceConnection;
 
-  let logcatBtn = document.getElementById('showLogcatBtn');
-  logcatBtn.onclick = ev => {
-    init_logcat(deviceConnection);
-    logcatBtn.remove();
-  };
+  function onControlMessage(message) {
+    let message_data = JSON.parse(message.data);
+    console.log(message_data)
+    let metadata = message_data.metadata;
+    if (message_data.event == 'VIRTUAL_DEVICE_BOOT_STARTED') {
+      // Start the adb connection after receiving the BOOT_STARTED message.
+      // (This is after the adbd start message. Attempting to connect
+      // immediately after adbd starts causes issues.)
+      init_adb(deviceConnection);
+    }
+    if (message_data.event == 'VIRTUAL_DEVICE_SCREEN_CHANGED') {
+      // TODO(b/165944524) Support all orientations.
+      if (metadata.rotation == 3) {
+        document.getElementById('device_view').classList.add('landscape');
+        document.getElementById('deviceScreen').classList.add('landscape');
+      } else {
+        document.getElementById('device_view').classList.remove('landscape');
+        document.getElementById('deviceScreen').classList.remove('landscape');
+      }
 
-  function createControlPanelButton(command, title, icon_name) {
+      updateDeviceDisplayDetails({
+        dpi: metadata.dpi,
+        x_res: metadata.width,
+        y_res: metadata.height
+      });
+    }
+  }
+
+  function createControlPanelButton(command, title, icon_name,
+      listener=onControlPanelButton) {
     let button = document.createElement('button');
     document.getElementById('control_panel').appendChild(button);
     button.title = title;
@@ -54,9 +77,9 @@ function ConnectToDevice(device_id) {
     // Capture mousedown/up/out commands instead of click to enable
     // hold detection. mouseout is used to catch if the user moves the
     // mouse outside the button while holding down.
-    button.addEventListener('mousedown', onControlPanelButton);
-    button.addEventListener('mouseup', onControlPanelButton);
-    button.addEventListener('mouseout', onControlPanelButton);
+    button.addEventListener('mousedown', listener);
+    button.addEventListener('mouseup', listener);
+    button.addEventListener('mouseout', listener);
     // Set the button image using Material Design icons.
     // See http://google.github.io/material-design-icons
     // and https://material.io/resources/icons
@@ -66,6 +89,7 @@ function ConnectToDevice(device_id) {
   createControlPanelButton('power', 'Power', 'power_settings_new');
   createControlPanelButton('home', 'Home', 'home');
   createControlPanelButton('menu', 'Menu', 'menu');
+  createControlPanelButton('rotate', 'Rotate', 'screen_rotation', onRotateButton);
   createControlPanelButton('volumemute', 'Volume Mute', 'volume_mute');
   createControlPanelButton('volumedown', 'Volume Down', 'volume_down');
   createControlPanelButton('volumeup', 'Volume Up', 'volume_up');
@@ -89,32 +113,32 @@ function ConnectToDevice(device_id) {
         deviceScreen.srcObject = videoStream;
       }).catch(e => console.error('Unable to get display stream: ', e));
       startMouseTracking();  // TODO stopMouseTracking() when disconnected
-      // TODO(b/163080005): Call updateDeviceDetails for any dynamic device
-      // details that may change after this initial connection.
-      updateDeviceDetails(deviceConnection.description);
+      updateDeviceHardwareDetails(deviceConnection.description.hardware);
+      updateDeviceDisplayDetails(deviceConnection.description.displays[0]);
+      deviceConnection.onControlMessage(msg => onControlMessage(msg));
   });
 
-  function updateDeviceDetails(deviceInfo) {
-    if (deviceInfo.hardware) {
-      let cpus = deviceInfo.hardware.cpus;
-      let memory_mb = deviceInfo.hardware.memory_mb;
-      updateDeviceDetails.hardwareDetails =
-          `CPUs - ${cpus}\nDevice RAM - ${memory_mb}mb`;
-    }
-    if (deviceInfo.displays) {
-      let dpi = deviceInfo.displays[0].dpi;
-      let x_res = deviceInfo.displays[0].x_res;
-      let y_res = deviceInfo.displays[0].y_res;
-      updateDeviceDetails.displayDetails =
-          `Display - ${x_res}x${y_res} (${dpi}DPI)`;
-    }
+  let hardwareDetails = '';
+  let displayDetails = '';
+  function updateDeviceDetailsText() {
     document.getElementById('device_details_hardware').textContent = [
-        updateDeviceDetails.hardwareDetails,
-        updateDeviceDetails.displayDetails,
+        hardwareDetails,
+        displayDetails,
     ].join('\n');
   }
-  updateDeviceDetails.hardwareDetails = '';
-  updateDeviceDetails.displayDetails = '';
+  function updateDeviceHardwareDetails(hardware) {
+    let cpus = hardware.cpus;
+    let memory_mb = hardware.memory_mb;
+    hardwareDetails = `CPUs - ${cpus}\nDevice RAM - ${memory_mb}mb`;
+    updateDeviceDetailsText();
+  }
+  function updateDeviceDisplayDetails(display) {
+    let dpi = display.dpi;
+    let x_res = display.x_res;
+    let y_res = display.y_res;
+    displayDetails = `Display - ${x_res}x${y_res} (${dpi}DPI)`;
+    updateDeviceDetailsText();
+  }
 
   function onKeyboardCaptureClick(e) {
     const selectedClass = 'selected';
@@ -136,6 +160,18 @@ function ConnectToDevice(device_id) {
       command: e.target.dataset.command,
       state: e.type == 'mousedown' ? "down" : "up",
     }));
+  }
+
+  let orientation = 'portrait';
+  function onRotateButton(e) {
+    if (e.type == 'mousedown') {
+      if (orientation == 'portrait') {
+        orientation = 'landscape';
+      } else {
+        orientation = 'portrait';
+      }
+      adbShell('/vendor/bin/cuttlefish_rotate ' + orientation)
+    }
   }
 
   function startMouseTracking() {
@@ -270,11 +306,16 @@ function ShowNewDeviceList(device_ids) {
   let ul = document.getElementById('device_list');
   ul.innerHTML = "";
   let count = 1;
+  let device_to_button_map = {};
   for (const dev_id of device_ids) {
     const button_id = 'connect_' + count++;
     ul.innerHTML += ('<li class="device_entry" title="Connect to ' + dev_id
                      + '">' + dev_id + '<button id="' + button_id
                      + '" >Connect</button></li>');
+    device_to_button_map[dev_id] = button_id;
+  }
+
+  for (const [dev_id, button_id] of Object.entries(device_to_button_map)) {
     document.getElementById(button_id).addEventListener(
         'click', evt => ConnectDeviceCb(dev_id));
   }

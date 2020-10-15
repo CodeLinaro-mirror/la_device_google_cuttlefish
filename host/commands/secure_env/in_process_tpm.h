@@ -21,6 +21,8 @@
 
 #include <tss2/tss2_tcti.h>
 
+#include "host/commands/secure_env/tpm.h"
+
 /*
  * Exposes a TSS2_TCTI_CONTEXT for interacting with an in-process TPM simulator.
  *
@@ -32,18 +34,14 @@
  * TODO(schuffelen): Consider moving this to a separate process with its own
  * working directory.
  */
-class InProcessTpm {
+class InProcessTpm : public Tpm {
 public:
   InProcessTpm();
   ~InProcessTpm();
 
-  TSS2_RC Transmit(size_t size, uint8_t const* command);
-  TSS2_RC Receive(size_t* size, uint8_t* response, int32_t timeout);
-
-  TSS2_TCTI_CONTEXT* TctiContext();
-  static InProcessTpm* TpmFromContext(TSS2_TCTI_CONTEXT*);
+  TSS2_TCTI_CONTEXT* TctiContext() override;
 private:
-  TSS2_TCTI_CONTEXT_COMMON_CURRENT tcti_context_;
-  std::list<std::vector<uint8_t>> command_queue_;
-  std::mutex queue_mutex_;
+  struct Impl;
+
+  std::unique_ptr<Impl> impl_;
 };
