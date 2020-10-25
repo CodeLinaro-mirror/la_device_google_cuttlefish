@@ -22,6 +22,7 @@
 #include "common/libs/fs/shared_fd.h"
 
 #ifdef CUTTLEFISH_HOST
+#include "host/commands/kernel_log_monitor/kernel_log_server.h"
 #include "host/libs/config/logging.h"
 #endif // CUTTLEFISH_HOST
 
@@ -34,6 +35,11 @@ DEFINE_string(server, "",
 DEFINE_uint32(tcp_port, 0, "TCP port");
 DEFINE_uint32(vsock_port, 0, "vsock port");
 DEFINE_uint32(vsock_cid, 0, "Vsock cid to initiate connections to");
+DEFINE_int32(
+    adbd_events_fd, -1,
+    "A file descriptor. If set it will wait for the events "
+    "to start connection between the guest and the host for adb."
+    "Requires definition of CUTTLEFISH_HOST, and --server=tcp to take effect");
 
 namespace {
 // Sends packets, Shutdown(SHUT_WR) on destruction
@@ -139,7 +145,39 @@ void HandleConnection(cvd::SharedFD vsock,
   socket_to_vsock.join();
 }
 
+#ifdef CUTTLEFISH_HOST
+// Returns true if successfully read BootEvent::AdbdStarted
+bool WaitForAdbdToBeStarted(int events_fd) {
+  auto evt_shared_fd = cvd::SharedFD::Dup(events_fd);
+  close(events_fd);
+  while (evt_shared_fd->IsOpen()) {
+    monitor::BootEvent event;
+    auto bytes_read = evt_shared_fd->Read(&event, sizeof(event));
+    if (bytes_read != sizeof(event)) {
+      LOG(ERROR) << "Fail to read a complete event, read " << bytes_read
+                 << " bytes only instead of the expected " << sizeof(event);
+      return false;
+    }
+    if (event == monitor::BootEvent::AdbdStarted) {
+      LOG(INFO) << "AdbdStarted boot event read from kernel log";
+      return true;
+    }
+  }
+  LOG(INFO) << "The kernel_log_monitor closed the pipe before AdbdStarted event.";
+  return false;
+}
+#endif
+
 [[noreturn]] void TcpServer() {
+#ifdef CUTTLEFISH_HOST
+  if (FLAGS_adbd_events_fd >= 0) {
+    LOG(DEBUG) << "Wating AdbdStarted boot event from the kernel log";
+    if (!WaitForAdbdToBeStarted(FLAGS_adbd_events_fd)) {
+      LOG(ERROR) << "Failed to wait AdbdStarted Event from the kernel log. "
+                 << "Just continues without waiting";
+    }
+  }
+#endif
   LOG(INFO) << "starting TCP server on " << FLAGS_tcp_port << " for vsock port "
             << FLAGS_vsock_port;
   auto server = cvd::SharedFD::SocketLocalServer(FLAGS_tcp_port, SOCK_STREAM);
