@@ -89,6 +89,7 @@ cvd_host_shared_libraries := \
     libcuttlefish_allocd_utils.so \
     libcuttlefish_device_config.so \
     libcuttlefish_fs.so \
+    libcuttlefish_kernel_log_monitor_utils.so \
     libcuttlefish_security.so \
     libcuttlefish_utils.so \
     libdrm.so \
@@ -133,9 +134,9 @@ cvd_host_shared_libraries := \
 
 webrtc_assets := \
     index.html \
+    js/adb.js \
     js/app.js \
     js/cf_webrtc.js \
-    js/logcat.js \
     style.css \
 
 webrtc_certs := \

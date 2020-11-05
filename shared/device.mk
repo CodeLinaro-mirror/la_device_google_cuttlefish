@@ -30,6 +30,7 @@ DISABLE_RILD_OEM_HOOK := true
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish-opengl # for vulkan
 
 TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE ?= f2fs
+PRODUCT_FS_COMPRESSION := 1
 
 AB_OTA_UPDATER := true
 AB_OTA_PARTITIONS += \
@@ -106,16 +107,17 @@ PRODUCT_SOONG_NAMESPACES += hardware/google/camera/devices/EmulatedCamera
 # Packages for various GCE-specific utilities
 #
 PRODUCT_PACKAGES += \
-    socket_vsock_proxy \
     CuttlefishService \
-    wpa_supplicant.vsoc.conf \
-    vsoc_input_service \
+    cuttlefish_rotate \
     rename_netiface \
     setup_wifi \
+    socket_vsock_proxy \
     tombstone_transmit \
     tombstone_producer \
     suspend_blocker \
+    vsoc_input_service \
     vtpm_manager \
+    wpa_supplicant.vsoc.conf \
 
 #
 # Packages for AOSP-available stuff we use from the framework
@@ -278,7 +280,7 @@ PRODUCT_PACKAGES += \
 #
 PRODUCT_PACKAGES += \
     android.hardware.bluetooth@1.1-service.sim \
-    android.hardware.bluetooth.audio@2.0-impl
+    android.hardware.bluetooth.audio@2.1-impl
 
 #
 # Audio HAL
@@ -302,13 +304,19 @@ PRODUCT_COPY_FILES += $(LOCAL_AUDIO_PRODUCT_COPY_FILES)
 DEVICE_PACKAGE_OVERLAYS += $(LOCAL_AUDIO_DEVICE_PACKAGE_OVERLAYS)
 
 #
-# BiometricsFace HAL
+# BiometricsFace HAL (HIDL)
 #
 PRODUCT_PACKAGES += \
     android.hardware.biometrics.face@1.1-service.example
 
 #
-# BiometricsFingerprint HAL
+# BiometricsFace HAL (AIDL)
+#
+PRODUCT_PACKAGES += \
+    android.hardware.biometrics.face-service.example
+
+#
+# BiometricsFingerprint HAL (AIDL)
 #
 PRODUCT_PACKAGES += \
     android.hardware.biometrics.fingerprint-service.example
@@ -317,7 +325,7 @@ PRODUCT_PACKAGES += \
 # Contexthub HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.contexthub@1.1-service.mock
+    android.hardware.contexthub@1.2-service.mock
 
 #
 # Drm HAL
@@ -355,7 +363,8 @@ PRODUCT_PACKAGES += \
 # GPS
 #
 PRODUCT_PACKAGES += \
-    android.hardware.gnss@3.0-service
+    android.hardware.gnss@3.0-service \
+    android.hardware.gnss-service.example
 
 # Health
 ifeq ($(LOCAL_HEALTH_PRODUCT_PACKAGE),)
@@ -416,7 +425,7 @@ PRODUCT_PACKAGES += \
 # PowerStats HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.powerstats-service.example
+    android.hardware.power.stats-service.example
 
 #
 # NeuralNetworks HAL

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006 The Android Open Source Project
+ * Copyright (C) 2018 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,18 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 #pragma once
 
-#define RIL_SHLIB
+#include <string>
+#include <vector>
 
-#define LOG_TAG "CuttlefishRil"
+namespace cuttlefish {
+namespace vm_manager {
 
-#include <log/log.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <sys/time.h>
+bool ValidateHostConfiguration(std::vector<std::string>* config_commands);
 
-#include <guest/hals/ril/libril/ril.h>
+} // namespace vm_manager
+} // namespace cuttlefish
 
-#include <telephony/ril_cdma_sms.h>

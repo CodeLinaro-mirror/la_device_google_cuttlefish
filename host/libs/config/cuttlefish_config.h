@@ -18,6 +18,7 @@
 #include <sys/types.h>
 #include <array>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <string>
 #include <set>
@@ -44,6 +45,7 @@ constexpr char kMobileNetworkConnectedMessage[] =
     "VIRTUAL_DEVICE_NETWORK_MOBILE_CONNECTED";
 constexpr char kWifiConnectedMessage[] =
     "VIRTUAL_DEVICE_NETWORK_WIFI_CONNECTED";
+constexpr char kScreenChangedMessage[] = "VIRTUAL_DEVICE_SCREEN_CHANGED";
 constexpr char kInternalDirName[] = "internal";
 constexpr char kSharedDirName[] = "shared";
 constexpr char kCrosvmVarEmptyDir[] = "/var/empty";
@@ -244,9 +246,6 @@ class CuttlefishConfig {
   void set_extra_kernel_cmdline(std::string extra_cmdline);
   std::vector<std::string> extra_kernel_cmdline() const;
 
-  void set_vm_manager_kernel_cmdline(std::string vm_manager_cmdline);
-  std::vector<std::string> vm_manager_kernel_cmdline() const;
-
   // A directory containing the SSL certificates for the signaling server
   void set_webrtc_certs_dir(const std::string& certs_dir);
   std::string webrtc_certs_dir() const;
@@ -278,6 +277,11 @@ class CuttlefishConfig {
   void set_sig_server_strict(bool strict);
   bool sig_server_strict() const;
 
+  // A file containing http headers to include in the connection to the
+  // signaling server
+  void set_sig_server_headers_path(const std::string& path);
+  std::string sig_server_headers_path() const;
+
   // The dns address of mobile network (RIL)
   void set_ril_dns(const std::string& ril_dns);
   std::string ril_dns() const;
@@ -302,6 +306,12 @@ class CuttlefishConfig {
 
   void set_modem_simulator_sim_type(int sim_type);
   int modem_simulator_sim_type() const;
+
+  void set_host_tools_version(const std::map<std::string, uint32_t>&);
+  std::map<std::string, uint32_t> host_tools_version() const;
+
+  void set_vhost_net(bool vhost_net);
+  bool vhost_net() const;
 
   class InstanceSpecific;
   class MutableInstanceSpecific;
@@ -485,6 +495,11 @@ class CuttlefishConfig {
 // Returns the instance number as obtained from the CUTTLEFISH_INSTANCE
 // environment variable or the username.
 int GetInstance();
+
+// Returns default Vsock CID
+// by default, GetInstance() + 2
+int GetDefaultVsockCid();
+
 // Returns a path where the launhcer puts a link to the config file which makes
 // it easily discoverable regardless of what vm manager is in use
 std::string GetGlobalConfigFileLink();

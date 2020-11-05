@@ -43,6 +43,9 @@ struct StreamerConfig {
     std::string path;
     // The security level to use when connecting to the operator server.
     WsConnection::Security security;
+    // A list of key value pairs to include as HTTP handshake headers when
+    // connecting to the operator.
+    std::vector<std::pair<std::string, std::string>> http_headers;
   } operator_server;
   // The port ranges webrtc is allowed to use.
   // [0,0] means all ports
@@ -52,6 +55,7 @@ struct StreamerConfig {
 
 class OperatorObserver {
  public:
+  virtual ~OperatorObserver() = default;
   // Called when the websocket connection with the operator is established.
   virtual void OnRegistered() = 0;
   // Called when the websocket connection with the operator is closed.
@@ -65,27 +69,33 @@ class Streamer {
   // The observer_factory will be used to create an observer for every new
   // client connection. Unregister() needs to be called to stop accepting
   // connections.
-  static std::shared_ptr<Streamer> Create(
+  static std::unique_ptr<Streamer> Create(
       const StreamerConfig& cfg,
       std::shared_ptr<ConnectionObserverFactory> factory);
-  virtual ~Streamer() = default;
+  ~Streamer() = default;
 
-  virtual std::shared_ptr<VideoSink> AddDisplay(const std::string& label,
-                                                int width, int height, int dpi,
-                                                bool touch_enabled) = 0;
+  std::shared_ptr<VideoSink> AddDisplay(const std::string& label, int width,
+                                        int height, int dpi,
+                                        bool touch_enabled);
 
-  virtual void SetHardwareSpecs(int cpus, int memory_mb) = 0;
+  void SetHardwareSpecs(int cpus, int memory_mb);
 
   // TODO (b/128328845): Implement audio, return a shared_ptr to a class
   // equivalent to webrtc::AudioSinkInterface.
-  virtual void AddAudio(const std::string& label) = 0;
+  void AddAudio(const std::string& label);
 
   // Register with the operator.
-  virtual void Register(std::weak_ptr<OperatorObserver> operator_observer) = 0;
-  virtual void Unregister() = 0;
+  void Register(std::weak_ptr<OperatorObserver> operator_observer);
+  void Unregister();
+ private:
+  /*
+   * Private Implementation idiom.
+   * https://en.cppreference.com/w/cpp/language/pimpl
+   */
+  class Impl;
 
- protected:
-  Streamer() = default;
+  Streamer(std::unique_ptr<Impl> impl);
+  std::shared_ptr<Impl> impl_;
 };
 
 }  // namespace webrtc_streaming
