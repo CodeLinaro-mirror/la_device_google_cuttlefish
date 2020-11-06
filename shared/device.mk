@@ -29,6 +29,7 @@ DISABLE_RILD_OEM_HOOK := true
 
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish-opengl # for vulkan
 
+TARGET_RO_FILE_SYSTEM_TYPE ?= ext4
 TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE ?= f2fs
 PRODUCT_FS_COMPRESSION := 1
 
@@ -236,13 +237,25 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.software.verified_boot.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.verified_boot.xml \
     frameworks/native/data/etc/android.software.vulkan.deqp.level-2020-03-01.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.vulkan.deqp.level.xml \
     system/bt/vendor_libs/test_vendor_lib/data/controller_properties.json:vendor/etc/bluetooth/controller_properties.json \
-    device/google/cuttlefish/shared/config/task_profiles.json:$(TARGET_COPY_OUT_VENDOR)/etc/task_profiles.json \
-    device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_RAMDISK)/fstab.f2fs \
+    device/google/cuttlefish/shared/config/task_profiles.json:$(TARGET_COPY_OUT_VENDOR)/etc/task_profiles.json
+
+ifeq ($(TARGET_RO_FILE_SYSTEM_TYPE),ext4)
+PRODUCT_COPY_FILES += \
+    device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/fstab.f2fs \
     device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.f2fs \
     device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.f2fs \
-    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_RAMDISK)/fstab.ext4 \
+    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/fstab.ext4 \
     device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.ext4 \
     device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.ext4
+else
+PRODUCT_COPY_FILES += \
+    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).f2fs:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/fstab.f2fs \
+    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).f2fs:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.f2fs \
+    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).f2fs:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.f2fs \
+    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).ext4:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/fstab.ext4 \
+    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).ext4:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.ext4 \
+    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).ext4:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.ext4
+endif
 
 # Packages for HAL implementations
 
@@ -363,7 +376,6 @@ PRODUCT_PACKAGES += \
 # GPS
 #
 PRODUCT_PACKAGES += \
-    android.hardware.gnss@3.0-service \
     android.hardware.gnss-service.example
 
 # Health
@@ -468,6 +480,13 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/cgroups.json:$(TARGET_COPY_OUT_RECOVERY)/root/vendor/etc/cgroups.json \
     device/google/cuttlefish/shared/config/ueventd.rc:$(TARGET_COPY_OUT_RECOVERY)/root/ueventd.cutf_cvm.rc \
 
+PRODUCT_PACKAGES += \
+    update_engine_sideload
+
+endif
+
+ifdef TARGET_DEDICATED_RECOVERY
+PRODUCT_BUILD_RECOVERY_IMAGE := true
 endif
 
 #
@@ -489,27 +508,6 @@ PRODUCT_SOONG_NAMESPACES += vendor/google_devices/common/proprietary/confirmatio
 # Need this so that the application's loop on reading input can be synchronized
 # with HW VSYNC
 PRODUCT_DEFAULT_PROPERTY_OVERRIDES += ro.surface_flinger.running_without_sync_framework=true
-
-# b/143977934: Remove coverage allowlist after switching to Clang coverage.
-NATIVE_COVERAGE_PATHS := \
-    external/aac \
-    external/libaom \
-    external/libavc \
-    external/libgav1 \
-    external/libgsm \
-    external/libhevc \
-    external/libmpeg2 \
-    external/libopus \
-    external/libvpx \
-    external/libxaac \
-    external/rust \
-    external/sonivox \
-    external/tremolo \
-    frameworks/av \
-    frameworks/base/media \
-    frameworks/ml/nn \
-    packages/modules/DnsResolver \
-    system/netd
 
 # Set support one-handed mode
  PRODUCT_PRODUCT_PROPERTIES += \

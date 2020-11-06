@@ -22,7 +22,7 @@ namespace {
 
 std::string GetAdbConnectorTcpArg(const cuttlefish::CuttlefishConfig& config) {
   auto instance = config.ForDefaultInstance();
-  return std::string{"127.0.0.1:"} + std::to_string(instance.host_port());
+  return std::string{"0.0.0.0:"} + std::to_string(instance.host_port());
 }
 
 std::string GetAdbConnectorVsockArg(const cuttlefish::CuttlefishConfig& config) {
@@ -79,9 +79,8 @@ cuttlefish::SharedFD CreateUnixInputServer(const std::string& path) {
 
 // Creates the frame and input sockets and add the relevant arguments to the vnc
 // server and webrtc commands
-StreamerLaunchResult CreateStreamerServers(
+void CreateStreamerServers(
     cuttlefish::Command* cmd, const cuttlefish::CuttlefishConfig& config) {
-  StreamerLaunchResult server_ret;
   cuttlefish::SharedFD touch_server;
   cuttlefish::SharedFD keyboard_server;
 
@@ -100,14 +99,14 @@ StreamerLaunchResult CreateStreamerServers(
   }
   if (!touch_server->IsOpen()) {
     LOG(ERROR) << "Could not open touch server: " << touch_server->StrError();
-    return {};
+    return;
   }
   cmd->AddParameter("-touch_fd=", touch_server);
 
   if (!keyboard_server->IsOpen()) {
     LOG(ERROR) << "Could not open keyboard server: "
                << keyboard_server->StrError();
-    return {};
+    return;
   }
   cmd->AddParameter("-keyboard_fd=", keyboard_server);
 
@@ -121,10 +120,9 @@ StreamerLaunchResult CreateStreamerServers(
   }
   if (!frames_server->IsOpen()) {
     LOG(ERROR) << "Could not open frames server: " << frames_server->StrError();
-    return {};
+    return;
   }
   cmd->AddParameter("-frame_server_fd=", frames_server);
-  return server_ret;
 }
 
 }  // namespace
@@ -247,7 +245,7 @@ void LaunchTombstoneReceiver(const cuttlefish::CuttlefishConfig& config,
   return;
 }
 
-StreamerLaunchResult LaunchVNCServer(
+void LaunchVNCServer(
     const cuttlefish::CuttlefishConfig& config, cuttlefish::ProcessMonitor* process_monitor,
     std::function<bool(MonitorEntry*)> callback) {
   auto instance = config.ForDefaultInstance();
@@ -256,18 +254,14 @@ StreamerLaunchResult LaunchVNCServer(
   cuttlefish::Command vnc_server(cuttlefish::VncServerBinary());
   vnc_server.AddParameter(port_options);
 
-  auto server_ret = CreateStreamerServers(&vnc_server, config);
+  CreateStreamerServers(&vnc_server, config);
 
   process_monitor->StartSubprocess(std::move(vnc_server), callback);
-  server_ret.launched = true;
-  return server_ret;
 }
 
 void LaunchAdbConnectorIfEnabled(cuttlefish::ProcessMonitor* process_monitor,
-                                 const cuttlefish::CuttlefishConfig& config,
-                                 cuttlefish::SharedFD adbd_events_pipe) {
+                                 const cuttlefish::CuttlefishConfig& config) {
   cuttlefish::Command adb_connector(cuttlefish::AdbConnectorBinary());
-  adb_connector.AddParameter("-adbd_events_fd=", adbd_events_pipe);
   std::set<std::string> addresses;
 
   if (AdbTcpConnectorEnabled(config)) {
@@ -289,9 +283,9 @@ void LaunchAdbConnectorIfEnabled(cuttlefish::ProcessMonitor* process_monitor,
   }
 }
 
-StreamerLaunchResult LaunchWebRTC(cuttlefish::ProcessMonitor* process_monitor,
-                                  const cuttlefish::CuttlefishConfig& config,
-                                  cuttlefish::SharedFD kernel_log_events_pipe) {
+void LaunchWebRTC(cuttlefish::ProcessMonitor* process_monitor,
+                  const cuttlefish::CuttlefishConfig& config,
+                  cuttlefish::SharedFD kernel_log_events_pipe) {
   if (config.ForDefaultInstance().start_webrtc_sig_server()) {
     cuttlefish::Command sig_server(cuttlefish::WebRtcSigServerBinary());
     sig_server.AddParameter("-assets_dir=", config.webrtc_assets_dir());
@@ -313,15 +307,13 @@ StreamerLaunchResult LaunchWebRTC(cuttlefish::ProcessMonitor* process_monitor,
 
   cuttlefish::Command webrtc(cuttlefish::WebRtcBinary());
 
-  auto server_ret = CreateStreamerServers(&webrtc, config);
+  CreateStreamerServers(&webrtc, config);
+
   webrtc.AddParameter("-kernel_log_events_fd=", kernel_log_events_pipe);
 
   // TODO get from launcher params
   process_monitor->StartSubprocess(std::move(webrtc),
                                    GetOnSubprocessExitCallback(config));
-  server_ret.launched = true;
-
-  return server_ret;
 }
 
 bool StopModemSimulator() {
@@ -416,10 +408,12 @@ void LaunchModemSimulatorIfEnabled(
 }
 
 void LaunchSocketVsockProxyIfEnabled(cuttlefish::ProcessMonitor* process_monitor,
-                                     const cuttlefish::CuttlefishConfig& config) {
+                                     const cuttlefish::CuttlefishConfig& config,
+                                     cuttlefish::SharedFD adbd_events_pipe) {
   auto instance = config.ForDefaultInstance();
   if (AdbVsockTunnelEnabled(config)) {
     cuttlefish::Command adb_tunnel(cuttlefish::SocketVsockProxyBinary());
+    adb_tunnel.AddParameter("-adbd_events_fd=", adbd_events_pipe);
     adb_tunnel.AddParameter("--server=tcp");
     adb_tunnel.AddParameter("--vsock_port=6520");
     adb_tunnel.AddParameter(std::string{"--tcp_port="} +
@@ -431,6 +425,7 @@ void LaunchSocketVsockProxyIfEnabled(cuttlefish::ProcessMonitor* process_monitor
   }
   if (AdbVsockHalfTunnelEnabled(config)) {
     cuttlefish::Command adb_tunnel(cuttlefish::SocketVsockProxyBinary());
+    adb_tunnel.AddParameter("-adbd_events_fd=", adbd_events_pipe);
     adb_tunnel.AddParameter("--server=tcp");
     adb_tunnel.AddParameter("--vsock_port=5555");
     adb_tunnel.AddParameter(std::string{"--tcp_port="} +
@@ -504,15 +499,33 @@ void LaunchGnssGrpcProxyServerIfEnabled(const cuttlefish::CuttlefishConfig& conf
 
 void LaunchSecureEnvironment(cuttlefish::ProcessMonitor* process_monitor,
                              const cuttlefish::CuttlefishConfig& config) {
-  auto keymaster_port = config.ForDefaultInstance().keymaster_vsock_port();
-  auto keymaster_server =
-      cuttlefish::SharedFD::VsockServer(keymaster_port, SOCK_STREAM);
-  auto gatekeeper_port = config.ForDefaultInstance().gatekeeper_vsock_port();
-  auto gatekeeper_server =
-      cuttlefish::SharedFD::VsockServer(gatekeeper_port, SOCK_STREAM);
+  auto instance = config.ForDefaultInstance();
+  std::vector<std::string> fifo_paths = {
+    instance.PerInstanceInternalPath("keymaster_fifo_vm.in"),
+    instance.PerInstanceInternalPath("keymaster_fifo_vm.out"),
+    instance.PerInstanceInternalPath("gatekeeper_fifo_vm.in"),
+    instance.PerInstanceInternalPath("gatekeeper_fifo_vm.out"),
+  };
+  std::vector<cuttlefish::SharedFD> fifos;
+  for (const auto& path : fifo_paths) {
+    unlink(path.c_str());
+    if (mkfifo(path.c_str(), 0600) < 0) {
+      PLOG(ERROR) << "Could not create " << path;
+      return;
+    }
+    auto fd = cuttlefish::SharedFD::Open(path, O_RDWR);
+    if (!fd->IsOpen()) {
+      LOG(ERROR) << "Could not open " << path << ": " << fd->StrError();
+      return;
+    }
+    fifos.push_back(fd);
+  }
+
   cuttlefish::Command command(cuttlefish::DefaultHostArtifactsPath("bin/secure_env"));
-  command.AddParameter("-keymaster_fd=", keymaster_server);
-  command.AddParameter("-gatekeeper_fd=", gatekeeper_server);
+  command.AddParameter("-keymaster_fd_out=", fifos[0]);
+  command.AddParameter("-keymaster_fd_in=", fifos[1]);
+  command.AddParameter("-gatekeeper_fd_out=", fifos[2]);
+  command.AddParameter("-gatekeeper_fd_in=", fifos[3]);
   process_monitor->StartSubprocess(std::move(command),
                                    GetOnSubprocessExitCallback(config));
 }

@@ -18,35 +18,42 @@
 # Common BoardConfig for all supported architectures.
 #
 
+# TODO(b/170639028): Back up TARGET_NO_BOOTLOADER
+__TARGET_NO_BOOTLOADER := $(TARGET_NO_BOOTLOADER)
 include build/make/target/board/BoardConfigMainlineCommon.mk
+TARGET_NO_BOOTLOADER := $(__TARGET_NO_BOOTLOADER)
 
 TARGET_BOOTLOADER_BOARD_NAME := cutf
+
+BOARD_SYSTEMIMAGE_FILE_SYSTEM_TYPE := $(TARGET_RO_FILE_SYSTEM_TYPE)
 
 # Boot partition size: 32M
 # This is only used for OTA update packages. The image size on disk
 # will not change (as is it not a filesystem.)
 BOARD_BOOTIMAGE_PARTITION_SIZE := 67108864
+ifdef TARGET_DEDICATED_RECOVERY
 BOARD_RECOVERYIMAGE_PARTITION_SIZE := 67108864
+endif
 BOARD_VENDOR_BOOTIMAGE_PARTITION_SIZE := 67108864
 
 # Build a separate vendor.img partition
 BOARD_USES_VENDORIMAGE := true
-BOARD_VENDORIMAGE_FILE_SYSTEM_TYPE := ext4
+BOARD_VENDORIMAGE_FILE_SYSTEM_TYPE := $(TARGET_RO_FILE_SYSTEM_TYPE)
 
 BOARD_USES_METADATA_PARTITION := true
 
 # Build a separate product.img partition
 BOARD_USES_PRODUCTIMAGE := true
-BOARD_PRODUCTIMAGE_FILE_SYSTEM_TYPE := ext4
+BOARD_PRODUCTIMAGE_FILE_SYSTEM_TYPE := $(TARGET_RO_FILE_SYSTEM_TYPE)
 
 # Build a separate system_ext.img partition
 BOARD_USES_SYSTEM_EXTIMAGE := true
-BOARD_SYSTEM_EXTIMAGE_FILE_SYSTEM_TYPE := ext4
+BOARD_SYSTEM_EXTIMAGE_FILE_SYSTEM_TYPE := $(TARGET_RO_FILE_SYSTEM_TYPE)
 TARGET_COPY_OUT_SYSTEM_EXT := system_ext
 
 # Build a separate odm.img partition
 BOARD_USES_ODMIMAGE := true
-BOARD_ODMIMAGE_FILE_SYSTEM_TYPE := ext4
+BOARD_ODMIMAGE_FILE_SYSTEM_TYPE := $(TARGET_RO_FILE_SYSTEM_TYPE)
 TARGET_COPY_OUT_ODM := odm
 
 # Build a separate vendor_dlkm partition
@@ -143,12 +150,17 @@ TARGET_RECOVERY_UI_LIB := librecovery_ui_cuttlefish
 TARGET_RECOVERY_FSTAB ?= device/google/cuttlefish/shared/config/fstab.f2fs
 
 BOARD_SUPER_PARTITION_SIZE := 6442450944
-BOARD_SUPER_PARTITION_GROUPS := google_dynamic_partitions
-BOARD_GOOGLE_DYNAMIC_PARTITIONS_PARTITION_LIST := odm product system system_ext vendor vendor_dlkm odm_dlkm
-BOARD_GOOGLE_DYNAMIC_PARTITIONS_SIZE := 6442450944
+BOARD_SUPER_PARTITION_GROUPS := google_system_dynamic_partitions google_vendor_dynamic_partitions
+BOARD_GOOGLE_SYSTEM_DYNAMIC_PARTITIONS_PARTITION_LIST := product system system_ext
+BOARD_GOOGLE_SYSTEM_DYNAMIC_PARTITIONS_SIZE := 5368709120  # 5GiB
+BOARD_GOOGLE_VENDOR_DYNAMIC_PARTITIONS_PARTITION_LIST := odm vendor vendor_dlkm odm_dlkm
+BOARD_GOOGLE_VENDOR_DYNAMIC_PARTITIONS_SIZE := 1073741824
 BOARD_BUILD_SUPER_IMAGE_BY_DEFAULT := true
 BOARD_SUPER_IMAGE_IN_UPDATE_PACKAGE := true
 TARGET_RELEASETOOLS_EXTENSIONS := device/google/cuttlefish/shared
+
+# Generate a partial ota update package for partitions in vbmeta_system
+BOARD_PARTIAL_OTA_UPDATE_PARTITIONS_LIST := product system system_ext vbmeta_system
 
 BOARD_BOOTLOADER_IN_UPDATE_PACKAGE := true
 BOARD_RAMDISK_USE_LZ4 := true
@@ -173,7 +185,6 @@ endif
 
 BOARD_INCLUDE_DTB_IN_BOOTIMG := true
 BOARD_BOOT_HEADER_VERSION := 3
-BOARD_USES_RECOVERY_AS_BOOT := true
 BOARD_MKBOOTIMG_ARGS += --header_version $(BOARD_BOOT_HEADER_VERSION)
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/dtb.img:dtb.img \
@@ -183,3 +194,12 @@ BOARD_BUILD_SYSTEM_ROOT_IMAGE := false
 
 # Cuttlefish doesn't support ramdump feature yet, exclude the ramdump debug tool.
 EXCLUDE_BUILD_RAMDUMP_UPLOADER_DEBUG_TOOL := true
+
+# GKI-related variables.
+BOARD_USES_GENERIC_KERNEL_IMAGE := true
+ifdef TARGET_DEDICATED_RECOVERY
+  BOARD_EXCLUDE_KERNEL_FROM_RECOVERY_IMAGE := true
+else
+  BOARD_MOVE_RECOVERY_RESOURCES_TO_VENDOR_BOOT := true
+endif
+BOARD_MOVE_GSI_AVB_KEYS_TO_VENDOR_BOOT := true
