@@ -68,9 +68,10 @@ cvd_host_executables := \
     x86_64-linux-gnu/libemugl_common.so \
     x86_64-linux-gnu/libgfxstream_backend.so \
 
-ifneq ($(wildcard device/google/trout),)
-    cvd_host_executables += android.hardware.automotive.vehicle@2.0-virtualization-grpc-server
-endif
+#TODO(b/172849155): Revert comment in SP1A.201105.002
+#ifneq ($(wildcard device/google/trout),)
+    #cvd_host_executables += android.hardware.automotive.vehicle@2.0-virtualization-grpc-server
+#endif
 
 cvd_host_tests := \
     cuttlefish_net_tests \
