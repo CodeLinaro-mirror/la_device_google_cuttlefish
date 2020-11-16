@@ -173,10 +173,12 @@
     {RIL_REQUEST_ENTER_SIM_DEPERSONALIZATION, radio_1_6::supplySimDepersonalizationResponse},
     {RIL_REQUEST_CDMA_SEND_SMS_EXPECT_MORE, radio_1_6::sendCdmaSmsExpectMoreResponse},
     {RIL_REQUEST_GET_BARRING_INFO, radio_1_6::getBarringInfoResponse},
-    {RIL_REQUEST_ENABLE_NR_DUAL_CONNECTIVITY, radio_1_6::enableNrDualConnectivityResponse},
+    {RIL_REQUEST_ENABLE_NR_DUAL_CONNECTIVITY, radio_1_6::setNrDualConnectivityStateResponse},
     {RIL_REQUEST_IS_NR_DUAL_CONNECTIVITY_ENABLED, radio_1_6::isNrDualConnectivityEnabledResponse},
     {RIL_REQUEST_ALLOCATE_PDU_SESSION_ID, radio_1_6::allocatePduSessionIdResponse},
     {RIL_REQUEST_RELEASE_PDU_SESSION_ID, radio_1_6::releasePduSessionIdResponse},
     {RIL_REQUEST_BEGIN_HANDOVER, radio_1_6::beginHandoverResponse},
     {RIL_REQUEST_CANCEL_HANDOVER, radio_1_6::cancelHandoverResponse},
-    {RIL_REQUEST_SET_ALLOWED_NETWORK_TYPE_BITMAP, radio_1_6::setAllowedNetworkTypeBitmapResponse}
+    {RIL_REQUEST_SET_ALLOWED_NETWORK_TYPE_BITMAP, radio_1_6::setAllowedNetworkTypeBitmapResponse},
+    {RIL_REQUEST_SET_DATA_THROTTLING, radio_1_6::setDataThrottlingResponse}
+

@@ -23,13 +23,12 @@
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/tee_logging.h"
-#include "host/commands/assemble_cvd/assembler_defs.h"
+#include "host/commands/assemble_cvd/alloc.h"
 #include "host/commands/assemble_cvd/boot_config.h"
 #include "host/commands/assemble_cvd/boot_image_unpacker.h"
+#include "host/commands/assemble_cvd/clean.h"
 #include "host/commands/assemble_cvd/disk_flags.h"
 #include "host/commands/assemble_cvd/image_aggregator.h"
-#include "host/libs/allocd/request.h"
-#include "host/libs/allocd/utils.h"
 #include "host/libs/config/data_image.h"
 #include "host/libs/config/fetcher_config.h"
 #include "host/libs/config/host_tools_version.h"
@@ -38,14 +37,9 @@
 #include "host/libs/vm_manager/qemu_manager.h"
 #include "host/libs/vm_manager/vm_manager.h"
 
-using cuttlefish::CreateBlankImage;
-using cuttlefish::DataImageResult;
-using cuttlefish::ForCurrentInstance;
-using cuttlefish::RandomSerialNumber;
-using cuttlefish::AssemblerExitCodes;
+using cuttlefish::DefaultHostArtifactsPath;
+using cuttlefish::StringFromEnv;
 using cuttlefish::vm_manager::CrosvmManager;
-using cuttlefish::vm_manager::QemuManager;
-using cuttlefish::vm_manager::GetVmManager;
 
 DEFINE_int32(cpus, 2, "Virtual CPU count.");
 DEFINE_string(data_policy, "use_existing", "How to handle userdata partition."
@@ -77,15 +71,13 @@ DEFINE_bool(guest_force_normal_boot, true,
             "Whether to force the boot sequence to skip recovery.");
 DEFINE_int32(memory_mb, 2048,
              "Total amount of memory available for guest, MB.");
-DEFINE_string(serial_number, ForCurrentInstance("CUTTLEFISHCVD"),
+DEFINE_string(serial_number, cuttlefish::ForCurrentInstance("CUTTLEFISHCVD"),
               "Serial number to use for the device");
 DEFINE_bool(use_random_serial, false,
             "Whether to use random serial for the device.");
-DEFINE_string(assembly_dir,
-              cuttlefish::StringFromEnv("HOME", ".") + "/cuttlefish_assembly",
+DEFINE_string(assembly_dir, StringFromEnv("HOME", ".") + "/cuttlefish_assembly",
               "A directory to put generated files common between instances");
-DEFINE_string(instance_dir,
-              cuttlefish::StringFromEnv("HOME", ".") + "/cuttlefish_runtime",
+DEFINE_string(instance_dir, StringFromEnv("HOME", ".") + "/cuttlefish_runtime",
               "A directory to put all instance specific files");
 DEFINE_string(
     vm_manager, CrosvmManager::name(),
@@ -134,20 +126,17 @@ DEFINE_bool(enable_sandbox,
 
 static const std::string kSeccompDir =
     std::string("usr/share/crosvm/") + cuttlefish::HostArch() + "-linux-gnu/seccomp";
-DEFINE_string(seccomp_policy_dir,
-              cuttlefish::DefaultHostArtifactsPath(kSeccompDir),
+DEFINE_string(seccomp_policy_dir, DefaultHostArtifactsPath(kSeccompDir),
               "With sandbox'ed crosvm, overrieds the security comp policy directory");
 
 DEFINE_bool(start_webrtc, false, "Whether to start the webrtc process.");
 
 DEFINE_string(
-        webrtc_assets_dir,
-        cuttlefish::DefaultHostArtifactsPath("usr/share/webrtc/assets"),
+        webrtc_assets_dir, DefaultHostArtifactsPath("usr/share/webrtc/assets"),
         "[Experimental] Path to WebRTC webpage assets.");
 
 DEFINE_string(
-        webrtc_certs_dir,
-        cuttlefish::DefaultHostArtifactsPath("usr/share/webrtc/certs"),
+        webrtc_certs_dir, DefaultHostArtifactsPath("usr/share/webrtc/certs"),
         "[Experimental] Path to WebRTC certificates directory.");
 
 DEFINE_string(
@@ -229,8 +218,7 @@ DEFINE_string(setupwizard_mode, "DISABLED",
 DEFINE_string(qemu_binary,
               "/usr/bin/qemu-system-x86_64",
               "The qemu binary to use");
-DEFINE_string(crosvm_binary,
-              cuttlefish::DefaultHostArtifactsPath("bin/crosvm"),
+DEFINE_string(crosvm_binary, DefaultHostArtifactsPath("bin/crosvm"),
               "The Crosvm binary to use");
 DEFINE_string(tpm_binary, "",
               "The TPM simulator to use. Disabled if empty.");
@@ -238,6 +226,10 @@ DEFINE_string(tpm_device, "", "A host TPM device to pass through commands to.");
 DEFINE_bool(restart_subprocesses, true, "Restart any crashed host process");
 DEFINE_bool(enable_vehicle_hal_grpc_server, true, "Enables the vehicle HAL "
             "emulation gRPC server on the host");
+DEFINE_string(custom_action_config, "",
+              "Path to a custom action config JSON. Defaults to the file provided by "
+              "build variable CVD_CUSTOM_ACTION_CONFIG. If this build variable "
+              "is empty then the custom action config will be empty as well.");
 DEFINE_bool(use_bootloader, true, "Boots the device using a bootloader");
 DEFINE_string(bootloader, "", "Bootloader binary path");
 DEFINE_string(boot_slot, "", "Force booting into the given slot. If empty, "
@@ -280,7 +272,13 @@ DEFINE_int32(vsock_guest_cid,
              "the vsock cid of the i th instance would be C + i where i is in [1, N]"
              "If --num_instances is not given, the default value of N is used.");
 
+DEFINE_bool(ethernet, false, "Enable Ethernet network interface");
+
 DECLARE_string(system_image_dir);
+
+namespace cuttlefish {
+using vm_manager::QemuManager;
+using vm_manager::GetVmManager;
 
 namespace {
 
@@ -301,11 +299,7 @@ std::pair<uint16_t, uint16_t> ParsePortRange(const std::string& flag) {
   return port_range;
 }
 
-std::string GetCuttlefishEnvPath() {
-  return cuttlefish::StringFromEnv("HOME", ".") + "/.cuttlefish.sh";
-}
-
-std::string GetLegacyConfigFilePath(const cuttlefish::CuttlefishConfig& config) {
+std::string GetLegacyConfigFilePath(const CuttlefishConfig& config) {
   return config.ForDefaultInstance().PerInstancePath("cuttlefish_config.json");
 }
 
@@ -320,52 +314,51 @@ std::string StrForInstance(const std::string& prefix, int num) {
   return stream.str();
 }
 
-bool ShouldEnableAcceleratedRendering(
-    const cuttlefish::GraphicsAvailability& availability) {
+bool ShouldEnableAcceleratedRendering(const GraphicsAvailability& availability) {
   return availability.has_egl &&
          availability.has_egl_surfaceless_with_gles &&
          availability.has_discrete_gpu;
 }
 
-// Runs cuttlefish::GetGraphicsAvailability() inside of a subprocess to ensure
-// that cuttlefish::GetGraphicsAvailability() can complete successfully without
-// crashing assemble_cvd. Configurations such as GCE instances without a GPU
-// but with GPU drivers for example have seen crashes.
-cuttlefish::GraphicsAvailability GetGraphicsAvailabilityWithSubprocessCheck() {
+// Runs GetGraphicsAvailability() inside of a subprocess to ensure that
+// GetGraphicsAvailability() can complete successfully without crashing
+// assemble_cvd. Configurations such as GCE instances without a GPU but with GPU
+// drivers for example have seen crashes.
+GraphicsAvailability GetGraphicsAvailabilityWithSubprocessCheck() {
   const std::string detect_graphics_bin =
-    cuttlefish::DefaultHostArtifactsPath("bin/detect_graphics");
+      DefaultHostArtifactsPath("bin/detect_graphics");
 
-  cuttlefish::Command detect_graphics_cmd(detect_graphics_bin);
+  Command detect_graphics_cmd(detect_graphics_bin);
 
-  cuttlefish::SubprocessOptions detect_graphics_options;
+  SubprocessOptions detect_graphics_options;
   detect_graphics_options.Verbose(false);
 
   std::string detect_graphics_output;
   std::string detect_graphics_error;
-  int ret = cuttlefish::RunWithManagedStdio(std::move(detect_graphics_cmd),
-                                            nullptr,
-                                            &detect_graphics_output,
-                                            &detect_graphics_error,
-                                            detect_graphics_options);
+  int ret = RunWithManagedStdio(std::move(detect_graphics_cmd),
+                                nullptr,
+                                &detect_graphics_output,
+                                &detect_graphics_error,
+                                detect_graphics_options);
   if (ret == 0) {
-    return cuttlefish::GetGraphicsAvailability();
+    return GetGraphicsAvailability();
   }
   LOG(VERBOSE) << "Subprocess for detect_graphics failed with "
                << ret
                << " : "
                << detect_graphics_output;
-  return cuttlefish::GraphicsAvailability{};
+  return GraphicsAvailability{};
 }
 
 // Initializes the config object and saves it to file. It doesn't return it, all
 // further uses of the config should happen through the singleton
-cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
-    const cuttlefish::BootImageUnpacker& boot_image_unpacker,
-    const cuttlefish::FetcherConfig& fetcher_config) {
+CuttlefishConfig InitializeCuttlefishConfiguration(
+    const BootImageUnpacker& boot_image_unpacker,
+    const FetcherConfig& fetcher_config) {
   // At most one streamer can be started.
   CHECK(NumStreamers() <= 1);
 
-  cuttlefish::CuttlefishConfig tmp_config_obj;
+  CuttlefishConfig tmp_config_obj;
   tmp_config_obj.set_assembly_dir(FLAGS_assembly_dir);
   auto vmm = GetVmManager(FLAGS_vm_manager);
   if (!vmm) {
@@ -373,31 +366,31 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
   }
   tmp_config_obj.set_vm_manager(FLAGS_vm_manager);
 
-  const cuttlefish::GraphicsAvailability graphics_availability =
+  const GraphicsAvailability graphics_availability =
     GetGraphicsAvailabilityWithSubprocessCheck();
 
   LOG(VERBOSE) << GetGraphicsAvailabilityString(graphics_availability);
 
   tmp_config_obj.set_gpu_mode(FLAGS_gpu_mode);
-  if (tmp_config_obj.gpu_mode() == cuttlefish::kGpuModeAuto) {
+  if (tmp_config_obj.gpu_mode() == kGpuModeAuto) {
     if (ShouldEnableAcceleratedRendering(graphics_availability)) {
         LOG(INFO) << "GPU auto mode: detected prerequisites for accelerated "
                      "rendering support.";
       if (FLAGS_vm_manager == QemuManager::name()) {
         LOG(INFO) << "Enabling --gpu_mode=drm_virgl.";
-        tmp_config_obj.set_gpu_mode(cuttlefish::kGpuModeDrmVirgl);
+        tmp_config_obj.set_gpu_mode(kGpuModeDrmVirgl);
       } else {
         LOG(INFO) << "Enabling --gpu_mode=gfxstream.";
-        tmp_config_obj.set_gpu_mode(cuttlefish::kGpuModeGfxStream);
+        tmp_config_obj.set_gpu_mode(kGpuModeGfxStream);
       }
     } else {
       LOG(INFO) << "GPU auto mode: did not detect prerequisites for "
                    "accelerated rendering support, enabling "
                    "--gpu_mode=guest_swiftshader.";
-      tmp_config_obj.set_gpu_mode(cuttlefish::kGpuModeGuestSwiftshader);
+      tmp_config_obj.set_gpu_mode(kGpuModeGuestSwiftshader);
     }
-  } else if (tmp_config_obj.gpu_mode() == cuttlefish::kGpuModeGfxStream ||
-             tmp_config_obj.gpu_mode() == cuttlefish::kGpuModeDrmVirgl) {
+  } else if (tmp_config_obj.gpu_mode() == kGpuModeGfxStream ||
+             tmp_config_obj.gpu_mode() == kGpuModeDrmVirgl) {
     if (!ShouldEnableAcceleratedRendering(graphics_availability)) {
       LOG(ERROR) << "--gpu_mode="
                  << tmp_config_obj.gpu_mode()
@@ -409,7 +402,7 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
   }
   // Sepolicy rules need to be updated to support gpu mode. Temporarily disable
   // auto-enabling sandbox when gpu is enabled (b/152323505).
-  if (tmp_config_obj.gpu_mode() != cuttlefish::kGpuModeGuestSwiftshader) {
+  if (tmp_config_obj.gpu_mode() != kGpuModeGuestSwiftshader) {
     SetCommandLineOptionWithMode("enable_sandbox", "false",
                                  google::FlagSettingMode::SET_FLAGS_DEFAULT);
   }
@@ -458,7 +451,7 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
 
   // TODO(rammuthiah) Bootloader boot doesn't work in the following scenarios:
   // 1. Arm64 - On Crosvm, we have no implementation currently.
-  if (FLAGS_vm_manager == CrosvmManager::name() && cuttlefish::HostArch() == "aarch64") {
+  if (FLAGS_vm_manager == CrosvmManager::name() && HostArch() == "aarch64") {
     SetCommandLineOptionWithMode("use_bootloader", "false",
         google::FlagSettingMode::SET_FLAGS_DEFAULT);
   }
@@ -494,7 +487,7 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
     }
   }
 
-  tmp_config_obj.set_host_tools_version(cuttlefish::HostToolsCrc());
+  tmp_config_obj.set_host_tools_version(HostToolsCrc());
 
   tmp_config_obj.set_deprecated_boot_completed(FLAGS_deprecated_boot_completed);
 
@@ -543,7 +536,45 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_enable_vehicle_hal_grpc_server(FLAGS_enable_vehicle_hal_grpc_server);
   tmp_config_obj.set_vehicle_hal_grpc_server_binary(
-      cuttlefish::DefaultHostArtifactsPath("bin/android.hardware.automotive.vehicle@2.0-virtualization-grpc-server"));
+      DefaultHostArtifactsPath("bin/android.hardware.automotive.vehicle@2.0-virtualization-grpc-server"));
+
+  std::string custom_action_config;
+  if (!FLAGS_custom_action_config.empty()) {
+    custom_action_config = FLAGS_custom_action_config;
+  } else {
+    std::string custom_action_config_dir =
+        DefaultHostArtifactsPath("etc/cvd_custom_action_config");
+    if (DirectoryExists(custom_action_config_dir)) {
+      auto custom_action_configs = DirectoryContents(
+          custom_action_config_dir);
+      // Two entries are always . and ..
+      if (custom_action_configs.size() > 3) {
+        LOG(ERROR) << "Expected at most one custom action config in "
+                   << custom_action_config_dir << ". Please delete extras.";
+      } else if (custom_action_configs.size() == 3) {
+        for (const auto& config : custom_action_configs) {
+          if (android::base::EndsWithIgnoreCase(config, ".json")) {
+            custom_action_config = custom_action_config_dir + "/" + config;
+          }
+        }
+      }
+    }
+  }
+  // Load the custom action config JSON.
+  if (custom_action_config != "") {
+    Json::Reader reader;
+    std::ifstream ifs(custom_action_config);
+    Json::Value dictionary;
+    if (!reader.parse(ifs, dictionary)) {
+      LOG(ERROR) << "Could not read custom actions config file " << custom_action_config
+                 << ": " << reader.getFormattedErrorMessages();
+    }
+    std::vector<CustomActionConfig> custom_actions;
+    for (Json::Value custom_action : dictionary) {
+      custom_actions.push_back(CustomActionConfig(custom_action));
+    }
+    tmp_config_obj.set_custom_actions(custom_actions);
+  }
 
   tmp_config_obj.set_use_bootloader(FLAGS_use_bootloader);
   tmp_config_obj.set_bootloader(FLAGS_bootloader);
@@ -562,22 +593,29 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_vhost_net(FLAGS_vhost_net);
 
+  tmp_config_obj.set_ethernet(FLAGS_ethernet);
+
   std::vector<int> num_instances;
   for (int i = 0; i < FLAGS_num_instances; i++) {
-    num_instances.push_back(cuttlefish::GetInstance() + i);
+    num_instances.push_back(GetInstance() + i);
   }
 
   bool is_first_instance = true;
   for (const auto& num : num_instances) {
-    auto iface_opt = AcquireIfaces(num);
-    if (!iface_opt.has_value()) {
-      LOG(FATAL) << "Failed to acquire network interfaces";
+    IfaceConfig iface_config;
+    if (FLAGS_use_allocd) {
+      auto iface_opt = AllocateNetworkInterfaces();
+      if (!iface_opt.has_value()) {
+        LOG(FATAL) << "Failed to acquire network interfaces";
+      }
+      iface_config = iface_opt.value();
+    } else {
+      iface_config = DefaultNetworkInterfaces(num);
     }
 
-    auto iface_config = iface_opt.value();
     auto instance = tmp_config_obj.ForInstance(num);
     auto const_instance =
-        const_cast<const cuttlefish::CuttlefishConfig&>(tmp_config_obj)
+        const_cast<const CuttlefishConfig&>(tmp_config_obj)
             .ForInstance(num);
     // Set this first so that calls to PerInstancePath below are correct
     instance.set_instance_dir(FLAGS_instance_dir + "." + std::to_string(num));
@@ -593,10 +631,10 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
 
     instance.set_mobile_bridge_name(StrForInstance("cvd-mbr-", num));
     instance.set_mobile_tap_name(iface_config.mobile_tap.name);
-
     instance.set_wifi_tap_name(iface_config.wireless_tap.name);
+    instance.set_ethernet_tap_name(iface_config.ethernet_tap.name);
 
-    instance.set_vsock_guest_cid(FLAGS_vsock_guest_cid + num - cuttlefish::GetInstance());
+    instance.set_vsock_guest_cid(FLAGS_vsock_guest_cid + num - GetInstance());
 
     instance.set_uuid(FLAGS_uuid);
 
@@ -608,8 +646,8 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
     instance.set_audiocontrol_server_port(9410);  /* OK to use the same port number across instances */
     instance.set_config_server_port(6800 + num - 1);
 
-    if (FLAGS_gpu_mode != cuttlefish::kGpuModeDrmVirgl &&
-        FLAGS_gpu_mode != cuttlefish::kGpuModeGfxStream) {
+    if (FLAGS_gpu_mode != kGpuModeDrmVirgl &&
+        FLAGS_gpu_mode != kGpuModeGfxStream) {
       instance.set_frames_server_port(6900 + num - 1);
       if (FLAGS_vm_manager == QemuManager::name()) {
         instance.set_keyboard_server_port(7000 + num - 1);
@@ -672,9 +710,9 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
   return tmp_config_obj;
 }
 
-bool SaveConfig(const cuttlefish::CuttlefishConfig& tmp_config_obj) {
+bool SaveConfig(const CuttlefishConfig& tmp_config_obj) {
   auto config_file = GetConfigFilePath(tmp_config_obj);
-  auto config_link = cuttlefish::GetGlobalConfigFileLink();
+  auto config_link = GetGlobalConfigFileLink();
   // Save the config object before starting any host process
   if (!tmp_config_obj.SaveToFile(config_file)) {
     LOG(ERROR) << "Unable to save config object";
@@ -685,7 +723,7 @@ bool SaveConfig(const cuttlefish::CuttlefishConfig& tmp_config_obj) {
     LOG(ERROR) << "Unable to save legacy config object";
     return false;
   }
-  setenv(cuttlefish::kCuttlefishConfigEnvVarName, config_file.c_str(), true);
+  setenv(kCuttlefishConfigEnvVarName, config_file.c_str(), true);
   if (symlink(config_file.c_str(), config_link.c_str()) != 0) {
     LOG(ERROR) << "Failed to create symlink to config file at " << config_link
                << ": " << strerror(errno);
@@ -697,8 +735,7 @@ bool SaveConfig(const cuttlefish::CuttlefishConfig& tmp_config_obj) {
 
 void SetDefaultFlagsForQemu() {
   // for now, we don't set non-default options for QEMU
-  if (FLAGS_gpu_mode == cuttlefish::kGpuModeGuestSwiftshader &&
-      NumStreamers() == 0) {
+  if (FLAGS_gpu_mode == kGpuModeGuestSwiftshader && NumStreamers() == 0) {
     // This makes WebRTC the default streamer unless the user requests
     // another via a --star_<streamer> flag, while at the same time it's
     // possible to run without any streamer by setting --start_webrtc=false.
@@ -706,9 +743,20 @@ void SetDefaultFlagsForQemu() {
                                  google::FlagSettingMode::SET_FLAGS_DEFAULT);
   }
   std::string default_bootloader = FLAGS_system_image_dir + "/bootloader.qemu";
-  SetCommandLineOptionWithMode("bootloader",
-                               default_bootloader.c_str(),
+  SetCommandLineOptionWithMode("bootloader", default_bootloader.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
+}
+
+bool EnsureDirectoryExists(const std::string& directory_path) {
+  if (!DirectoryExists(directory_path)) {
+    LOG(DEBUG) << "Setting up " << directory_path;
+    if (mkdir(directory_path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) < 0
+        && errno != EEXIST) {
+      PLOG(ERROR) << "Failed to create dir: \"" << directory_path << "\" ";
+      return false;
+    }
+  }
+  return true;
 }
 
 void SetDefaultFlagsForCrosvm() {
@@ -723,17 +771,14 @@ void SetDefaultFlagsForCrosvm() {
   // for now, we support only x86_64 by default
   bool default_enable_sandbox = false;
   std::set<const std::string> supported_archs{std::string("x86_64")};
-  if (supported_archs.find(cuttlefish::HostArch()) != supported_archs.end()) {
-    default_enable_sandbox =
-        [](const std::string& var_empty) -> bool {
-          if (cuttlefish::DirectoryExists(var_empty)) {
-            return cuttlefish::IsDirectoryEmpty(var_empty);
-          }
-          if (cuttlefish::FileExists(var_empty)) {
-            return false;
-          }
-          return (::mkdir(var_empty.c_str(), 0755) == 0);
-        }(cuttlefish::kCrosvmVarEmptyDir);
+  if (supported_archs.find(HostArch()) != supported_archs.end()) {
+    if (DirectoryExists(kCrosvmVarEmptyDir)) {
+      default_enable_sandbox = IsDirectoryEmpty(kCrosvmVarEmptyDir);
+    } else if (FileExists(kCrosvmVarEmptyDir)) {
+      default_enable_sandbox = false;
+    } else {
+      default_enable_sandbox = EnsureDirectoryExists(kCrosvmVarEmptyDir);
+    }
   }
 
   SetCommandLineOptionWithMode("enable_sandbox",
@@ -743,7 +788,7 @@ void SetDefaultFlagsForCrosvm() {
   // Crosvm requires a specific setting for kernel decompression; it must be
   // on for aarch64 and off for x86, no other mode is supported.
   bool decompress_kernel = false;
-  if (cuttlefish::HostArch() == "aarch64") {
+  if (HostArch() == "aarch64") {
     decompress_kernel = true;
   }
   SetCommandLineOptionWithMode("decompress_kernel",
@@ -769,9 +814,8 @@ bool ParseCommandLineFlags(int* argc, char*** argv) {
     invalid_manager = true;
   }
   // Various temporary workarounds for aarch64
-  if (cuttlefish::HostArch() == "aarch64") {
-    SetCommandLineOptionWithMode("tpm_binary",
-                                 "",
+  if (HostArch() == "aarch64") {
+    SetCommandLineOptionWithMode("tpm_binary", "",
                                  google::FlagSettingMode::SET_FLAGS_DEFAULT);
   }
   // The default for starting signaling server is whether or not webrt is to be
@@ -784,122 +828,14 @@ bool ParseCommandLineFlags(int* argc, char*** argv) {
     return false;
   }
   // Set the env variable to empty (in case the caller passed a value for it).
-  unsetenv(cuttlefish::kCuttlefishConfigEnvVarName);
+  unsetenv(kCuttlefishConfigEnvVarName);
 
   return ResolveInstanceFiles();
 }
 
-bool CleanPriorFiles(const std::string& path, const std::set<std::string>& preserving) {
-  if (preserving.count(cuttlefish::cpp_basename(path))) {
-    LOG(DEBUG) << "Preserving: " << path;
-    return true;
-  }
-  struct stat statbuf;
-  if (lstat(path.c_str(), &statbuf) < 0) {
-    int error_num = errno;
-    if (error_num == ENOENT) {
-      return true;
-    } else {
-      LOG(ERROR) << "Could not stat \"" << path << "\": " << strerror(error_num);
-      return false;
-    }
-  }
-  if ((statbuf.st_mode & S_IFMT) != S_IFDIR) {
-    LOG(DEBUG) << "Deleting: " << path;
-    if (unlink(path.c_str()) < 0) {
-      int error_num = errno;
-      LOG(ERROR) << "Could not unlink \"" << path << "\", error was " << strerror(error_num);
-      return false;
-    }
-    return true;
-  }
-  std::unique_ptr<DIR, int(*)(DIR*)> dir(opendir(path.c_str()), closedir);
-  if (!dir) {
-    int error_num = errno;
-    LOG(ERROR) << "Could not clean \"" << path << "\": error was " << strerror(error_num);
-    return false;
-  }
-  for (auto entity = readdir(dir.get()); entity != nullptr; entity = readdir(dir.get())) {
-    std::string entity_name(entity->d_name);
-    if (entity_name == "." || entity_name == "..") {
-      continue;
-    }
-    std::string entity_path = path + "/" + entity_name;
-    if (!CleanPriorFiles(entity_path.c_str(), preserving)) {
-      return false;
-    }
-  }
-  if (rmdir(path.c_str()) < 0) {
-    if (!(errno == EEXIST || errno == ENOTEMPTY)) {
-      // If EEXIST or ENOTEMPTY, probably because a file was preserved
-      int error_num = errno;
-      LOG(ERROR) << "Could not rmdir \"" << path << "\", error was " << strerror(error_num);
-      return false;
-    }
-  }
-  return true;
-}
-
-bool CleanPriorFiles(const std::vector<std::string>& paths, const std::set<std::string>& preserving) {
-  std::string prior_files;
-  for (auto path : paths) {
-    struct stat statbuf;
-    if (stat(path.c_str(), &statbuf) < 0 && errno != ENOENT) {
-      // If ENOENT, it doesn't exist yet, so there is no work to do'
-      int error_num = errno;
-      LOG(ERROR) << "Could not stat \"" << path << "\": " << strerror(error_num);
-      return false;
-    }
-    bool is_directory = (statbuf.st_mode & S_IFMT) == S_IFDIR;
-    prior_files += (is_directory ? (path + "/*") : path) + " ";
-  }
-  LOG(DEBUG) << "Assuming prior files of " << prior_files;
-  std::string lsof_cmd = "lsof -t " + prior_files + " >/dev/null 2>&1";
-  int rval = std::system(lsof_cmd.c_str());
-  // lsof returns 0 if any of the files are open
-  if (WEXITSTATUS(rval) == 0) {
-    LOG(ERROR) << "Clean aborted: files are in use";
-    return false;
-  }
-  for (const auto& path : paths) {
-    if (!CleanPriorFiles(path, preserving)) {
-      LOG(ERROR) << "Remove of file under \"" << path << "\" failed";
-      return false;
-    }
-  }
-  return true;
-}
-
-bool CleanPriorFiles(const std::set<std::string>& preserving) {
-  std::vector<std::string> paths = {
-    // Everything in the assembly directory
-    FLAGS_assembly_dir,
-    // The environment file
-    GetCuttlefishEnvPath(),
-    // The global link to the config file
-    cuttlefish::GetGlobalConfigFileLink(),
-  };
-
-  std::string runtime_dir_parent =
-      cuttlefish::cpp_dirname(cuttlefish::AbsolutePath(FLAGS_instance_dir));
-  std::string runtime_dirs_basename =
-      cuttlefish::cpp_basename(cuttlefish::AbsolutePath(FLAGS_instance_dir));
-
-  std::regex instance_dir_regex("^.+\\.[1-9]\\d*$");
-  for (const auto& path : cuttlefish::DirectoryContents(runtime_dir_parent)) {
-    std::string absl_path = runtime_dir_parent + "/" + path;
-    if((path.rfind(runtime_dirs_basename, 0) == 0) && std::regex_match(path, instance_dir_regex) &&
-        cuttlefish::DirectoryExists(absl_path)) {
-      paths.push_back(absl_path);
-    }
-  }
-  paths.push_back(FLAGS_instance_dir);
-  return CleanPriorFiles(paths, preserving);
-}
-
-void ValidateAdbModeFlag(const cuttlefish::CuttlefishConfig& config) {
+void ValidateAdbModeFlag(const CuttlefishConfig& config) {
   auto adb_modes = config.adb_mode();
-  adb_modes.erase(cuttlefish::AdbMode::Unknown);
+  adb_modes.erase(AdbMode::Unknown);
   if (adb_modes.size() < 1) {
     LOG(INFO) << "ADB not enabled";
   }
@@ -911,14 +847,11 @@ void ValidateAdbModeFlag(const cuttlefish::CuttlefishConfig& config) {
 # define O_TMPFILE (020000000 | O_DIRECTORY)
 #endif
 
-const cuttlefish::CuttlefishConfig* InitFilesystemAndCreateConfig(
-    int* argc, char*** argv, cuttlefish::FetcherConfig fetcher_config) {
-  if (!ParseCommandLineFlags(argc, argv)) {
-    LOG(ERROR) << "Failed to parse command arguments";
-    exit(AssemblerExitCodes::kArgumentParsingError);
-  }
+const CuttlefishConfig* InitFilesystemAndCreateConfig(
+    int* argc, char*** argv, FetcherConfig fetcher_config) {
+  CHECK(ParseCommandLineFlags(argc, argv)) << "Failed to parse arguments";
 
-  std::string assembly_dir_parent = cuttlefish::AbsolutePath(FLAGS_assembly_dir);
+  std::string assembly_dir_parent = AbsolutePath(FLAGS_assembly_dir);
   while (assembly_dir_parent[assembly_dir_parent.size() - 1] == '/') {
     assembly_dir_parent =
         assembly_dir_parent.substr(0, FLAGS_assembly_dir.rfind('/'));
@@ -926,7 +859,7 @@ const cuttlefish::CuttlefishConfig* InitFilesystemAndCreateConfig(
   assembly_dir_parent =
       assembly_dir_parent.substr(0, FLAGS_assembly_dir.rfind('/'));
   auto log =
-      cuttlefish::SharedFD::Open(
+      SharedFD::Open(
           assembly_dir_parent,
           O_WRONLY | O_TMPFILE,
           S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
@@ -934,9 +867,9 @@ const cuttlefish::CuttlefishConfig* InitFilesystemAndCreateConfig(
     LOG(ERROR) << "Could not open O_TMPFILE precursor to assemble_cvd.log: "
                << log->StrError();
   } else {
-    android::base::SetLogger(cuttlefish::TeeLogger({
-      {cuttlefish::ConsoleSeverity(), cuttlefish::SharedFD::Dup(2)},
-      {cuttlefish::LogFileSeverity(), log},
+    android::base::SetLogger(TeeLogger({
+      {ConsoleSeverity(), SharedFD::Dup(2)},
+      {LogFileSeverity(), log},
     }));
   }
 
@@ -976,83 +909,36 @@ const cuttlefish::CuttlefishConfig* InitFilesystemAndCreateConfig(
         ss.str("");
       }
     }
-    if (!CleanPriorFiles(preserving)) {
-      LOG(ERROR) << "Failed to clean prior files";
-      exit(AssemblerExitCodes::kPrioFilesCleanupError);
-    }
+    CHECK(CleanPriorFiles(preserving, FLAGS_assembly_dir, FLAGS_instance_dir))
+        << "Failed to clean prior files";
+
     // Create assembly directory if it doesn't exist.
-    if (!cuttlefish::DirectoryExists(FLAGS_assembly_dir.c_str())) {
-      LOG(DEBUG) << "Setting up " << FLAGS_assembly_dir;
-      if (mkdir(FLAGS_assembly_dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) < 0
-          && errno != EEXIST) {
-        LOG(ERROR) << "Failed to create assembly directory: "
-                  << FLAGS_assembly_dir << ". Error: " << errno;
-        exit(AssemblerExitCodes::kAssemblyDirCreationError);
-      }
-    }
+    CHECK(EnsureDirectoryExists(FLAGS_assembly_dir));
     if (log->LinkAtCwd(config.AssemblyPath("assemble_cvd.log"))) {
       LOG(ERROR) << "Unable to persist assemble_cvd log at "
                   << config.AssemblyPath("assemble_cvd.log")
                   << ": " << log->StrError();
     }
     std::string disk_hole_dir = FLAGS_assembly_dir + "/disk_hole";
-    if (!cuttlefish::DirectoryExists(disk_hole_dir.c_str())) {
-      LOG(DEBUG) << "Setting up " << disk_hole_dir << "/disk_hole";
-      if (mkdir(disk_hole_dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) < 0
-          && errno != EEXIST) {
-        LOG(ERROR) << "Failed to create assembly directory: "
-                  << disk_hole_dir << ". Error: " << errno;
-        exit(AssemblerExitCodes::kAssemblyDirCreationError);
-      }
-    }
+    CHECK(EnsureDirectoryExists(disk_hole_dir));
     for (const auto& instance : config.Instances()) {
       // Create instance directory if it doesn't exist.
-      if (!cuttlefish::DirectoryExists(instance.instance_dir().c_str())) {
-        LOG(DEBUG) << "Setting up " << FLAGS_instance_dir << ".N";
-        if (mkdir(instance.instance_dir().c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) < 0
-            && errno != EEXIST) {
-          LOG(ERROR) << "Failed to create instance directory: "
-                    << FLAGS_instance_dir << ". Error: " << errno;
-          exit(AssemblerExitCodes::kInstanceDirCreationError);
-        }
-      }
-      auto internal_dir = instance.instance_dir() + "/" + cuttlefish::kInternalDirName;
-      if (!cuttlefish::DirectoryExists(internal_dir)) {
-        if (mkdir(internal_dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) < 0
-           && errno != EEXIST) {
-          LOG(ERROR) << "Failed to create internal instance directory: "
-                    << internal_dir << ". Error: " << errno;
-          exit(AssemblerExitCodes::kInstanceDirCreationError);
-        }
-      }
-      auto shared_dir = instance.instance_dir() + "/" + cuttlefish::kSharedDirName;
-      if (!cuttlefish::DirectoryExists(shared_dir)) {
-         if (mkdir(shared_dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) < 0
-           && errno != EEXIST) {
-          LOG(ERROR) << "Failed to create shared instance directory: "
-                    << shared_dir << ". Error: " << errno;
-          exit(AssemblerExitCodes::kInstanceDirCreationError);
-        }
-      }
+      CHECK(EnsureDirectoryExists(instance.instance_dir()));
+      auto internal_dir = instance.instance_dir() + "/" + kInternalDirName;
+      CHECK(EnsureDirectoryExists(internal_dir));
+      auto shared_dir = instance.instance_dir() + "/" + kSharedDirName;
+      CHECK(EnsureDirectoryExists(shared_dir));
     }
-    if (!SaveConfig(config)) {
-      LOG(ERROR) << "Failed to initialize configuration";
-      exit(AssemblerExitCodes::kCuttlefishConfigurationInitError);
-    }
+    CHECK(SaveConfig(config)) << "Failed to initialize configuration";
   }
 
-  std::string first_instance = FLAGS_instance_dir + "." + std::to_string(cuttlefish::GetInstance());
-  if (symlink(first_instance.c_str(), FLAGS_instance_dir.c_str()) < 0) {
-    LOG(ERROR) << "Could not symlink \"" << first_instance << "\" to \"" << FLAGS_instance_dir << "\"";
-    exit(cuttlefish::kCuttlefishConfigurationInitError);
-  }
+  std::string first_instance = FLAGS_instance_dir + "." + std::to_string(GetInstance());
+  CHECK_EQ(symlink(first_instance.c_str(), FLAGS_instance_dir.c_str()), 0)
+      << "Could not symlink \"" << first_instance << "\" to \"" << FLAGS_instance_dir << "\"";
 
   // Do this early so that the config object is ready for anything that needs it
-  auto config = cuttlefish::CuttlefishConfig::Get();
-  if (!config) {
-    LOG(ERROR) << "Failed to obtain config singleton";
-    exit(AssemblerExitCodes::kCuttlefishConfigurationInitError);
-  }
+  auto config = CuttlefishConfig::Get();
+  CHECK(config) << "Failed to obtain config singleton";
 
   ValidateAdbModeFlag(*config);
 
@@ -1061,120 +947,12 @@ const cuttlefish::CuttlefishConfig* InitFilesystemAndCreateConfig(
   return config;
 }
 
-std::string GetConfigFilePath(const cuttlefish::CuttlefishConfig& config) {
+std::string GetConfigFilePath(const CuttlefishConfig& config) {
   return config.AssemblyPath("cuttlefish_config.json");
 }
 
-std::optional<IfaceConfig> AcquireIfaces(int num) {
-  IfaceConfig config{};
-  if (!FLAGS_use_allocd) {
-    config.mobile_tap.name = StrForInstance("cvd-mtap-", num);
-    config.mobile_tap.resource_id = 0;
-    config.mobile_tap.session_id = 0;
-
-    config.wireless_tap.name = StrForInstance("cvd-wtap-", num);
-    config.wireless_tap.resource_id = 0;
-    config.wireless_tap.session_id = 0;
-    return config;
-  }
-  return RequestIfaces();
+std::string GetCuttlefishEnvPath() {
+  return StringFromEnv("HOME", ".") + "/.cuttlefish.sh";
 }
 
-std::optional<IfaceConfig> RequestIfaces() {
-  IfaceConfig config{};
-
-  cuttlefish::SharedFD allocd_sock = cuttlefish::SharedFD::SocketLocalClient(
-      cuttlefish::kDefaultLocation, false, SOCK_STREAM);
-  if (!allocd_sock->IsOpen()) {
-    LOG(FATAL) << "Unable to connect to allocd on "
-               << cuttlefish::kDefaultLocation << ": "
-               << allocd_sock->StrError();
-    exit(cuttlefish::kAllocdConnectionError);
-  }
-
-  Json::Value resource_config;
-  Json::Value request_list;
-  Json::Value req;
-  req["request_type"] = "create_interface";
-  req["uid"] = geteuid();
-  req["iface_type"] = "mtap";
-  request_list.append(req);
-  req["iface_type"] = "wtap";
-  request_list.append(req);
-
-  resource_config["config_request"]["request_list"] = request_list;
-
-  if (!cuttlefish::SendJsonMsg(allocd_sock, resource_config)) {
-    LOG(FATAL) << "Failed to send JSON to allocd\n";
-    return std::nullopt;
-  }
-
-  auto resp_opt = cuttlefish::RecvJsonMsg(allocd_sock);
-  if (!resp_opt.has_value()) {
-    LOG(FATAL) << "Bad Response from allocd\n";
-    exit(cuttlefish::kAllocdConnectionError);
-  }
-  auto resp = resp_opt.value();
-
-  if (!resp.isMember("config_status") || !resp["config_status"].isString()) {
-    LOG(FATAL) << "Bad response from allocd: " << resp;
-    exit(cuttlefish::kAllocdConnectionError);
-  }
-
-  if (resp["config_status"].asString() !=
-      cuttlefish::StatusToStr(cuttlefish::RequestStatus::Success)) {
-    LOG(FATAL) << "Failed to allocate interfaces " << resp;
-    exit(cuttlefish::kAllocdConnectionError);
-  }
-
-  if (!resp.isMember("session_id") || !resp["session_id"].isUInt()) {
-    LOG(FATAL) << "Bad response from allocd: " << resp;
-    exit(cuttlefish::kAllocdConnectionError);
-  }
-  auto session_id = resp["session_id"].asUInt();
-
-  if (!resp.isMember("response_list") || !resp["response_list"].isArray()) {
-    LOG(FATAL) << "Bad response from allocd: " << resp;
-    exit(cuttlefish::kAllocdConnectionError);
-  }
-
-  Json::Value resp_list = resp["response_list"];
-  Json::Value mtap_resp;
-  Json::Value wifi_resp;
-  for (Json::Value::ArrayIndex i = 0; i != resp_list.size(); ++i) {
-    auto ty = cuttlefish::StrToIfaceTy(resp_list[i]["iface_type"].asString());
-
-    switch (ty) {
-      case cuttlefish::IfaceType::mtap: {
-        mtap_resp = resp_list[i];
-        break;
-      }
-      case cuttlefish::IfaceType::wtap: {
-        wifi_resp = resp_list[i];
-        break;
-      }
-      default: {
-        break;
-      }
-    }
-  }
-
-  if (!mtap_resp.isMember("iface_type")) {
-    LOG(ERROR) << "Missing mtap response from allocd";
-    return std::nullopt;
-  }
-  if (!wifi_resp.isMember("iface_type")) {
-    LOG(ERROR) << "Missing wtap response from allocd";
-    return std::nullopt;
-  }
-
-  config.mobile_tap.name = mtap_resp["iface_name"].asString();
-  config.mobile_tap.resource_id = mtap_resp["resource_id"].asUInt();
-  config.mobile_tap.session_id = session_id;
-
-  config.wireless_tap.name = wifi_resp["iface_name"].asString();
-  config.wireless_tap.resource_id = wifi_resp["resource_id"].asUInt();
-  config.wireless_tap.session_id = session_id;
-
-  return config;
-}
+} // namespace cuttlefish

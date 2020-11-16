@@ -590,7 +590,7 @@ struct RadioImpl_1_6 : public V1_6::IRadio {
     Return<void> sendCdmaSmsExpectMore(int32_t serial, const CdmaSmsMessage& sms);
     Return<void> supplySimDepersonalization(int32_t serial, V1_5::PersoSubstate persoType,
                                             const hidl_string& controlKey);
-    Return<void> enableNrDualConnectivity(int32_t serial,
+    Return<void> setNrDualConnectivityState(int32_t serial,
             V1_6::NrDualConnectivityState nrDualConnectivityState);
     Return<void> isNrDualConnectivityEnabled(int32_t serial);
     // Methods from ::android::hardware::radio::V1_6::IRadio follow.
@@ -613,6 +613,9 @@ struct RadioImpl_1_6 : public V1_6::IRadio {
     Return<void> cancelHandover(int32_t serial, int32_t callId);
     Return<void> setAllowedNetworkTypeBitmap(uint32_t serial,
             hidl_bitfield<::android::hardware::radio::V1_4::RadioAccessFamily> networkTypeBitmap);
+    Return<void> setDataThrottling(int32_t serial,
+            V1_6::DataThrottlingAction dataThrottlingAction,
+            int32_t completionWindow);
 };
 
 struct OemHookImpl : public IOemHook {
@@ -4387,10 +4390,10 @@ Return<void> RadioImpl_1_6::supplySimDepersonalization(int32_t serial,
     return Void();
 }
 
-Return<void> RadioImpl_1_6::enableNrDualConnectivity(int32_t serial,
+Return<void> RadioImpl_1_6::setNrDualConnectivityState(int32_t serial,
         V1_6::NrDualConnectivityState nrDualConnectivityState) {
 #if VDBG
-    RLOGD("enableNrDualConnectivity: serial %d enable %d", serial, enable);
+    RLOGD("setNrDualConnectivityState: serial %d enable %d", serial, enable);
 #endif
     dispatchInts(serial, mSlotId, RIL_REQUEST_ENABLE_NR_DUAL_CONNECTIVITY, 1,
             nrDualConnectivityState);
@@ -4435,6 +4438,16 @@ Return<void> RadioImpl_1_6::cancelHandover(int32_t serial, int32_t callId) {
 #endif
     dispatchVoid(serial, mSlotId, RIL_REQUEST_CANCEL_HANDOVER);
     return Void();
+}
+
+
+Return<void> RadioImpl_1_6::setDataThrottling(int32_t serial, V1_6::DataThrottlingAction dataThrottlingAction, int32_t completionWindow) {
+   #if VDBG
+       RLOGD("OemHookImpl::sendRequestRaw: serial %d", serial);
+   #endif
+       dispatchInts(serial, mSlotId, RIL_REQUEST_SET_DATA_THROTTLING, 2,
+          dataThrottlingAction, completionWindow);
+       return Void();
 }
 
 // OEM hook methods:
@@ -9664,7 +9677,7 @@ int radio_1_6::supplySimDepersonalizationResponse(int slotId, int responseType, 
     return 0;
 }
 
-int radio_1_6::enableNrDualConnectivityResponse(int slotId, int responseType, int serial,
+int radio_1_6::setNrDualConnectivityStateResponse(int slotId, int responseType, int serial,
                                     RIL_Errno e, void* /* response */, size_t responseLen) {
 #if VDBG
     RLOGD("%s(): %d", __FUNCTION__, serial);
@@ -9679,7 +9692,7 @@ int radio_1_6::enableNrDualConnectivityResponse(int slotId, int responseType, in
     }
 
     Return<void> retStatus =
-            radioService[slotId]->mRadioResponseV1_6->enableNrDualConnectivityResponse(
+            radioService[slotId]->mRadioResponseV1_6->setNrDualConnectivityStateResponse(
             responseInfo);
     radioService[slotId]->checkReturnStatus(retStatus);
     return 0;
@@ -9790,6 +9803,28 @@ int radio_1_6::cancelHandoverResponse(int slotId, int responseType, int serial,
     return 0;
 }
 
+
+int radio_1_6::setDataThrottlingResponse(int slotId, int responseType,
+                   int serial, RIL_Errno e, void *response, size_t responselen) {
+#if VDBG
+    RLOGD("setDataThrottlingResponse: serial %d", serial);
+#endif
+
+   if (radioService[slotId]->mRadioResponseV1_6 == NULL) {
+       RLOGE("%s: radioService[%d]->mRadioResponseV1_6 == NULL", __FUNCTION__, slotId);
+       return 0;
+   }
+
+   V1_6::RadioResponseInfo responseInfo = {};
+   populateResponseInfo_1_6(responseInfo, serial, responseType, e);
+
+
+   Return<void> retstatus =
+        radioService[slotId]->mRadioResponseV1_6->setDataThrottlingResponse(
+                    responseInfo);
+   radioService[slotId]->checkReturnStatus(retstatus);
+   return 0;
+}
 /***************************************************************************************************
  * INDICATION FUNCTIONS
  * The below function handle unsolicited messages coming from the Radio

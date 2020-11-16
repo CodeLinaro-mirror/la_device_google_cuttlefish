@@ -117,6 +117,8 @@ const char* kWebRTCEnableADBWebSocket = "webrtc_enable_adb_websocket";
 const char* kEnableVehicleHalServer = "enable_vehicle_hal_server";
 const char* kVehicleHalServerBinary = "vehicle_hal_server_binary";
 
+const char* kCustomActions = "custom_actions";
+
 const char* kRestartSubprocesses = "restart_subprocesses";
 const char* kRunAdbConnector = "run_adb_connector";
 
@@ -165,6 +167,8 @@ const char* kConsole = "console";
 const char* kHostToolsVersion = "host_tools_version";
 
 const char* kVhostNet = "vhost_net";
+
+const char* kEthernet = "ethernet";
 
 }  // namespace
 
@@ -446,6 +450,22 @@ void CuttlefishConfig::set_vehicle_hal_grpc_server_binary(const std::string& veh
 
 std::string CuttlefishConfig::vehicle_hal_grpc_server_binary() const {
   return (*dictionary_)[kVehicleHalServerBinary].asString();
+}
+
+void CuttlefishConfig::set_custom_actions(const std::vector<CustomActionConfig>& actions) {
+  Json::Value actions_array(Json::arrayValue);
+  for (const auto& action : actions) {
+    actions_array.append(action.ToJson());
+  }
+  (*dictionary_)[kCustomActions] = actions_array;
+}
+
+std::vector<CustomActionConfig> CuttlefishConfig::custom_actions() const {
+  std::vector<CustomActionConfig> result;
+  for (Json::Value custom_action : (*dictionary_)[kCustomActions]) {
+    result.push_back(CustomActionConfig(custom_action));
+  }
+  return result;
 }
 
 void CuttlefishConfig::set_webrtc_assets_dir(const std::string& webrtc_assets_dir) {
@@ -773,6 +793,13 @@ void CuttlefishConfig::set_vhost_net(bool vhost_net) {
 }
 bool CuttlefishConfig::vhost_net() const {
   return (*dictionary_)[kVhostNet].asBool();
+}
+
+void CuttlefishConfig::set_ethernet(bool ethernet) {
+  (*dictionary_)[kEthernet] = ethernet;
+}
+bool CuttlefishConfig::ethernet() const {
+  return (*dictionary_)[kEthernet].asBool();
 }
 
 // Creates the (initially empty) config object and populates it with values from
