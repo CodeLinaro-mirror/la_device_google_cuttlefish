@@ -29,9 +29,9 @@ class DeviceConfig {
   static int host_port();
   static std::string PerInstancePath(const char* file_name);
   static std::string DefaultHostArtifactsPath(const std::string& file);
-  static const char* ril_address_and_prefix();
-  static const char* ril_gateway();
-  static const char* ril_dns();
+  static std::string ril_address_and_prefix();
+  static std::string ril_gateway();
+  static std::string ril_dns();
 };
 
 }  // namespace modem

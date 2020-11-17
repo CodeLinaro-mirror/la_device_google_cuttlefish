@@ -793,6 +793,23 @@ int sendCdmaSmsExpectMoreResponse(int slotId, int responseType, int serial, RIL_
 int supplySimDepersonalizationResponse(int slotId, int responseType, int serial, RIL_Errno e,
                                        void *response, size_t responselen);
 
+int enableNrDualConnectivityResponse(int slotId, int responseType, int serial,
+                                    RIL_Errno e, void* /* response */, size_t responseLen);
+int isNrDualConnectivityEnabledResponse(int slotId, int responseType, int serial,
+                                        RIL_Errno e, void* response, size_t responseLen);
+
+int allocatePduSessionIdResponse(int slotId, int responseType, int serial,
+                                        RIL_Errno e, void* response, size_t responseLen);
+int releasePduSessionIdResponse(int slotId, int responseType, int serial,
+                                        RIL_Errno e, void* response, size_t responseLen);
+int beginHandoverResponse(int slotId, int responseType, int serial,
+                                        RIL_Errno e, void* response, size_t responseLen);
+int cancelHandoverResponse(int slotId, int responseType, int serial,
+                                        RIL_Errno e, void* response, size_t responseLen);
+
+int setAllowedNetworkTypeBitmapResponse(int slotId, int responseType, int serial,
+                                  RIL_Errno e, void *response, size_t responselen);
+
 pthread_rwlock_t * getRadioServiceRwlock(int slotId);
 
 void setNitzTimeReceived(int slotId, long timeReceived);

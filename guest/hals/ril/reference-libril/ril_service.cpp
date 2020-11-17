@@ -139,6 +139,10 @@ void convertRilCellInfoListToHal_1_2(void *response, size_t responseLen, hidl_ve
 void populateResponseInfo(RadioResponseInfo& responseInfo, int serial, int responseType,
                          RIL_Errno e);
 
+void populateResponseInfo_1_6(
+    ::android::hardware::radio::V1_6::RadioResponseInfo &responseInfo,
+    int serial, int responseType, RIL_Errno e);
+
 struct RadioImpl_1_6 : public V1_6::IRadio {
     int32_t mSlotId;
     sp<IRadioResponse> mRadioResponse;
@@ -484,6 +488,8 @@ struct RadioImpl_1_6 : public V1_6::IRadio {
     Return<void> setSimCardPower(int32_t serial, bool powerUp);
     Return<void> setSimCardPower_1_1(int32_t serial,
             const V1_1::CardPowerState state);
+    Return<void> setSimCardPower_1_6(int32_t serial,
+            const V1_1::CardPowerState state);
 
     Return<void> responseAcknowledgement();
 
@@ -584,6 +590,9 @@ struct RadioImpl_1_6 : public V1_6::IRadio {
     Return<void> sendCdmaSmsExpectMore(int32_t serial, const CdmaSmsMessage& sms);
     Return<void> supplySimDepersonalization(int32_t serial, V1_5::PersoSubstate persoType,
                                             const hidl_string& controlKey);
+    Return<void> enableNrDualConnectivity(int32_t serial,
+            V1_6::NrDualConnectivityState nrDualConnectivityState);
+    Return<void> isNrDualConnectivityEnabled(int32_t serial);
     // Methods from ::android::hardware::radio::V1_6::IRadio follow.
     Return<void> getDataCallList_1_6(int32_t serial);
     Return<void> setupDataCall_1_6(int32_t serial,
@@ -592,6 +601,18 @@ struct RadioImpl_1_6 : public V1_6::IRadio {
             bool roamingAllowed, ::android::hardware::radio::V1_2::DataRequestReason reason,
             const hidl_vec<::android::hardware::radio::V1_5::LinkAddress>& addresses,
             const hidl_vec<hidl_string>& dnses);
+    Return<void> sendSms_1_6(int32_t serial, const GsmSmsMessage& message);
+    Return<void> sendSMSExpectMore_1_6(int32_t serial, const GsmSmsMessage& message);
+    Return<void> sendCdmaSms_1_6(int32_t serial, const CdmaSmsMessage& sms);
+    Return<void> sendCdmaSmsExpectMore_1_6(int32_t serial, const CdmaSmsMessage& sms);
+    Return<void> setRadioPower_1_6(int32_t serial, bool powerOn, bool forEmergencyCall,
+            bool preferredForEmergencyCall);
+    Return<void> allocatePduSessionId(int32_t serial);
+    Return<void> releasePduSessionId(int32_t serial, int32_t id);
+    Return<void> beginHandover(int32_t serial, int32_t callId);
+    Return<void> cancelHandover(int32_t serial, int32_t callId);
+    Return<void> setAllowedNetworkTypeBitmap(uint32_t serial,
+            hidl_bitfield<::android::hardware::radio::V1_4::RadioAccessFamily> networkTypeBitmap);
 };
 
 struct OemHookImpl : public IOemHook {
@@ -1254,7 +1275,25 @@ Return<void> RadioImpl_1_6::sendSms(int32_t serial, const GsmSmsMessage& message
     return Void();
 }
 
+Return<void> RadioImpl_1_6::sendSms_1_6(int32_t serial, const GsmSmsMessage& message) {
+#if VDBG
+    RLOGD("sendSms: serial %d", serial);
+#endif
+    dispatchStrings(serial, mSlotId, RIL_REQUEST_SEND_SMS, false,
+            2, message.smscPdu.c_str(), message.pdu.c_str());
+    return Void();
+}
+
 Return<void> RadioImpl_1_6::sendSMSExpectMore(int32_t serial, const GsmSmsMessage& message) {
+#if VDBG
+    RLOGD("sendSMSExpectMore: serial %d", serial);
+#endif
+    dispatchStrings(serial, mSlotId, RIL_REQUEST_SEND_SMS_EXPECT_MORE, false,
+            2, message.smscPdu.c_str(), message.pdu.c_str());
+    return Void();
+}
+
+Return<void> RadioImpl_1_6::sendSMSExpectMore_1_6(int32_t serial, const GsmSmsMessage& message) {
 #if VDBG
     RLOGD("sendSMSExpectMore: serial %d", serial);
 #endif
@@ -1941,6 +1980,22 @@ void constructCdmaSms(RIL_CDMA_SMS_Message &rcsm, const CdmaSmsMessage& sms) {
 }
 
 Return<void> RadioImpl_1_6::sendCdmaSms(int32_t serial, const CdmaSmsMessage& sms) {
+#if VDBG
+    RLOGD("sendCdmaSms: serial %d", serial);
+#endif
+    RequestInfo *pRI = android::addRequestToList(serial, mSlotId, RIL_REQUEST_CDMA_SEND_SMS);
+    if (pRI == NULL) {
+        return Void();
+    }
+
+    RIL_CDMA_SMS_Message rcsm = {};
+    constructCdmaSms(rcsm, sms);
+
+    CALL_ONREQUEST(pRI->pCI->requestNumber, &rcsm, sizeof(rcsm), pRI, mSlotId);
+    return Void();
+}
+
+Return<void> RadioImpl_1_6::sendCdmaSms_1_6(int32_t serial, const CdmaSmsMessage& sms) {
 #if VDBG
     RLOGD("sendCdmaSms: serial %d", serial);
 #endif
@@ -3033,6 +3088,14 @@ Return<void> RadioImpl_1_6::setSimCardPower_1_1(int32_t serial, const V1_1::Card
     return Void();
 }
 
+Return<void> RadioImpl_1_6::setSimCardPower_1_6(int32_t serial, const V1_1::CardPowerState state) {
+#if VDBG
+    RLOGD("setSimCardPower_1_6: serial %d state %d", serial, state);
+#endif
+    dispatchInts(serial, mSlotId, RIL_REQUEST_SET_SIM_CARD_POWER, 1, state);
+    return Void();
+}
+
 Return<void> RadioImpl_1_6::setCarrierInfoForImsiEncryption(int32_t serial,
         const V1_1::ImsiEncryptionInfo& data) {
 #if VDBG
@@ -3695,6 +3758,15 @@ Return<void> RadioImpl_1_6::setPreferredNetworkTypeBitmap(
     return Void();
 }
 
+Return<void> RadioImpl_1_6::setAllowedNetworkTypeBitmap(
+        uint32_t serial, hidl_bitfield<RadioAccessFamily> networkTypeBitmap) {
+#if VDBG
+    RLOGD("setAllowedNetworkTypeBitmap: serial %d", serial);
+#endif
+    dispatchInts(serial, mSlotId, RIL_REQUEST_SET_ALLOWED_NETWORK_TYPE_BITMAP, 1, networkTypeBitmap);
+    return Void();
+}
+
 Return<void> RadioImpl_1_6::getSignalStrength_1_4(int32_t serial) {
 #if VDBG
     RLOGD("getSignalStrength_1_4: serial %d", serial);
@@ -3804,6 +3876,16 @@ Return<void> RadioImpl_1_6::enableUiccApplications(int32_t serial, bool enable) 
 }
 
 Return<void> RadioImpl_1_6::setRadioPower_1_5(int32_t serial, bool powerOn, bool forEmergencyCall,
+                                          bool preferredForEmergencyCall) {
+#if VDBG
+    RLOGD("setRadioPower_1_6: serial %d powerOn %d forEmergency %d preferredForEmergencyCall %d",
+        serial, powerOn, forEmergencyCall, preferredForEmergencyCall);
+#endif
+    dispatchInts(serial, mSlotId, RIL_REQUEST_RADIO_POWER, 1, BOOL_TO_INT(powerOn));
+    return Void();
+}
+
+Return<void> RadioImpl_1_6::setRadioPower_1_6(int32_t serial, bool powerOn, bool forEmergencyCall,
                                           bool preferredForEmergencyCall) {
 #if VDBG
     RLOGD("setRadioPower_1_6: serial %d powerOn %d forEmergency %d preferredForEmergencyCall %d",
@@ -4278,6 +4360,23 @@ Return<void> RadioImpl_1_6::sendCdmaSmsExpectMore(int32_t serial, const CdmaSmsM
     return Void();
 }
 
+Return<void> RadioImpl_1_6::sendCdmaSmsExpectMore_1_6(int32_t serial, const CdmaSmsMessage& sms) {
+#if VDBG
+    RLOGD("sendCdmaSmsExpectMore: serial %d", serial);
+#endif
+    RequestInfo *pRI = android::addRequestToList(serial, mSlotId,
+            RIL_REQUEST_CDMA_SEND_SMS_EXPECT_MORE);
+    if (pRI == NULL) {
+        return Void();
+    }
+
+    RIL_CDMA_SMS_Message rcsm = {};
+    constructCdmaSms(rcsm, sms);
+
+    CALL_ONREQUEST(pRI->pCI->requestNumber, &rcsm, sizeof(rcsm), pRI, mSlotId);
+    return Void();
+}
+
 Return<void> RadioImpl_1_6::supplySimDepersonalization(int32_t serial,
         V1_5::PersoSubstate persoType, const hidl_string& controlKey) {
 #if VDBG
@@ -4285,6 +4384,56 @@ Return<void> RadioImpl_1_6::supplySimDepersonalization(int32_t serial,
 #endif
     dispatchStrings(serial, mSlotId, RIL_REQUEST_ENTER_SIM_DEPERSONALIZATION, true, 1,
             controlKey.c_str());
+    return Void();
+}
+
+Return<void> RadioImpl_1_6::enableNrDualConnectivity(int32_t serial,
+        V1_6::NrDualConnectivityState nrDualConnectivityState) {
+#if VDBG
+    RLOGD("enableNrDualConnectivity: serial %d enable %d", serial, enable);
+#endif
+    dispatchInts(serial, mSlotId, RIL_REQUEST_ENABLE_NR_DUAL_CONNECTIVITY, 1,
+            nrDualConnectivityState);
+    return Void();
+}
+
+Return<void> RadioImpl_1_6::isNrDualConnectivityEnabled(int32_t serial) {
+#if VDBG
+    RLOGD("isNrDualConnectivityEnabled: serial %d", serial);
+#endif
+    dispatchVoid(serial, mSlotId, RIL_REQUEST_IS_NR_DUAL_CONNECTIVITY_ENABLED);
+    return Void();
+}
+
+Return<void> RadioImpl_1_6::allocatePduSessionId(int32_t serial) {
+#if VDBG
+    RLOGD("allocatePduSessionId: serial %d", serial);
+#endif
+    dispatchVoid(serial, mSlotId, RIL_REQUEST_ALLOCATE_PDU_SESSION_ID);
+    return Void();
+}
+
+Return<void> RadioImpl_1_6::releasePduSessionId(int32_t serial, int32_t id) {
+#if VDBG
+    RLOGD("releasePduSessionId: serial %d, pduSessionId: %d", serial, id);
+#endif
+    dispatchVoid(serial, mSlotId, RIL_REQUEST_RELEASE_PDU_SESSION_ID);
+    return Void();
+}
+
+Return<void> RadioImpl_1_6::beginHandover(int32_t serial, int32_t callId) {
+#if VDBG
+    RLOGD("beginHandover: serial %d, callId: %d", serial, callId);
+#endif
+    dispatchVoid(serial, mSlotId, RIL_REQUEST_BEGIN_HANDOVER);
+    return Void();
+}
+
+Return<void> RadioImpl_1_6::cancelHandover(int32_t serial, int32_t callId) {
+#if VDBG
+    RLOGD("cancelHandover: serial %d, callId: %d", serial, callId);
+#endif
+    dispatchVoid(serial, mSlotId, RIL_REQUEST_CANCEL_HANDOVER);
     return Void();
 }
 
@@ -4354,6 +4503,21 @@ void populateResponseInfo(RadioResponseInfo& responseInfo, int serial, int respo
             break;
     }
     responseInfo.error = (RadioError) e;
+}
+
+void populateResponseInfo_1_6(
+    ::android::hardware::radio::V1_6::RadioResponseInfo &responseInfo,
+    int serial, int responseType, RIL_Errno e) {
+  responseInfo.serial = serial;
+  switch (responseType) {
+    case RESPONSE_SOLICITED:
+      responseInfo.type = RadioResponseType::SOLICITED;
+      break;
+    case RESPONSE_SOLICITED_ACK_EXP:
+      responseInfo.type = RadioResponseType::SOLICITED_ACK_EXP;
+      break;
+  }
+  responseInfo.error = (::android::hardware::radio::V1_6::RadioError)e;
 }
 
 int responseIntOrEmpty(RadioResponseInfo& responseInfo, int serial, int responseType, RIL_Errno e,
@@ -6102,9 +6266,15 @@ int radio_1_6::setRadioPowerResponse(int slotId,
     RLOGD("setRadioPowerResponse: serial %d", serial);
 #endif
     RadioResponseInfo responseInfo = {};
+    ::android::hardware::radio::V1_6::RadioResponseInfo responseInfo_1_6 = {};
     populateResponseInfo(responseInfo, serial, responseType, e);
+    populateResponseInfo_1_6(responseInfo_1_6, serial, responseType, e);
 
-    if (radioService[slotId]->mRadioResponseV1_5 != NULL) {
+    if (radioService[slotId]->mRadioResponseV1_6 != NULL) {
+        Return<void> retStatus = radioService[slotId]->mRadioResponseV1_6
+                ->setRadioPowerResponse_1_6(responseInfo_1_6);
+        radioService[slotId]->checkReturnStatus(retStatus);
+    } else if (radioService[slotId]->mRadioResponseV1_5 != NULL) {
         Return<void> retStatus = radioService[slotId]->mRadioResponseV1_5
                 ->setRadioPowerResponse_1_5(responseInfo);
         radioService[slotId]->checkReturnStatus(retStatus);
@@ -6158,6 +6328,27 @@ SendSmsResult makeSendSmsResult(RadioResponseInfo& responseInfo, int serial, int
     return result;
 }
 
+SendSmsResult makeSendSmsResult_1_6(
+        ::android::hardware::radio::V1_6::RadioResponseInfo &responseInfo, int serial,
+        int responseType, RIL_Errno e, void *response, size_t responseLen) {
+    populateResponseInfo_1_6(responseInfo, serial, responseType, e);
+    SendSmsResult result = {};
+
+    if (response == NULL || responseLen != sizeof(RIL_SMS_Response)) {
+        RLOGE("Invalid response: NULL");
+        if (e == RIL_E_SUCCESS) {
+            responseInfo.error = ::android::hardware::radio::V1_6::RadioError::INVALID_RESPONSE;
+        }
+        result.ackPDU = hidl_string();
+    } else {
+        RIL_SMS_Response *resp = (RIL_SMS_Response *) response;
+        result.messageRef = resp->messageRef;
+        result.ackPDU = convertCharPtrToHidlString(resp->ackPDU);
+        result.errorCode = resp->errorCode;
+    }
+    return result;
+}
+
 int radio_1_6::sendSmsResponse(int slotId,
                           int responseType, int serial, RIL_Errno e, void *response,
                           size_t responseLen) {
@@ -6165,7 +6356,15 @@ int radio_1_6::sendSmsResponse(int slotId,
     RLOGD("sendSmsResponse: serial %d", serial);
 #endif
 
-    if (radioService[slotId]->mRadioResponse != NULL) {
+    if (radioService[slotId]->mRadioResponseV1_6 != NULL) {
+        ::android::hardware::radio::V1_6::RadioResponseInfo responseInfo_1_6 = {};
+        SendSmsResult result = makeSendSmsResult_1_6(responseInfo_1_6, serial, responseType, e, response,
+                responseLen);
+
+        Return<void> retStatus = radioService[slotId]->mRadioResponseV1_6
+                ->sendSmsResponse_1_6(responseInfo_1_6, result);
+        radioService[slotId]->checkReturnStatus(retStatus);
+    } else if (radioService[slotId]->mRadioResponse != NULL) {
         RadioResponseInfo responseInfo = {};
         SendSmsResult result = makeSendSmsResult(responseInfo, serial, responseType, e, response,
                 responseLen);
@@ -6187,7 +6386,15 @@ int radio_1_6::sendSMSExpectMoreResponse(int slotId,
     RLOGD("sendSMSExpectMoreResponse: serial %d", serial);
 #endif
 
-    if (radioService[slotId]->mRadioResponse != NULL) {
+    if (radioService[slotId]->mRadioResponseV1_6 != NULL) {
+        ::android::hardware::radio::V1_6::RadioResponseInfo responseInfo_1_6 = {};
+        SendSmsResult result = makeSendSmsResult_1_6(responseInfo_1_6, serial, responseType, e, response,
+                responseLen);
+
+        Return<void> retStatus = radioService[slotId]->mRadioResponseV1_6
+                ->sendSMSExpectMoreResponse_1_6(responseInfo_1_6, result);
+        radioService[slotId]->checkReturnStatus(retStatus);
+    } else if (radioService[slotId]->mRadioResponse != NULL) {
         RadioResponseInfo responseInfo = {};
         SendSmsResult result = makeSendSmsResult(responseInfo, serial, responseType, e, response,
                 responseLen);
@@ -7197,6 +7404,28 @@ int radio_1_6::setPreferredNetworkTypeResponse(int slotId,
     return 0;
 }
 
+int radio_1_6::setAllowedNetworkTypeBitmapResponse(int slotId,
+                                 int responseType, int serial, RIL_Errno e,
+                                 void *response, size_t responseLen) {
+#if VDBG
+    RLOGD("setAllowedNetworkTypeBitmapResponse: serial %d", serial);
+#endif
+
+    V1_6::RadioResponseInfo responseInfo = {};
+    populateResponseInfo_1_6(responseInfo, serial, responseType, e);
+
+    // If we don't have a radio service, there's nothing we can do
+    if (radioService[slotId]->mRadioResponseV1_6 == NULL) {
+        RLOGE("%s: radioService[%d]->mRadioResponseV1_6 == NULL", __FUNCTION__, slotId);
+        return 0;
+    }
+
+    Return<void> retStatus =
+            radioService[slotId]->mRadioResponseV1_6->setAllowedNetworkTypeBitmapResponse(
+            responseInfo);
+    radioService[slotId]->checkReturnStatus(retStatus);
+    return 0;
+}
 
 int radio_1_6::getPreferredNetworkTypeResponse(int slotId,
                                           int responseType, int serial, RIL_Errno e,
@@ -7534,7 +7763,15 @@ int radio_1_6::sendCdmaSmsResponse(int slotId,
     RLOGD("sendCdmaSmsResponse: serial %d", serial);
 #endif
 
-    if (radioService[slotId]->mRadioResponse != NULL) {
+    if (radioService[slotId]->mRadioResponseV1_6 != NULL) {
+        ::android::hardware::radio::V1_6::RadioResponseInfo responseInfo_1_6 = {};
+        SendSmsResult result = makeSendSmsResult_1_6(responseInfo_1_6, serial, responseType, e,
+                response, responseLen);
+
+        Return<void> retStatus = radioService[slotId]->mRadioResponseV1_6
+                ->sendCdmaSmsResponse_1_6(responseInfo_1_6, result);
+        radioService[slotId]->checkReturnStatus(retStatus);
+    } else if (radioService[slotId]->mRadioResponse != NULL) {
         RadioResponseInfo responseInfo = {};
         SendSmsResult result = makeSendSmsResult(responseInfo, serial, responseType, e, response,
                 responseLen);
@@ -8943,23 +9180,33 @@ int radio_1_6::setSimCardPowerResponse(int slotId,
 #endif
 
     if (radioService[slotId]->mRadioResponse != NULL
-            || radioService[slotId]->mRadioResponseV1_1 != NULL) {
-        RadioResponseInfo responseInfo = {};
-        populateResponseInfo(responseInfo, serial, responseType, e);
-        if (radioService[slotId]->mRadioResponseV1_1 != NULL) {
+            || radioService[slotId]->mRadioResponseV1_1 != NULL
+            || radioService[slotId]->mRadioResponseV1_6 != NULL) {
+        if (radioService[slotId]->mRadioResponseV1_6 != NULL) {
+            ::android::hardware::radio::V1_6::RadioResponseInfo responseInfo = {};
+            populateResponseInfo_1_6(responseInfo, serial, responseType, e);
+            Return<void> retStatus = radioService[slotId]->mRadioResponseV1_6->
+                    setSimCardPowerResponse_1_6(responseInfo);
+            radioService[slotId]->checkReturnStatus(retStatus);
+        } else if (radioService[slotId]->mRadioResponseV1_1 != NULL) {
+            RLOGD("setSimCardPowerResponse: radioService[%d]->mRadioResponseV1_6 == NULL", slotId);
+            RadioResponseInfo responseInfo = {};
+            populateResponseInfo(responseInfo, serial, responseType, e);
             Return<void> retStatus = radioService[slotId]->mRadioResponseV1_1->
                     setSimCardPowerResponse_1_1(responseInfo);
             radioService[slotId]->checkReturnStatus(retStatus);
         } else {
-            RLOGD("setSimCardPowerResponse: radioService[%d]->mRadioResponseV1_1 == NULL",
+            RLOGD("setSimCardPowerResponse: radioService[%d]->mRadioResponseV1_6 and V1_1 == NULL",
                     slotId);
-            Return<void> retStatus
-                    = radioService[slotId]->mRadioResponse->setSimCardPowerResponse(responseInfo);
+            RadioResponseInfo responseInfo = {};
+            populateResponseInfo(responseInfo, serial, responseType, e);
+            Return<void> retStatus = radioService[slotId]->mRadioResponse
+                    ->setSimCardPowerResponse(responseInfo);
             radioService[slotId]->checkReturnStatus(retStatus);
         }
     } else {
         RLOGE("setSimCardPowerResponse: radioService[%d]->mRadioResponse == NULL && "
-                "radioService[%d]->mRadioResponseV1_1 == NULL", slotId, slotId);
+                "radioService[%d]->mRadioResponseV1_1 and V1_6 == NULL", slotId, slotId);
     }
     return 0;
 }
@@ -9364,7 +9611,15 @@ int radio_1_6::sendCdmaSmsExpectMoreResponse(int slotId, int responseType, int s
     RLOGD("sendCdmaSmsExpectMoreResponse: serial %d", serial);
 #endif
 
-    if (radioService[slotId]->mRadioResponseV1_5 != NULL) {
+    if (radioService[slotId]->mRadioResponseV1_6 != NULL) {
+        ::android::hardware::radio::V1_6::RadioResponseInfo responseInfo_1_6 = {};
+        SendSmsResult result = makeSendSmsResult_1_6(responseInfo_1_6, serial, responseType, e,
+                response, responseLen);
+
+        Return<void> retStatus = radioService[slotId]->mRadioResponseV1_6
+                ->sendCdmaSmsExpectMoreResponse_1_6(responseInfo_1_6, result);
+        radioService[slotId]->checkReturnStatus(retStatus);
+    } else if (radioService[slotId]->mRadioResponseV1_5 != NULL) {
         RadioResponseInfo responseInfo = {};
         SendSmsResult result = makeSendSmsResult(responseInfo, serial, responseType, e, response,
                 responseLen);
@@ -9406,6 +9661,132 @@ int radio_1_6::supplySimDepersonalizationResponse(int slotId, int responseType, 
                 "NULL", slotId);
     }
 
+    return 0;
+}
+
+int radio_1_6::enableNrDualConnectivityResponse(int slotId, int responseType, int serial,
+                                    RIL_Errno e, void* /* response */, size_t responseLen) {
+#if VDBG
+    RLOGD("%s(): %d", __FUNCTION__, serial);
+#endif
+    V1_6::RadioResponseInfo responseInfo = {};
+    populateResponseInfo_1_6(responseInfo, serial, responseType, e);
+
+    // If we don't have a radio service, there's nothing we can do
+    if (radioService[slotId]->mRadioResponseV1_6 == NULL) {
+        RLOGE("%s: radioService[%d]->mRadioResponseV1_6 == NULL", __FUNCTION__, slotId);
+        return 0;
+    }
+
+    Return<void> retStatus =
+            radioService[slotId]->mRadioResponseV1_6->enableNrDualConnectivityResponse(
+            responseInfo);
+    radioService[slotId]->checkReturnStatus(retStatus);
+    return 0;
+}
+
+int radio_1_6::isNrDualConnectivityEnabledResponse(int slotId, int responseType, int serial,
+                                        RIL_Errno e, void* response, size_t responseLen) {
+#if VDBG
+    RLOGD("%s(): %d", __FUNCTION__, serial);
+#endif
+    V1_6::RadioResponseInfo responseInfo = {};
+    populateResponseInfo_1_6(responseInfo, serial, responseType, e);
+
+    // If we don't have a radio service, there's nothing we can do
+    if (radioService[slotId]->mRadioResponseV1_6 == NULL) {
+        RLOGE("%s: radioService[%d]->mRadioResponseV1_6 == NULL", __FUNCTION__, slotId);
+        return 0;
+    }
+
+    bool enable = false;
+    if (response == NULL || responseLen != sizeof(bool)) {
+        RLOGE("isNrDualConnectivityEnabledResponseInvalid response.");
+    } else {
+        enable = (*((bool *) response));
+    }
+
+    Return<void> retStatus =
+            radioService[slotId]->mRadioResponseV1_6->isNrDualConnectivityEnabledResponse(
+            responseInfo, enable);
+    radioService[slotId]->checkReturnStatus(retStatus);
+    return 0;
+}
+
+int radio_1_6::allocatePduSessionIdResponse(int slotId, int responseType, int serial,
+                                        RIL_Errno e, void* response, size_t responseLen) {
+#if VDBG
+    RLOGD("%s(): %d", __FUNCTION__, serial);
+#endif
+    // If we don't have a radio service, there's nothing we can do
+    if (radioService[slotId]->mRadioResponseV1_6 == NULL) {
+      RLOGE("%s: radioService[%d]->mRadioResponseV1_6 == NULL", __FUNCTION__, slotId);
+      return 0;
+    }
+    V1_6::RadioResponseInfo responseInfo = {};
+    populateResponseInfo_1_6(responseInfo, serial, responseType, e);
+
+    Return<void> retStatus =
+            radioService[slotId]->mRadioResponseV1_6->allocatePduSessionIdResponse(responseInfo, -1);
+    radioService[slotId]->checkReturnStatus(retStatus);
+    return 0;
+}
+
+int radio_1_6::releasePduSessionIdResponse(int slotId, int responseType, int serial,
+                                        RIL_Errno e, void* response, size_t responseLen) {
+#if VDBG
+    RLOGD("%s(): %d", __FUNCTION__, serial);
+#endif
+    // If we don't have a radio service, there's nothing we can do
+    if (radioService[slotId]->mRadioResponseV1_6 == NULL) {
+        RLOGE("%s: radioService[%d]->mRadioResponseV1_6 == NULL", __FUNCTION__, slotId);
+        return 0;
+    }
+
+    V1_6::RadioResponseInfo responseInfo = {};
+    populateResponseInfo_1_6(responseInfo, serial, responseType, e);
+
+    Return<void> retStatus =
+            radioService[slotId]->mRadioResponseV1_6->releasePduSessionIdResponse(responseInfo);
+    radioService[slotId]->checkReturnStatus(retStatus);
+    return 0;
+}
+
+int radio_1_6::beginHandoverResponse(int slotId, int responseType, int serial,
+                                        RIL_Errno e, void* response, size_t responseLen) {
+    // If we don't have a radio service, there's nothing we can do
+    if (radioService[slotId]->mRadioResponseV1_6 == NULL) {
+        RLOGE("%s: radioService[%d]->mRadioResponseV1_6 == NULL", __FUNCTION__, slotId);
+        return 0;
+    }
+    V1_6::RadioResponseInfo responseInfo = {};
+    populateResponseInfo_1_6(responseInfo, serial, responseType, e);
+
+    Return<void> retStatus =
+            radioService[slotId]->mRadioResponseV1_6->beginHandoverResponse(responseInfo);
+
+#if VDBG
+    RLOGD("%s(): %d", __FUNCTION__, serial);
+#endif
+    return 0;
+}
+
+int radio_1_6::cancelHandoverResponse(int slotId, int responseType, int serial,
+                                        RIL_Errno e, void* response, size_t responseLen) {
+    // If we don't have a radio service, there's nothing we can do
+    if (radioService[slotId]->mRadioResponseV1_6 == NULL) {
+        RLOGE("%s: radioService[%d]->mRadioResponseV1_6 == NULL", __FUNCTION__, slotId);
+        return 0;
+    }
+    V1_6::RadioResponseInfo responseInfo = {};
+    populateResponseInfo_1_6(responseInfo, serial, responseType, e);
+
+    Return<void> retStatus =
+            radioService[slotId]->mRadioResponseV1_6->cancelHandoverResponse(responseInfo);
+
+#if VDBG
+    RLOGD("%s(): %d", __FUNCTION__, serial);
+#endif
     return 0;
 }
 

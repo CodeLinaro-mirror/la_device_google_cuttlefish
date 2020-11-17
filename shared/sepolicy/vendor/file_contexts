@@ -17,7 +17,11 @@
 /dev/dri u:object_r:gpu_device:s0
 /dev/dri/card0  u:object_r:graphics_device:s0
 /dev/dri/renderD128  u:object_r:gpu_device:s0
-/dev/hvc[0-9]*  u:object_r:serial_device:s0
+/dev/hvc0  u:object_r:serial_device:s0
+/dev/hvc1  u:object_r:serial_device:s0
+/dev/hvc2  u:object_r:serial_device:s0
+/dev/hvc3  u:object_r:keymaster_device:s0
+/dev/hvc4  u:object_r:gatekeeper_device:s0
 
 #############################
 # Root files
@@ -30,6 +34,15 @@
 #############################
 # var files
 /var/run/system(/.*)?  u:object_r:var_run_system_file:s0
+
+#############################
+# sys files
+# x86
+/sys/devices/pci0000:00/0000:00:[0-9a-fA-F]{2}\.0/virtio[0-9]+/net(/.*)? u:object_r:sysfs_net:s0
+# qemu (x86)
+/sys/devices/platform/10000.pci/pci0000:00/0000:00:[0-9a-fA-F]{2}\.0/virtio[0-9]+/net(/.*)? u:object_r:sysfs_net:s0
+# qemu (aarch64)
+/sys/devices/platform/4010000000.pcie/pci0000:00/0000:00:[0-9a-fA-F]{2}.0/virtio[0-9]+/net u:object_r:sysfs_net:s0
 
 #############################
 # Vendor files

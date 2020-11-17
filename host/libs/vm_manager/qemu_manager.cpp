@@ -122,12 +122,12 @@ std::vector<std::string> QemuManager::ConfigureGpuMode(
 }
 
 std::vector<std::string> QemuManager::ConfigureBootDevices() {
-  // PCI domain 0, bus 0, device 5, function 0
-  return { "androidboot.boot_devices=pci0000:00/0000:00:05.0" };
+  // PCI domain 0, bus 0, device 7, function 0
+  return { "androidboot.boot_devices=pci0000:00/0000:00:07.0" };
 }
 
 std::vector<Command> QemuManager::StartCommands(
-    const CuttlefishConfig& config, bool, const std::string& kernel_cmdline) {
+    const CuttlefishConfig& config, const std::string& kernel_cmdline) {
   auto instance = config.ForDefaultInstance();
 
   auto stop = [](Subprocess* proc) {
@@ -192,11 +192,16 @@ std::vector<Command> QemuManager::StartCommands(
   qemu_cmd.AddParameter("-boot");
   qemu_cmd.AddParameter("strict=on");
 
-  qemu_cmd.AddParameter("-kernel");
-  qemu_cmd.AddParameter(config.GetKernelImageToUse());
+  if (!config.use_bootloader()) {
+    qemu_cmd.AddParameter("-kernel");
+    qemu_cmd.AddParameter(config.GetKernelImageToUse());
 
-  qemu_cmd.AddParameter("-append");
-  qemu_cmd.AddParameter(kernel_cmdline);
+    qemu_cmd.AddParameter("-initrd");
+    qemu_cmd.AddParameter(config.final_ramdisk_path());
+
+    qemu_cmd.AddParameter("-append");
+    qemu_cmd.AddParameter(kernel_cmdline);
+  }
 
   qemu_cmd.AddParameter("-chardev");
   qemu_cmd.AddParameter("socket,id=charmonitor,path=", GetMonitorPath(config),
@@ -290,6 +295,26 @@ std::vector<Command> QemuManager::StartCommands(
 
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("virtconsole,bus=virtio-serial2.0,chardev=hvc2");
+
+  qemu_cmd.AddParameter("-chardev");
+  qemu_cmd.AddParameter("pipe,id=hvc3,path=",
+                        instance.PerInstanceInternalPath("keymaster_fifo_vm"));
+
+  qemu_cmd.AddParameter("-device");
+  qemu_cmd.AddParameter("virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial3");
+
+  qemu_cmd.AddParameter("-device");
+  qemu_cmd.AddParameter("virtconsole,bus=virtio-serial3.0,chardev=hvc3");
+
+  qemu_cmd.AddParameter("-chardev");
+  qemu_cmd.AddParameter("pipe,id=hvc4,path=",
+                        instance.PerInstanceInternalPath("gatekeeper_fifo_vm"));
+
+  qemu_cmd.AddParameter("-device");
+  qemu_cmd.AddParameter("virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial4");
+
+  qemu_cmd.AddParameter("-device");
+  qemu_cmd.AddParameter("virtconsole,bus=virtio-serial4.0,chardev=hvc4");
 
   for (size_t i = 0; i < instance.virtual_disk_paths().size(); i++) {
     auto bootindex = i == 0 ? ",bootindex=1" : "";
@@ -395,9 +420,6 @@ std::vector<Command> QemuManager::StartCommands(
     qemu_cmd.AddParameter("-gdb");
     qemu_cmd.AddParameter(config.gdb_flag());
   }
-
-  qemu_cmd.AddParameter("-initrd");
-  qemu_cmd.AddParameter(config.final_ramdisk_path());
 
   LogAndSetEnv("QEMU_AUDIO_DRV", "none");
 

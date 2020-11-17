@@ -101,6 +101,14 @@ extern "C" {
  *                    RIL_VoiceRegistrationStateResponse same is
  *                    used in RIL_REQUEST_DATA_REGISTRATION_STATE and
  *                    RIL_REQUEST_VOICE_REGISTRATION_STATE respectively.
+ * RIL_VERSION = 16 : New commands added:
+ *                    RIL_REQUEST_ENABLE_NR_DUAL_CONNECTIVITY
+ *                    RIL_REQUEST_IS_NR_DUAL_CONNECTIVITY_ENABLED
+ *                    RIL_REQUEST_ALLOCATE_PDU_SESSION_ID
+ *                    RIL_REQUEST_RELEASE_PDU_SESSION_ID
+ *                    RIL_REQUEST_BEGIN_HANDOVER
+ *                    RIL_REQUEST_CANCEL_HANDOVER
+ *                    RIL_REQUEST_SET_ALLOWED_NETWORK_TYPE_BITMAP
  */
 #define RIL_VERSION 12
 #define LAST_IMPRECISE_RIL_VERSION 12 // Better self-documented name
@@ -7340,7 +7348,96 @@ typedef enum {
  */
 #define RIL_REQUEST_GET_BARRING_INFO 158
 
-#define RIL_REQUEST_LAST RIL_REQUEST_GET_BARRING_INFO
+/**
+ * RIL_REQUEST_ENABLE_NR_DUAL_CONNECTIVITY
+ *
+ * Enable or disable E-UTRA-NR dual connectivity.
+ *
+ * Valid errors:
+ *  SUCCESS
+ *  RADIO_NOT_AVAILABLE
+ *  SIM_ABSENT
+ *  INTERNAL_ERR
+ */
+#define RIL_REQUEST_ENABLE_NR_DUAL_CONNECTIVITY 159
+
+/**
+ * RIL_REQUEST_IS_NR_DUAL_CONNECTIVITY_ENABLED
+ *
+ * Whether E-UTRA-NR dual connectivity is enabled.
+ *
+ * Response: a boolean of enable or not.
+ *
+ * Valid errors:
+ *  SUCCESS
+ *  RADIO_NOT_AVAILABLE
+ *  SIM_ABSENT
+ *  INTERNAL_ERR
+ */
+#define RIL_REQUEST_IS_NR_DUAL_CONNECTIVITY_ENABLED 160
+
+/**
+ * Allocates a pdu session id
+ *
+ * @param serial Serial number of request.
+ *
+ * Response callback is IRadioResponse.allocatePduSessionIdResponse()
+ */
+#define RIL_REQUEST_ALLOCATE_PDU_SESSION_ID 161
+
+/**
+ * Releases a pdu session id
+ *
+ * @param serial Serial number of request.
+ * @param id Pdu session id to release
+ *
+ * Response callback is IRadioResponse.releasePduSessionIdResponse()
+ */
+#define RIL_REQUEST_RELEASE_PDU_SESSION_ID 162
+
+/**
+ * Indicates that handover has begun
+ *
+ * @param serial Serial number of request.
+ * @param callId The unique identifier of the corresponding data call
+ *
+ * Response callback is IRadioResponse.beginHandoverResponse()
+ */
+#define RIL_REQUEST_BEGIN_HANDOVER 163
+
+/**
+ * Indicates that a handover has been cancelled
+ *
+ * @param serial Serial number of request.
+ * @param callId The unique identifier of the corresponding data call
+ *
+ * Response callback is IRadioResponse.cancelHandoverResponse()
+ */
+#define RIL_REQUEST_CANCEL_HANDOVER 164
+
+/**
+ * RIL_REQUEST_SET_ALLOWED_NETWORK_TYPE_BITMAP
+ *
+ * Instruct the radio to *only* accept the types of network provided. This
+ * is stronger than setPreferredNetworkType which is a suggestion.
+ *
+ * Valid errors:
+ *  SUCCESS
+ *  RADIO_NOT_AVAILABLE (radio resetting)
+ *  OPERATION_NOT_ALLOWED
+ *  MODE_NOT_SUPPORTED
+ *  NO_MEMORY
+ *  INTERNAL_ERR
+ *  SYSTEM_ERR
+ *  INVALID_ARGUMENTS
+ *  MODEM_ERR
+ *  REQUEST_NOT_SUPPORTED
+ *  NO_RESOURCES
+ *  CANCELLED
+ */
+#define RIL_REQUEST_SET_ALLOWED_NETWORK_TYPE_BITMAP 165
+
+#define RIL_REQUEST_LAST RIL_REQUEST_SET_ALLOWED_NETWORK_TYPE_BITMAP
 
 /***********************************************************************/
 
