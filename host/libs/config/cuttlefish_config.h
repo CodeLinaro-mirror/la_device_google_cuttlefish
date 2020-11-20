@@ -20,9 +20,12 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <set>
 #include <vector>
+
+#include "host/libs/config/custom_actions.h"
 
 namespace Json {
 class Value;
@@ -45,6 +48,8 @@ constexpr char kMobileNetworkConnectedMessage[] =
     "VIRTUAL_DEVICE_NETWORK_MOBILE_CONNECTED";
 constexpr char kWifiConnectedMessage[] =
     "VIRTUAL_DEVICE_NETWORK_WIFI_CONNECTED";
+constexpr char kEthernetConnectedMessage[] =
+    "VIRTUAL_DEVICE_NETWORK_ETHERNET_CONNECTED";
 constexpr char kScreenChangedMessage[] = "VIRTUAL_DEVICE_SCREEN_CHANGED";
 constexpr char kInternalDirName[] = "internal";
 constexpr char kSharedDirName[] = "shared";
@@ -189,6 +194,9 @@ class CuttlefishConfig {
   void set_vehicle_hal_grpc_server_binary(const std::string& vhal_server_binary);
   std::string vehicle_hal_grpc_server_binary() const;
 
+  void set_custom_actions(const std::vector<CustomActionConfig>& actions);
+  std::vector<CustomActionConfig> custom_actions() const;
+
   void set_restart_subprocesses(bool restart_subprocesses);
   bool restart_subprocesses() const;
 
@@ -313,6 +321,9 @@ class CuttlefishConfig {
   void set_vhost_net(bool vhost_net);
   bool vhost_net() const;
 
+  void set_ethernet(bool ethernet);
+  bool ethernet() const;
+
   class InstanceSpecific;
   class MutableInstanceSpecific;
 
@@ -369,6 +380,7 @@ class CuttlefishConfig {
     std::string mobile_bridge_name() const;
     std::string mobile_tap_name() const;
     std::string wifi_tap_name() const;
+    std::string ethernet_tap_name() const;
     uint32_t session_id() const;
     bool use_allocd() const;
     int vsock_guest_cid() const;
@@ -461,6 +473,7 @@ class CuttlefishConfig {
     void set_mobile_bridge_name(const std::string& mobile_bridge_name);
     void set_mobile_tap_name(const std::string& mobile_tap_name);
     void set_wifi_tap_name(const std::string& wifi_tap_name);
+    void set_ethernet_tap_name(const std::string& ethernet_tap_name);
     void set_session_id(uint32_t session_id);
     void set_use_allocd(bool use_allocd);
     void set_vsock_guest_cid(int vsock_guest_cid);
