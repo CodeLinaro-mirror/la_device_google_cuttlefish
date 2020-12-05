@@ -25,7 +25,7 @@ using namespace android;
 
 static const std::set<std::string> kKnownMissingHidl = {
     "android.frameworks.bufferhub@1.0",
-    "android.frameworks.cameraservice.device@2.0",
+    "android.frameworks.cameraservice.device@2.1",
     "android.frameworks.schedulerservice@1.0", // deprecated, see b/37226359
     "android.frameworks.vr.composer@1.0",
     "android.frameworks.vr.composer@2.0",
@@ -73,7 +73,6 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.oemlock@1.0",
     "android.hardware.power@1.3",
     "android.hardware.power.stats@1.0",
-    "android.hardware.radio.config@1.2",
     "android.hardware.radio.deprecated@1.0",
     "android.hardware.renderscript@1.0",
     "android.hardware.soundtrigger@2.3",
@@ -87,7 +86,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.tv.input@1.0",
     "android.hardware.tv.tuner@1.1",
     "android.hardware.usb@1.2",
-    "android.hardware.usb.gadget@1.1",
+    "android.hardware.usb.gadget@1.2",
     "android.hardware.vibrator@1.3",
     "android.hardware.vr@1.0",
     "android.hardware.weaver@1.0",
@@ -109,6 +108,11 @@ static const std::set<std::string> kKnownMissingAidl = {
     // in full swing but we cannot register the service by default just yet.
     // b/170144267
     "android.system.keystore2.",
+
+    // The keymint service implementation is in progress but we cannot register
+    // the service by default til all essential features landed.
+    // b/171429297
+    "android.hardware.keymint.",
 
     // These KeyMaster types are in an AIDL types-only HAL because they're used
     // by the Identity Credential AIDL HAL. Remove this when fully porting

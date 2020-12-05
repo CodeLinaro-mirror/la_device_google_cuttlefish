@@ -106,10 +106,11 @@ extern "C" {
  *                    RIL_REQUEST_IS_NR_DUAL_CONNECTIVITY_ENABLED
  *                    RIL_REQUEST_ALLOCATE_PDU_SESSION_ID
  *                    RIL_REQUEST_RELEASE_PDU_SESSION_ID
- *                    RIL_REQUEST_BEGIN_HANDOVER
+ *                    RIL_REQUEST_START_HANDOVER
  *                    RIL_REQUEST_CANCEL_HANDOVER
  *                    RIL_REQUEST_SET_ALLOWED_NETWORK_TYPE_BITMAP
  *                    RIL_REQUEST_SET_DATA_THROTTLING
+ *                    RIL_REQUEST_GET_SYSTEM_SELECTION_CHANNELS
  */
 #define RIL_VERSION 12
 #define LAST_IMPRECISE_RIL_VERSION 12 // Better self-documented name
@@ -7402,9 +7403,9 @@ typedef enum {
  * @param serial Serial number of request.
  * @param callId The unique identifier of the corresponding data call
  *
- * Response callback is IRadioResponse.beginHandoverResponse()
+ * Response callback is IRadioResponse.startHandoverResponse()
  */
-#define RIL_REQUEST_BEGIN_HANDOVER 163
+#define RIL_REQUEST_START_HANDOVER 163
 
 /**
  * Indicates that a handover has been cancelled
@@ -7454,7 +7455,18 @@ typedef enum {
 */
 #define RIL_REQUEST_SET_DATA_THROTTLING 166
 
-#define RIL_REQUEST_LAST RIL_REQUEST_SET_DATA_THROTTLING
+/**
+ * Get which bands the modem's background scan is acting on.
+ *
+ * Valid errors:
+ *  SUCCESS
+ *  RADIO_NOT_AVAILABLE
+ *  INTERNAL_ERR
+ *
+ */
+#define RIL_REQUEST_GET_SYSTEM_SELECTION_CHANNELS 167
+
+#define RIL_REQUEST_LAST RIL_REQUEST_GET_SYSTEM_SELECTION_CHANNELS
 
 /***********************************************************************/
 
@@ -7559,7 +7571,9 @@ typedef enum {
  */
 #define RIL_REQUEST_CONFIG_GET_MODEM_CONFIG 606
 
-#define RIL_REQUEST_RADIO_CONFIG_LAST    RIL_REQUEST_CONFIG_GET_MODEM_CONFIG
+#define RIL_REQUEST_CONFIG_GET_HAL_DEVICE_CAPABILITIES 607
+
+#define RIL_REQUEST_RADIO_CONFIG_LAST    RIL_REQUEST_CONFIG_GET_HAL_DEVICE_CAPABILITIES
 /* }@ */
 
 /***********************************************************************/
