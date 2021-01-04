@@ -9,42 +9,53 @@
 #include "host/commands/run_cvd/process_monitor.h"
 #include "host/libs/config/cuttlefish_config.h"
 
-std::vector <cuttlefish::SharedFD> LaunchKernelLogMonitor(
-    const cuttlefish::CuttlefishConfig& config,
-    cuttlefish::ProcessMonitor* process_monitor,
+namespace cuttlefish {
+
+std::vector<SharedFD> LaunchKernelLogMonitor(
+    const CuttlefishConfig& config,
+    ProcessMonitor* process_monitor,
     unsigned int number_of_event_pipes);
-void LaunchAdbConnectorIfEnabled(cuttlefish::ProcessMonitor* process_monitor,
-                                 const cuttlefish::CuttlefishConfig& config,
-                                 cuttlefish::SharedFD adbd_events_pipe);
-void LaunchSocketVsockProxyIfEnabled(cuttlefish::ProcessMonitor* process_monitor,
-                                 const cuttlefish::CuttlefishConfig& config);
+void LaunchAdbConnectorIfEnabled(ProcessMonitor* process_monitor,
+                                 const CuttlefishConfig& config);
+void LaunchSocketVsockProxyIfEnabled(ProcessMonitor* process_monitor,
+                                     const CuttlefishConfig& config,
+                                     SharedFD adbd_events_pipe);
+void LaunchModemSimulatorIfEnabled(const CuttlefishConfig& config,
+                                   ProcessMonitor* process_monitor);
 
-struct StreamerLaunchResult {
-  bool launched = false;
-};
-StreamerLaunchResult LaunchVNCServer(
-    const cuttlefish::CuttlefishConfig& config,
-    cuttlefish::ProcessMonitor* process_monitor,
-    std::function<bool(cuttlefish::MonitorEntry*)> callback);
+void LaunchVNCServer(
+    const CuttlefishConfig& config,
+    ProcessMonitor* process_monitor,
+    std::function<bool(MonitorEntry*)> callback);
 
-void LaunchTombstoneReceiverIfEnabled(const cuttlefish::CuttlefishConfig& config,
-                                      cuttlefish::ProcessMonitor* process_monitor);
-void LaunchLogcatReceiver(const cuttlefish::CuttlefishConfig& config,
-                          cuttlefish::ProcessMonitor* process_monitor);
-void LaunchConfigServer(const cuttlefish::CuttlefishConfig& config,
-                        cuttlefish::ProcessMonitor* process_monitor);
+void LaunchTombstoneReceiver(const CuttlefishConfig& config,
+                             ProcessMonitor* process_monitor);
+void LaunchLogcatReceiver(const CuttlefishConfig& config,
+                          ProcessMonitor* process_monitor);
+void LaunchConfigServer(const CuttlefishConfig& config,
+                        ProcessMonitor* process_monitor);
 
-StreamerLaunchResult LaunchWebRTC(cuttlefish::ProcessMonitor* process_monitor,
-                                  const cuttlefish::CuttlefishConfig& config);
+void LaunchWebRTC(ProcessMonitor* process_monitor,
+                  const CuttlefishConfig& config,
+                  SharedFD kernel_log_events_pipe);
 
-void LaunchTpm(cuttlefish::ProcessMonitor* process_monitor,
-               const cuttlefish::CuttlefishConfig& config);
+void LaunchMetrics(ProcessMonitor* process_monitor,
+                   const CuttlefishConfig& config);
 
-void LaunchMetrics(cuttlefish::ProcessMonitor* process_monitor,
-                                  const cuttlefish::CuttlefishConfig& config);
+void LaunchGnssGrpcProxyServerIfEnabled(const CuttlefishConfig& config,
+                                        ProcessMonitor* process_monitor);
 
-void LaunchSecureEnvironment(cuttlefish::ProcessMonitor* process_monitor,
-                             const cuttlefish::CuttlefishConfig& config);
+void LaunchSecureEnvironment(ProcessMonitor* process_monitor,
+                             const CuttlefishConfig& config);
 
-void LaunchVerhicleHalServerIfEnabled(const cuttlefish::CuttlefishConfig& config,
-                                      cuttlefish::ProcessMonitor* process_monitor);
+void LaunchCustomActionServers(Command& webrtc_cmd,
+                               ProcessMonitor* process_monitor,
+                               const CuttlefishConfig& config);
+
+void LaunchVehicleHalServerIfEnabled(const CuttlefishConfig& config,
+                                     ProcessMonitor* process_monitor);
+
+void LaunchConsoleForwarderIfEnabled(const CuttlefishConfig& config,
+                                     ProcessMonitor* process_monitor);
+
+} // namespace cuttlefish

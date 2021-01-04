@@ -26,15 +26,18 @@ using namespace android;
 static const std::set<std::string> kKnownMissingHidl = {
     "android.frameworks.bufferhub@1.0",
     "android.frameworks.cameraservice.device@2.0",
+    "android.frameworks.schedulerservice@1.0", // deprecated, see b/37226359
     "android.frameworks.vr.composer@1.0",
     "android.frameworks.vr.composer@2.0",
     "android.frameworks.automotive.display@1.0",
     "android.hardware.audio@2.0",
     "android.hardware.audio@4.0",
     "android.hardware.audio@5.0",
+    "android.hardware.audio@7.0",
     "android.hardware.audio.effect@2.0",
     "android.hardware.audio.effect@4.0",
     "android.hardware.audio.effect@5.0",
+    "android.hardware.audio.effect@7.0",
     "android.hardware.automotive.audiocontrol@1.0",
     "android.hardware.automotive.audiocontrol@2.0",
     "android.hardware.automotive.can@1.0",
@@ -48,7 +51,8 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.cas.native@1.0",
     "android.hardware.confirmationui@1.0",
     "android.hardware.configstore@1.1", // deprecated, see b/149050985, b/149050733
-    "android.hardware.fastboot@1.0",
+    "android.hardware.fastboot@1.1",
+    "android.hardware.gnss@3.0", // see b/170506696
     "android.hardware.gnss.measurement_corrections@1.1", // is sub-interface of gnss
     "android.hardware.gnss.visibility_control@1.0",
     "android.hardware.graphics.allocator@2.0",
@@ -68,6 +72,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.nfc@1.2",
     "android.hardware.oemlock@1.0",
     "android.hardware.power@1.3",
+    "android.hardware.power.stats@1.0",
     "android.hardware.radio.config@1.2",
     "android.hardware.radio.deprecated@1.0",
     "android.hardware.renderscript@1.0",
@@ -87,7 +92,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.vr@1.0",
     "android.hardware.weaver@1.0",
     "android.hardware.wifi@1.5",
-    "android.hardware.wifi.hostapd@1.2",
+    "android.hardware.wifi.hostapd@1.3",
     "android.hardware.wifi.offload@1.0",
     "android.hidl.base@1.0",
     "android.hidl.memory.token@1.0",
@@ -95,19 +100,28 @@ static const std::set<std::string> kKnownMissingHidl = {
 
 static const std::set<std::string> kKnownMissingAidl = {
     // types-only packages, which never expect a default implementation
-    "android.hardware.common.NativeHandle",
-    "android.hardware.graphics.common.BufferUsage",
-    "android.hardware.graphics.common.ExtendableType",
-    "android.hardware.graphics.common.HardwareBuffer",
-    "android.hardware.graphics.common.HardwareBufferDescription",
-    "android.hardware.graphics.common.PixelFormat",
+    "android.hardware.biometrics.common.",
+    "android.hardware.common.",
+    "android.hardware.common.fmq.",
+    "android.hardware.graphics.common.",
+
+    // Temporarily add the keystore2 interface. The service implementation is
+    // in full swing but we cannot register the service by default just yet.
+    // b/170144267
+    "android.system.keystore2.",
 
     // These KeyMaster types are in an AIDL types-only HAL because they're used
     // by the Identity Credential AIDL HAL. Remove this when fully porting
     // KeyMaster to AIDL.
-    "android.hardware.keymaster.HardwareAuthToken",
-    "android.hardware.keymaster.HardwareAuthenticatorType",
-    "android.hardware.keymaster.Timestamp",
+    "android.hardware.keymaster.",
+
+    // These types are only used in Automotive.
+    "android.automotive.computepipe.registry.",
+    "android.automotive.computepipe.runner.",
+    "android.automotive.watchdog.",
+    "android.frameworks.automotive.powerpolicy.",
+    "android.hardware.automotive.audiocontrol.",
+    "android.hardware.automotive.occupant_awareness.",
 };
 
 // AOSP packages which are never considered
@@ -167,8 +181,6 @@ static std::set<FQName> allHidlManifestInterfaces() {
 
 static bool isAospAidlInterface(const std::string& name) {
     return base::StartsWith(name, "android.") &&
-        !base::StartsWith(name, "android.automotive.") &&
-        !base::StartsWith(name, "android.hardware.automotive.") &&
         !base::StartsWith(name, "android.hardware.tests.") &&
         !base::StartsWith(name, "android.aidl.tests");
 }
@@ -251,6 +263,13 @@ TEST(Hal, AllAidlInterfacesAreInAosp) {
     }
 }
 
+// android.hardware.foo.IFoo -> android.hardware.foo.
+std::string getAidlPackage(const std::string& aidlType) {
+    size_t lastDot = aidlType.rfind('.');
+    CHECK(lastDot != std::string::npos);
+    return aidlType.substr(0, lastDot + 1);
+}
+
 TEST(Hal, AidlInterfacesImplemented) {
     std::set<std::string> manifest = allAidlManifestInterfaces();
     std::set<std::string> thoughtMissing = kKnownMissingAidl;
@@ -264,7 +283,19 @@ TEST(Hal, AidlInterfacesImplemented) {
         bool knownMissing = false;
         for (const std::string& type : iface.types) {
             if (manifest.erase(type) > 0) hasRegistration = true;
-            if (thoughtMissing.erase(type) > 0) knownMissing = true;
+            // TODO(b/171422266): ag/12904727 replaced
+            // carwatchdog_aidl_interface usages to android.automotive.watchdog.
+            // However, the former version is still in place to help update
+            // dependency in the partner repo. Now both of these interfaces have the same package
+            // name, ergo filtering just by package name isn't enough for both the packages. Thus
+            // the below hack is needed to ensure the test passes with two copies of the same
+            // interface. Remove this hack once carwatchdog_aidl_interface is removed.
+            if (iface.name == "carwatchdog_aidl_interface" &&
+                getAidlPackage(type) == "android.automotive.watchdog.") {
+                knownMissing = true;
+            } else if (thoughtMissing.erase(getAidlPackage(type)) > 0) {
+                knownMissing = true;
+            }
         }
 
         if (knownMissing) {

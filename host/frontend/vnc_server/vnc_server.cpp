@@ -17,7 +17,7 @@
 #include "host/frontend/vnc_server/vnc_server.h"
 
 #include <android-base/logging.h>
-#include "common/libs/tcp_socket/tcp_socket.h"
+#include "common/libs/utils/tcp_socket.h"
 #include "host/frontend/vnc_server/blackboard.h"
 #include "host/frontend/vnc_server/frame_buffer_watcher.h"
 #include "host/frontend/vnc_server/jpeg_compressor.h"
@@ -53,7 +53,9 @@ void VncServer::StartClientThread(ClientSocket sock) {
   // data members. In the current setup, if the VncServer is destroyed with
   // clients still running, the clients will all be left with dangling
   // pointers.
+  frame_buffer_watcher_.IncClientCount();
   VncClientConnection client(std::move(sock), virtual_inputs_, &bb_,
                              aggressive_);
   client.StartSession();
+  frame_buffer_watcher_.DecClientCount();
 }

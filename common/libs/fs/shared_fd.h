@@ -38,6 +38,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <string.h>
+#include <termios.h>
 #include <unistd.h>
 
 #include "vm_sockets.h"
@@ -315,6 +316,13 @@ class FileInstance {
     return rval;
   }
 
+  int EventfdRead(eventfd_t* value) {
+    errno = 0;
+    auto rval = eventfd_read(fd_, value);
+    errno_ = errno;
+    return rval;
+  }
+
   ssize_t Send(const void* buf, size_t len, int flags) {
     errno = 0;
     ssize_t rval = TEMP_FAILURE_RETRY(send(fd_, buf, len, flags));
@@ -345,6 +353,27 @@ class FileInstance {
     return rval;
   }
 
+  int GetSockOpt(int level, int optname, void* optval, socklen_t* optlen) {
+    errno = 0;
+    int rval = getsockopt(fd_, level, optname, optval, optlen);
+    errno_ = errno;
+    return rval;
+  }
+
+  int SetTerminalRaw() {
+    errno = 0;
+    termios terminal_settings;
+    int rval = tcgetattr(fd_, &terminal_settings);
+    errno_ = errno;
+    if (rval < 0) {
+      return rval;
+    }
+    cfmakeraw(&terminal_settings);
+    rval = tcsetattr(fd_, TCSANOW, &terminal_settings);
+    errno_ = errno;
+    return rval;
+  }
+
   const char* StrError() const {
     errno = 0;
     FileInstance* s = const_cast<FileInstance*>(this);
@@ -361,6 +390,13 @@ class FileInstance {
     return strerror_buf_;
   }
 
+  void* MMap(void* addr, size_t length, int prot, int flags, off_t offset) {
+    errno = 0;
+    auto rval = mmap(addr, length, prot, flags, fd_, offset);
+    errno_ = errno;
+    return rval;
+  }
+
   ssize_t Truncate(off_t length) {
     errno = 0;
     ssize_t rval = TEMP_FAILURE_RETRY(ftruncate(fd_, length));
@@ -371,6 +407,20 @@ class FileInstance {
   ssize_t Write(const void* buf, size_t count) {
     errno = 0;
     ssize_t rval = TEMP_FAILURE_RETRY(write(fd_, buf, count));
+    errno_ = errno;
+    return rval;
+  }
+
+  int EventfdWrite(eventfd_t value) {
+    errno = 0;
+    int rval = eventfd_write(fd_, value);
+    errno_ = errno;
+    return rval;
+  }
+
+  bool IsATTY() {
+    errno = 0;
+    int rval = isatty(fd_);
     errno_ = errno;
     return rval;
   }

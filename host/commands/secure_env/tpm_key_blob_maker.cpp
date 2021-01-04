@@ -24,145 +24,13 @@
 #include "host/commands/secure_env/composite_serialization.h"
 #include "host/commands/secure_env/encrypted_serializable.h"
 #include "host/commands/secure_env/hmac_serializable.h"
+#include "host/commands/secure_env/primary_key_builder.h"
 
 using keymaster::AuthorizationSet;
 using keymaster::KeymasterKeyBlob;
 using keymaster::Serializable;
 
-/**
- * Returns a TPM reference to a key used for integrity checking on wrapped keys.
- */
-static TpmObjectSlot SigningKey(TpmResourceManager* resource_manager) {
-  TPM2B_AUTH authValue = {};
-  auto rc =
-      Esys_TR_SetAuth(resource_manager->Esys(), ESYS_TR_RH_OWNER, &authValue);
-  if (rc != TSS2_RC_SUCCESS) {
-    LOG(ERROR) << "Esys_TR_SetAuth failed with return code " << rc
-               << " (" << Tss2_RC_Decode(rc) << ")";
-    return {};
-  }
-
-  TPMT_PUBLIC public_area;
-  public_area.nameAlg = TPM2_ALG_SHA1;
-  public_area.type = TPM2_ALG_KEYEDHASH;
-  public_area.objectAttributes |= TPMA_OBJECT_SIGN_ENCRYPT;
-  public_area.objectAttributes |= TPMA_OBJECT_USERWITHAUTH;
-  public_area.objectAttributes |= TPMA_OBJECT_SENSITIVEDATAORIGIN;
-  public_area.parameters.keyedHashDetail.scheme.scheme = TPM2_ALG_HMAC;
-  public_area.parameters.keyedHashDetail.scheme.details.hmac.hashAlg = TPM2_ALG_SHA1;
-
-  TPM2B_TEMPLATE public_template = {};
-  size_t offset = 0;
-  rc = Tss2_MU_TPMT_PUBLIC_Marshal(&public_area, &public_template.buffer[0],
-                                   sizeof(public_template.buffer), &offset);
-  if (rc != TSS2_RC_SUCCESS) {
-    LOG(ERROR) << "Tss2_MU_TPMT_PUBLIC_Marshal failed with return code " << rc
-               << " (" << Tss2_RC_Decode(rc) << ")";
-    return {};
-  }
-  public_template.size = offset;
-
-  TPM2B_SENSITIVE_CREATE in_sensitive = {};
-
-  auto key_slot = resource_manager->ReserveSlot();
-  if (!key_slot) {
-    LOG(ERROR) << "No slots available";
-    return {};
-  }
-  ESYS_TR raw_handle;
-  // TODO(b/154956668): Define better ACLs on these keys.
-  // Since this is a primary key, it's generated deterministically. It would
-  // also be possible to generate this once and hold it in storage.
-  rc = Esys_CreateLoaded(
-    /* esysContext */ resource_manager->Esys(),
-    /* primaryHandle */ ESYS_TR_RH_OWNER,
-    /* shandle1 */ ESYS_TR_PASSWORD,
-    /* shandle2 */ ESYS_TR_NONE,
-    /* shandle3 */ ESYS_TR_NONE,
-    /* inSensitive */ &in_sensitive,
-    /* inPublic */ &public_template,
-    /* objectHandle */ &raw_handle,
-    /* outPrivate */ nullptr,
-    /* outPublic */ nullptr);
-  if (rc != TSS2_RC_SUCCESS) {
-    LOG(ERROR) << "Esys_CreateLoaded failed with return code " << rc
-               << " (" << Tss2_RC_Decode(rc) << ")";
-    return {};
-  }
-  key_slot->set(raw_handle);
-  return key_slot;
-}
-
-static TpmObjectSlot ParentKey(TpmResourceManager* resource_manager) {
-  TPM2B_AUTH authValue = {};
-  auto rc =
-      Esys_TR_SetAuth(resource_manager->Esys(), ESYS_TR_RH_PLATFORM, &authValue);
-  if (rc != TSS2_RC_SUCCESS) {
-    LOG(ERROR) << "Esys_TR_SetAuth failed with return code " << rc
-               << " (" << Tss2_RC_Decode(rc) << ")";
-    return {};
-  }
-
-  TPMT_PUBLIC public_area = {
-    .type = TPM2_ALG_SYMCIPHER,
-    .nameAlg = TPM2_ALG_SHA256,
-    .objectAttributes = (TPMA_OBJECT_USERWITHAUTH |
-                         TPMA_OBJECT_RESTRICTED |
-                         TPMA_OBJECT_DECRYPT |
-                         TPMA_OBJECT_FIXEDTPM |
-                         TPMA_OBJECT_FIXEDPARENT |
-                         TPMA_OBJECT_SENSITIVEDATAORIGIN),
-    .authPolicy.size = 0,
-    .parameters.symDetail.sym = {
-      .algorithm = TPM2_ALG_AES,
-      .keyBits.aes = 128, // The default maximum AES key size in the simulator.
-      .mode.aes = TPM2_ALG_CFB,
-    },
-  };
-
-  TPM2B_TEMPLATE public_template = {};
-  size_t offset = 0;
-  rc = Tss2_MU_TPMT_PUBLIC_Marshal(&public_area, &public_template.buffer[0],
-                                   sizeof(public_template.buffer), &offset);
-  if (rc != TSS2_RC_SUCCESS) {
-    LOG(ERROR) << "Tss2_MU_TPMT_PUBLIC_Marshal failed with return code " << rc
-               << " (" << Tss2_RC_Decode(rc) << ")";
-    return {};
-  }
-  public_template.size = offset;
-
-  TPM2B_SENSITIVE_CREATE in_sensitive = {};
-
-  auto key_slot = resource_manager->ReserveSlot();
-  if (!key_slot) {
-    LOG(ERROR) << "No key slots available";
-    return {};
-  }
-  ESYS_TR raw_handle;
-  // TODO(b/154956668): Define better ACLs on these keys.
-  TPM2B_PUBLIC* key_public = nullptr;
-  TPM2B_PRIVATE* key_private = nullptr;
-  rc = Esys_CreateLoaded(
-    /* esysContext */ resource_manager->Esys(),
-    /* primaryHandle */ ESYS_TR_RH_PLATFORM,
-    /* shandle1 */ ESYS_TR_PASSWORD,
-    /* shandle2 */ ESYS_TR_NONE,
-    /* shandle3 */ ESYS_TR_NONE,
-    /* inSensitive */ &in_sensitive,
-    /* inPublic */ &public_template,
-    /* objectHandle */ &raw_handle,
-    /* outPrivate */ &key_private,
-    /* outPublic */ &key_public);
-  if (rc != TSS2_RC_SUCCESS) {
-    LOG(ERROR) << "Esys_CreateLoaded failed with return code " << rc
-               << " (" << Tss2_RC_Decode(rc) << ")";
-    return {};
-  }
-  Esys_Free(key_private);
-  Esys_Free(key_public);
-  key_slot->set(raw_handle);
-  return key_slot;
-}
+static constexpr char kUniqueKey[] = "TpmKeyBlobMaker";
 
 /**
  * Distinguish what properties the secure_env implementation handles. If
@@ -174,9 +42,38 @@ static keymaster_error_t SplitEnforcedProperties(
     const keymaster::AuthorizationSet& key_description,
     keymaster::AuthorizationSet* hw_enforced,
     keymaster::AuthorizationSet* sw_enforced) {
-  // TODO(schuffelen): Put the things we enforce in hw_enforced.
-  (void) hw_enforced;
-  *sw_enforced = key_description;
+  for (auto& entry : key_description) {
+    switch (entry.tag) {
+      case KM_TAG_PURPOSE:
+      case KM_TAG_ALGORITHM:
+      case KM_TAG_KEY_SIZE:
+      case KM_TAG_RSA_PUBLIC_EXPONENT:
+      case KM_TAG_BLOB_USAGE_REQUIREMENTS:
+      case KM_TAG_DIGEST:
+      case KM_TAG_PADDING:
+      case KM_TAG_BLOCK_MODE:
+      case KM_TAG_MIN_SECONDS_BETWEEN_OPS:
+      case KM_TAG_MAX_USES_PER_BOOT:
+      case KM_TAG_USER_SECURE_ID:
+      case KM_TAG_NO_AUTH_REQUIRED:
+      case KM_TAG_AUTH_TIMEOUT:
+      case KM_TAG_CALLER_NONCE:
+      case KM_TAG_MIN_MAC_LENGTH:
+      case KM_TAG_KDF:
+      case KM_TAG_EC_CURVE:
+      case KM_TAG_ECIES_SINGLE_HASH_MODE:
+      case KM_TAG_USER_AUTH_TYPE:
+      case KM_TAG_ORIGIN:
+      case KM_TAG_OS_VERSION:
+      case KM_TAG_OS_PATCHLEVEL:
+      case KM_TAG_EARLY_BOOT_ONLY:
+      case KM_TAG_UNLOCKED_DEVICE_REQUIRED:
+        hw_enforced->push_back(entry);
+        break;
+      default:
+        sw_enforced->push_back(entry);
+    }
+  }
   return KM_ERROR_OK;
 }
 
@@ -194,7 +91,7 @@ static KeymasterKeyBlob SerializableToKeyBlob(
 }
 
 
-TpmKeyBlobMaker::TpmKeyBlobMaker(TpmResourceManager* resource_manager)
+TpmKeyBlobMaker::TpmKeyBlobMaker(TpmResourceManager& resource_manager)
     : resource_manager_(resource_manager) {
 }
 
@@ -205,20 +102,38 @@ keymaster_error_t TpmKeyBlobMaker::CreateKeyBlob(
     KeymasterKeyBlob* blob,
     AuthorizationSet* hw_enforced,
     AuthorizationSet* sw_enforced) const {
-  (void) origin; // TODO(schuffelen): Figure out how this is used
+  std::set<keymaster_tag_t> protected_tags = {
+    KM_TAG_ROOT_OF_TRUST,
+    KM_TAG_ORIGIN,
+    KM_TAG_OS_VERSION,
+    KM_TAG_OS_PATCHLEVEL,
+  };
+  for (auto tag : protected_tags) {
+    if (key_description.Contains(tag)) {
+      return KM_ERROR_INVALID_TAG;
+    }
+  }
   auto rc =
       SplitEnforcedProperties(key_description, hw_enforced, sw_enforced);
   if (rc != KM_ERROR_OK) {
     return rc;
   }
+  hw_enforced->push_back(keymaster::TAG_ORIGIN, origin);
+
+  // TODO(schuffelen): Set the os level and patch level properly.
+  hw_enforced->push_back(keymaster::TAG_OS_VERSION, os_version_);
+  hw_enforced->push_back(keymaster::TAG_OS_PATCHLEVEL, os_patchlevel_);
+
   keymaster::Buffer key_material_buffer(
       key_material.key_material, key_material.key_material_size);
   CompositeSerializable sensitive_material(
       {&key_material_buffer, hw_enforced, sw_enforced});
+  auto parent_key_fn = ParentKeyCreator(kUniqueKey);
   EncryptedSerializable encryption(
-      resource_manager_, ParentKey, &sensitive_material);
+      resource_manager_, parent_key_fn, sensitive_material);
+  auto signing_key_fn = SigningKeyCreator(kUniqueKey);
   HmacSerializable sign_check(
-      resource_manager_, SigningKey, TPM2_SHA1_DIGEST_SIZE, &encryption);
+      resource_manager_, signing_key_fn, TPM2_SHA256_DIGEST_SIZE, &encryption);
   auto generated_blob = SerializableToKeyBlob(sign_check);
   LOG(DEBUG) << "Keymaster key size: " << generated_blob.key_material_size;
   if (generated_blob.key_material_size != 0) {
@@ -237,10 +152,12 @@ keymaster_error_t TpmKeyBlobMaker::UnwrapKeyBlob(
   keymaster::Buffer key_material_buffer(blob.key_material_size);
   CompositeSerializable sensitive_material(
       {&key_material_buffer, hw_enforced, sw_enforced});
+  auto parent_key_fn = ParentKeyCreator(kUniqueKey);
   EncryptedSerializable encryption(
-      resource_manager_, ParentKey, &sensitive_material);
+      resource_manager_, parent_key_fn, sensitive_material);
+  auto signing_key_fn = SigningKeyCreator(kUniqueKey);
   HmacSerializable sign_check(
-      resource_manager_, SigningKey, TPM2_SHA1_DIGEST_SIZE, &encryption);
+      resource_manager_, signing_key_fn, TPM2_SHA256_DIGEST_SIZE, &encryption);
   auto buf = blob.key_material;
   auto buf_end = buf + blob.key_material_size;
   if (!sign_check.Deserialize(&buf, buf_end)) {
@@ -253,5 +170,13 @@ keymaster_error_t TpmKeyBlobMaker::UnwrapKeyBlob(
   }
   *key_material = KeymasterKeyBlob(
       key_material_buffer.peek_read(), key_material_buffer.available_read());
+  return KM_ERROR_OK;
+}
+
+keymaster_error_t TpmKeyBlobMaker::SetSystemVersion(
+    uint32_t os_version, uint32_t os_patchlevel) {
+  // TODO(b/155697375): Only accept new values of these from the bootloader
+  os_version_ = os_version;
+  os_patchlevel_ = os_patchlevel;
   return KM_ERROR_OK;
 }

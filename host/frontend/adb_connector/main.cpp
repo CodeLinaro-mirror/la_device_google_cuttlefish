@@ -26,6 +26,7 @@
 
 #include <unistd.h>
 #include <host/commands/kernel_log_monitor/kernel_log_server.h>
+#include <host/commands/kernel_log_monitor/utils.h>
 
 #include "common/libs/fs/shared_fd.h"
 #include "host/frontend/adb_connector/adb_connection_maintainer.h"
@@ -34,9 +35,6 @@
 
 DEFINE_string(addresses, "", "Comma-separated list of addresses to "
                              "'adb connect' to");
-DEFINE_int32(adbd_events_fd, -1, "A file descriptor. If set it will wait for "
-                                 "AdbdStarted boot event from the kernel log "
-                                 "monitor before trying to connect adb");
 
 namespace {
 void LaunchConnectionMaintainerThread(const std::string& address) {
@@ -56,35 +54,12 @@ std::vector<std::string> ParseAddressList(std::string ports) {
   }
 }
 
-void WaitForAdbdToBeStarted(int events_fd) {
-  auto evt_shared_fd = cuttlefish::SharedFD::Dup(events_fd);
-  close(events_fd);
-  while (evt_shared_fd->IsOpen()) {
-    monitor::BootEvent event;
-    auto bytes_read = evt_shared_fd->Read(&event, sizeof(event));
-    if (bytes_read != sizeof(event)) {
-      LOG(ERROR) << "Fail to read a complete event, read " << bytes_read
-                 << " bytes only instead of the expected " << sizeof(event);
-      // The file descriptor can't be trusted anymore, stop waiting and try to
-      // connect
-      return;
-    }
-    if (event == monitor::BootEvent::AdbdStarted) {
-      LOG(DEBUG) << "Adbd has started in the guest, connecting adb";
-      return;
-    }
-  }
-}
 }  // namespace
 
 int main(int argc, char* argv[]) {
   cuttlefish::DefaultSubprocessLogging(argv);
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   CHECK(!FLAGS_addresses.empty()) << "Must specify --addresses flag";
-
-  if (FLAGS_adbd_events_fd >= 0) {
-    WaitForAdbdToBeStarted(FLAGS_adbd_events_fd);
-  }
 
   for (auto address : ParseAddressList(FLAGS_addresses)) {
     LaunchConnectionMaintainerThread(address);

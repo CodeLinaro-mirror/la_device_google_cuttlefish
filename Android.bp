@@ -108,22 +108,14 @@ cc_defaults {
 }
 
 cc_defaults {
-    name: "cuttlefish_host_config",
+    name: "cuttlefish_libicuuc",
     target: {
-        linux_glibc: {
-            static_libs: [
-                 "libcuttlefish_host_config",
+        host: {
+            shared_libs: [
+                "libicuuc",
             ],
         },
     },
-}
-
-cc_defaults {
-    name: "cuttlefish_libicuuc",
-    shared_libs: [
-        "libicuuc",
-        "libandroidicu",
-    ],
 }
 
 cc_defaults {

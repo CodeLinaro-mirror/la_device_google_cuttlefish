@@ -25,6 +25,7 @@
 #include "common/libs/utils/subprocess.h"
 #include "host/commands/launch/filesystem_explorer.h"
 #include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/config/host_tools_version.h"
 #include "host/libs/config/fetcher_config.h"
 
 #include "flag_forwarder.h"
@@ -140,6 +141,19 @@ std::string ValidateMetricsConfirmation(std::string use_metrics) {
   }
   return "";
 }
+
+bool HostToolsUpdated() {
+  if (cuttlefish::CuttlefishConfig::ConfigExists()) {
+    auto config = cuttlefish::CuttlefishConfig::Get();
+    if (config) {
+      auto current_tools = cuttlefish::HostToolsCrc();
+      auto last_tools = config->host_tools_version();
+      return current_tools != last_tools;
+    }
+  }
+  return true;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -158,6 +172,9 @@ int main(int argc, char** argv) {
   auto use_metrics = FLAGS_report_anonymous_usage_stats;
   FLAGS_report_anonymous_usage_stats = ValidateMetricsConfirmation(use_metrics);
 
+  // TODO(b/159068082) Make decisions based on this value in assemble_cvd
+  LOG(INFO) << "Host changed from last run: " << HostToolsUpdated();
+
   cuttlefish::SharedFD assembler_stdout, assembler_stdout_capture;
   cuttlefish::SharedFD::Pipe(&assembler_stdout_capture, &assembler_stdout);
 
@@ -169,6 +186,14 @@ int main(int argc, char** argv) {
 
   auto instance_num_str = std::to_string(FLAGS_base_instance_num);
   setenv("CUTTLEFISH_INSTANCE", instance_num_str.c_str(), /* overwrite */ 0);
+
+#if defined(__BIONIC__)
+  // These environment variables are needed in case when Bionic is used.
+  // b/171754977
+  setenv("ANDROID_DATA", cuttlefish::DefaultHostArtifactsPath("").c_str(), /* overwrite */ 0);
+  setenv("ANDROID_TZDATA_ROOT", cuttlefish::DefaultHostArtifactsPath("").c_str(), /* overwrite */ 0);
+  setenv("ANDROID_ROOT", cuttlefish::DefaultHostArtifactsPath("").c_str(), /* overwrite */ 0);
+#endif
 
   // SharedFDs are std::move-d in to avoid dangling references.
   // Removing the std::move will probably make run_cvd hang as its stdin never closes.

@@ -15,13 +15,13 @@
 
 #include "host/commands/modem_simulator/pdu_parser.h"
 
-#include <unistd.h>
-
 #include <algorithm>
+#include <chrono>
 #include <ctime>
 #include <iomanip>
 #include <sstream>
 #include <string>
+#include <thread>
 
 namespace cuttlefish {
 
@@ -114,7 +114,7 @@ bool PDUParser::DecodePDU(std::string& pdu) {
 /**
  * The PDU-Type of receiver
  * BIT      7    6    5    4    3    2    1    0
- * Param   RP  UDHI  SRI  －    －   MMS  MTI MTI
+ * Param   RP  UDHI  SRI   -    -   MMS  MTI MTI
  * When SRR bit is 1, it represents that SMS status report should be reported.
  */
 std::string PDUParser::CreatePDU() {
@@ -166,7 +166,7 @@ std::string PDUParser::CreateStatuReport(int message_reference) {
 
   pdu += originator_address_;
   pdu += GetCurrentTimeStamp();
-  sleep(1);
+  std::this_thread::sleep_for(std::chrono::seconds(1));
   pdu += GetCurrentTimeStamp();
   pdu += "00"; /* "00" means that SMS have been sent successfully */
 
@@ -238,6 +238,22 @@ std::string PDUParser::IntToHexString(int value) {
   return std::to_string(lo) + std::to_string(hi);
 }
 
+std::string PDUParser::IntToHexStringTimeZoneDiff(int tzdiff_hour) {
+  // https://en.wikipedia.org/wiki/GSM_03.40
+  int delta = 0;
+  if (tzdiff_hour < 0) {
+    tzdiff_hour = -tzdiff_hour;
+    delta = 8;
+  }
+  const int tzdiff_quarter_hour = 4 * tzdiff_hour;
+  const int hi = tzdiff_quarter_hour / 10 + delta;
+  const int lo = tzdiff_quarter_hour % 10;
+  std::stringstream ss;
+  ss << std::hex << lo;
+  ss << std::hex << hi;
+  return ss.str();
+}
+
 std::string PDUParser::BCDToString(std::string& data) {
   std::string dst;
   if (data.empty()) {
@@ -276,7 +292,7 @@ std::string PDUParser::GetCurrentTimeStamp() {
   time_stamp += IntToHexString(local_time.tm_hour);
   time_stamp += IntToHexString(local_time.tm_min);
   time_stamp += IntToHexString(local_time.tm_sec);
-  time_stamp += IntToHexString(tzdiff);
+  time_stamp += IntToHexStringTimeZoneDiff(tzdiff);
 
   return time_stamp;
 }

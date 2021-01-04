@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-cc_binary_host {
+cc_binary {
     name: "log_tee",
     srcs: [
         "log_tee.cpp",
@@ -22,14 +22,14 @@ cc_binary_host {
         "libcuttlefish_fs",
         "libcuttlefish_utils",
         "libbase",
+        "libjsoncpp",
         "libnl",
+        "libxml2",
     ],
     static_libs: [
         "libgflags",
         "libcuttlefish_host_config",
         "libcuttlefish_vm_manager",
-        "libxml2",
-        "libjsoncpp",
     ],
-    defaults: ["cuttlefish_host_only", "cuttlefish_libicuuc"],
+    defaults: ["cuttlefish_host_and_guest", "cuttlefish_libicuuc"],
 }

@@ -27,4 +27,8 @@ TARGET_CPU_ABI := arm64-v8a
 TARGET_CPU_VARIANT := cortex-a53
 
 AUDIOSERVER_MULTILIB := first
-BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard device/google/cuttlefish_kernel/5.4-arm64/*.ko)
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard device/google/cuttlefish_prebuilts/kernel/5.4-arm64/*.ko)
+
+HOST_CROSS_OS := linux_bionic
+HOST_CROSS_ARCH := arm64
+HOST_CROSS_2ND_ARCH :=

@@ -17,10 +17,10 @@
 #ifndef RIL_SERVICE_H
 #define RIL_SERVICE_H
 
-#include <guest/hals/ril/libril/ril.h>
+#include <guest/hals/ril/reference-libril/ril.h>
 #include <ril_internal.h>
 
-namespace radio_1_5 {
+namespace radio_1_6 {
 void registerService(RIL_RadioFunctions *callbacks, android::CommandInfo *commands);
 
 int getIccCardStatusResponse(int slotId, int responseType,
@@ -736,6 +736,9 @@ int networkScanResultInd(int slotId,
                          int indicationType, int token, RIL_Errno e, void *response,
                          size_t responselen);
 
+int reportPhysicalChannelConfigs(int slotId, int indicationType,
+                        int token, RIL_Errno e, void *response, size_t responselen);
+
 int keepaliveStatusInd(int slotId,
                        int indicationType, int token, RIL_Errno e, void *response,
                        size_t responselen);
@@ -790,9 +793,58 @@ int sendCdmaSmsExpectMoreResponse(int slotId, int responseType, int serial, RIL_
 int supplySimDepersonalizationResponse(int slotId, int responseType, int serial, RIL_Errno e,
                                        void *response, size_t responselen);
 
+int setNrDualConnectivityStateResponse(int slotId, int responseType, int serial,
+                                    RIL_Errno e, void* /* response */, size_t responseLen);
+int isNrDualConnectivityEnabledResponse(int slotId, int responseType, int serial,
+                                        RIL_Errno e, void* response, size_t responseLen);
+
+int allocatePduSessionIdResponse(int slotId, int responseType, int serial,
+                                        RIL_Errno e, void* response, size_t responseLen);
+int releasePduSessionIdResponse(int slotId, int responseType, int serial,
+                                        RIL_Errno e, void* response, size_t responseLen);
+int beginHandoverResponse(int slotId, int responseType, int serial,
+                                        RIL_Errno e, void* response, size_t responseLen);
+int cancelHandoverResponse(int slotId, int responseType, int serial,
+                                        RIL_Errno e, void* response, size_t responseLen);
+
+int setAllowedNetworkTypeBitmapResponse(int slotId, int responseType, int serial,
+                                  RIL_Errno e, void *response, size_t responselen);
+
+int setDataThrottlingResponse(int slotId, int responseType, int serial,
+                              RIL_Errno e, void *response, size_t responselen);
+
 pthread_rwlock_t * getRadioServiceRwlock(int slotId);
 
 void setNitzTimeReceived(int slotId, long timeReceived);
+
+/******************************************************************************/
+/*          Radio Config interfaces' corresponding responseFunction           */
+/******************************************************************************/
+void registerConfigService(RIL_RadioFunctions *callbacks, android::CommandInfo *commands);
+
+int getSimSlotsStatusResponse(int slotId, int responseType, int serial,
+                              RIL_Errno e, void *response, size_t responseLen);
+
+int setSimSlotsMappingResponse(int slotId, int responseType, int serial,
+                               RIL_Errno e, void *response, size_t responseLen);
+
+int getPhoneCapabilityResponse(int slotId, int responseType, int serial,
+                               RIL_Errno e, void *response, size_t responseLen);
+
+int setPreferredDataModemResponse(int slotId, int responseType, int serial,
+                                  RIL_Errno e, void *response, size_t responseLen);
+
+int setModemsConfigResponse(int slotId, int responseType, int serial,
+                            RIL_Errno e, void *response, size_t responseLen);
+
+int getModemsConfigResponse(int slotId, int responseType, int serial,
+                            RIL_Errno e, void *response, size_t responseLen);
+
+/******************************************************************************/
+/*    Radio Config unsolicited interfaces' corresponding responseFunction     */
+/******************************************************************************/
+int simSlotsStatusChanged(int slotId, int indicationType, int token,
+                          RIL_Errno e, void *response, size_t responseLen);
 
 }   // namespace radio
 
