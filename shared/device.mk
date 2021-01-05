@@ -20,6 +20,12 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/languages_full.mk)
 # Enable updating of APEXes
 $(call inherit-product, $(SRC_TARGET_DIR)/product/updatable_apex.mk)
 
+# Enable userspace reboot
+$(call inherit-product, $(SRC_TARGET_DIR)/product/userspace_reboot.mk)
+
+# Enforce generic ramdisk allow list
+$(call inherit-product, $(SRC_TARGET_DIR)/product/generic_ramdisk.mk)
+
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish-opengl # for vulkan
 
 PRODUCT_SHIPPING_API_LEVEL := 31
@@ -32,6 +38,8 @@ PRODUCT_FS_COMPRESSION := 1
 TARGET_RO_FILE_SYSTEM_TYPE ?= ext4
 TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE ?= f2fs
 TARGET_USERDATAIMAGE_PARTITION_SIZE ?= 6442450944
+
+TARGET_VULKAN_SUPPORT ?= true
 
 AB_OTA_UPDATER := true
 AB_OTA_PARTITIONS += \
@@ -59,6 +67,7 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
 PRODUCT_PRODUCT_PROPERTIES += \
     persist.adb.tcp.port=5555 \
     ro.com.google.locationfeatures=1 \
+    persist.sys.fuse.passthrough.enable=true \
 
 # Explanation of specific properties:
 #   debug.hwui.swap_with_damage avoids boot failure on M http://b/25152138
@@ -161,9 +170,18 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     libGLES_mesa \
 
-# GL/Vk implementation for gfxstream
+#
+# Packages for the Vulkan implementation
+#
+ifeq ($(TARGET_VULKAN_SUPPORT),true)
 PRODUCT_PACKAGES += \
     vulkan.ranchu \
+    libvulkan_enc \
+    vulkan.pastel
+endif
+
+# GL/Vk implementation for gfxstream
+PRODUCT_PACKAGES += \
     libandroidemu \
     libOpenglCodecCommon \
     libOpenglSystemCommon \
@@ -171,15 +189,8 @@ PRODUCT_PACKAGES += \
     lib_renderControl_enc \
     libEGL_emulation \
     libGLESv2_enc \
-    libvulkan_enc \
     libGLESv2_emulation \
     libGLESv1_enc
-
-#
-# Packages for the Vulkan implementation
-#
-PRODUCT_PACKAGES += \
-    vulkan.pastel
 
 #
 # Packages for testing
@@ -219,6 +230,7 @@ PRODUCT_COPY_FILES += \
     hardware/google/camera/devices/EmulatedCamera/hwl/configs/emu_camera_depth.json:$(TARGET_COPY_OUT_VENDOR)/etc/config/emu_camera_depth.json \
     device/google/cuttlefish/shared/config/init.vendor.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/hw/init.cutf_cvm.rc \
     device/google/cuttlefish/shared/config/init.product.rc:$(TARGET_COPY_OUT_PRODUCT)/etc/init/init.rc \
+    device/google/cuttlefish/shared/config/init.system_ext.rc:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/init/init.rc \
     device/google/cuttlefish/shared/config/ueventd.rc:$(TARGET_COPY_OUT_VENDOR)/ueventd.rc \
     device/google/cuttlefish/shared/config/media_codecs.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs.xml \
     device/google/cuttlefish/shared/config/media_codecs_google_video.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_video.xml \
@@ -245,13 +257,10 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.reboot_escrow.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.reboot_escrow.xml \
     frameworks/native/data/etc/android.hardware.usb.accessory.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.usb.accessory.xml \
     frameworks/native/data/etc/android.hardware.usb.host.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.usb.host.xml \
-    frameworks/native/data/etc/android.hardware.vulkan.level-0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.vulkan.level.xml \
-    frameworks/native/data/etc/android.hardware.vulkan.version-1_0_3.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.vulkan.version.xml \
     frameworks/native/data/etc/android.hardware.wifi.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.wifi.xml \
     frameworks/native/data/etc/android.software.ipsec_tunnels.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.ipsec_tunnels.xml \
     frameworks/native/data/etc/android.software.sip.voip.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.sip.voip.xml \
     frameworks/native/data/etc/android.software.verified_boot.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.verified_boot.xml \
-    frameworks/native/data/etc/android.software.vulkan.deqp.level-2020-03-01.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.vulkan.deqp.level.xml \
     system/bt/vendor_libs/test_vendor_lib/data/controller_properties.json:vendor/etc/bluetooth/controller_properties.json \
     device/google/cuttlefish/shared/config/task_profiles.json:$(TARGET_COPY_OUT_VENDOR)/etc/task_profiles.json
 
@@ -271,6 +280,14 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).ext4:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/fstab.ext4 \
     device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).ext4:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.ext4 \
     device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).ext4:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.ext4
+endif
+
+ifeq ($(TARGET_VULKAN_SUPPORT),true)
+PRODUCT_COPY_FILES += \
+    frameworks/native/data/etc/android.hardware.vulkan.level-0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.vulkan.level.xml \
+    frameworks/native/data/etc/android.hardware.vulkan.version-1_0_3.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.vulkan.version.xml \
+    frameworks/native/data/etc/android.software.vulkan.deqp.level-2021-03-01.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.vulkan.deqp.level.xml \
+    frameworks/native/data/etc/android.software.opengles.deqp.level-2021-03-01.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.opengles.deqp.level.xml
 endif
 
 # Packages for HAL implementations
@@ -450,6 +467,15 @@ PRODUCT_PACKAGES += \
     $(LOCAL_KEYMASTER_PRODUCT_PACKAGE)
 
 #
+# KeyMint HAL
+#
+ifeq ($(LOCAL_KEYMINT_PRODUCT_PACKAGE),)
+       LOCAL_KEYMINT_PRODUCT_PACKAGE := android.hardware.security.keymint-service
+endif
+PRODUCT_PACKAGES += \
+    $(LOCAL_KEYMINT_PRODUCT_PACKAGE)
+
+#
 # Power HAL
 #
 PRODUCT_PACKAGES += \
@@ -489,6 +515,10 @@ PRODUCT_PACKAGES += \
 # RebootEscrow HAL
 PRODUCT_PACKAGES += \
     android.hardware.rebootescrow-service.default
+
+# Memtrack HAL
+PRODUCT_PACKAGES += \
+    android.hardware.memtrack-service.example
 
 # GKI APEX
 PRODUCT_PACKAGES += com.android.gki.kmi_5_4_android12_0
