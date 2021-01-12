@@ -19,6 +19,8 @@ cc_library {
         "archive.cpp",
         "subprocess.cpp",
         "environment.cpp",
+        "flag_parser.cpp",
+        "shared_fd_flag.cpp",
         "size_utils.cpp",
         "files.cpp",
         "users.cpp",
@@ -47,4 +49,24 @@ cc_library {
         ],
     },
     defaults: ["cuttlefish_host_and_guest"],
+}
+
+cc_test_host {
+    name: "libcuttlefish_utils_test",
+    srcs: [
+        "flag_parser_test.cpp",
+    ],
+    static_libs: [
+        "libbase",
+        "libcuttlefish_fs",
+        "libcuttlefish_utils",
+    ],
+    shared_libs: [
+        "libcrypto",
+        "liblog",
+    ],
+    test_options: {
+        unit_test: true,
+    },
+    defaults: ["cuttlefish_host"],
 }
