@@ -190,6 +190,8 @@ struct RadioImpl_1_6 : public V1_6::IRadio {
 
     Return<void> getCurrentCalls(int32_t serial);
 
+    Return<void> getCurrentCalls_1_6(int32_t serial);
+
     Return<void> dial(int32_t serial, const Dial& dialInfo);
 
     Return<void> getImsiForApp(int32_t serial,
@@ -210,6 +212,8 @@ struct RadioImpl_1_6 : public V1_6::IRadio {
     Return<void> getLastCallFailCause(int32_t serial);
 
     Return<void> getSignalStrength(int32_t serial);
+
+    Return<void> getSignalStrength_1_6(int32_t serial);
 
     Return<void> getVoiceRegistrationState(int32_t serial);
 
@@ -605,7 +609,8 @@ struct RadioImpl_1_6 : public V1_6::IRadio {
             bool roamingAllowed, ::android::hardware::radio::V1_2::DataRequestReason reason,
             const hidl_vec<::android::hardware::radio::V1_5::LinkAddress>& addresses,
             const hidl_vec<hidl_string>& dnses,
-            int32_t pduSessionId);
+            int32_t pduSessionId,
+            const ::android::hardware::radio::V1_6::OptionalSliceInfo& sliceInfo);
     Return<void> sendSms_1_6(int32_t serial, const GsmSmsMessage& message);
     Return<void> sendSMSExpectMore_1_6(int32_t serial, const GsmSmsMessage& message);
     Return<void> sendCdmaSms_1_6(int32_t serial, const CdmaSmsMessage& sms);
@@ -624,6 +629,7 @@ struct RadioImpl_1_6 : public V1_6::IRadio {
     Return<void> getSystemSelectionChannels(int32_t serial);
     Return<void> getVoiceRegistrationState_1_6(int32_t serial);
     Return<void> getDataRegistrationState_1_6(int32_t serial);
+    Return<void> getAllowedNetworkTypeBitmap(uint32_t serial);
 };
 
 struct OemHookImpl : public IOemHook {
@@ -1122,6 +1128,14 @@ Return<void> RadioImpl_1_6::getCurrentCalls(int32_t serial) {
     return Void();
 }
 
+Return<void> RadioImpl_1_6::getCurrentCalls_1_6(int32_t serial) {
+#if VDBG
+    RLOGD("getCurrentCalls_1_6: serial %d", serial);
+#endif
+    dispatchVoid(serial, mSlotId, RIL_REQUEST_GET_CURRENT_CALLS);
+    return Void();
+}
+
 Return<void> RadioImpl_1_6::dial(int32_t serial, const Dial& dialInfo) {
 #if VDBG
     RLOGD("dial: serial %d", serial);
@@ -1402,7 +1416,8 @@ Return<void> RadioImpl_1_6::setupDataCall(int32_t serial, RadioTechnology radioT
             mvnoTypeStr,
             dataProfileInfo.mvnoMatchData.c_str(),
             roamingAllowed ? "1" : "0",
-            "-1");
+            "-1",
+            "");
     } else {
         RLOGE("Unsupported RIL version %d, min version expected 4", s_vendorFunctions->version);
         RequestInfo *pRI = android::addRequestToList(serial, mSlotId,
@@ -3814,9 +3829,25 @@ Return<void> RadioImpl_1_6::setAllowedNetworkTypeBitmap(
     return Void();
 }
 
+Return<void> RadioImpl_1_6::getAllowedNetworkTypeBitmap(uint32_t serial) {
+#if VDBG
+    RLOGD("getAllowedNetworkTypeBitmap: serial %d", serial);
+#endif
+    dispatchVoid(serial, mSlotId, RIL_REQUEST_GET_ALLOWED_NETWORK_TYPE_BITMAP);
+    return Void();
+}
+
 Return<void> RadioImpl_1_6::getSignalStrength_1_4(int32_t serial) {
 #if VDBG
     RLOGD("getSignalStrength_1_4: serial %d", serial);
+#endif
+    dispatchVoid(serial, mSlotId, RIL_REQUEST_SIGNAL_STRENGTH);
+    return Void();
+}
+
+Return<void> RadioImpl_1_6::getSignalStrength_1_6(int32_t serial) {
+#if VDBG
+    RLOGD("getSignalStrength_1_6: serial %d", serial);
 #endif
     dispatchVoid(serial, mSlotId, RIL_REQUEST_SIGNAL_STRENGTH);
     return Void();
@@ -4274,7 +4305,8 @@ Return<void> RadioImpl_1_6::setupDataCall_1_6(int32_t serial ,
         bool roamingAllowed, ::android::hardware::radio::V1_2::DataRequestReason /* reason */,
         const hidl_vec<::android::hardware::radio::V1_5::LinkAddress>& /* addresses */,
         const hidl_vec<hidl_string>& /* dnses */,
-        int32_t /* pduSessionId */) {
+        int32_t /* pduSessionId */,
+        const ::android::hardware::radio::V1_6::OptionalSliceInfo& /* sliceInfo */) {
 
 #if VDBG
     RLOGD("setupDataCall_1_6: serial %d", serial);
@@ -4630,6 +4662,21 @@ int responseInt(RadioResponseInfo& responseInfo, int serial, int responseType, R
     if (response == NULL || responseLen != sizeof(int)) {
         RLOGE("responseInt: Invalid response");
         if (e == RIL_E_SUCCESS) responseInfo.error = RadioError::INVALID_RESPONSE;
+    } else {
+        int *p_int = (int *) response;
+        ret = p_int[0];
+    }
+    return ret;
+}
+
+int responseInt_1_6(::android::hardware::radio::V1_6::RadioResponseInfo &responseInfo, int serial, int responseType, RIL_Errno e,
+               void *response, size_t responseLen) {
+    populateResponseInfo_1_6(responseInfo, serial, responseType, e);
+    int ret = -1;
+
+    if (response == NULL || responseLen != sizeof(int)) {
+        RLOGE("responseInt_1_6: Invalid response");
+        if (e == RIL_E_SUCCESS) responseInfo.error = ::android::hardware::radio::V1_6::RadioError::INVALID_RESPONSE;
     } else {
         int *p_int = (int *) response;
         ret = p_int[0];
@@ -7625,6 +7672,30 @@ int radio_1_6::setAllowedNetworkTypeBitmapResponse(int slotId,
             radioService[slotId]->mRadioResponseV1_6->setAllowedNetworkTypeBitmapResponse(
             responseInfo);
     radioService[slotId]->checkReturnStatus(retStatus);
+    return 0;
+}
+
+int radio_1_6::getAllowedNetworkTypeBitmapResponse(int slotId,
+                                          int responseType, int serial, RIL_Errno e,
+                                          void *response, size_t responseLen) {
+#if VDBG
+    RLOGD("getAllowedNetworkTypeBitmapResponse: serial %d", serial);
+#endif
+
+    if (radioService[slotId]->mRadioResponseV1_6 != NULL) {
+      V1_6::RadioResponseInfo responseInfo = {};
+        int ret = responseInt_1_6(responseInfo, serial, responseType, e, response, responseLen);
+        Return<void> retStatus
+                = radioService[slotId]->mRadioResponseV1_6->getAllowedNetworkTypeBitmapResponse(
+                responseInfo,
+                (const ::android::hardware::hidl_bitfield<
+                ::android::hardware::radio::V1_4::RadioAccessFamily>) ret);
+        radioService[slotId]->checkReturnStatus(retStatus);
+    } else {
+        RLOGE("getAllowedNetworkTypeBitmapResponse: radioService[%d]->mRadioResponseV1_6 == NULL",
+                slotId);
+    }
+
     return 0;
 }
 
