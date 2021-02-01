@@ -763,9 +763,11 @@ int carrierInfoForImsiEncryption(int slotId,
                         int responseType, int serial, RIL_Errno e,
                         void *response, size_t responseLen);
 
-int setSystemSelectionChannelsResponse(int slotId,
-                               int responseType, int serial, RIL_Errno e,
-                               void *response, size_t responseLen);
+int setSystemSelectionChannelsResponse(int slotId, int responseType, int serial,
+                                       RIL_Errno e, void *response, size_t responseLen);
+
+int getSystemSelectionChannelsResponse(int slotId, int responseType, int serial,
+                                       RIL_Errno e, void *response, size_t responseLen);
 
 int setSignalStrengthReportingCriteriaResponse(int slotId, int responseType, int serial,
                                                RIL_Errno e, void *response, size_t responselen);
@@ -802,7 +804,7 @@ int allocatePduSessionIdResponse(int slotId, int responseType, int serial,
                                         RIL_Errno e, void* response, size_t responseLen);
 int releasePduSessionIdResponse(int slotId, int responseType, int serial,
                                         RIL_Errno e, void* response, size_t responseLen);
-int beginHandoverResponse(int slotId, int responseType, int serial,
+int startHandoverResponse(int slotId, int responseType, int serial,
                                         RIL_Errno e, void* response, size_t responseLen);
 int cancelHandoverResponse(int slotId, int responseType, int serial,
                                         RIL_Errno e, void* response, size_t responseLen);
@@ -838,6 +840,9 @@ int setModemsConfigResponse(int slotId, int responseType, int serial,
                             RIL_Errno e, void *response, size_t responseLen);
 
 int getModemsConfigResponse(int slotId, int responseType, int serial,
+                            RIL_Errno e, void *response, size_t responseLen);
+
+int getHalDeviceCapabilitiesResponse(int slotId, int responseType, int serial,
                             RIL_Errno e, void *response, size_t responseLen);
 
 /******************************************************************************/

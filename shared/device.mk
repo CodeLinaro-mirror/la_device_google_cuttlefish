@@ -28,9 +28,10 @@ DISABLE_RILD_OEM_HOOK := true
 
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish-opengl # for vulkan
 
+PRODUCT_FS_COMPRESSION := 1
 TARGET_RO_FILE_SYSTEM_TYPE ?= ext4
 TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE ?= f2fs
-PRODUCT_FS_COMPRESSION := 1
+TARGET_USERDATAIMAGE_PARTITION_SIZE ?= 6442450944
 
 AB_OTA_UPDATER := true
 AB_OTA_PARTITIONS += \
@@ -47,7 +48,7 @@ AB_OTA_PARTITIONS += \
     vendor_dlkm \
 
 # Enable Virtual A/B
-$(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota.mk)
+$(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/launch_with_vendor_ramdisk.mk)
 
 # Enable Scoped Storage related
 $(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
@@ -256,18 +257,18 @@ PRODUCT_COPY_FILES += \
 
 ifeq ($(TARGET_RO_FILE_SYSTEM_TYPE),ext4)
 PRODUCT_COPY_FILES += \
-    device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_RAMDISK)/fstab.f2fs \
+    device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/fstab.f2fs \
     device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.f2fs \
     device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.f2fs \
-    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_RAMDISK)/fstab.ext4 \
+    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/fstab.ext4 \
     device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.ext4 \
     device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.ext4
 else
 PRODUCT_COPY_FILES += \
-    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).f2fs:$(TARGET_COPY_OUT_RAMDISK)/fstab.f2fs \
+    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).f2fs:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/fstab.f2fs \
     device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).f2fs:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.f2fs \
     device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).f2fs:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.f2fs \
-    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).ext4:$(TARGET_COPY_OUT_RAMDISK)/fstab.ext4 \
+    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).ext4:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/fstab.ext4 \
     device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).ext4:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.ext4 \
     device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).ext4:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.ext4
 endif
@@ -336,6 +337,12 @@ DEVICE_PACKAGE_OVERLAYS += $(LOCAL_AUDIO_DEVICE_PACKAGE_OVERLAYS)
 #
 PRODUCT_PACKAGES += \
     android.hardware.biometrics.face@1.1-service.example
+
+#
+# BiometricsFingerprint HAL (HIDL)
+#
+PRODUCT_PACKAGES += \
+    android.hardware.biometrics.fingerprint@2.2-service.example
 
 #
 # BiometricsFace HAL (AIDL)
@@ -475,13 +482,16 @@ PRODUCT_PACKAGES += \
 
 # BootControl HAL
 PRODUCT_PACKAGES += \
-    android.hardware.boot@1.1-impl \
-    android.hardware.boot@1.1-impl.recovery \
-    android.hardware.boot@1.1-service
+    android.hardware.boot@1.2-impl \
+    android.hardware.boot@1.2-impl.recovery \
+    android.hardware.boot@1.2-service
 
 # RebootEscrow HAL
 PRODUCT_PACKAGES += \
     android.hardware.rebootescrow-service.default
+
+# GKI APEX
+PRODUCT_PACKAGES += com.android.gki.kmi_5_4_android12_0
 
 # WLAN driver configuration files
 PRODUCT_COPY_FILES += \
@@ -503,6 +513,10 @@ PRODUCT_COPY_FILES += \
 PRODUCT_PACKAGES += \
     update_engine_sideload
 
+endif
+
+ifdef TARGET_DEDICATED_RECOVERY
+PRODUCT_BUILD_RECOVERY_IMAGE := true
 endif
 
 #

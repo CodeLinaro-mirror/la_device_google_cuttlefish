@@ -13,18 +13,41 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #pragma once
 
-#include <set>
+#include <memory>
 #include <string>
 
+namespace webrtc {
+class VideoTrackSourceInterface;
+}
+
 namespace cuttlefish {
+namespace webrtc_streaming {
 
-bool CleanPriorFiles(
-    const std::set<std::string>& preserving,
-    const std::string& assembly_dir,
-    const std::string& instance_dir);
+class VideoTrackSourceImpl;
 
-bool EnsureDirectoryExists(const std::string& directory_path);
+class LocalRecorder {
+public:
+  ~LocalRecorder();
 
+  static std::unique_ptr<LocalRecorder> Create(const std::string& filename);
+
+  void AddDisplay(
+      size_t width,
+      size_t height,
+      std::shared_ptr<webrtc::VideoTrackSourceInterface> video);
+
+  void Stop();
+private:
+  class Display;
+  class Impl;
+
+  LocalRecorder(std::unique_ptr<Impl>);
+
+  std::unique_ptr<Impl> impl_;
+};
+
+} // namespace webrtc_streaming
 } // namespace cuttlefish
