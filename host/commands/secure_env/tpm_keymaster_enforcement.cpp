@@ -72,7 +72,9 @@ bool TpmKeymasterEnforcement::expiration_date_passed(
 
 bool TpmKeymasterEnforcement::auth_token_timed_out(
     const hw_auth_token_t& token, uint32_t timeout) const {
-  return (be64toh(token.timestamp) + timeout) < get_current_time_ms();
+  // timeout comes in seconds, token.timestamp comes in milliseconds
+  uint64_t timeout_ms = 1000 * (uint64_t) timeout;
+  return (be64toh(token.timestamp) + timeout_ms) < get_current_time_ms();
 }
 
 uint64_t TpmKeymasterEnforcement::get_current_time_ms() const {
@@ -218,7 +220,7 @@ VerifyAuthorizationResponse TpmKeymasterEnforcement::VerifyAuthorization(
     uint64_t timestamp;
     keymaster_security_level_t security_level;
   };
-  VerifyAuthorizationResponse response;
+  VerifyAuthorizationResponse response(keymaster::kDefaultMessageVersion);
   response.error = KM_ERROR_UNKNOWN_ERROR;
   response.token.challenge = request.challenge;
   response.token.timestamp = get_current_time_ms();

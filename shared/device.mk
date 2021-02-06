@@ -69,6 +69,10 @@ PRODUCT_PRODUCT_PROPERTIES += \
     ro.com.google.locationfeatures=1 \
     persist.sys.fuse.passthrough.enable=true \
 
+# Storage: for factory reset protection feature
+PRODUCT_PROPERTY_OVERRIDES += \
+    ro.frp.pst=/dev/block/vdc
+
 # Explanation of specific properties:
 #   debug.hwui.swap_with_damage avoids boot failure on M http://b/25152138
 #   ro.opengles.version OpenGLES 3.0
@@ -159,6 +163,13 @@ PRODUCT_PACKAGES += \
 #
 # Packages for the OpenGL implementation
 #
+
+# ANGLE provides an OpenGL implementation built on top of Vulkan.
+PRODUCT_PACKAGES += \
+    libEGL_angle \
+    libGLESv1_CM_angle \
+    libGLESv2_angle \
+    libfeature_support_angle.so
 
 # SwiftShader provides a software-only implementation that is not thread-safe
 PRODUCT_PACKAGES += \
@@ -298,12 +309,24 @@ endif
 PRODUCT_PACKAGES += \
     android.hardware.atrace@1.0-service
 
+
+#
+# OemLock aidl HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.oemlock-service.example
+
 #
 # Authsecret HAL
 #
 PRODUCT_PACKAGES += \
     android.hardware.authsecret@1.0-service
 
+#
+# Authsecret AIDL HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.authsecret-service.example
 #
 # Hardware Composer HAL
 #
@@ -384,7 +407,7 @@ PRODUCT_PACKAGES += \
 #
 PRODUCT_PACKAGES += \
     android.hardware.drm@1.3-service.clearkey \
-    android.hardware.drm@1.3-service.widevine
+    android.hardware.drm@1.4-service.widevine
 
 #
 # Dumpstate HAL
@@ -427,7 +450,7 @@ PRODUCT_PACKAGES += $(LOCAL_HEALTH_PRODUCT_PACKAGE)
 
 # Health Storage
 PRODUCT_PACKAGES += \
-    android.hardware.health.storage@1.0-service.cuttlefish
+    android.hardware.health.storage-service.cuttlefish
 
 # Identity Credential
 PRODUCT_PACKAGES += \
@@ -521,7 +544,12 @@ PRODUCT_PACKAGES += \
     android.hardware.memtrack-service.example
 
 # GKI APEX
-PRODUCT_PACKAGES += com.android.gki.kmi_5_4_android12_0
+PRODUCT_PACKAGES += com.android.gki.kmi_5_10_android12_0
+
+# Prevent GKI and boot image downgrades
+PRODUCT_PRODUCT_PROPERTIES += \
+    ro.build.ab_update.gki.prevent_downgrade_version=true \
+    ro.build.ab_update.gki.prevent_downgrade_spl=true \
 
 # WLAN driver configuration files
 PRODUCT_COPY_FILES += \
@@ -547,6 +575,9 @@ endif
 
 ifdef TARGET_DEDICATED_RECOVERY
 PRODUCT_BUILD_RECOVERY_IMAGE := true
+PRODUCT_PACKAGES += linker.vendor_ramdisk shell_and_utilities_vendor_ramdisk
+else
+PRODUCT_PACKAGES += linker.recovery shell_and_utilities_recovery
 endif
 
 #

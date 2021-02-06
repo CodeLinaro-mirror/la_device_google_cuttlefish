@@ -234,6 +234,9 @@ DEFINE_bool(kgdb, false, "Configure the virtual device for debugging the kernel 
 
 DEFINE_bool(start_gnss_proxy, false, "Whether to start the gnss proxy.");
 
+DEFINE_string(gnss_file_path, "",
+              "Local gnss file path for the gnss proxy");
+
 // by default, this modem-simulator is disabled
 DEFINE_bool(enable_modem_simulator, true,
             "Enable the modem simulator to process RILD AT commands");
@@ -394,6 +397,14 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
                " does not work with vm_manager=" << FLAGS_vm_manager;
   }
 
+  // TODO (177926450) These lines are needed because the current uboot config
+  // assuming only one memory size for the arm config. Remove these lines once
+  // the memory size can be variable for arm.
+  // The default for the CF Arm guest RAM size is 3027 MB on rockpi
+  if (HostArch() == "aarch64") {
+    SetCommandLineOptionWithMode("memory_mb", "3027", SET_FLAGS_DEFAULT);
+  }
+
   tmp_config_obj.set_cpus(FLAGS_cpus);
   tmp_config_obj.set_memory_mb(FLAGS_memory_mb);
 
@@ -435,12 +446,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   std::string discovered_ramdisk = fetcher_config.FindCvdFileWithSuffix(kInitramfsImg);
   std::string foreign_ramdisk = FLAGS_initramfs_path.size () ? FLAGS_initramfs_path : discovered_ramdisk;
-
-  // TODO(rammuthiah) Bootloader boot doesn't work in the following scenarios:
-  // 1. Arm64 - On Crosvm, we have no implementation currently.
-  if (FLAGS_vm_manager == CrosvmManager::name() && HostArch() == "aarch64") {
-    SetCommandLineOptionWithMode("use_bootloader", "false", SET_FLAGS_DEFAULT);
-  }
 
   tmp_config_obj.set_boot_image_kernel_cmdline(boot_image_unpacker.kernel_cmdline());
   tmp_config_obj.set_guest_enforce_security(FLAGS_guest_enforce_security);
@@ -583,6 +588,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   for (int i = 0; i < FLAGS_num_instances; i++) {
     num_instances.push_back(GetInstance() + i);
   }
+  std::vector<std::string> gnss_file_paths = android::base::Split(FLAGS_gnss_file_path, ",");
 
   bool is_first_instance = true;
   for (const auto& num : num_instances) {
@@ -641,11 +647,16 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
     instance.set_gnss_grpc_proxy_server_port(7200 + num -1);
 
+    if (num <= gnss_file_paths.size()) {
+      instance.set_gnss_file_path(gnss_file_paths[num-1]);
+    }
+
     instance.set_device_title(FLAGS_device_title);
 
     instance.set_virtual_disk_paths({
       const_instance.PerInstancePath("overlay.img"),
       const_instance.sdcard_path(),
+      const_instance.factory_reset_protected_path(),
     });
 
     std::array<unsigned char, 6> mac_address;
