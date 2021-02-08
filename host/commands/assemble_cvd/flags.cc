@@ -4,6 +4,7 @@
 #include <android-base/strings.h>
 #include <gflags/gflags.h>
 #include <json/json.h>
+#include <json/writer.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -35,6 +36,11 @@ using cuttlefish::StringFromEnv;
 using cuttlefish::vm_manager::CrosvmManager;
 using google::FlagSettingMode::SET_FLAGS_DEFAULT;
 
+DEFINE_string(config, "phone",
+              "Config preset name. Will automatically set flag fields "
+              "using the values from this file of presets. Possible values: "
+              "phone,tablet,auto,tv");
+
 DEFINE_int32(cpus, 2, "Virtual CPU count.");
 DEFINE_string(data_policy, "use_existing", "How to handle userdata partition."
             " Either 'use_existing', 'create_if_missing', 'resize_up_to', or "
@@ -46,9 +52,9 @@ DEFINE_string(blank_data_image_fmt, "f2fs",
 DEFINE_string(qemu_gdb, "",
               "Debug flag to pass to qemu. e.g. -qemu_gdb=tcp::1234");
 
-DEFINE_int32(x_res, 720, "Width of the screen in pixels");
-DEFINE_int32(y_res, 1280, "Height of the screen in pixels");
-DEFINE_int32(dpi, 160, "Pixels per inch for the screen");
+DEFINE_int32(x_res, 0, "Width of the screen in pixels");
+DEFINE_int32(y_res, 0, "Height of the screen in pixels");
+DEFINE_int32(dpi, 0, "Pixels per inch for the screen");
 DEFINE_int32(refresh_rate_hz, 60, "Screen refresh rate in Hertz");
 DEFINE_string(kernel_path, "",
               "Path to the kernel. Overrides the one from the boot image");
@@ -63,8 +69,7 @@ DEFINE_bool(guest_audit_security, true,
             "Whether to log security audits.");
 DEFINE_bool(guest_force_normal_boot, true,
             "Whether to force the boot sequence to skip recovery.");
-DEFINE_int32(memory_mb, 2048,
-             "Total amount of memory available for guest, MB.");
+DEFINE_int32(memory_mb, 0, "Total amount of memory available for guest, MB.");
 DEFINE_string(serial_number, cuttlefish::ForCurrentInstance("CUTTLEFISHCVD"),
               "Serial number to use for the device");
 DEFINE_bool(use_random_serial, false,
@@ -218,6 +223,12 @@ DEFINE_string(custom_action_config, "",
               "Path to a custom action config JSON. Defaults to the file provided by "
               "build variable CVD_CUSTOM_ACTION_CONFIG. If this build variable "
               "is empty then the custom action config will be empty as well.");
+DEFINE_string(
+    custom_actions, "",
+    "Serialized JSON of an array of custom action objects (in the same format as custom "
+    "action config JSON files). For use within --config preset config files; prefer "
+    "--custom_action_config to specify a custom config file on the command line. "
+    "--custom_action_config takes precedence over this flag if provided.");
 DEFINE_bool(use_bootloader, true, "Boots the device using a bootloader");
 DEFINE_string(bootloader, "", "Bootloader binary path");
 DEFINE_string(boot_slot, "", "Force booting into the given slot. If empty, "
@@ -251,15 +262,23 @@ DEFINE_bool(vhost_net, false, "Enable vhost acceleration of networking");
 DEFINE_bool(record_screen, false, "Enable screen recording. "
                                   "Requires --start_webrtc");
 
+DEFINE_bool(ethernet, false, "Enable Ethernet network interface");
+
 DEFINE_int32(vsock_guest_cid,
              cuttlefish::GetDefaultVsockCid(),
-             "Override vsock cid with this option if vsock cid the instance should be"
-             "separated from the instance number: e.g. cuttlefish instance inside a container."
-             "If --vsock_guest_cid=C --num_instances=N are given,"
-             "the vsock cid of the i th instance would be C + i where i is in [1, N]"
-             "If --num_instances is not given, the default value of N is used.");
-
-DEFINE_bool(ethernet, false, "Enable Ethernet network interface");
+             "vsock_guest_cid is used to determine the guest vsock cid as well as all the ports"
+             "of all vsock servers such as tombstone or modem simulator(s)."
+             "The vsock ports and guest vsock cid are a function of vsock_guest_cid and instance number."
+             "An instance number of i th instance is determined by --num_instances=N and --base_instance_num=B"
+             "The instance number of i th instance is B + i where i in [0, N-1] and B >= 1."
+             "See --num_instances, and --base_instance_num for more information"
+             "If --vsock_guest_cid=C is given and C >= 3, the guest vsock cid is C + i. Otherwise,"
+             "the guest vsock cid is 2 + instance number, which is 2 + (B + i)."
+             "If --vsock_guest_cid is not given, each vsock server port number for i th instance is"
+             "base + instance number - 1. vsock_guest_cid is by default B + i + 2."
+             "Thus, by default, each port is base + vsock_guest_cid - 3."
+             "The same formula holds when --vsock_guest_cid=C is given, for algorithm's sake."
+             "Each vsock server port number is base + C - 3.");
 
 DECLARE_string(system_image_dir);
 
@@ -272,6 +291,10 @@ namespace {
 const std::string kKernelDefaultPath = "kernel";
 const std::string kInitramfsImg = "initramfs.img";
 const std::string kRamdiskConcatExt = ".concat";
+
+bool IsFlagSet(const std::string& flag) {
+  return !gflags::GetCommandLineFlagInfoOrDie(flag.c_str()).is_default;
+}
 
 std::pair<uint16_t, uint16_t> ParsePortRange(const std::string& flag) {
   static const std::regex rgx("[0-9]+:[0-9]+");
@@ -358,6 +381,13 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   LOG(VERBOSE) << GetGraphicsAvailabilityString(graphics_availability);
 
   tmp_config_obj.set_gpu_mode(FLAGS_gpu_mode);
+
+  if (tmp_config_obj.gpu_mode() != kGpuModeAuto &&
+      tmp_config_obj.gpu_mode() != kGpuModeDrmVirgl &&
+      tmp_config_obj.gpu_mode() != kGpuModeGfxStream &&
+      tmp_config_obj.gpu_mode() != kGpuModeGuestSwiftshader) {
+    LOG(FATAL) << "Invalid gpu_mode: " << FLAGS_gpu_mode;
+  }
   if (tmp_config_obj.gpu_mode() == kGpuModeAuto) {
     if (ShouldEnableAcceleratedRendering(graphics_availability)) {
         LOG(INFO) << "GPU auto mode: detected prerequisites for accelerated "
@@ -395,14 +425,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   if (vmm->ConfigureGpuMode(tmp_config_obj.gpu_mode()).empty()) {
     LOG(FATAL) << "Invalid gpu_mode=" << FLAGS_gpu_mode <<
                " does not work with vm_manager=" << FLAGS_vm_manager;
-  }
-
-  // TODO (177926450) These lines are needed because the current uboot config
-  // assuming only one memory size for the arm config. Remove these lines once
-  // the memory size can be variable for arm.
-  // The default for the CF Arm guest RAM size is 3027 MB on rockpi
-  if (HostArch() == "aarch64") {
-    SetCommandLineOptionWithMode("memory_mb", "3027", SET_FLAGS_DEFAULT);
   }
 
   tmp_config_obj.set_cpus(FLAGS_cpus);
@@ -533,8 +555,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     std::string custom_action_config_dir =
         DefaultHostArtifactsPath("etc/cvd_custom_action_config");
     if (DirectoryExists(custom_action_config_dir)) {
-      auto custom_action_configs = DirectoryContents(
-          custom_action_config_dir);
+      auto custom_action_configs = DirectoryContents(custom_action_config_dir);
       // Two entries are always . and ..
       if (custom_action_configs.size() > 3) {
         LOG(ERROR) << "Expected at most one custom action config in "
@@ -548,21 +569,28 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
       }
     }
   }
-  // Load the custom action config JSON.
+  Json::Reader reader;
+  Json::Value custom_action_array(Json::arrayValue);
   if (custom_action_config != "") {
-    Json::Reader reader;
+    // Load the custom action config JSON.
     std::ifstream ifs(custom_action_config);
-    Json::Value dictionary;
-    if (!reader.parse(ifs, dictionary)) {
-      LOG(ERROR) << "Could not read custom actions config file " << custom_action_config
-                 << ": " << reader.getFormattedErrorMessages();
+    if (!reader.parse(ifs, custom_action_array)) {
+      LOG(FATAL) << "Could not read custom actions config file "
+                 << custom_action_config << ": "
+                 << reader.getFormattedErrorMessages();
     }
-    std::vector<CustomActionConfig> custom_actions;
-    for (Json::Value custom_action : dictionary) {
-      custom_actions.push_back(CustomActionConfig(custom_action));
+  } else if (FLAGS_custom_actions != "") {
+    // Load the custom action from the --config preset file.
+    if (!reader.parse(FLAGS_custom_actions, custom_action_array)) {
+      LOG(FATAL) << "Could not read custom actions config flag: "
+                 << reader.getFormattedErrorMessages();
     }
-    tmp_config_obj.set_custom_actions(custom_actions);
   }
+  std::vector<CustomActionConfig> custom_actions;
+  for (Json::Value custom_action : custom_action_array) {
+    custom_actions.push_back(CustomActionConfig(custom_action));
+  }
+  tmp_config_obj.set_custom_actions(custom_actions);
 
   tmp_config_obj.set_use_bootloader(FLAGS_use_bootloader);
   tmp_config_obj.set_bootloader(FLAGS_bootloader);
@@ -616,7 +644,13 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     } else {
       instance.set_serial_number(FLAGS_serial_number + std::to_string(num));
     }
-
+    // call this before all stuff that has vsock server: e.g. touchpad, keyboard, etc
+    const auto vsock_guest_cid = FLAGS_vsock_guest_cid + num - GetInstance();
+    instance.set_vsock_guest_cid(vsock_guest_cid);
+    auto calc_vsock_port = [vsock_guest_cid](const int base_port) {
+      // a base (vsock) port is like 9200 for modem_simulator, etc
+      return cuttlefish::GetVsockServerPort(base_port, vsock_guest_cid);
+    };
     instance.set_session_id(iface_config.mobile_tap.session_id);
 
     instance.set_mobile_bridge_name(StrForInstance("cvd-mbr-", num));
@@ -624,24 +658,22 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     instance.set_wifi_tap_name(iface_config.wireless_tap.name);
     instance.set_ethernet_tap_name(iface_config.ethernet_tap.name);
 
-    instance.set_vsock_guest_cid(FLAGS_vsock_guest_cid + num - GetInstance());
-
     instance.set_uuid(FLAGS_uuid);
 
     instance.set_vnc_server_port(6444 + num - 1);
     instance.set_host_port(6520 + num - 1);
     instance.set_adb_ip_and_port("0.0.0.0:" + std::to_string(6520 + num - 1));
-    instance.set_tombstone_receiver_port(6600 + num - 1);
+    instance.set_tombstone_receiver_port(calc_vsock_port(6600));
     instance.set_vehicle_hal_server_port(9210 + num - 1);
     instance.set_audiocontrol_server_port(9410);  /* OK to use the same port number across instances */
-    instance.set_config_server_port(6800 + num - 1);
+    instance.set_config_server_port(calc_vsock_port(6800));
 
     if (FLAGS_gpu_mode != kGpuModeDrmVirgl &&
         FLAGS_gpu_mode != kGpuModeGfxStream) {
-      instance.set_frames_server_port(6900 + num - 1);
+        instance.set_frames_server_port(calc_vsock_port(6900));
       if (FLAGS_vm_manager == QemuManager::name()) {
-        instance.set_keyboard_server_port(7000 + num - 1);
-        instance.set_touch_server_port(7100 + num - 1);
+        instance.set_keyboard_server_port(calc_vsock_port(7000));
+        instance.set_touch_server_port(calc_vsock_port(7100));
       }
     }
 
@@ -690,19 +722,90 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
       instance.set_start_webrtc_signaling_server(false);
     }
     is_first_instance = false;
-    std::stringstream ss;
-    auto base_port = 9200 + num - 2;
-    for (auto index = 0; index < modem_simulator_count; ++index) {
-      ss << base_port + 1 << ",";
+
+    // instance.modem_simulator_ports := "" or "[port,]*port"
+    if (modem_simulator_count > 0) {
+      std::stringstream modem_ports;
+      for (auto index {0}; index < modem_simulator_count - 1; index++) {
+        modem_ports << calc_vsock_port(9200) << ",";
+      }
+      modem_ports << calc_vsock_port(9200);
+      instance.set_modem_simulator_ports(modem_ports.str());
+    } else {
+      instance.set_modem_simulator_ports("");
     }
-    std::string modem_simulator_ports = ss.str();
-    modem_simulator_ports.pop_back();
-    instance.set_modem_simulator_ports(modem_simulator_ports);
-  }
+  } // end of num_instances loop
 
   tmp_config_obj.set_enable_sandbox(FLAGS_enable_sandbox);
 
   return tmp_config_obj;
+}
+
+void SetDefaultFlagsFromConfigPreset() {
+  std::string config_preset = FLAGS_config;  // The name of the preset config.
+  std::string config_file_path;  // The path to the preset config JSON.
+  const std::set<std::string> allowed_config_presets = {
+      "phone",
+      "tablet",
+      "tv",
+      "auto",
+  };
+
+  // If the user specifies a --config name, then use that config
+  // preset option and save their choice to a file.
+  std::string config_preset_file_path =
+      StringFromEnv("HOME", ".") + "/.cuttlefish_config_preset";
+  if (IsFlagSet("config")) {
+    if (!allowed_config_presets.count(config_preset)) {
+      LOG(FATAL) << "Invalid --config option '" << config_preset
+                 << "'. Valid options: "
+                 << android::base::Join(allowed_config_presets, ",");
+    }
+    // Write the name of the config preset to a file. Only the name is
+    // written, not the contents of the config itself, in order to allow
+    // forwards compatibility if config fields change.
+    std::ofstream ofs(config_preset_file_path);
+    if (ofs.is_open()) {
+      ofs << config_preset;
+    }
+  } else if (FileExists(config_preset_file_path)) {
+    // Load the config preset option from the file if it exists.
+    std::ifstream ifs(config_preset_file_path);
+    if (ifs.is_open()) {
+      ifs >> config_preset;
+      if (!allowed_config_presets.count(config_preset)) {
+        LOG(WARNING) << config_preset_file_path
+                     << " contains invalid config preset: '" << config_preset
+                     << "'. Defaulting to 'phone'.";
+        config_preset = "phone";
+      }
+    }
+  }
+  LOG(INFO) << "Launching CVD using --config='" << config_preset << "'.";
+
+  config_file_path = DefaultHostArtifactsPath("etc/cvd_config/cvd_config_" +
+                                              config_preset + ".json");
+  Json::Value config;
+  Json::Reader config_reader;
+  std::ifstream ifs(config_file_path);
+  if (!config_reader.parse(ifs, config)) {
+    LOG(FATAL) << "Could not read config file " << config_file_path << ": "
+               << config_reader.getFormattedErrorMessages();
+  }
+  for (const std::string& flag : config.getMemberNames()) {
+    std::string value;
+    if (flag == "custom_actions") {
+      Json::FastWriter writer;
+      value = writer.write(config[flag]);
+    } else {
+      value = config[flag].asString();
+    }
+    if (gflags::SetCommandLineOptionWithMode(flag.c_str(), value.c_str(),
+                                             SET_FLAGS_DEFAULT)
+            .empty()) {
+      LOG(FATAL) << "Error setting flag '" << flag << "'.";
+    }
+  }
 }
 
 void SetDefaultFlagsForQemu() {
@@ -743,16 +846,6 @@ void SetDefaultFlagsForCrosvm() {
                                (default_enable_sandbox ? "true" : "false"),
                                SET_FLAGS_DEFAULT);
 
-  // Crosvm requires a specific setting for kernel decompression; it must be
-  // on for aarch64 and off for x86, no other mode is supported.
-  bool decompress_kernel = false;
-  if (HostArch() == "aarch64") {
-    decompress_kernel = true;
-  }
-  SetCommandLineOptionWithMode("decompress_kernel",
-                               (decompress_kernel ? "true" : "false"),
-                               SET_FLAGS_DEFAULT);
-
   std::string default_bootloader = FLAGS_system_image_dir + "/bootloader";
   SetCommandLineOptionWithMode("bootloader", default_bootloader.c_str(),
                                SET_FLAGS_DEFAULT);
@@ -760,6 +853,7 @@ void SetDefaultFlagsForCrosvm() {
 
 bool ParseCommandLineFlags(int* argc, char*** argv) {
   google::ParseCommandLineNonHelpFlags(argc, argv, true);
+  SetDefaultFlagsFromConfigPreset();
   bool invalid_manager = false;
   if (FLAGS_vm_manager == QemuManager::name()) {
     SetDefaultFlagsForQemu();

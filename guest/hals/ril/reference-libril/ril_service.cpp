@@ -131,6 +131,9 @@ void convertRilDataCallToHal(RIL_Data_Call_Response_v11 *dcResponse,
 void convertRilDataCallToHal(RIL_Data_Call_Response_v12 *dcResponse,
         ::android::hardware::radio::V1_5::SetupDataCallResult& dcResult);
 
+void convertRilDataCallToHal(RIL_Data_Call_Response_v12 *dcResponse,
+        ::android::hardware::radio::V1_6::SetupDataCallResult& dcResult);
+
 void convertRilDataCallListToHal(void *response, size_t responseLen,
         hidl_vec<SetupDataCallResult>& dcResultList);
 
@@ -549,6 +552,12 @@ struct RadioImpl_1_6 : public V1_6::IRadio {
             const hidl_vec<hidl_string>& urns,
             ::android::hardware::radio::V1_4::EmergencyCallRouting routing,
             bool fromEmergencyDialer, bool isTesting);
+    Return<void> emergencyDial_1_6(int32_t serial,
+            const ::android::hardware::radio::V1_0::Dial& dialInfo,
+            hidl_bitfield<android::hardware::radio::V1_4::EmergencyServiceCategory> categories,
+            const hidl_vec<hidl_string>& urns,
+            ::android::hardware::radio::V1_4::EmergencyCallRouting routing,
+            bool fromEmergencyDialer, bool isTesting);
     Return<void> startNetworkScan_1_4(int32_t serial,
             const ::android::hardware::radio::V1_2::NetworkScanRequest& request);
     Return<void> getPreferredNetworkTypeBitmap(int32_t serial);
@@ -610,7 +619,9 @@ struct RadioImpl_1_6 : public V1_6::IRadio {
             const hidl_vec<::android::hardware::radio::V1_5::LinkAddress>& addresses,
             const hidl_vec<hidl_string>& dnses,
             int32_t pduSessionId,
-            const ::android::hardware::radio::V1_6::OptionalSliceInfo& sliceInfo);
+            const ::android::hardware::radio::V1_6::OptionalSliceInfo& sliceInfo,
+            const ::android::hardware::radio::V1_6::OptionalTrafficDescriptor& trafficDescriptor,
+            bool matchAllRuleAllowed);
     Return<void> sendSms_1_6(int32_t serial, const GsmSmsMessage& message);
     Return<void> sendSMSExpectMore_1_6(int32_t serial, const GsmSmsMessage& message);
     Return<void> sendCdmaSms_1_6(int32_t serial, const CdmaSmsMessage& sms);
@@ -621,7 +632,7 @@ struct RadioImpl_1_6 : public V1_6::IRadio {
     Return<void> releasePduSessionId(int32_t serial, int32_t id);
     Return<void> startHandover(int32_t serial, int32_t callId);
     Return<void> cancelHandover(int32_t serial, int32_t callId);
-    Return<void> setAllowedNetworkTypeBitmap(uint32_t serial,
+    Return<void> setAllowedNetworkTypesBitmap(uint32_t serial,
             hidl_bitfield<::android::hardware::radio::V1_4::RadioAccessFamily> networkTypeBitmap);
     Return<void> setDataThrottling(int32_t serial,
             V1_6::DataThrottlingAction dataThrottlingAction,
@@ -629,7 +640,8 @@ struct RadioImpl_1_6 : public V1_6::IRadio {
     Return<void> getSystemSelectionChannels(int32_t serial);
     Return<void> getVoiceRegistrationState_1_6(int32_t serial);
     Return<void> getDataRegistrationState_1_6(int32_t serial);
-    Return<void> getAllowedNetworkTypeBitmap(uint32_t serial);
+    Return<void> getAllowedNetworkTypesBitmap(uint32_t serial);
+    Return<void> getSlicingConfig(int32_t serial);
 };
 
 struct OemHookImpl : public IOemHook {
@@ -1792,6 +1804,87 @@ Return<void> RadioImpl_1_6::getDataCallList_1_6(int32_t serial) {
     RLOGD("getDataCallList_1_6: serial %d", serial);
 #endif
     dispatchVoid(serial, mSlotId, RIL_REQUEST_DATA_CALL_LIST);
+    return Void();
+}
+
+Return<void> RadioImpl_1_6::emergencyDial_1_6(int32_t serial,
+        const ::android::hardware::radio::V1_0::Dial& dialInfo,
+        hidl_bitfield<android::hardware::radio::V1_4::EmergencyServiceCategory> categories,
+        const hidl_vec<hidl_string>&  urns ,
+        ::android::hardware::radio::V1_4::EmergencyCallRouting routing,
+        bool fromEmergencyDialer, bool /* isTesting */) {
+#if VDBG
+    RLOGD("emergencyDial: serial %d", serial);
+#endif
+
+    RequestInfo *pRI = android::addRequestToList(serial, mSlotId, RIL_REQUEST_EMERGENCY_DIAL);
+    if (pRI == NULL) {
+        return Void();
+    }
+
+    RIL_EmergencyDial eccDial = {};
+    RIL_Dial& dial = eccDial.dialInfo;
+    RIL_UUS_Info uusInfo = {};
+
+    if (!copyHidlStringToRil(&dial.address, dialInfo.address, pRI)) {
+        return Void();
+    }
+    dial.clir = (int) dialInfo.clir;
+
+    if (dialInfo.uusInfo.size() != 0) {
+        uusInfo.uusType = (RIL_UUS_Type) dialInfo.uusInfo[0].uusType;
+        uusInfo.uusDcs = (RIL_UUS_DCS) dialInfo.uusInfo[0].uusDcs;
+
+        if (dialInfo.uusInfo[0].uusData.size() == 0) {
+            uusInfo.uusData = NULL;
+            uusInfo.uusLength = 0;
+        } else {
+            if (!copyHidlStringToRil(&uusInfo.uusData, dialInfo.uusInfo[0].uusData, pRI)) {
+                memsetAndFreeStrings(1, dial.address);
+                return Void();
+            }
+            uusInfo.uusLength = dialInfo.uusInfo[0].uusData.size();
+        }
+
+        dial.uusInfo = &uusInfo;
+    }
+
+    eccDial.urnsNumber = urns.size();
+    if (eccDial.urnsNumber != 0) {
+        char **ppUrns = (char **)calloc(eccDial.urnsNumber, sizeof(char *));
+        if (ppUrns == NULL) {
+            RLOGE("Memory allocation failed for request %s",
+                    requestToString(pRI->pCI->requestNumber));
+            sendErrorResponse(pRI, RIL_E_NO_MEMORY);
+            memsetAndFreeStrings(2, dial.address, uusInfo.uusData);
+            return Void();
+        }
+        for (uint32_t i = 0; i < eccDial.urnsNumber; i++) {
+            if (!copyHidlStringToRil(&ppUrns[i], hidl_string(urns[i]), pRI)) {
+                for (uint32_t j = 0; j < i; j++) {
+                    memsetAndFreeStrings(1, ppUrns[j]);
+                }
+                memsetAndFreeStrings(2, dial.address, uusInfo.uusData);
+                free(ppUrns);
+                return Void();
+            }
+        }
+        eccDial.urns = ppUrns;
+    }
+
+    eccDial.categories = (RIL_EmergencyServiceCategory)categories;
+    eccDial.routing = (RIL_EmergencyCallRouting)routing;
+    eccDial.fromEmergencyDialer = fromEmergencyDialer;
+
+    CALL_ONREQUEST(RIL_REQUEST_EMERGENCY_DIAL, &eccDial, sizeof(RIL_EmergencyDial), pRI, mSlotId);
+
+    memsetAndFreeStrings(2, dial.address, uusInfo.uusData);
+    if (eccDial.urns != NULL) {
+        for (size_t i = 0; i < eccDial.urnsNumber; i++) {
+            memsetAndFreeStrings(1, eccDial.urns[i]);
+        }
+        free(eccDial.urns);
+    }
     return Void();
 }
 
@@ -3820,20 +3913,20 @@ Return<void> RadioImpl_1_6::setPreferredNetworkTypeBitmap(
     return Void();
 }
 
-Return<void> RadioImpl_1_6::setAllowedNetworkTypeBitmap(
+Return<void> RadioImpl_1_6::setAllowedNetworkTypesBitmap(
         uint32_t serial, hidl_bitfield<RadioAccessFamily> networkTypeBitmap) {
 #if VDBG
-    RLOGD("setAllowedNetworkTypeBitmap: serial %d", serial);
+    RLOGD("setAllowedNetworkTypesBitmap: serial %d", serial);
 #endif
-    dispatchInts(serial, mSlotId, RIL_REQUEST_SET_ALLOWED_NETWORK_TYPE_BITMAP, 1, networkTypeBitmap);
+    dispatchInts(serial, mSlotId, RIL_REQUEST_SET_ALLOWED_NETWORK_TYPES_BITMAP, 1, networkTypeBitmap);
     return Void();
 }
 
-Return<void> RadioImpl_1_6::getAllowedNetworkTypeBitmap(uint32_t serial) {
+Return<void> RadioImpl_1_6::getAllowedNetworkTypesBitmap(uint32_t serial) {
 #if VDBG
-    RLOGD("getAllowedNetworkTypeBitmap: serial %d", serial);
+    RLOGD("getAllowedNetworkTypesBitmap: serial %d", serial);
 #endif
-    dispatchVoid(serial, mSlotId, RIL_REQUEST_GET_ALLOWED_NETWORK_TYPE_BITMAP);
+    dispatchVoid(serial, mSlotId, RIL_REQUEST_GET_ALLOWED_NETWORK_TYPES_BITMAP);
     return Void();
 }
 
@@ -4306,7 +4399,9 @@ Return<void> RadioImpl_1_6::setupDataCall_1_6(int32_t serial ,
         const hidl_vec<::android::hardware::radio::V1_5::LinkAddress>& /* addresses */,
         const hidl_vec<hidl_string>& /* dnses */,
         int32_t /* pduSessionId */,
-        const ::android::hardware::radio::V1_6::OptionalSliceInfo& /* sliceInfo */) {
+        const ::android::hardware::radio::V1_6::OptionalSliceInfo& /* sliceInfo */,
+        const ::android::hardware::radio::V1_6::OptionalTrafficDescriptor& /*trafficDescriptor*/,
+        bool matchAllRuleAllowed) {
 
 #if VDBG
     RLOGD("setupDataCall_1_6: serial %d", serial);
@@ -4549,6 +4644,14 @@ Return<void> RadioImpl_1_6::getSystemSelectionChannels(int32_t serial) {
     RLOGD("getSystemSelectionChannels: serial %d", serial);
 #endif
     dispatchVoid(serial, mSlotId, RIL_REQUEST_GET_SYSTEM_SELECTION_CHANNELS);
+    return Void();
+}
+
+Return<void> RadioImpl_1_6::getSlicingConfig(int32_t serial) {
+#if VDBG
+    RLOGD("getSlicingConfig: serial %d", serial);
+#endif
+    dispatchVoid(serial, mSlotId, RIL_REQUEST_GET_SLICING_CONFIG);
     return Void();
 }
 
@@ -6663,7 +6766,33 @@ int radio_1_6::setupDataCallResponse(int slotId,
 #if VDBG
     RLOGD("setupDataCallResponse: serial %d", serial);
 #endif
-    if (radioService[slotId]->mRadioResponseV1_5 != NULL) {
+    if (radioService[slotId]->mRadioResponseV1_6 != NULL) {
+        ::android::hardware::radio::V1_6::RadioResponseInfo responseInfo_1_6 = {};
+        populateResponseInfo_1_6(responseInfo_1_6, serial, responseType, e);
+        ::android::hardware::radio::V1_6::SetupDataCallResult result;
+        if (response == NULL || (responseLen % sizeof(RIL_Data_Call_Response_v11)) != 0) {
+            if (response != NULL) {
+                RLOGE("setupDataCallResponse_1_6: Invalid response");
+                if (e == RIL_E_SUCCESS) responseInfo_1_6.error =
+                        ::android::hardware::radio::V1_6::RadioError::INVALID_RESPONSE;
+            }
+            result.cause = ::android::hardware::radio::V1_6::DataCallFailCause::ERROR_UNSPECIFIED;
+            result.type = ::android::hardware::radio::V1_4::PdpProtocolType::UNKNOWN;
+            result.ifname = hidl_string();
+            result.addresses = hidl_vec<::android::hardware::radio::V1_5::LinkAddress>();
+            result.dnses = hidl_vec<hidl_string>();
+            result.gateways = hidl_vec<hidl_string>();
+            result.pcscf = hidl_vec<hidl_string>();
+            result.trafficDescriptors =
+                    hidl_vec<::android::hardware::radio::V1_6::TrafficDescriptor>();
+        } else {
+            convertRilDataCallToHal((RIL_Data_Call_Response_v12 *) response, result);
+        }
+
+        Return<void> retStatus = radioService[slotId]->mRadioResponseV1_6->setupDataCallResponse_1_6(
+                responseInfo_1_6, result);
+        radioService[slotId]->checkReturnStatus(retStatus);
+    } else if (radioService[slotId]->mRadioResponseV1_5 != NULL) {
         RadioResponseInfo responseInfo = {};
         populateResponseInfo(responseInfo, serial, responseType, e);
         ::android::hardware::radio::V1_5::SetupDataCallResult result;
@@ -7652,11 +7781,11 @@ int radio_1_6::setPreferredNetworkTypeResponse(int slotId,
     return 0;
 }
 
-int radio_1_6::setAllowedNetworkTypeBitmapResponse(int slotId,
+int radio_1_6::setAllowedNetworkTypesBitmapResponse(int slotId,
                                  int responseType, int serial, RIL_Errno e,
                                  void *response, size_t responseLen) {
 #if VDBG
-    RLOGD("setAllowedNetworkTypeBitmapResponse: serial %d", serial);
+    RLOGD("setAllowedNetworkTypesBitmapResponse: serial %d", serial);
 #endif
 
     V1_6::RadioResponseInfo responseInfo = {};
@@ -7669,30 +7798,30 @@ int radio_1_6::setAllowedNetworkTypeBitmapResponse(int slotId,
     }
 
     Return<void> retStatus =
-            radioService[slotId]->mRadioResponseV1_6->setAllowedNetworkTypeBitmapResponse(
+            radioService[slotId]->mRadioResponseV1_6->setAllowedNetworkTypesBitmapResponse(
             responseInfo);
     radioService[slotId]->checkReturnStatus(retStatus);
     return 0;
 }
 
-int radio_1_6::getAllowedNetworkTypeBitmapResponse(int slotId,
+int radio_1_6::getAllowedNetworkTypesBitmapResponse(int slotId,
                                           int responseType, int serial, RIL_Errno e,
                                           void *response, size_t responseLen) {
 #if VDBG
-    RLOGD("getAllowedNetworkTypeBitmapResponse: serial %d", serial);
+    RLOGD("getAllowedNetworkTypesBitmapResponse: serial %d", serial);
 #endif
 
     if (radioService[slotId]->mRadioResponseV1_6 != NULL) {
       V1_6::RadioResponseInfo responseInfo = {};
         int ret = responseInt_1_6(responseInfo, serial, responseType, e, response, responseLen);
         Return<void> retStatus
-                = radioService[slotId]->mRadioResponseV1_6->getAllowedNetworkTypeBitmapResponse(
+                = radioService[slotId]->mRadioResponseV1_6->getAllowedNetworkTypesBitmapResponse(
                 responseInfo,
                 (const ::android::hardware::hidl_bitfield<
                 ::android::hardware::radio::V1_4::RadioAccessFamily>) ret);
         radioService[slotId]->checkReturnStatus(retStatus);
     } else {
-        RLOGE("getAllowedNetworkTypeBitmapResponse: radioService[%d]->mRadioResponseV1_6 == NULL",
+        RLOGE("getAllowedNetworkTypesBitmapResponse: radioService[%d]->mRadioResponseV1_6 == NULL",
                 slotId);
     }
 
@@ -10104,6 +10233,27 @@ int radio_1_6::setDataThrottlingResponse(int slotId, int responseType,
    radioService[slotId]->checkReturnStatus(retstatus);
    return 0;
 }
+
+int radio_1_6::getSlicingConfigResponse(int slotId, int responseType, int serial,
+                                        RIL_Errno e, void* response, size_t responseLen) {
+#if VDBG
+    RLOGD("getSlicingConfigResponse: serial %d", serial);
+#endif
+
+    if (radioService[slotId]->mRadioResponse != NULL) {
+        V1_6::RadioResponseInfo responseInfo = {};
+        populateResponseInfo_1_6(responseInfo, serial, responseType, e);
+
+        V1_6::SlicingConfig slicingConfig = {};
+        Return<void> retStatus = radioService[slotId]->mRadioResponseV1_6->
+                getSlicingConfigResponse(responseInfo, slicingConfig);
+        radioService[slotId]->checkReturnStatus(retStatus);
+    } else {
+        RLOGE("getSlicingConfigResponse: radioService[%d]->mRadioResponse == NULL", slotId);
+    }
+
+    return 0;
+}
 /***************************************************************************************************
  * INDICATION FUNCTIONS
  * The below function handle unsolicited messages coming from the Radio
@@ -10535,6 +10685,43 @@ void convertRilDataCallToHal(RIL_Data_Call_Response_v12 *dcResponse,
     dcResult.mtuV6 = dcResponse->mtuV6;
 }
 
+void convertRilDataCallToHal(RIL_Data_Call_Response_v12 *dcResponse,
+        ::android::hardware::radio::V1_6::SetupDataCallResult& dcResult) {
+    dcResult.cause = (::android::hardware::radio::V1_6::DataCallFailCause) dcResponse->status;
+    dcResult.suggestedRetryTime = dcResponse->suggestedRetryTime;
+    dcResult.cid = dcResponse->cid;
+    dcResult.active = (::android::hardware::radio::V1_4::DataConnActiveStatus)dcResponse->active;
+    dcResult.type = convertToPdpProtocolType(convertCharPtrToHidlString(dcResponse->type));
+    dcResult.ifname = convertCharPtrToHidlString(dcResponse->ifname);
+
+    std::vector<::android::hardware::radio::V1_5::LinkAddress> linkAddresses;
+    std::stringstream ss(static_cast<std::string>(dcResponse->addresses));
+    std::string tok;
+    while(getline(ss, tok, ' ')) {
+        ::android::hardware::radio::V1_5::LinkAddress la;
+        la.address = hidl_string(tok);
+        la.properties = 0;
+        la.deprecationTime = 0;
+        la.expirationTime = 0;
+        linkAddresses.push_back(la);
+    }
+
+    dcResult.addresses = linkAddresses;
+    dcResult.dnses = split(convertCharPtrToHidlString(dcResponse->dnses));
+    dcResult.gateways = split(convertCharPtrToHidlString(dcResponse->gateways));
+    dcResult.pcscf = split(convertCharPtrToHidlString(dcResponse->pcscf));
+    dcResult.mtuV4 = dcResponse->mtuV4;
+    dcResult.mtuV6 = dcResponse->mtuV6;
+
+    std::vector<::android::hardware::radio::V1_6::TrafficDescriptor> trafficDescriptors;
+    ::android::hardware::radio::V1_6::TrafficDescriptor trafficDescriptor;
+    ::android::hardware::radio::V1_6::OSAppId osAppId;
+
+    osAppId.osAppId = 1;
+    trafficDescriptor.osAppId.value(osAppId);
+    trafficDescriptors.push_back(trafficDescriptor);
+    dcResult.trafficDescriptors = trafficDescriptors;
+}
 
 void convertRilDataCallListToHal(void *response, size_t responseLen,
         hidl_vec<SetupDataCallResult>& dcResultList) {
