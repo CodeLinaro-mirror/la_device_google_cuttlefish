@@ -109,11 +109,6 @@ static const std::set<std::string> kKnownMissingAidl = {
     // b/170144267
     "android.system.keystore2.",
 
-    // The keymint service implementation is in progress but we cannot register
-    // the service by default til all essential features landed.
-    // b/171429297
-    "android.hardware.keymint.",
-
     // These KeyMaster types are in an AIDL types-only HAL because they're used
     // by the Identity Credential AIDL HAL. Remove this when fully porting
     // KeyMaster to AIDL.
@@ -287,19 +282,7 @@ TEST(Hal, AidlInterfacesImplemented) {
         bool knownMissing = false;
         for (const std::string& type : iface.types) {
             if (manifest.erase(type) > 0) hasRegistration = true;
-            // TODO(b/171422266): ag/12904727 replaced
-            // carwatchdog_aidl_interface usages to android.automotive.watchdog.
-            // However, the former version is still in place to help update
-            // dependency in the partner repo. Now both of these interfaces have the same package
-            // name, ergo filtering just by package name isn't enough for both the packages. Thus
-            // the below hack is needed to ensure the test passes with two copies of the same
-            // interface. Remove this hack once carwatchdog_aidl_interface is removed.
-            if (iface.name == "carwatchdog_aidl_interface" &&
-                getAidlPackage(type) == "android.automotive.watchdog.") {
-                knownMissing = true;
-            } else if (thoughtMissing.erase(getAidlPackage(type)) > 0) {
-                knownMissing = true;
-            }
+            if (thoughtMissing.erase(getAidlPackage(type)) > 0)  knownMissing = true;
         }
 
         if (knownMissing) {

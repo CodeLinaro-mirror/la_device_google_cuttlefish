@@ -24,6 +24,26 @@ function ConnectToDevice(device_id) {
   const deviceScreen = document.getElementById('deviceScreen');
   deviceScreen.addEventListener('click', onInitialClick);
   const deviceView = document.getElementById('device_view');
+  const webrtcStatusMessage = document.getElementById('webrtc_status_message');
+  const adbStatusMessage = document.getElementById('adb_status_message');
+
+  const deviceStatusMessage = document.getElementById('device_status_message');
+  let connectionAttemptDuration = 0;
+  const intervalMs = 500;
+  let deviceStatusEllipsisCount = 0;
+  let animateDeviceStatusMessage = setInterval(function() {
+    deviceStatusEllipsisCount = (deviceStatusEllipsisCount + 1) % 4;
+    deviceStatusMessage.textContent = 'Connecting to device'
+        + '.'.repeat(deviceStatusEllipsisCount);
+
+    connectionAttemptDuration += intervalMs;
+    if (connectionAttemptDuration > 30000) {
+      deviceStatusMessage.textContent += '\r\n\r\nConnection should have occurred by now.'
+          + '\r\nPlease attempt to restart the guest device.'
+    } else if (connectionAttemptDuration > 15000) {
+      deviceStatusMessage.textContent += '\r\n\r\nConnection is taking longer than expected...'
+    }
+  }, intervalMs);
 
   function onInitialClick(e) {
     // This stupid thing makes sure that we disable controls after the first
@@ -38,9 +58,35 @@ function ConnectToDevice(device_id) {
 
   let videoStream;
   let display_label;
-  let buttonsWaitingOnAdbConnection = [];
+  let buttons = {};
   let mouseIsDown = false;
   let deviceConnection;
+  let touchIdSlotMap = new Map();
+  let touchSlots = new Array();
+
+  function initializeAdb() {
+    init_adb(deviceConnection, function() {
+      adbStatusMessage.className = 'connected';
+      adbStatusMessage.textContent = 'adb connection established successfully.';
+      setTimeout(function() {
+        adbStatusMessage.style.visibility = 'hidden';
+      }, 5000);
+      for (const [_, button] of Object.entries(buttons)) {
+        if (button.adb) {
+          button.button.disabled = false;
+        }
+      }
+    }, function() {
+      adbStatusMessage.className = 'error';
+      adbStatusMessage.textContent = 'adb connection failed.';
+      adbStatusMessage.style.visibility = 'visible';
+      for (const [_, button] of Object.entries(buttons)) {
+        if (button.adb) {
+          button.button.disabled = true;
+        }
+      }
+    });
+  }
 
   let rotation = 0;
   let screenHasBeenResized = false;
@@ -52,10 +98,7 @@ function ConnectToDevice(device_id) {
       // Start the adb connection after receiving the BOOT_STARTED message.
       // (This is after the adbd start message. Attempting to connect
       // immediately after adbd starts causes issues.)
-      init_adb(deviceConnection);
-      for (const button of buttonsWaitingOnAdbConnection) {
-          button.disabled = false;
-      }
+      initializeAdb();
     }
     if (message_data.event == 'VIRTUAL_DEVICE_SCREEN_CHANGED') {
       if (metadata.rotation == rotation) {
@@ -122,6 +165,7 @@ function ConnectToDevice(device_id) {
     document.getElementById(parent_id).appendChild(button);
     button.title = title;
     button.dataset.command = command;
+    button.disabled = true;
     // Capture mousedown/up/out commands instead of click to enable
     // hold detection. mouseout is used to catch if the user moves the
     // mouse outside the button while holding down.
@@ -133,13 +177,14 @@ function ConnectToDevice(device_id) {
     // and https://material.io/resources/icons
     button.classList.add('material-icons');
     button.innerHTML = icon_name;
-    return button;
+    buttons[command] = { 'button': button }
+    return buttons[command];
   }
   createControlPanelButton('power', 'Power', 'power_settings_new');
   createControlPanelButton('home', 'Home', 'home');
   createControlPanelButton('menu', 'Menu', 'menu');
-  buttonsWaitingOnAdbConnection.push(
-      createControlPanelButton('rotate', 'Rotate', 'screen_rotation', onRotateButton));
+  createControlPanelButton('rotate', 'Rotate', 'screen_rotation', onRotateButton);
+  buttons['rotate'].adb = true;
   createControlPanelButton('volumemute', 'Volume Mute', 'volume_mute');
   createControlPanelButton('volumedown', 'Volume Down', 'volume_down');
   createControlPanelButton('volumeup', 'Volume Up', 'volume_up');
@@ -148,6 +193,15 @@ function ConnectToDevice(device_id) {
     wsUrl: ((location.protocol == 'http:') ? 'ws://' : 'wss://') +
       location.host + '/connect_client',
   };
+
+  function showWebrtcError() {
+    webrtcStatusMessage.style.display = 'block';
+    deviceStatusMessage.style.display = 'none';
+    deviceScreen.style.display = 'none';
+    for (const [_, button] of Object.entries(buttons)) {
+      button.button.disabled = true;
+    }
+  }
 
   import('./cf_webrtc.js')
     .then(webrtcModule => webrtcModule.Connect(device_id, options))
@@ -171,10 +225,10 @@ function ConnectToDevice(device_id) {
         for (const button of deviceConnection.description.custom_control_panel_buttons) {
           if (button.shell_command) {
             // This button's command is handled by sending an ADB shell command.
-            buttonsWaitingOnAdbConnection.push(
-                createControlPanelButton(button.command, button.title, button.icon_name,
-                    e => onCustomShellButton(button.shell_command, e),
-                    'control_panel_custom_buttons'));
+            createControlPanelButton(button.command, button.title, button.icon_name,
+                e => onCustomShellButton(button.shell_command, e),
+                'control_panel_custom_buttons');
+            buttons[button.command].adb = true;
           } else {
             // This button's command is handled by custom action server.
             createControlPanelButton(button.command, button.title, button.icon_name,
@@ -183,17 +237,29 @@ function ConnectToDevice(device_id) {
           }
         }
       }
-      // Buttons that require adb connection are disabled until VIRTUAL_DEVICE_BOOT_STARTED.
-      for (const button of buttonsWaitingOnAdbConnection) {
-        button.disabled = true;
-      }
       deviceConnection.onControlMessage(msg => onControlMessage(msg));
       // Start the screen as hidden. Only show when data is ready.
       deviceScreen.style.visibility = 'hidden';
       deviceScreen.addEventListener('loadeddata', (evt) => {
+        clearInterval(animateDeviceStatusMessage);
+        deviceStatusMessage.style.display = 'none';
         resizeDeviceView();
         deviceScreen.style.visibility = 'visible';
+        // Enable the buttons after the screen is visible.
+        for (const [_, button] of Object.entries(buttons)) {
+          if (!button.adb) {
+            button.button.disabled = false;
+          }
+        }
       });
+      // Show the error message and disable buttons when the WebRTC connection fails.
+      deviceConnection.onConnectionStateChange(state => {
+        if (state == 'disconnected' || state == 'failed') {
+          showWebrtcError();
+        }
+      });
+  }, rejection => {
+      showWebrtcError();
   });
 
   let hardwareDetails = '';
@@ -243,7 +309,7 @@ function ConnectToDevice(device_id) {
   function onRotateButton(e) {
     // Attempt to init adb again, in case the initial connection failed.
     // This succeeds immediately if already connected.
-    init_adb(deviceConnection);
+    initializeAdb();
     if (e.type == 'mousedown') {
       adbShell('/vendor/bin/cuttlefish_rotate ' + (rotation == 0 ? 'landscape' : 'portrait'))
     }
@@ -251,7 +317,7 @@ function ConnectToDevice(device_id) {
   function onCustomShellButton(shell_command, e) {
     // Attempt to init adb again, in case the initial connection failed.
     // This succeeds immediately if already connected.
-    init_adb(deviceConnection);
+    initializeAdb();
     if (e.type == 'mousedown') {
       adbShell(shell_command);
     }
@@ -305,7 +371,7 @@ function ConnectToDevice(device_id) {
     // console.log("mousedown at " + e.pageX + " / " + e.pageY);
     mouseIsDown = true;
 
-    sendMouseUpdate(true, e);
+    sendEventUpdate(true, e);
   }
 
   function onEndDrag(e) {
@@ -314,7 +380,7 @@ function ConnectToDevice(device_id) {
     // console.log("mouseup at " + e.pageX + " / " + e.pageY);
     mouseIsDown = false;
 
-    sendMouseUpdate(false, e);
+    sendEventUpdate(false, e);
   }
 
   function onContinueDrag(e) {
@@ -323,29 +389,33 @@ function ConnectToDevice(device_id) {
     // console.log("mousemove at " + e.pageX + " / " + e.pageY + ", down=" +
     // mouseIsDown);
     if (mouseIsDown) {
-      sendMouseUpdate(true, e);
+      sendEventUpdate(true, e);
     }
   }
 
-  function sendMouseUpdate(down, e) {
+  function sendEventUpdate(down, e) {
     console.assert(deviceConnection, 'Can\'t send mouse update without device');
-    var x = e.offsetX;
-    var y = e.offsetY;
+    var eventType = e.type.substring(0, 5);
 
-    let elementWidth, elementHeight;
-    if (screenHasBeenResized) {
-      elementWidth = parseInt(deviceScreen.style.width, 10);
-      elementHeight = parseInt(deviceScreen.style.height, 10);
-    } else {
-      // Before the first video frame arrives there is no way to know width and
-      // height of the device's screen, so turn every click into a click at 0x0.
-      // A click at that position is not more dangerous than anywhere else since
-      // the user is clicking blind anyways.
-      elementWidth = deviceScreen.offsetWidth? deviceScreen.offsetWidth: 1;
-      elementHeight = deviceScreen.offsetHeight? deviceScreen.offsetHeight: 1;
-    }
+    // Before the first video frame arrives there is no way to know width and
+    // height of the device's screen, so turn every click into a click at 0x0.
+    // A click at that position is not more dangerous than anywhere else since
+    // the user is clicking blind anyways.
     const videoWidth = deviceScreen.videoWidth? deviceScreen.videoWidth: 1;
     const videoHeight = deviceScreen.videoHeight? deviceScreen.videoHeight: 1;
+    const elementWidth = deviceScreen.offsetWidth? deviceScreen.offsetWidth: 1;
+    const elementHeight = deviceScreen.offsetHeight? deviceScreen.offsetHeight: 1;
+
+    // vh*ew > eh*vw? then scale h instead of w
+    const scaleHeight = videoHeight * elementWidth > videoWidth * elementHeight;
+    var elementScaling = 0, videoScaling = 0;
+    if (scaleHeight) {
+      elementScaling = elementHeight;
+      videoScaling = videoHeight;
+    } else {
+      elementScaling = elementWidth;
+      videoScaling = videoWidth;
+    }
 
     // The screen uses the 'object-fit: cover' property in order to completely
     // fill the element while maintaining the screen content's aspect ratio.
@@ -372,23 +442,101 @@ function ConnectToDevice(device_id) {
     //       - The sent ABS_X and ABS_Y values need to be scaled based on the
     //         ratio between the max size (video size) and in-browser size.
     const scaling = scaleWidth ? videoWidth / elementWidth : videoHeight / elementHeight;
-    x = x * scaling;
-    y = y * scaling;
 
-    // Substract the offset produced by the difference in aspect ratio, if any.
-    if (scaleWidth) {
-      // Width was scaled, leaving excess content height, so subtract from y.
-      y -= (elementHeight * scaling - videoHeight) / 2;
-    } else {
-      // Height was scaled, leaving excess content width, so subtract from x.
-      x -= (elementWidth * scaling - videoWidth) / 2;
+    var xArr = [];
+    var yArr = [];
+    var idArr = [];
+    var slotArr = [];
+
+    console.log('e.type: ' + e.type);
+    if (eventType == "mouse" || eventType == "point") {
+      xArr.push(e.offsetX);
+      yArr.push(e.offsetY);
+
+      let thisId = -1;
+      if (eventType == "point") {
+        thisId = e.pointerId;
+      }
+
+      slotArr.push(0);
+      idArr.push(thisId);
+    } else if (eventType == "touch") {
+      // touchstart: list of touch points that became active
+      // touchmove: list of touch points that changed
+      // touchend: list of touch points that were removed
+      let changes = e.changedTouches;
+      let rect = e.target.getBoundingClientRect();
+      for (var i=0; i < changes.length; i++) {
+        xArr.push(changes[i].pageX - rect.left);
+        yArr.push(changes[i].pageY - rect.top);
+        idArr.push(changes[i].identifier);
+        if (touchIdSlotMap.has(changes[i].identifier)) {
+          let slot = touchIdSlotMap.get(changes[i].identifier);
+
+          slotArr.push(slot);
+          if (e.type == 'touchstart') {
+            // error
+            console.error('touchstart when already have slot');
+            return;
+          } else if (e.type == 'touchmove') {
+            idArr.push(changes[i].identifier);
+          } else if (e.type == 'touchend') {
+            touchSlots[slot] = false;
+            touchIdSlotMap.delete(changes[i].identifier);
+            idArr.push(-1);
+          }
+        } else {
+          if (e.type == 'touchstart') {
+            let slot = -1;
+            for (var j=0; j < touchSlots.length; j++) {
+              if (!touchSlots[j]) {
+                slot = j;
+                break;
+              }
+            }
+            if (slot == -1) {
+              slot = touchSlots.length;
+              touchSlots.push(true);
+            }
+            slotArr.push(slot);
+            touchSlots[slot] = true;
+            touchIdSlotMap.set(changes[i].identifier, slot);
+            idArr.push(changes[i].identifier);
+          } else if (e.type == 'touchmove') {
+            // error
+            console.error('touchmove when no slot');
+            return;
+          } else if (e.type == 'touchend') {
+            // error
+            console.error('touchend when no slot');
+            return;
+          }
+        }
+      }
+    }
+
+    for (var i=0; i < xArr.length; i++) {
+      xArr[i] = xArr[i] * scaling;
+      yArr[i] = yArr[i] * scaling;
+
+      // Substract the offset produced by the difference in aspect ratio, if any.
+      if (scaleWidth) {
+        // Width was scaled, leaving excess content height, so subtract from y.
+        yArr[i] -= (elementHeight * scaling - videoHeight) / 2;
+      } else {
+        // Height was scaled, leaving excess content width, so subtract from x.
+        xArr[i] -= (elementWidth * scaling - videoWidth) / 2;
+      }
+
+      xArr[i] = Math.trunc(xArr[i]);
+      yArr[i] = Math.trunc(yArr[i]);
     }
 
     // NOTE: Rotation is handled automatically because the CSS rotation through
     // transforms also rotates the coordinates of events on the object.
 
-    deviceConnection.sendMousePosition(
-        {x: Math.trunc(x), y: Math.trunc(y), down, display_label});
+    deviceConnection.sendMultiTouch(
+    {idArr, xArr, yArr, down, slotArr, display_label});
   }
 
   function onKeyEvent(e) {
