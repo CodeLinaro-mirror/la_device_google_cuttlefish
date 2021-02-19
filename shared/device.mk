@@ -56,7 +56,7 @@ AB_OTA_PARTITIONS += \
     vendor_dlkm \
 
 # Enable Virtual A/B
-$(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/launch_with_vendor_ramdisk.mk)
+$(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/compression.mk)
 
 # Enable Scoped Storage related
 $(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
@@ -91,6 +91,7 @@ PRODUCT_PROPERTY_OVERRIDES += \
     ro.hardware.keystore_desede=true \
     ro.rebootescrow.device=/dev/block/pmem0 \
     ro.incremental.enable=1 \
+    debug.c2.use_dmabufheaps=1 \
 
 # Below is a list of properties we probably should get rid of.
 PRODUCT_PROPERTY_OVERRIDES += \
@@ -101,6 +102,9 @@ ifneq ($(LOCAL_DISABLE_OMX),true)
 DEVICE_MANIFEST_FILE += \
     device/google/cuttlefish/shared/config/android.hardware.media.omx@1.0.xml
 endif
+
+PRODUCT_PROPERTY_OVERRIDES += \
+    debug.stagefright.c2inputsurface=-1
 
 # Enforce privapp permissions control.
 PRODUCT_PROPERTY_OVERRIDES += ro.control_privapp_permissions=enforce
@@ -126,6 +130,9 @@ AB_OTA_POSTINSTALL_CONFIG += \
 # Userdata Checkpointing OTA GC
 PRODUCT_PACKAGES += \
     checkpoint_gc
+
+# Enable CameraX extension sample
+PRODUCT_PACKAGES += androidx.camera.extensions.impl sample_camera_extensions.xml
 
 # DRM service opt-in
 PRODUCT_PROPERTY_OVERRIDES += drm.service.enabled=true
@@ -241,7 +248,6 @@ PRODUCT_COPY_FILES += \
     hardware/google/camera/devices/EmulatedCamera/hwl/configs/emu_camera_depth.json:$(TARGET_COPY_OUT_VENDOR)/etc/config/emu_camera_depth.json \
     device/google/cuttlefish/shared/config/init.vendor.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/hw/init.cutf_cvm.rc \
     device/google/cuttlefish/shared/config/init.product.rc:$(TARGET_COPY_OUT_PRODUCT)/etc/init/init.rc \
-    device/google/cuttlefish/shared/config/init.system_ext.rc:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/init/init.rc \
     device/google/cuttlefish/shared/config/ueventd.rc:$(TARGET_COPY_OUT_VENDOR)/ueventd.rc \
     device/google/cuttlefish/shared/config/media_codecs.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs.xml \
     device/google/cuttlefish/shared/config/media_codecs_google_video.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_video.xml \
@@ -309,6 +315,11 @@ endif
 PRODUCT_PACKAGES += \
     android.hardware.atrace@1.0-service
 
+#
+# Weaver aidl HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.weaver-service.example
 
 #
 # OemLock aidl HAL
