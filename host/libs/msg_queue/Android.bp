@@ -13,24 +13,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-cc_library_headers {
-    name: "egl_headers",
-    export_include_dirs: ["include"],
-    defaults: ["cuttlefish_host"],
-}
-
-cc_library_static {
-    name: "libcuttlefish_graphics_detector",
+cc_library_host_static {
+    name: "libcuttlefish_msg_queue",
     srcs: [
-        "graphics_detector.cpp",
-    ],
-    header_libs: [
-        "egl_headers",
-        "vulkan_headers",
+        "msg_queue.cc",
     ],
     shared_libs: [
+        "libcuttlefish_fs",
+        "libcuttlefish_utils",
         "libbase",
-        "liblog",
+    ],
+    static_libs: [
+        "libcuttlefish_host_config",
+        "libgflags",
     ],
     defaults: ["cuttlefish_host"],
 }

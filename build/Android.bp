@@ -38,7 +38,6 @@ cvd_host_tools = [
     "crosvm",
     "cvd_host_bugreport",
     "cvd_status",
-    "detect_graphics",
     "extract-vmlinux",
     "fsck.f2fs",
     "gnss_grpc_proxy",
@@ -96,6 +95,7 @@ cvd_host_model_simulator_files = [
 
 cvd_configs = [
     "cvd_config_auto.json",
+    "cvd_config_foldable.json",
     "cvd_config_phone.json",
     "cvd_config_tablet.json",
     "cvd_config_tv.json",

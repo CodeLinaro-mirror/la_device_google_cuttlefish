@@ -93,6 +93,7 @@ const char* kDeprecatedBootCompleted = "deprecated_boot_completed";
 
 const char* kCuttlefishEnvPath = "cuttlefish_env_path";
 
+const char* kSecureHals = "secure_hals";
 const char* kAdbMode = "adb_mode";
 const char* kSetupWizardMode = "setupwizard_mode";
 const char* kTpmDevice = "tpm_device";
@@ -138,6 +139,7 @@ const char* kBootloader = "bootloader";
 const char* kUseBootloader = "use_bootloader";
 
 const char* kBootSlot = "boot_slot";
+const char* kUseSlotSuffix = "use_slot_suffix";
 
 const char* kEnableMetrics = "enable_metrics";
 const char* kMetricsBinary = "metrics_binary";
@@ -369,6 +371,33 @@ void CuttlefishConfig::set_adb_mode(const std::set<std::string>& mode) {
   (*dictionary_)[kAdbMode] = mode_json_obj;
 }
 
+static SecureHal StringToSecureHal(std::string mode) {
+  std::transform(mode.begin(), mode.end(), mode.begin(), ::tolower);
+  if (mode == "keymint") {
+    return SecureHal::Keymint;
+  } else if (mode == "gatekeeper") {
+    return SecureHal::Gatekeeper;
+  } else {
+    return SecureHal::Unknown;
+  }
+}
+
+std::set<SecureHal> CuttlefishConfig::secure_hals() const {
+  std::set<SecureHal> args_set;
+  for (auto& hal : (*dictionary_)[kSecureHals]) {
+    args_set.insert(StringToSecureHal(hal.asString()));
+  }
+  return args_set;
+}
+
+void CuttlefishConfig::set_secure_hals(const std::set<std::string>& hals) {
+  Json::Value hals_json_obj(Json::arrayValue);
+  for (const auto& hal : hals) {
+    hals_json_obj.append(hal);
+  }
+  (*dictionary_)[kSecureHals] = hals_json_obj;
+}
+
 std::string CuttlefishConfig::setupwizard_mode() const {
   return (*dictionary_)[kSetupWizardMode].asString();
 }
@@ -562,6 +591,14 @@ void CuttlefishConfig::set_boot_slot(const std::string& boot_slot) {
 
 std::string CuttlefishConfig::boot_slot() const {
   return (*dictionary_)[kBootSlot].asString();
+}
+
+void CuttlefishConfig::set_use_slot_suffix(const bool use_slot_suffix) {
+  (*dictionary_)[kUseSlotSuffix] = use_slot_suffix;
+}
+
+bool CuttlefishConfig::use_slot_suffix() const {
+  return (*dictionary_)[kUseSlotSuffix].asBool();
 }
 
 void CuttlefishConfig::set_webrtc_certs_dir(const std::string& certs_dir) {

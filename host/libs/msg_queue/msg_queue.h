@@ -13,21 +13,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+#pragma once
 
 #include <string>
 
-#include <gflags/gflags.h>
+namespace cuttlefish {
+class SysVMessageQueue {
+ public:
+  static std::unique_ptr<SysVMessageQueue> Create(const std::string& path,
+                                                  char proj_id);
+  ~SysVMessageQueue();
 
-#include "android-base/logging.h"
-#include "host/libs/graphics_detector/graphics_detector.h"
+  int Send(void* data, size_t size, bool block);
+  ssize_t Receive(void* data, size_t size, long msgtyp, bool block);
 
-int main(int argc, char* argv[]) {
-  ::android::base::InitLogging(argv, android::base::StderrLogger);
-  ::gflags::ParseCommandLineFlags(&argc, &argv, true);
-
-  const cuttlefish::GraphicsAvailability graphics_availability =
-  	cuttlefish::GetGraphicsAvailability();
-
-  LOG(INFO) << GetGraphicsAvailabilityString(graphics_availability);
-}
+ private:
+  SysVMessageQueue(int msgid);
+  int msgid;
+};
+}  // namespace cuttlefish

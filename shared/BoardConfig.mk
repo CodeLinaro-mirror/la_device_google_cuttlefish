@@ -66,9 +66,6 @@ BOARD_USES_ODM_DLKMIMAGE := true
 BOARD_ODM_DLKMIMAGE_FILE_SYSTEM_TYPE := ext4
 TARGET_COPY_OUT_ODM_DLKM := odm_dlkm
 
-# FIXME: Remove this once we generate the vbmeta digest correctly
-BOARD_AVB_MAKE_VBMETA_IMAGE_ARGS += --flag 2
-
 # Enable chained vbmeta for system image mixing
 BOARD_AVB_VBMETA_SYSTEM := product system system_ext
 BOARD_AVB_VBMETA_SYSTEM_KEY_PATH := external/avb/test/data/testkey_rsa2048.pem
@@ -187,6 +184,9 @@ BOARD_KERNEL_CMDLINE += mac80211_hwsim.radios=0
 
 # TODO(b/175151042): Remove once we are using virtio-snd on cuttlefish
 BOARD_KERNEL_CMDLINE += snd-hda-intel.enable=0
+
+# TODO(b/179489292): Remove once kfence is enabled everywhere
+BOARD_KERNEL_CMDLINE += kfence.sample_interval=500
 
 BOARD_KERNEL_CMDLINE += loop.max_part=7
 
