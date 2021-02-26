@@ -63,6 +63,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.graphics.mapper@2.1",
     "android.hardware.graphics.mapper@3.0",
     "android.hardware.health@1.0",
+    "android.hardware.health.storage@1.0", // converted to AIDL, see b/177470478
     "android.hardware.ir@1.0",
     "android.hardware.keymaster@3.0",
     "android.hardware.light@2.0",
@@ -108,6 +109,16 @@ static const std::set<std::string> kKnownMissingAidl = {
     // in full swing but we cannot register the service by default just yet.
     // b/170144267
     "android.system.keystore2.",
+
+    // The default implementation is under construction. But we need this
+    // interface to implement keystore2.
+    // b/175136979
+    "android.hardware.security.secureclock.",
+
+    // The default implementation is under construction. But we need this
+    // interface to implement keystore2.
+    // b/175141176
+    "android.hardware.security.sharedsecret.",
 
     // These KeyMaster types are in an AIDL types-only HAL because they're used
     // by the Identity Credential AIDL HAL. Remove this when fully porting
