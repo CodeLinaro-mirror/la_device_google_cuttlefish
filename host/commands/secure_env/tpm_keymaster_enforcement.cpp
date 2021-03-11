@@ -32,8 +32,19 @@ using keymaster::KeymasterBlob;
 using keymaster::KeymasterEnforcement;
 using keymaster::VerifyAuthorizationRequest;
 using keymaster::VerifyAuthorizationResponse;
+namespace {
+inline bool operator==(const keymaster_blob_t& a, const keymaster_blob_t& b) {
+  if (!a.data_length && !b.data_length) return true;
+  if (!(a.data && b.data)) return a.data == b.data;
+  return (a.data_length == b.data_length &&
+          !memcmp(a.data, b.data, a.data_length));
+}
 
-
+bool operator==(const HmacSharingParameters& a,
+                const HmacSharingParameters& b) {
+  return a.seed == b.seed && !memcmp(a.nonce, b.nonce, sizeof(a.nonce));
+}
+}  // namespace
 class CompareHmacSharingParams {
 public:
   bool operator()(
@@ -50,6 +61,27 @@ public:
   }
 };
 
+namespace {
+
+uint64_t timespec_to_ms(const struct timespec& tp) {
+  if (tp.tv_sec < 0) {
+    return 0;
+  }
+  return static_cast<uint64_t>(tp.tv_sec) * 1000 +
+         static_cast<uint64_t>(tp.tv_nsec) / 1000000;
+}
+
+uint64_t get_wall_clock_time_ms() {
+  struct timespec tp;
+  int err = clock_gettime(CLOCK_REALTIME, &tp);
+  if (err) {
+    return 0;
+  }
+  return timespec_to_ms(tp);
+}
+
+}  // namespace
+
 TpmKeymasterEnforcement::TpmKeymasterEnforcement(
     TpmResourceManager& resource_manager, TpmGatekeeper& gatekeeper)
     : KeymasterEnforcement(64, 64),
@@ -62,12 +94,12 @@ TpmKeymasterEnforcement::~TpmKeymasterEnforcement() {
 
 bool TpmKeymasterEnforcement::activation_date_valid(
     uint64_t activation_date) const {
-  return activation_date < get_current_time_ms();
+  return activation_date < get_wall_clock_time_ms();
 }
 
 bool TpmKeymasterEnforcement::expiration_date_passed(
     uint64_t expiration_date) const {
-  return expiration_date > get_current_time_ms();
+  return expiration_date > get_wall_clock_time_ms();
 }
 
 bool TpmKeymasterEnforcement::auth_token_timed_out(
@@ -80,12 +112,10 @@ bool TpmKeymasterEnforcement::auth_token_timed_out(
 uint64_t TpmKeymasterEnforcement::get_current_time_ms() const {
   struct timespec tp;
   int err = clock_gettime(CLOCK_BOOTTIME, &tp);
-  if (err || tp.tv_sec < 0) {
+  if (err) {
     return 0;
   }
-
-  return static_cast<uint64_t>(tp.tv_sec) * 1000
-      + static_cast<uint64_t>(tp.tv_nsec) / 1000000;
+  return timespec_to_ms(tp);
 }
 
 keymaster_security_level_t TpmKeymasterEnforcement::SecurityLevel() const {
@@ -158,6 +188,7 @@ keymaster_error_t TpmKeymasterEnforcement::ComputeSharedHmac(
     const HmacSharingParametersArray& hmac_array,
     KeymasterBlob* sharingCheck) {
   std::set<HmacSharingParameters, CompareHmacSharingParams> sorted_hmac_inputs;
+  bool found_mine = false;
   for (int i = 0; i < hmac_array.num_params; i++) {
     HmacSharingParameters sharing_params;
     sharing_params.seed =
@@ -166,8 +197,11 @@ keymaster_error_t TpmKeymasterEnforcement::ComputeSharedHmac(
         sharing_params.nonce,
         hmac_array.params_array[i].nonce,
         sizeof(sharing_params.nonce));
+    found_mine = found_mine || (sharing_params == saved_params_);
     sorted_hmac_inputs.emplace(std::move(sharing_params));
   }
+
+  if (!found_mine) return KM_ERROR_INVALID_ARGUMENT;
 
   // unique data has a low maximum size, so combine the hmac parameters
   char unique_data[] = "\0\0\0\0\0\0\0\0\0\0";
