@@ -18,8 +18,8 @@
 #include <android-base/logging.h>
 #include <keymaster/contexts/soft_attestation_cert.h>
 #include <keymaster/km_openssl/aes_key.h>
-#include <keymaster/km_openssl/attestation_utils.h>
 #include <keymaster/km_openssl/asymmetric_key.h>
+#include <keymaster/km_openssl/attestation_utils.h>
 #include <keymaster/km_openssl/certificate_utils.h>
 #include <keymaster/km_openssl/ec_key_factory.h>
 #include <keymaster/km_openssl/hmac_key.h>
@@ -265,12 +265,14 @@ keymaster::KeymasterEnforcement* TpmKeymasterContext::enforcement_policy() {
 // Based on https://cs.android.com/android/platform/superproject/+/master:system/keymaster/contexts/pure_soft_keymaster_context.cpp;l=261;drc=8367d5351c4d417a11f49b12394b63a413faa02d
 
 keymaster::CertificateChain TpmKeymasterContext::GenerateAttestation(
-    const keymaster::Key& key,
-    const AuthorizationSet& attest_params,
+    const keymaster::Key& key, const keymaster::AuthorizationSet& attest_params,
+    keymaster::UniquePtr<keymaster::Key> /* attest_key */,
+    const keymaster::KeymasterBlob& /* issuer_subject */,
     keymaster_error_t* error) const {
   LOG(INFO) << "TODO(b/155697200): Link attestation back to the TPM";
   keymaster_algorithm_t key_algorithm;
-  if (!key.authorizations().GetTagValue(keymaster::TAG_ALGORITHM, &key_algorithm)) {
+  if (!key.authorizations().GetTagValue(keymaster::TAG_ALGORITHM,
+                                        &key_algorithm)) {
     *error = KM_ERROR_UNKNOWN_ERROR;
     return {};
   }
@@ -286,22 +288,21 @@ keymaster::CertificateChain TpmKeymasterContext::GenerateAttestation(
   const keymaster::AsymmetricKey& asymmetric_key =
       static_cast<const keymaster::AsymmetricKey&>(key);
 
-  auto attestation_chain = keymaster::getAttestationChain(key_algorithm, error);
-  if (*error != KM_ERROR_OK) {
+  // DEVICE_UNIQUE_ATTESTATION is only allowed for strongbox devices. See
+  // hardware/interfaces/security/keymint/aidl/android/hardware/security/keymint/Tag.aidl:845
+  // at commit beefae4790ccd4f1ee75ea69603d4c9c2a45c0aa .
+  // While the specification says to return ErrorCode::INVALID_ARGUMENT , the
+  // relevant VTS test actually tests for ErrorCode::UNIMPLEMENTED . See
+  // hardware/interfaces/keymaster/4.1/vts/functional/DeviceUniqueAttestationTest.cpp:203
+  // at commit 36dcf1a404a9cf07ca5a2a6ad92371507194fe1b .
+  if (attest_params.find(keymaster::TAG_DEVICE_UNIQUE_ATTESTATION) != -1) {
+    *error = KM_ERROR_UNIMPLEMENTED;
     return {};
   }
 
-  auto attestation_key = keymaster::getAttestationKey(key_algorithm, error);
-  if (*error != KM_ERROR_OK) {
-    return {};
-  }
-
-  return keymaster::generate_attestation(
-      asymmetric_key, attest_params,
-      move(attestation_chain),
-      *attestation_key,
-      *attestation_context_,
-      error);
+  return keymaster::generate_attestation(asymmetric_key, attest_params,
+                                         {} /* attest_key */,
+                                         *attestation_context_, error);
 }
 
 keymaster::CertificateChain TpmKeymasterContext::GenerateSelfSignedCertificate(

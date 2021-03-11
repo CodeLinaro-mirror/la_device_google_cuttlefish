@@ -642,6 +642,9 @@ struct RadioImpl_1_6 : public V1_6::IRadio {
     Return<void> getDataRegistrationState_1_6(int32_t serial);
     Return<void> getAllowedNetworkTypesBitmap(uint32_t serial);
     Return<void> getSlicingConfig(int32_t serial);
+    Return<void> setCarrierInfoForImsiEncryption_1_6(
+            int32_t serial,
+            const ::android::hardware::radio::V1_6::ImsiEncryptionInfo& imsiEncryptionInfo);
 };
 
 struct OemHookImpl : public IOemHook {
@@ -4652,6 +4655,42 @@ Return<void> RadioImpl_1_6::getSlicingConfig(int32_t serial) {
     RLOGD("getSlicingConfig: serial %d", serial);
 #endif
     dispatchVoid(serial, mSlotId, RIL_REQUEST_GET_SLICING_CONFIG);
+    return Void();
+}
+
+Return<void> RadioImpl_1_6::setCarrierInfoForImsiEncryption_1_6(
+        int32_t serial, const V1_6::ImsiEncryptionInfo& data) {
+#if VDBG
+    RLOGD("setCarrierInfoForImsiEncryption_1_6: serial %d", serial);
+#endif
+    RequestInfo* pRI = android::addRequestToList(serial, mSlotId,
+                                                 RIL_REQUEST_SET_CARRIER_INFO_IMSI_ENCRYPTION);
+    if (pRI == NULL) {
+        return Void();
+    }
+
+    RIL_CarrierInfoForImsiEncryption_v16 imsiEncryption = {};
+
+    if (!copyHidlStringToRil(&imsiEncryption.mnc, data.base.mnc, pRI)) {
+        return Void();
+    }
+    if (!copyHidlStringToRil(&imsiEncryption.mcc, data.base.mcc, pRI)) {
+        memsetAndFreeStrings(1, imsiEncryption.mnc);
+        return Void();
+    }
+    if (!copyHidlStringToRil(&imsiEncryption.keyIdentifier, data.base.keyIdentifier, pRI)) {
+        memsetAndFreeStrings(2, imsiEncryption.mnc, imsiEncryption.mcc);
+        return Void();
+    }
+    imsiEncryption.carrierKeyLength = data.base.carrierKey.size();
+    imsiEncryption.carrierKey = new uint8_t[imsiEncryption.carrierKeyLength];
+    memcpy(imsiEncryption.carrierKey, data.base.carrierKey.data(), imsiEncryption.carrierKeyLength);
+    imsiEncryption.expirationTime = data.base.expirationTime;
+    imsiEncryption.keyType = (RIL_PublicKeyType)data.keyType;
+
+    CALL_ONREQUEST(pRI->pCI->requestNumber, &imsiEncryption,
+                   sizeof(RIL_CarrierInfoForImsiEncryption_v16), pRI, mSlotId);
+    delete (imsiEncryption.carrierKey);
     return Void();
 }
 
@@ -9883,9 +9922,12 @@ int radio_1_6::getSystemSelectionChannelsResponse(int slotId, int responseType, 
     populateResponseInfo_1_6(responseInfo, serial, responseType, e);
 
     if (radioService[slotId]->mRadioResponseV1_6 != NULL) {
-        Return<void> retStatus = radioService[slotId]->mRadioResponseV1_6
-                ->getSystemSelectionChannelsResponse(responseInfo);
-        radioService[slotId]->checkReturnStatus(retStatus);
+      hidl_vec<::android::hardware::radio::V1_5::RadioAccessSpecifier> ret;
+      Return<void> retStatus =
+          radioService[slotId]
+              ->mRadioResponseV1_6->getSystemSelectionChannelsResponse(
+                  responseInfo, ret);
+      radioService[slotId]->checkReturnStatus(retStatus);
     } else {
         RLOGE("getSystemSelectionChannelsResponse: radioService[%d]->mRadioResponse == NULL",
                 slotId);
