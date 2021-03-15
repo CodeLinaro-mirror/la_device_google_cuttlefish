@@ -59,14 +59,6 @@ bool AdbVsockConnectorEnabled(const CuttlefishConfig& config) {
          AdbModeEnabled(config, AdbMode::NativeVsock);
 }
 
-OnSocketReadyCb GetOnSubprocessExitCallback(const CuttlefishConfig& config) {
-  if (config.restart_subprocesses()) {
-    return ProcessMonitor::RestartOnExitCb;
-  } else {
-    return ProcessMonitor::DoNotMonitorCb;
-  }
-}
-
 SharedFD CreateUnixInputServer(const std::string& path) {
   auto server =
       SharedFD::SocketLocalServer(path.c_str(), false, SOCK_STREAM, 0666);
@@ -164,8 +156,7 @@ std::vector<SharedFD> LaunchKernelLogMonitor(
     param_builder.Build();
   }
 
-  process_monitor->StartSubprocess(std::move(command),
-                                   GetOnSubprocessExitCallback(config));
+  process_monitor->AddCommand(std::move(command));
 
   return ret;
 }
@@ -188,8 +179,7 @@ void LaunchLogcatReceiver(const CuttlefishConfig& config,
   Command command(LogcatReceiverBinary());
   command.AddParameter("-log_pipe_fd=", pipe);
 
-  process_monitor->StartSubprocess(std::move(command),
-                                   GetOnSubprocessExitCallback(config));
+  process_monitor->AddCommand(std::move(command));
   return;
 }
 
@@ -205,8 +195,7 @@ void LaunchConfigServer(const CuttlefishConfig& config,
   }
   Command cmd(ConfigServerBinary());
   cmd.AddParameter("-server_fd=", socket);
-  process_monitor->StartSubprocess(std::move(cmd),
-                                   GetOnSubprocessExitCallback(config));
+  process_monitor->AddCommand(std::move(cmd));
   return;
 }
 
@@ -238,14 +227,12 @@ void LaunchTombstoneReceiver(const CuttlefishConfig& config,
   cmd.AddParameter("-server_fd=", socket);
   cmd.AddParameter("-tombstone_dir=", tombstoneDir);
 
-  process_monitor->StartSubprocess(std::move(cmd),
-                                   GetOnSubprocessExitCallback(config));
+  process_monitor->AddCommand(std::move(cmd));
   return;
 }
 
-void LaunchVNCServer(
-    const CuttlefishConfig& config, ProcessMonitor* process_monitor,
-    std::function<bool(MonitorEntry*)> callback) {
+void LaunchVNCServer(const CuttlefishConfig& config,
+                     ProcessMonitor* process_monitor) {
   auto instance = config.ForDefaultInstance();
   // Launch the vnc server, don't wait for it to complete
   auto port_options = "-port=" + std::to_string(instance.vnc_server_port());
@@ -254,7 +241,7 @@ void LaunchVNCServer(
 
   CreateStreamerServers(&vnc_server, config);
 
-  process_monitor->StartSubprocess(std::move(vnc_server), callback);
+  process_monitor->AddCommand(std::move(vnc_server));
 }
 
 void LaunchAdbConnectorIfEnabled(ProcessMonitor* process_monitor,
@@ -276,8 +263,7 @@ void LaunchAdbConnectorIfEnabled(ProcessMonitor* process_monitor,
     }
     address_arg.pop_back();
     adb_connector.AddParameter(address_arg);
-    process_monitor->StartSubprocess(std::move(adb_connector),
-                                     GetOnSubprocessExitCallback(config));
+    process_monitor->AddCommand(std::move(adb_connector));
   }
 }
 
@@ -291,8 +277,7 @@ void LaunchWebRTC(ProcessMonitor* process_monitor,
       sig_server.AddParameter("-certs_dir=", config.webrtc_certs_dir());
     }
     sig_server.AddParameter("-http_server_port=", config.sig_server_port());
-    process_monitor->StartSubprocess(std::move(sig_server),
-                                     GetOnSubprocessExitCallback(config));
+    process_monitor->AddCommand(std::move(sig_server));
   }
 
   // Currently there is no way to ensure the signaling server will already have
@@ -338,8 +323,7 @@ void LaunchWebRTC(ProcessMonitor* process_monitor,
   LaunchCustomActionServers(webrtc, process_monitor, config);
 
   // TODO get from launcher params
-  process_monitor->StartSubprocess(std::move(webrtc),
-                                   GetOnSubprocessExitCallback(config));
+  process_monitor->AddCommand(std::move(webrtc));
 }
 
 bool StopModemSimulator() {
@@ -429,46 +413,64 @@ void LaunchModemSimulatorIfEnabled(
   }
   param_builder.Build();
 
-  process_monitor->StartSubprocess(std::move(cmd),
-                                   GetOnSubprocessExitCallback(config));
+  process_monitor->AddCommand(std::move(cmd));
 }
 
 void LaunchSocketVsockProxyIfEnabled(ProcessMonitor* process_monitor,
                                      const CuttlefishConfig& config,
                                      SharedFD adbd_events_pipe) {
   auto instance = config.ForDefaultInstance();
+  auto append = [](const std::string& s, const int i) -> std::string {
+    return s + std::to_string(i);
+  };
   if (AdbVsockTunnelEnabled(config)) {
     Command adb_tunnel(SocketVsockProxyBinary());
     adb_tunnel.AddParameter("-adbd_events_fd=", adbd_events_pipe);
+    /**
+     * This socket_vsock_proxy (a.k.a. sv proxy) runs on the host. It assumes that
+     * another sv proxy runs inside the guest. see: shared/config/init.vendor.rc
+     * The sv proxy in the guest exposes vsock:cid:6520 across the cuttlefish instances
+     * in multi-tenancy. cid is different per instance.
+     *
+     * This host sv proxy should cooperate with the guest sv proxy. Thus, one end of
+     * the tunnel is vsock:cid:6520 regardless of instance number. Another end faces
+     * the host adb daemon via tcp. Thus, the server type is tcp here. The tcp port
+     * differs from instance to instance, and is instance.host_port()
+     *
+     */
     adb_tunnel.AddParameter("--server=tcp");
     adb_tunnel.AddParameter("--vsock_port=6520");
     adb_tunnel.AddParameter(std::string{"--tcp_port="} +
                             std::to_string(instance.host_port()));
     adb_tunnel.AddParameter(std::string{"--vsock_cid="} +
                             std::to_string(instance.vsock_guest_cid()));
-    process_monitor->StartSubprocess(std::move(adb_tunnel),
-                                     GetOnSubprocessExitCallback(config));
+    process_monitor->AddCommand(std::move(adb_tunnel));
   }
   if (AdbVsockHalfTunnelEnabled(config)) {
     Command adb_tunnel(SocketVsockProxyBinary());
     adb_tunnel.AddParameter("-adbd_events_fd=", adbd_events_pipe);
+    /*
+     * This socket_vsock_proxy (a.k.a. sv proxy) runs on the host, and cooperates with
+     * the adbd inside the guest. See this file:
+     *  shared/device.mk, especially the line says "persist.adb.tcp.port="
+     *
+     * The guest adbd is listening on vsock:cid:5555 across cuttlefish instances.
+     * Sv proxy faces the host adb daemon via tcp. The server type should be therefore
+     * tcp, and the port should differ from instance to instance and be equal to
+     * instance.host_port()
+     */
     adb_tunnel.AddParameter("--server=tcp");
-    adb_tunnel.AddParameter("--vsock_port=5555");
-    adb_tunnel.AddParameter(std::string{"--tcp_port="} +
-                            std::to_string(instance.host_port()));
-    adb_tunnel.AddParameter(std::string{"--vsock_cid="} +
-                            std::to_string(instance.vsock_guest_cid()));
-    process_monitor->StartSubprocess(std::move(adb_tunnel),
-                                     GetOnSubprocessExitCallback(config));
+    adb_tunnel.AddParameter(append("--vsock_port=", 5555));
+    adb_tunnel.AddParameter(append("--tcp_port=", instance.host_port()));
+    adb_tunnel.AddParameter(append("--vsock_cid=", instance.vsock_guest_cid()));
+    process_monitor->AddCommand(std::move(adb_tunnel));
   }
 }
 
-void LaunchMetrics(ProcessMonitor* process_monitor,
-                   const CuttlefishConfig& config) {
+void LaunchMetrics(ProcessMonitor* process_monitor) {
   Command metrics(MetricsBinary());
 
-  process_monitor->StartSubprocess(std::move(metrics),
-                                   GetOnSubprocessExitCallback(config));
+  process_monitor->AddCommand(std::move(metrics));
 }
 
 void LaunchGnssGrpcProxyServerIfEnabled(const CuttlefishConfig& config,
@@ -523,8 +525,7 @@ void LaunchGnssGrpcProxyServerIfEnabled(const CuttlefishConfig& config,
       // If path is provided, proxy will start as local mode.
       gnss_grpc_proxy_cmd.AddParameter("--gnss_file_path=", instance.gnss_file_path());
     }
-    process_monitor->StartSubprocess(std::move(gnss_grpc_proxy_cmd),
-                                     GetOnSubprocessExitCallback(config));
+    process_monitor->AddCommand(std::move(gnss_grpc_proxy_cmd));
 }
 
 void LaunchSecureEnvironment(ProcessMonitor* process_monitor,
@@ -556,8 +557,7 @@ void LaunchSecureEnvironment(ProcessMonitor* process_monitor,
   command.AddParameter("-keymaster_fd_in=", fifos[1]);
   command.AddParameter("-gatekeeper_fd_out=", fifos[2]);
   command.AddParameter("-gatekeeper_fd_in=", fifos[3]);
-  process_monitor->StartSubprocess(std::move(command),
-                                   GetOnSubprocessExitCallback(config));
+  process_monitor->AddCommand(std::move(command));
 }
 
 void LaunchCustomActionServers(Command& webrtc_cmd,
@@ -580,8 +580,7 @@ void LaunchCustomActionServers(Command& webrtc_cmd,
       std::string binary = "bin/" + *(custom_action.server);
       Command command(DefaultHostArtifactsPath(binary));
       command.AddParameter(action_server_socket);
-      process_monitor->StartSubprocess(std::move(command),
-                                       GetOnSubprocessExitCallback(config));
+      process_monitor->AddCommand(std::move(command));
 
       // Pass the WebRTC socket pair fd to WebRTC.
       if (first) {
@@ -615,8 +614,7 @@ void LaunchVehicleHalServerIfEnabled(const CuttlefishConfig& config,
   grpc_server.AddParameter("--server_port=", vhal_server_port);
   grpc_server.AddParameter("--power_state_file=", vhal_server_power_state_file);
   grpc_server.AddParameter("--power_state_socket=", vhal_server_power_state_socket);
-  process_monitor->StartSubprocess(std::move(grpc_server),
-                                   GetOnSubprocessExitCallback(config));
+  process_monitor->AddCommand(std::move(grpc_server));
 }
 
 void LaunchConsoleForwarderIfEnabled(const CuttlefishConfig& config,
@@ -665,9 +663,7 @@ void LaunchConsoleForwarderIfEnabled(const CuttlefishConfig& config,
 
   console_forwarder_cmd.AddParameter("--console_in_fd=", console_forwarder_in_wr);
   console_forwarder_cmd.AddParameter("--console_out_fd=", console_forwarder_out_rd);
-  process_monitor->StartSubprocess(std::move(console_forwarder_cmd),
-                                   GetOnSubprocessExitCallback(config));
-
+  process_monitor->AddCommand(std::move(console_forwarder_cmd));
 }
 
 } // namespace cuttlefish

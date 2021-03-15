@@ -18,8 +18,9 @@
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/types.h>
+#include <sys/prctl.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -45,23 +46,22 @@
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/network.h"
-#include "common/libs/utils/subprocess.h"
 #include "common/libs/utils/size_utils.h"
+#include "common/libs/utils/subprocess.h"
 #include "common/libs/utils/tee_logging.h"
+#include "host/commands/run_cvd/boot_state_machine.h"
 #include "host/commands/run_cvd/launch.h"
-#include "host/commands/run_cvd/runner_defs.h"
 #include "host/commands/run_cvd/process_monitor.h"
+#include "host/commands/run_cvd/runner_defs.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/data_image.h"
 #include "host/libs/config/kernel_args.h"
-#include "host/commands/kernel_log_monitor/kernel_log_server.h"
-#include "host/commands/kernel_log_monitor/utils.h"
-#include <host/libs/vm_manager/crosvm_manager.h>
+#include "host/libs/vm_manager/crosvm_manager.h"
 #include "host/libs/vm_manager/host_configuration.h"
-#include "host/libs/vm_manager/vm_manager.h"
 #include "host/libs/vm_manager/qemu_manager.h"
+#include "host/libs/vm_manager/vm_manager.h"
 
-DEFINE_int32(powerwash_notification_fd, -1,
+DEFINE_int32(reboot_notification_fd, -1,
              "A file descriptor to notify when boot completes.");
 
 namespace cuttlefish {
@@ -73,100 +73,6 @@ namespace {
 
 constexpr char kGreenColor[] = "\033[1;32m";
 constexpr char kResetColor[] = "\033[0m";
-
-OnSocketReadyCb GetOnSubprocessExitCallback(const CuttlefishConfig& config) {
-  if (config.restart_subprocesses()) {
-    return ProcessMonitor::RestartOnExitCb;
-  } else {
-    return ProcessMonitor::DoNotMonitorCb;
-  }
-}
-
-// Maintains the state of the boot process, once a final state is reached
-// (success or failure) it sends the appropriate exit code to the foreground
-// launcher process
-class CvdBootStateMachine {
- public:
-  CvdBootStateMachine(SharedFD fg_launcher_pipe,
-                      SharedFD powerwash_notification)
-      : fg_launcher_pipe_(fg_launcher_pipe)
-      , powerwash_notification_(powerwash_notification)
-      , state_(kBootStarted) {}
-
-  // Returns true if the machine is left in a final state
-  bool OnBootEvtReceived(SharedFD boot_events_pipe) {
-    std::optional<monitor::ReadEventResult> read_result =
-        monitor::ReadEvent(boot_events_pipe);
-    if (!read_result) {
-      LOG(ERROR) << "Failed to read a complete kernel log boot event.";
-      state_ |= kGuestBootFailed;
-      return MaybeWriteNotification();
-    }
-
-    if (read_result->event == monitor::Event::BootCompleted) {
-      LOG(INFO) << "Virtual device booted successfully";
-      state_ |= kGuestBootCompleted;
-    } else if (read_result->event == monitor::Event::BootFailed) {
-      LOG(ERROR) << "Virtual device failed to boot";
-      state_ |= kGuestBootFailed;
-    }  // Ignore the other signals
-
-    return MaybeWriteNotification();
-  }
-
-  bool BootCompleted() const {
-    return state_ & kGuestBootCompleted;
-  }
-
-  bool BootFailed() const {
-    return state_ & kGuestBootFailed;
-  }
-
- private:
-  void SendExitCode(RunnerExitCodes exit_code, SharedFD fd) {
-    fd->Write(&exit_code, sizeof(exit_code));
-    // The foreground process will exit after receiving the exit code, if we try
-    // to write again we'll get a SIGPIPE
-    fd->Close();
-  }
-  bool MaybeWriteNotification() {
-    std::vector<SharedFD> fds = {powerwash_notification_, fg_launcher_pipe_};
-    for (auto& fd : fds) {
-      if (fd->IsOpen()) {
-        if (BootCompleted()) {
-          SendExitCode(RunnerExitCodes::kSuccess, fd);
-        } else if (state_ & kGuestBootFailed) {
-          SendExitCode(RunnerExitCodes::kVirtualDeviceBootFailed, fd);
-        }
-      }
-    }
-    // Either we sent the code before or just sent it, in any case the state is
-    // final
-    return BootCompleted() || (state_ & kGuestBootFailed);
-  }
-
-  SharedFD fg_launcher_pipe_;
-  SharedFD powerwash_notification_;
-  int state_;
-  static const int kBootStarted = 0;
-  static const int kGuestBootCompleted = 1 << 0;
-  static const int kGuestBootFailed = 1 << 1;
-};
-
-// Abuse the process monitor to make it call us back when boot events are ready
-void SetUpHandlingOfBootEvents(
-    ProcessMonitor* process_monitor, SharedFD boot_events_pipe,
-    std::shared_ptr<CvdBootStateMachine> state_machine) {
-  process_monitor->MonitorExistingSubprocess(
-      // An unused command, so logs are desciptive
-      Command("boot_events_listener"),
-      // An unused subprocess, with the boot events pipe as control socket
-      Subprocess(-1, boot_events_pipe),
-      [boot_events_pipe, state_machine](MonitorEntry*) {
-        auto sent_code = state_machine->OnBootEvtReceived(boot_events_pipe);
-        return !sent_code;
-      });
-}
 
 bool WriteCuttlefishEnvironment(const CuttlefishConfig& config) {
   auto env = SharedFD::Open(config.cuttlefish_env_path().c_str(),
@@ -269,15 +175,8 @@ bool CreateQcowOverlay(const std::string& crosvm_path,
   return true;
 }
 
-bool PowerwashFiles() {
-  auto config = CuttlefishConfig::Get();
-  if (!config) {
-    LOG(ERROR) << "Could not load the config.";
-    return false;
-  }
-  auto instance = config->ForDefaultInstance();
-
-  // TODO(schuffelen): Create these FIFOs in assemble_cvd instead of run_cvd.
+void DeleteFifos(const CuttlefishConfig::InstanceSpecific& instance) {
+    // TODO(schuffelen): Create these FIFOs in assemble_cvd instead of run_cvd.
   std::vector<std::string> pipes = {
     instance.kernel_log_pipe_name(),
     instance.console_in_pipe_name(),
@@ -291,8 +190,19 @@ bool PowerwashFiles() {
   for (const auto& pipe : pipes) {
     unlink(pipe.c_str());
   }
+}
 
-// TODO(schuffelen): Clean up duplication with assemble_cvd
+bool PowerwashFiles() {
+  auto config = CuttlefishConfig::Get();
+  if (!config) {
+    LOG(ERROR) << "Could not load the config.";
+    return false;
+  }
+  auto instance = config->ForDefaultInstance();
+
+  DeleteFifos(instance);
+
+  // TODO(schuffelen): Clean up duplication with assemble_cvd
   auto kregistry_path = instance.access_kregistry_path();
   unlink(kregistry_path.c_str());
   CreateBlankImage(kregistry_path, 2 /* mb */, "none");
@@ -317,6 +227,29 @@ bool PowerwashFiles() {
     return false;
   }
   return true;
+}
+
+void RestartRunCvd(const CuttlefishConfig& config, int notification_fd) {
+  auto config_path = config.AssemblyPath("cuttlefish_config.json");
+  auto followup_stdin = SharedFD::MemfdCreate("pseudo_stdin");
+  WriteAll(followup_stdin, config_path + "\n");
+  followup_stdin->LSeek(0, SEEK_SET);
+  followup_stdin->UNMANAGED_Dup2(0);
+
+  auto argv_vec = gflags::GetArgvs();
+  char** argv = new char*[argv_vec.size() + 2];
+  for (size_t i = 0; i < argv_vec.size(); i++) {
+    argv[i] = argv_vec[i].data();
+  }
+  // Will take precedence over any earlier arguments.
+  std::string reboot_notification =
+      "-reboot_notification_fd=" + std::to_string(notification_fd);
+  argv[argv_vec.size()] = reboot_notification.data();
+  argv[argv_vec.size() + 1] = nullptr;
+
+  execv("/proc/self/exe", argv);
+  // execve should not return, so something went wrong.
+  PLOG(ERROR) << "execv returned: ";
 }
 
 void ServerLoop(SharedFD server, ProcessMonitor* process_monitor) {
@@ -360,29 +293,35 @@ void ServerLoop(SharedFD server, ProcessMonitor* process_monitor) {
           client->Write(&response, sizeof(response));
 
           auto config = CuttlefishConfig::Get();
-          auto config_path = config->AssemblyPath("cuttlefish_config.json");
-          auto followup_stdin = SharedFD::MemfdCreate("pseudo_stdin");
-          WriteAll(followup_stdin, config_path + "\n");
-          followup_stdin->LSeek(0, SEEK_SET);
-          followup_stdin->UNMANAGED_Dup2(0);
-
-          auto argv_vec = gflags::GetArgvs();
-          char** argv = new char*[argv_vec.size() + 2];
-          for (size_t i = 0; i < argv_vec.size(); i++) {
-            argv[i] = argv_vec[i].data();
-          }
-          int notification_fd = client->UNMANAGED_Dup();
-          // Will take precedence over any earlier arguments.
-          std::string powerwash_notification =
-              "-powerwash_notification_fd=" + std::to_string(notification_fd);
-          argv[argv_vec.size()] = powerwash_notification.data();
-          argv[argv_vec.size() + 1] = nullptr;
-
-          execv("/proc/self/exe", argv);
-          // execve should not return, so something went wrong.
-          PLOG(ERROR) << "execv returned: ";
+          CHECK(config) << "Could not load config";
+          RestartRunCvd(*config, client->UNMANAGED_Dup());
+          // RestartRunCvd should not return, so something went wrong.
           response = LauncherResponse::kError;
           client->Write(&response, sizeof(response));
+          LOG(FATAL) << "run_cvd in a bad state";
+          break;
+        }
+        case LauncherAction::kRestart: {
+          if (!process_monitor->StopMonitoredProcesses()) {
+            LOG(ERROR) << "Stopping processes failed.";
+            auto response = LauncherResponse::kError;
+            client->Write(&response, sizeof(response));
+            break;
+          }
+
+          auto config = CuttlefishConfig::Get();
+          CHECK(config) << "Could not load config";
+          auto instance = config->ForDefaultInstance();
+          DeleteFifos(instance);
+
+          auto response = LauncherResponse::kSuccess;
+          client->Write(&response, sizeof(response));
+          CHECK(config) << "Could not load config";
+          RestartRunCvd(*config, client->UNMANAGED_Dup());
+          // RestartRunCvd should not return, so something went wrong.
+          response = LauncherResponse::kError;
+          client->Write(&response, sizeof(response));
+          LOG(FATAL) << "run_cvd in a bad state";
           break;
         }
         default:
@@ -570,21 +509,17 @@ int RunCvdMain(int argc, char** argv) {
     }
   }
 
-  SharedFD powerwash_notification;
-  if (FLAGS_powerwash_notification_fd >= 0) {
-    powerwash_notification = SharedFD::Dup(FLAGS_powerwash_notification_fd);
-    close(FLAGS_powerwash_notification_fd);
+  SharedFD reboot_notification;
+  if (FLAGS_reboot_notification_fd >= 0) {
+    reboot_notification = SharedFD::Dup(FLAGS_reboot_notification_fd);
+    close(FLAGS_reboot_notification_fd);
   }
 
-  auto boot_state_machine =
-      std::make_shared<CvdBootStateMachine>(
-          foreground_launcher_pipe, powerwash_notification);
-
   // Monitor and restart host processes supporting the CVD
-  ProcessMonitor process_monitor;
+  ProcessMonitor process_monitor(config->restart_subprocesses());
 
   if (config->enable_metrics() == CuttlefishConfig::kYes) {
-    LaunchMetrics(&process_monitor, *config);
+    LaunchMetrics(&process_monitor);
   }
   LaunchModemSimulatorIfEnabled(*config, &process_monitor);
 
@@ -595,8 +530,8 @@ int RunCvdMain(int argc, char** argv) {
   SharedFD webrtc_events_pipe = event_pipes[2];
   event_pipes.clear();
 
-  SetUpHandlingOfBootEvents(&process_monitor, boot_events_pipe,
-                            boot_state_machine);
+  CvdBootStateMachine boot_state_machine(foreground_launcher_pipe,
+                                         reboot_notification, boot_events_pipe);
 
   LaunchLogcatReceiver(*config, &process_monitor);
   LaunchConfigServer(*config, &process_monitor);
@@ -609,8 +544,7 @@ int RunCvdMain(int argc, char** argv) {
   // The streamer needs to launch before the VMM because it serves on several
   // sockets (input devices, vsock frame server) when using crosvm.
   if (config->enable_vnc_server()) {
-    LaunchVNCServer(
-        *config, &process_monitor, GetOnSubprocessExitCallback(*config));
+    LaunchVNCServer(*config, &process_monitor);
   }
   if (config->enable_webrtc()) {
     LaunchWebRTC(&process_monitor, *config, webrtc_events_pipe);
@@ -623,16 +557,19 @@ int RunCvdMain(int argc, char** argv) {
   auto vmm_commands = vm_manager->StartCommands(
       *config, android::base::Join(kernel_args, " "));
   for (auto& vmm_cmd: vmm_commands) {
-    process_monitor.StartSubprocess(std::move(vmm_cmd),
-                                    GetOnSubprocessExitCallback(*config));
+    process_monitor.AddCommand(std::move(vmm_cmd));
   }
 
   // Start other host processes
   LaunchSocketVsockProxyIfEnabled(&process_monitor, *config, adbd_events_pipe);
   LaunchAdbConnectorIfEnabled(&process_monitor, *config);
 
+  CHECK(process_monitor.StartAndMonitorProcesses())
+      << "Could not start subprocesses";
+
   ServerLoop(launcher_monitor_socket, &process_monitor); // Should not return
   LOG(ERROR) << "The server loop returned, it should never happen!!";
+
   return RunnerExitCodes::kServerError;
 }
 

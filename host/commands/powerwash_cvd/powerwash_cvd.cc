@@ -53,6 +53,9 @@ DEFINE_int32(wait_for_launcher, 30,
              "How many seconds to wait for the launcher to respond to the status "
              "command. A value of zero means wait indefinetly");
 
+DEFINE_int32(boot_timeout, 1000, "How many seconds to wait for the device to "
+                                 "reboot.");
+
 namespace cuttlefish {
 namespace {
 
@@ -115,8 +118,22 @@ int PowerwashCvdMain(int argc, char** argv) {
     return 8;
   }
   LOG(INFO) << "Waiting for device to boot up again";
-  RunnerExitCodes exit_code;
 
+  read_set.Set(monitor_socket);
+  timeout = {FLAGS_boot_timeout, 0};
+  selected = Select(&read_set, nullptr, nullptr,
+                    FLAGS_boot_timeout <= 0 ? nullptr : &timeout);
+  if (selected < 0){
+    LOG(ERROR) << "Failed communication with the launcher monitor: "
+               << strerror(errno);
+    return 5;
+  }
+  if (selected == 0) {
+    LOG(ERROR) << "Timeout expired waiting for launcher monitor to respond";
+    return 6;
+  }
+
+  RunnerExitCodes exit_code;
   bytes_recv = ReadExactBinary(monitor_socket, &exit_code);
   if (bytes_recv < 0) {
     LOG(ERROR) << "Error in stream response: " << monitor_socket->StrError();
