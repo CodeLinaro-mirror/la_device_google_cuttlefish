@@ -141,7 +141,7 @@ class ControlChannelHandler : public webrtc::DataChannelObserver {
   void OnStateChange() override;
   void OnMessage(const webrtc::DataBuffer &msg) override;
 
-  void Send(const Json::Value& message);
+  void Send(const Json::Value &message);
   void Send(const uint8_t *msg, size_t size, bool binary);
 
  private:
@@ -175,10 +175,13 @@ void InputChannelHandler::OnMessage(const webrtc::DataBuffer &msg) {
   auto size = msg.size();
 
   Json::Value evt;
-  Json::Reader json_reader;
+  Json::CharReaderBuilder builder;
+  std::unique_ptr<Json::CharReader> json_reader(builder.newCharReader());
+  std::string errorMessage;
   auto str = msg.data.cdata<char>();
-  if (!json_reader.parse(str, str + size, evt) < 0) {
-    LOG(ERROR) << "Received invalid JSON object over input channel";
+  if (!json_reader->parse(str, str + size, &evt, &errorMessage) < 0) {
+    LOG(ERROR) << "Received invalid JSON object over input channel: "
+               << errorMessage;
     return;
   }
   if (!evt.isMember("type") || !evt["type"].isString()) {
@@ -306,8 +309,8 @@ void ControlChannelHandler::OnMessage(const webrtc::DataBuffer &msg) {
 }
 
 void ControlChannelHandler::Send(const Json::Value& message) {
-  Json::FastWriter writer;
-  std::string message_string = writer.write(message);
+  Json::StreamWriterBuilder factory;
+  std::string message_string = Json::writeString(factory, message);
   Send(reinterpret_cast<const uint8_t*>(message_string.c_str()),
        message_string.size(), /*binary=*/false);
 }
@@ -369,6 +372,19 @@ bool ClientHandler::AddDisplay(
   }
   // TODO (b/154138394): use the returned sender (err_or_sender.value()) to
   // remove the display from the connection.
+  return true;
+}
+
+bool ClientHandler::AddAudio(
+    rtc::scoped_refptr<webrtc::AudioTrackInterface> audio_track,
+    const std::string &label) {
+  // Send each track as part of a different stream with the label as id
+  auto err_or_sender =
+      peer_connection_->AddTrack(audio_track, {label} /* stream_id */);
+  if (!err_or_sender.ok()) {
+    LOG(ERROR) << "Failed to add video track to the peer connection";
+    return false;
+  }
   return true;
 }
 

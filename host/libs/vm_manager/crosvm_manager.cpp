@@ -20,6 +20,7 @@
 #include <sys/types.h>
 
 #include <cassert>
+#include <iomanip>
 #include <string>
 #include <vector>
 
@@ -90,10 +91,12 @@ bool Stop() {
 
 }  // namespace
 
-/* static */ std::string CrosvmManager::name() { return "crosvm"; }
-
 bool CrosvmManager::IsSupported() {
+#ifdef __ANDROID__
+  return true;
+#else
   return HostSupportsQemuCli();
+#endif
 }
 
 std::vector<std::string> CrosvmManager::ConfigureGpuMode(
@@ -133,18 +136,23 @@ std::vector<std::string> CrosvmManager::ConfigureGpuMode(
   return {};
 }
 
-std::vector<std::string> CrosvmManager::ConfigureBootDevices() {
+std::vector<std::string> CrosvmManager::ConfigureBootDevices(int num_disks) {
   // TODO There is no way to control this assignment with crosvm (yet)
   if (HostArch() == "x86_64") {
-    // PCI domain 0, bus 0, device 6, function 0
-    return { "androidboot.boot_devices=pci0000:00/0000:00:06.0" };
+    // crosvm has an additional PCI device for an ISA bridge
+    std::stringstream stream;
+    stream << std::setfill('0') << std::setw(2) << std::hex
+           << 1 + VmManager::kDefaultNumHvcs + VmManager::kMaxDisks - num_disks;
+    return {"androidboot.boot_devices=pci0000:00/0000:00:" + stream.str() +
+            ".0"};
   } else {
+    // On ARM64 crosvm, block devices are on their own bridge, so we don't
+    // need to calculate it, and the path is always the same
     return { "androidboot.boot_devices=10000.pci" };
   }
 }
 
-std::vector<Command> CrosvmManager::StartCommands(
-    const CuttlefishConfig& config, const std::string& kernel_cmdline) {
+std::vector<Command> CrosvmManager::StartCommands(const CuttlefishConfig& config) {
   auto instance = config.ForDefaultInstance();
   Command crosvm_cmd(config.crosvm_binary(), [](Subprocess* proc) {
     auto stopped = Stop();
@@ -154,7 +162,62 @@ std::vector<Command> CrosvmManager::StartCommands(
     LOG(WARNING) << "Failed to stop VMM nicely, attempting to KILL";
     return KillSubprocess(proc);
   });
+
+  int hvc_num = 0;
+  int serial_num = 0;
+  auto add_hvc_sink = [&crosvm_cmd, &hvc_num]() {
+    crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=", ++hvc_num,
+                            ",type=sink");
+  };
+  auto add_serial_sink = [&crosvm_cmd, &serial_num]() {
+    crosvm_cmd.AddParameter("--serial=hardware=serial,num=", ++serial_num,
+                            ",type=sink");
+  };
+  auto add_hvc_console = [&crosvm_cmd, &hvc_num](const std::string& output) {
+    crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=", ++hvc_num,
+                            ",type=file,path=", output, ",console=true");
+  };
+  auto add_serial_console_ro = [&crosvm_cmd,
+                                &serial_num](const std::string& output) {
+    crosvm_cmd.AddParameter("--serial=hardware=serial,num=", ++serial_num,
+                            ",type=file,path=", output, ",earlycon=true");
+  };
+  auto add_serial_console = [&crosvm_cmd, &serial_num](
+                                const std::string& output,
+                                const std::string& input) {
+    crosvm_cmd.AddParameter("--serial=hardware=serial,num=", ++serial_num,
+                            ",type=file,path=", output, ",input=", input,
+                            ",earlycon=true");
+  };
+  auto add_hvc_ro = [&crosvm_cmd, &hvc_num](const std::string& output) {
+    crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=", ++hvc_num,
+                            ",type=file,path=", output);
+  };
+  auto add_hvc = [&crosvm_cmd, &hvc_num](const std::string& output,
+                                         const std::string& input) {
+    crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=", ++hvc_num,
+                            ",type=file,path=", output, ",input=", input);
+  };
+  // Deprecated; do not add any more users
+  auto add_serial = [&crosvm_cmd, &serial_num](const std::string& output,
+                                               const std::string& input) {
+    crosvm_cmd.AddParameter("--serial=hardware=serial,num=", ++serial_num,
+                            ",type=file,path=", output, ",input=", input);
+  };
+
   crosvm_cmd.AddParameter("run");
+
+  if (!config.smt()) {
+    crosvm_cmd.AddParameter("--no-smt");
+  }
+
+  if (config.vhost_net()) {
+    crosvm_cmd.AddParameter("--vhost-net");
+  }
+
+  if (config.protected_vm()) {
+    crosvm_cmd.AddParameter("--protected-vm");
+  }
 
   auto display_configs = config.display_configs();
   CHECK_GE(display_configs.size(), 1);
@@ -174,15 +237,17 @@ std::vector<Command> CrosvmManager::StartCommands(
                             "egl=true,surfaceless=true,glx=false,gles=true");
     crosvm_cmd.AddParameter("--wayland-sock=", instance.frames_socket_path());
   }
-  if (!config.use_bootloader() && !config.final_ramdisk_path().empty()) {
-    crosvm_cmd.AddParameter("--initrd=", config.final_ramdisk_path());
-  }
   // crosvm_cmd.AddParameter("--null-audio");
   crosvm_cmd.AddParameter("--mem=", config.memory_mb());
   crosvm_cmd.AddParameter("--cpus=", config.cpus());
-  crosvm_cmd.AddParameter("--params=", kernel_cmdline);
+
+  auto disk_num = instance.virtual_disk_paths().size();
+  CHECK_GE(VmManager::kMaxDisks, disk_num)
+      << "Provided too many disks (" << disk_num << "), maximum "
+      << VmManager::kMaxDisks << "supported";
   for (const auto& disk : instance.virtual_disk_paths()) {
-    crosvm_cmd.AddParameter("--rwdisk=", disk);
+    crosvm_cmd.AddParameter(config.protected_vm() ? "--disk=" :
+                                                    "--rwdisk=", disk);
   }
   crosvm_cmd.AddParameter("--socket=", GetControlSocketPath(config));
 
@@ -196,9 +261,15 @@ std::vector<Command> CrosvmManager::StartCommands(
   auto wifi_tap = AddTapFdParameter(&crosvm_cmd, instance.wifi_tap_name());
   AddTapFdParameter(&crosvm_cmd, instance.mobile_tap_name());
 
-  crosvm_cmd.AddParameter("--rw-pmem-device=", instance.access_kregistry_path());
-  crosvm_cmd.AddParameter("--pstore=path=", instance.pstore_path(), ",size=",
-                          FileSize(instance.pstore_path()));
+  if (FileExists(instance.access_kregistry_path())) {
+    crosvm_cmd.AddParameter("--rw-pmem-device=",
+                            instance.access_kregistry_path());
+  }
+
+  if (FileExists(instance.pstore_path())) {
+    crosvm_cmd.AddParameter("--pstore=path=", instance.pstore_path(),
+                            ",size=", FileSize(instance.pstore_path()));
+  }
 
   if (config.enable_sandbox()) {
     const bool seccomp_exists = DirectoryExists(config.seccomp_policy_dir());
@@ -219,20 +290,10 @@ std::vector<Command> CrosvmManager::StartCommands(
     crosvm_cmd.AddParameter("--cid=", instance.vsock_guest_cid());
   }
 
-  // Use an 8250 UART (ISA or platform device) for earlycon, as the
-  // virtio-console driver may not be available for early messages
-  // In kgdb mode, earlycon is an interactive console, and so early
-  // dmesg will go there instead of the kernel.log
-  if (!(config.console() && (config.use_bootloader() || config.kgdb()))) {
-    crosvm_cmd.AddParameter("--serial=hardware=serial,num=1,type=file,path=",
-                            instance.kernel_log_pipe_name(), ",earlycon=true");
-  }
-
   // Use a virtio-console instance for the main kernel console. All
   // messages will switch from earlycon to virtio-console after the driver
   // is loaded, and crosvm will append to the kernel log automatically
-  crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=1,type=file,path=",
-                          instance.kernel_log_pipe_name(), ",console=true");
+  add_hvc_console(instance.kernel_log_pipe_name());
 
   if (config.console()) {
     // stdin is the only currently supported way to write data to a serial port in
@@ -240,31 +301,36 @@ std::vector<Command> CrosvmManager::StartCommands(
     // the serial port output is received by the console forwarder as crosvm may
     // print other messages to stdout.
     if (config.kgdb() || config.use_bootloader()) {
-      crosvm_cmd.AddParameter("--serial=hardware=serial,num=1,type=file,path=",
-                              instance.console_out_pipe_name(), ",input=",
-                              instance.console_in_pipe_name(), ",earlycon=true");
+      add_serial_console(instance.console_out_pipe_name(),
+                         instance.console_in_pipe_name());
       // In kgdb mode, we have the interactive console on ttyS0 (both Android's
       // console and kdb), so we can disable the virtio-console port usually
       // allocated to Android's serial console, and redirect it to a sink. This
       // ensures that that the PCI device assignments (and thus sepolicy) don't
       // have to change
-      crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=2,type=sink");
+      add_hvc_sink();
     } else {
-      crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=2,type=file,path=",
-                              instance.console_out_pipe_name(), ",input=",
-                              instance.console_in_pipe_name());
+      add_serial_sink();
+      add_hvc(instance.console_out_pipe_name(),
+              instance.console_in_pipe_name());
     }
   } else {
+    // Use an 8250 UART (ISA or platform device) for earlycon, as the
+    // virtio-console driver may not be available for early messages
+    // In kgdb mode, earlycon is an interactive console, and so early
+    // dmesg will go there instead of the kernel.log
+    if (config.kgdb() || config.use_bootloader()) {
+      add_serial_console_ro(instance.kernel_log_pipe_name());
+    }
+
     // as above, create a fake virtio-console 'sink' port when the serial
     // console is disabled, so the PCI device ID assignments don't move
     // around
-    crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=2,type=sink");
+    add_hvc_sink();
   }
 
   if (config.enable_gnss_grpc_proxy()) {
-    crosvm_cmd.AddParameter("--serial=hardware=serial,num=2,type=file,path=",
-                            instance.gnss_out_pipe_name(), ",input=",
-                            instance.gnss_in_pipe_name());
+    add_serial(instance.gnss_out_pipe_name(), instance.gnss_in_pipe_name());
   }
 
   SharedFD log_out_rd, log_out_wr;
@@ -276,20 +342,36 @@ std::vector<Command> CrosvmManager::StartCommands(
   crosvm_cmd.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, log_out_wr);
   crosvm_cmd.RedirectStdIO(Subprocess::StdIOChannel::kStdErr, log_out_wr);
 
-  Command log_tee_cmd(DefaultHostArtifactsPath("bin/log_tee"));
+  Command log_tee_cmd(HostBinaryPath("log_tee"));
   log_tee_cmd.AddParameter("--process_name=crosvm");
   log_tee_cmd.AddParameter("--log_fd_in=", log_out_rd);
 
   // Serial port for logcat, redirected to a pipe
-  crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=3,type=file,path=",
-                          instance.logcat_pipe_name());
+  add_hvc_ro(instance.logcat_pipe_name());
 
-  crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=4,type=file,",
-                          "path=", instance.PerInstanceInternalPath("keymaster_fifo_vm.out"),
-                          ",input=", instance.PerInstanceInternalPath("keymaster_fifo_vm.in"));
-  crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=5,type=file,",
-                          "path=", instance.PerInstanceInternalPath("gatekeeper_fifo_vm.out"),
-                          ",input=", instance.PerInstanceInternalPath("gatekeeper_fifo_vm.in"));
+  add_hvc(instance.PerInstanceInternalPath("keymaster_fifo_vm.out"),
+          instance.PerInstanceInternalPath("keymaster_fifo_vm.in"));
+  add_hvc(instance.PerInstanceInternalPath("gatekeeper_fifo_vm.out"),
+          instance.PerInstanceInternalPath("gatekeeper_fifo_vm.in"));
+
+  if (config.enable_host_bluetooth()) {
+    add_hvc(instance.PerInstanceInternalPath("bt_fifo_vm.out"),
+            instance.PerInstanceInternalPath("bt_fifo_vm.in"));
+  } else {
+    add_hvc_sink();
+  }
+  for (auto i = 0; i < VmManager::kMaxDisks - disk_num; i++) {
+    add_hvc_sink();
+  }
+  CHECK(hvc_num + disk_num == VmManager::kMaxDisks + VmManager::kDefaultNumHvcs)
+      << "HVC count (" << hvc_num << ") + disk count (" << disk_num << ") "
+      << "is not the expected total of "
+      << VmManager::kMaxDisks + VmManager::kDefaultNumHvcs << " devices";
+
+  if (config.enable_audio()) {
+    crosvm_cmd.AddParameter("--ac97=backend=vios,capture=false,server=" +
+                            config.ForDefaultInstance().audio_server_path());
+  }
 
   // TODO(b/172286896): This is temporarily optional, but should be made
   // unconditional and moved up to the other network devices area
@@ -305,15 +387,7 @@ std::vector<Command> CrosvmManager::StartCommands(
   }
 
   // This needs to be the last parameter
-  if (config.use_bootloader()) {
-    crosvm_cmd.AddParameter("--bios=", config.bootloader());
-  } else {
-    crosvm_cmd.AddParameter(config.GetKernelImageToUse());
-  }
-
-  if (config.vhost_net()) {
-    crosvm_cmd.AddParameter("--vhost-net");
-  }
+  crosvm_cmd.AddParameter("--bios=", config.bootloader());
 
   // Only run the leases workaround if we are not using the new network
   // bridge architecture - in that case, we have a wider DHCP address

@@ -66,6 +66,9 @@ BOARD_USES_ODM_DLKMIMAGE := true
 BOARD_ODM_DLKMIMAGE_FILE_SYSTEM_TYPE := ext4
 TARGET_COPY_OUT_ODM_DLKM := odm_dlkm
 
+# FIXME: Remove this once we generate the vbmeta digest correctly
+BOARD_AVB_MAKE_VBMETA_IMAGE_ARGS += --flag 2
+
 # Enable chained vbmeta for system image mixing
 BOARD_AVB_VBMETA_SYSTEM := product system system_ext
 BOARD_AVB_VBMETA_SYSTEM_KEY_PATH := external/avb/test/data/testkey_rsa2048.pem
@@ -78,6 +81,28 @@ BOARD_AVB_BOOT_KEY_PATH := external/avb/test/data/testkey_rsa2048.pem
 BOARD_AVB_BOOT_ALGORITHM := SHA256_RSA2048
 BOARD_AVB_BOOT_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
 BOARD_AVB_BOOT_ROLLBACK_INDEX_LOCATION := 2
+
+# Using sha256 for dm-verity partitions. b/178983355
+# system, system_other, product.
+TARGET_AVB_SYSTEM_HASHTREE_ALGORITHM ?= sha256
+TARGET_AVB_SYSTEM_OTHER_HASHTREE_ALGORITHM ?= sha256
+TARGET_AVB_PRODUCT_HASHTREE_ALGORITHM ?= sha256
+# Using blake2b-256 for system_ext. This give us move coverage of the
+# algorithms as we otherwise don't have a device using blake2b-256.
+TARGET_AVB_SYSTEM_EXT_HASHTREE_ALGORITHM ?= blake2b-256
+
+BOARD_AVB_SYSTEM_ADD_HASHTREE_FOOTER_ARGS += --hash_algorithm $(TARGET_AVB_SYSTEM_HASHTREE_ALGORITHM)
+BOARD_AVB_SYSTEM_OTHER_ADD_HASHTREE_FOOTER_ARGS += --hash_algorithm $(TARGET_AVB_SYSTEM_OTHER_HASHTREE_ALGORITHM)
+BOARD_AVB_SYSTEM_EXT_ADD_HASHTREE_FOOTER_ARGS += --hash_algorithm $(TARGET_AVB_SYSTEM_EXT_HASHTREE_ALGORITHM)
+BOARD_AVB_PRODUCT_ADD_HASHTREE_FOOTER_ARGS += --hash_algorithm $(TARGET_AVB_PRODUCT_HASHTREE_ALGORITHM)
+
+# vendor and odm.
+BOARD_AVB_VENDOR_ADD_HASHTREE_FOOTER_ARGS += --hash_algorithm sha256
+BOARD_AVB_ODM_ADD_HASHTREE_FOOTER_ARGS += --hash_algorithm sha256
+
+# vendor_dlkm and odm_dlkm.
+BOARD_AVB_VENDOR_DLKM_ADD_HASHTREE_FOOTER_ARGS += --hash_algorithm sha256
+BOARD_AVB_ODM_DLKM_ADD_HASHTREE_FOOTER_ARGS += --hash_algorithm sha256
 
 BOARD_USES_GENERIC_AUDIO := false
 USE_CAMERA_STUB := true
@@ -177,7 +202,7 @@ BOARD_KERNEL_CMDLINE += printk.devkmsg=on
 BOARD_KERNEL_CMDLINE += firmware_class.path=/vendor/etc/
 
 BOARD_KERNEL_CMDLINE += init=/init
-BOARD_KERNEL_CMDLINE += androidboot.hardware=cutf_cvm
+BOARD_BOOTCONFIG += androidboot.hardware=cutf_cvm
 
 # TODO(b/176860479): Remove once goldfish and cuttlefish share a wifi implementation
 BOARD_KERNEL_CMDLINE += mac80211_hwsim.radios=0
@@ -189,21 +214,22 @@ BOARD_KERNEL_CMDLINE += snd-hda-intel.enable=0
 BOARD_KERNEL_CMDLINE += kfence.sample_interval=500
 
 BOARD_KERNEL_CMDLINE += loop.max_part=7
+BOARD_KERNEL_CMDLINE += bootconfig
 
 # Reduce slab size usage from virtio vsock to reduce slab fragmentation
 BOARD_KERNEL_CMDLINE += \
     vmw_vsock_virtio_transport_common.virtio_transport_max_vsock_pkt_buf_size=16384
 
 ifeq ($(TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE),f2fs)
-BOARD_KERNEL_CMDLINE += androidboot.fstab_suffix=f2fs
+BOARD_BOOTCONFIG += androidboot.fstab_suffix=f2fs
 endif
 
 ifeq ($(TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE),ext4)
-BOARD_KERNEL_CMDLINE += androidboot.fstab_suffix=ext4
+BOARD_BOOTCONFIG += androidboot.fstab_suffix=ext4
 endif
 
 BOARD_INCLUDE_DTB_IN_BOOTIMG := true
-BOARD_BOOT_HEADER_VERSION := 3
+BOARD_BOOT_HEADER_VERSION := 4
 BOARD_MKBOOTIMG_ARGS += --header_version $(BOARD_BOOT_HEADER_VERSION)
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/dtb.img:dtb.img \
@@ -225,3 +251,5 @@ BOARD_MOVE_GSI_AVB_KEYS_TO_VENDOR_BOOT := true
 BOARD_KERNEL_MODULE_INTERFACE_VERSIONS := 5.10-android12-0
 
 BOARD_GENERIC_RAMDISK_KERNEL_MODULES_LOAD := dm-user.ko
+
+BOARD_HAVE_BLUETOOTH := true

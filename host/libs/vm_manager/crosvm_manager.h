@@ -30,17 +30,16 @@ namespace vm_manager {
 // qemu-cli capability (for network only).
 class CrosvmManager : public VmManager {
  public:
-  static std::string name();
+  static std::string name() { return "crosvm"; }
   CrosvmManager() = default;
   virtual ~CrosvmManager() = default;
 
   bool IsSupported() override;
   std::vector<std::string> ConfigureGpuMode(const std::string&) override;
-  std::vector<std::string> ConfigureBootDevices() override;
+  std::vector<std::string> ConfigureBootDevices(int num_disks) override;
 
   std::vector<cuttlefish::Command> StartCommands(
-      const CuttlefishConfig& config,
-      const std::string& kernel_cmdline) override;
+      const CuttlefishConfig& config) override;
 };
 
 } // namespace vm_manager
