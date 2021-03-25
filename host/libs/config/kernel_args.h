@@ -24,7 +24,6 @@
 namespace cuttlefish {
 
 std::vector<std::string> KernelCommandLineFromConfig(
-    const CuttlefishConfig& config,
-    const CuttlefishConfig::InstanceSpecific& instance);
+    const CuttlefishConfig& config);
 
 } // namespace cuttlefish

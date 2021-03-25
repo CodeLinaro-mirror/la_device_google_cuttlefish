@@ -29,18 +29,17 @@ namespace vm_manager {
 // package to support the qemu-cli capability.
 class QemuManager : public VmManager {
  public:
-  static std::string name();
+  static std::string name() { return "qemu_cli"; }
 
   QemuManager() = default;
   virtual ~QemuManager() = default;
 
   bool IsSupported() override;
   std::vector<std::string> ConfigureGpuMode(const std::string&) override;
-  std::vector<std::string> ConfigureBootDevices() override;
+  std::vector<std::string> ConfigureBootDevices(int num_disks) override;
 
   std::vector<cuttlefish::Command> StartCommands(
-      const CuttlefishConfig& config,
-      const std::string& kernel_cmdline) override;
+      const CuttlefishConfig& config) override;
 };
 
 } // namespace vm_manager
