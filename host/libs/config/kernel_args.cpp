@@ -24,13 +24,11 @@
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
 #include "host/libs/config/cuttlefish_config.h"
-#include "host/libs/vm_manager/crosvm_manager.h"
 #include "host/libs/vm_manager/qemu_manager.h"
 #include "host/libs/vm_manager/vm_manager.h"
 
 namespace cuttlefish {
 
-using vm_manager::CrosvmManager;
 using vm_manager::QemuManager;
 
 namespace {
@@ -48,7 +46,8 @@ std::vector<std::string> VmManagerKernelCmdline(const CuttlefishConfig& config) 
     // crosvm sets up the console= earlycon= panic= flags for us if booting straight to
     // the kernel, but QEMU and the bootloader via crosvm does not.
     AppendVector(&vm_manager_cmdline, {"console=hvc0", "panic=-1"});
-    if (HostArch() == "aarch64") {
+    Arch target_arch = config.target_arch();
+    if (target_arch == Arch::Arm64 || target_arch == Arch::Arm) {
       if (config.vm_manager() == QemuManager::name()) {
         // To update the pl011 address:
         // $ qemu-system-aarch64 -machine virt -cpu cortex-a57 -machine dumpdtb=virt.dtb
@@ -100,8 +99,6 @@ std::vector<std::string> KernelCommandLineFromConfig(
   std::vector<std::string> kernel_cmdline;
 
   AppendVector(&kernel_cmdline, VmManagerKernelCmdline(config));
-  auto vmm = vm_manager::GetVmManager(config.vm_manager());
-  AppendVector(&kernel_cmdline, vmm->ConfigureGpuMode(config.gpu_mode()));
 
   if (config.enable_gnss_grpc_proxy()) {
     kernel_cmdline.push_back("gnss_cmdline.serdev=serial8250/serial0/serial0-0");

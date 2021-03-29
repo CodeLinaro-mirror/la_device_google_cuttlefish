@@ -21,6 +21,7 @@
 #include <linux/input.h>
 
 #include <map>
+#include <set>
 #include <thread>
 #include <vector>
 
@@ -138,8 +139,6 @@ class ConnectionObserverImpl
   void OnMultiTouchEvent(const std::string & /*display_label*/, Json::Value id,
                          Json::Value slot, Json::Value x, Json::Value y,
                          bool down, int size) override {
-    static bool button_touch = false;
-    static bool finger = false;
 
     auto buffer = GetEventBuffer();
     if (!buffer) {
@@ -147,42 +146,39 @@ class ConnectionObserverImpl
       return;
     }
 
-    if (!finger) {
-      buffer->AddEvent(EV_KEY, BTN_TOOL_FINGER, 1);
-      finger = true;
-    }
-
     for (int i=0; i<size; i++) {
-      buffer->AddEvent(EV_ABS, ABS_MT_SLOT, slot[i].asInt());
-
-      auto thisId = id[i].asInt();
-      if (thisId < 0 || down) {
-        buffer->AddEvent(EV_ABS, ABS_MT_TRACKING_ID, thisId);
-      }
-
-      if (thisId >= 0) {
-        // ABS_MT_POSITION_X: Reports the X coordinate of the tool.
-        // ABS_MT_POSITION_Y: Reports the Y coordinate of the tool.
-        buffer->AddEvent(EV_ABS, ABS_MT_POSITION_X, x[i].asInt());
-        buffer->AddEvent(EV_ABS, ABS_MT_POSITION_Y, y[i].asInt());
-        // ABS_{X,Y} must be reported with the location of the touch.
-        buffer->AddEvent(EV_ABS, ABS_X, x[i].asInt());
-        buffer->AddEvent(EV_ABS, ABS_Y, y[i].asInt());
-      }
-
-      if ((!button_touch && down) || (button_touch && !down)) {
-        // BTN_TOUCH must be used to report when a touch is active on the screen.
-        // BTN_TOUCH: Indicates whether the tool is touching the device.
-        buffer->AddEvent(EV_KEY, BTN_TOUCH, down);
-        LOG(VERBOSE) << "BTN_TOUCH " << down;
-        button_touch = !button_touch;
+      auto this_slot = slot[i].asInt();
+      auto this_id = id[i].asInt();
+      auto this_x = x[i].asInt();
+      auto this_y = y[i].asInt();
+      buffer->AddEvent(EV_ABS, ABS_MT_SLOT, this_slot);
+      if (down) {
+        bool is_new = active_touch_slots_.insert(this_slot).second;
+        if (is_new) {
+          buffer->AddEvent(EV_ABS, ABS_MT_TRACKING_ID, this_id);
+          if (active_touch_slots_.size() == 1) {
+            buffer->AddEvent(EV_KEY, BTN_TOUCH, 1);
+          }
+        }
+        buffer->AddEvent(EV_ABS, ABS_MT_POSITION_X, this_x);
+        buffer->AddEvent(EV_ABS, ABS_MT_POSITION_Y, this_y);
+        // send ABS_X and ABS_Y for single-touch compatibility
+        buffer->AddEvent(EV_ABS, ABS_X, this_x);
+        buffer->AddEvent(EV_ABS, ABS_Y, this_y);
+      } else {
+        // released touch
+        buffer->AddEvent(EV_ABS, ABS_MT_TRACKING_ID, this_id);
+        active_touch_slots_.erase(this_slot);
+        if (active_touch_slots_.empty()) {
+          buffer->AddEvent(EV_KEY, BTN_TOUCH, 0);
+        }
       }
     }
 
     buffer->AddEvent(EV_SYN, SYN_REPORT, 0);
     cuttlefish::WriteAll(input_sockets_.touch_client,
-    reinterpret_cast<const char *>(buffer->data()),
-    buffer->size());
+                         reinterpret_cast<const char *>(buffer->data()),
+                         buffer->size());
   }
 
   void OnKeyboardEvent(uint16_t code, bool down) override {
@@ -194,6 +190,19 @@ class ConnectionObserverImpl
     buffer->AddEvent(EV_KEY, code, down);
     buffer->AddEvent(EV_SYN, SYN_REPORT, 0);
     cuttlefish::WriteAll(input_sockets_.keyboard_client,
+                         reinterpret_cast<const char *>(buffer->data()),
+                         buffer->size());
+  }
+
+  void OnSwitchEvent(uint16_t code, bool state) override {
+    auto buffer = GetEventBuffer();
+    if (!buffer) {
+      LOG(ERROR) << "Failed to allocate event buffer";
+      return;
+    }
+    buffer->AddEvent(EV_SW, code, state);
+    buffer->AddEvent(EV_SYN, SYN_REPORT, 0);
+    cuttlefish::WriteAll(input_sockets_.switches_client,
                          reinterpret_cast<const char *>(buffer->data()),
                          buffer->size());
   }
@@ -227,42 +236,62 @@ class ConnectionObserverImpl
       LOG(ERROR) << "Received invalid JSON object over control channel: " << errorMessage;
       return;
     }
-    auto result =
-        webrtc_streaming::ValidationResult::ValidateJsonObject(evt, "command",
-                           {{"command", Json::ValueType::stringValue},
-                            {"state", Json::ValueType::stringValue}});
+
+    auto result = webrtc_streaming::ValidationResult::ValidateJsonObject(
+        evt, "command",
+        /*required_fields=*/{{"command", Json::ValueType::stringValue}},
+        /*optional_fields=*/
+        {
+            {"button_state", Json::ValueType::stringValue},
+            {"lid_switch_open", Json::ValueType::booleanValue},
+            {"hinge_angle_value", Json::ValueType::intValue},
+        });
     if (!result.ok()) {
       LOG(ERROR) << result.error();
       return;
     }
     auto command = evt["command"].asString();
-    auto state = evt["state"].asString();
 
-    LOG(VERBOSE) << "Control command: " << command << " (" << state << ")";
+    if (command == "device_state") {
+      if (evt.isMember("lid_switch_open")) {
+        // InputManagerService treats a value of 0 as open and 1 as closed, so
+        // invert the lid_switch_open value that is sent to the input device.
+        OnSwitchEvent(SW_LID, !evt["lid_switch_open"].asBool());
+      }
+      // TODO(b/181157794) Propagate hinge angle sensor data.
+      if (evt.isMember("hinge_angle_value")) {
+        LOG(WARNING) << "Hinge angle sensor is not yet implemented.";
+      }
+      return;
+    }
+
+    auto button_state = evt["button_state"].asString();
+    LOG(VERBOSE) << "Control command: " << command << " (" << button_state
+                 << ")";
     if (command == "power") {
-      OnKeyboardEvent(KEY_POWER, state == "down");
+      OnKeyboardEvent(KEY_POWER, button_state == "down");
     } else if (command == "home") {
-      OnKeyboardEvent(KEY_HOMEPAGE, state == "down");
+      OnKeyboardEvent(KEY_HOMEPAGE, button_state == "down");
     } else if (command == "menu") {
-      OnKeyboardEvent(KEY_MENU, state == "down");
+      OnKeyboardEvent(KEY_MENU, button_state == "down");
     } else if (command == "volumemute") {
-      OnKeyboardEvent(KEY_MUTE, state == "down");
+      OnKeyboardEvent(KEY_MUTE, button_state == "down");
     } else if (command == "volumedown") {
-      OnKeyboardEvent(KEY_VOLUMEDOWN, state == "down");
+      OnKeyboardEvent(KEY_VOLUMEDOWN, button_state == "down");
     } else if (command == "volumeup") {
-      OnKeyboardEvent(KEY_VOLUMEUP, state == "down");
+      OnKeyboardEvent(KEY_VOLUMEUP, button_state == "down");
     } else if (commands_to_custom_action_servers_.find(command) !=
                commands_to_custom_action_servers_.end()) {
       // Simple protocol for commands forwarded to action servers:
       //   - Always 128 bytes
-      //   - Format:   command:state
+      //   - Format:   command:button_state
       //   - Example:  my_button:down
-      std::string action_server_message = command + ":" + state;
+      std::string action_server_message = command + ":" + button_state;
       cuttlefish::WriteAll(commands_to_custom_action_servers_[command],
                            action_server_message.c_str(), 128);
     } else {
-      LOG(WARNING) << "Unsupported control command: " << command << " (" << state << ")";
-      // TODO(b/163081337): Handle custom commands.
+      LOG(WARNING) << "Unsupported control command: " << command << " ("
+                   << button_state << ")";
     }
   }
 
@@ -273,6 +302,7 @@ class ConnectionObserverImpl
   std::shared_ptr<cuttlefish::webrtc_streaming::KernelLogEventsHandler> kernel_log_events_handler_;
   std::map<std::string, cuttlefish::SharedFD> commands_to_custom_action_servers_;
   std::weak_ptr<DisplayHandler> weak_display_handler_;
+  std::set<int32_t> active_touch_slots_;
 };
 
 CfConnectionObserverFactory::CfConnectionObserverFactory(

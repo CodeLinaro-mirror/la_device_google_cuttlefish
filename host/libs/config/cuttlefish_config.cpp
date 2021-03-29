@@ -73,9 +73,6 @@ int InstanceFromEnvironment() {
 
 const char* kInstances = "instances";
 
-const char* kSmt = "smt";
-
-const char* kProtectedVm = "protected_vm";
 
 }  // namespace
 
@@ -173,29 +170,12 @@ void CuttlefishConfig::SetPath(const std::string& key,
   }
 }
 
-static constexpr char kKernelImagePath[] = "kernel_image_path";
-std::string CuttlefishConfig::kernel_image_path() const {
-  return (*dictionary_)[kKernelImagePath].asString();
+static constexpr char kGdbPort[] = "gdb_port";
+int CuttlefishConfig::gdb_port() const {
+  return (*dictionary_)[kGdbPort].asInt();
 }
-void CuttlefishConfig::set_kernel_image_path(
-    const std::string& kernel_image_path) {
-  SetPath(kKernelImagePath, kernel_image_path);
-}
-
-static constexpr char kGdbFlag[] = "gdb_flag";
-std::string CuttlefishConfig::gdb_flag() const {
-  return (*dictionary_)[kGdbFlag].asString();
-}
-void CuttlefishConfig::set_gdb_flag(const std::string& device) {
-  (*dictionary_)[kGdbFlag] = device;
-}
-
-static constexpr char kInitramfsPath[] = "initramfs_path";
-std::string CuttlefishConfig::initramfs_path() const {
-  return (*dictionary_)[kInitramfsPath].asString();
-}
-void CuttlefishConfig::set_initramfs_path(const std::string& initramfs_path) {
-  SetPath(kInitramfsPath, initramfs_path);
+void CuttlefishConfig::set_gdb_port(int port) {
+  (*dictionary_)[kGdbPort] = port;
 }
 
 static constexpr char kDeprecatedBootCompleted[] = "deprecated_boot_completed";
@@ -279,12 +259,12 @@ void CuttlefishConfig::set_setupwizard_mode(const std::string& mode) {
   (*dictionary_)[kSetupWizardMode] = mode;
 }
 
-static constexpr char kQemuBinary[] = "qemu_binary";
-std::string CuttlefishConfig::qemu_binary() const {
-  return (*dictionary_)[kQemuBinary].asString();
+static constexpr char kQemuBinaryDir[] = "qemu_binary_dir";
+std::string CuttlefishConfig::qemu_binary_dir() const {
+  return (*dictionary_)[kQemuBinaryDir].asString();
 }
-void CuttlefishConfig::set_qemu_binary(const std::string& qemu_binary) {
-  (*dictionary_)[kQemuBinary] = qemu_binary;
+void CuttlefishConfig::set_qemu_binary_dir(const std::string& qemu_binary_dir) {
+  (*dictionary_)[kQemuBinaryDir] = qemu_binary_dir;
 }
 
 static constexpr char kCrosvmBinary[] = "crosvm_binary";
@@ -608,12 +588,7 @@ void CuttlefishConfig::set_enable_host_bluetooth(bool enable_host_bluetooth) {
   (*dictionary_)[kenableHostBluetooth] = enable_host_bluetooth;
 }
 bool CuttlefishConfig::enable_host_bluetooth() const {
-// TODO(b/181203470): Support root-canal for arm64 Host
-#if defined(__BIONIC__)
-  return false;
-#else
   return (*dictionary_)[kenableHostBluetooth].asBool();
-#endif
 }
 
 static constexpr char kEnableMetrics[] = "enable_metrics";
@@ -701,7 +676,8 @@ std::string CuttlefishConfig::console_dev() const {
     console_dev = "hvc1";
   } else {
     // crosvm ARM does not support ttyAMA. ttyAMA is a part of ARM arch.
-    if (HostArch() == "aarch64" &&
+    Arch target = target_arch();
+    if ((target == Arch::Arm64 || target == Arch::Arm) &&
         vm_manager() != vm_manager::CrosvmManager::name()) {
       console_dev = "ttyAMA0";
     } else {
@@ -735,6 +711,7 @@ bool CuttlefishConfig::record_screen() const {
   return (*dictionary_)[kRecordScreen].asBool();
 }
 
+static constexpr char kSmt[] = "smt";
 void CuttlefishConfig::set_smt(bool smt) {
   (*dictionary_)[kSmt] = smt;
 }
@@ -742,13 +719,36 @@ bool CuttlefishConfig::smt() const {
   return (*dictionary_)[kSmt].asBool();
 }
 
-bool CuttlefishConfig::enable_audio() const { return enable_webrtc(); }
+static constexpr char kEnableAudio[] = "enable_audio";
+void CuttlefishConfig::set_enable_audio(bool enable) {
+  (*dictionary_)[kEnableAudio] = enable;
+}
+bool CuttlefishConfig::enable_audio() const {
+  return (*dictionary_)[kEnableAudio].asBool();
+}
 
+static constexpr char kProtectedVm[] = "protected_vm";
 void CuttlefishConfig::set_protected_vm(bool protected_vm) {
   (*dictionary_)[kProtectedVm] = protected_vm;
 }
 bool CuttlefishConfig::protected_vm() const {
   return (*dictionary_)[kProtectedVm].asBool();
+}
+
+static constexpr char kTargetArch[] = "target_arch";
+void CuttlefishConfig::set_target_arch(Arch target_arch) {
+  (*dictionary_)[kTargetArch] = static_cast<int>(target_arch);
+}
+Arch CuttlefishConfig::target_arch() const {
+  return static_cast<Arch>((*dictionary_)[kTargetArch].asInt());
+}
+
+static constexpr char kBootconfigSupported[] = "bootconfig_supported";
+bool CuttlefishConfig::bootconfig_supported() const {
+  return (*dictionary_)[kBootconfigSupported].asBool();
+}
+void CuttlefishConfig::set_bootconfig_supported(bool bootconfig_supported) {
+  (*dictionary_)[kBootconfigSupported] = bootconfig_supported;
 }
 
 // Creates the (initially empty) config object and populates it with values from

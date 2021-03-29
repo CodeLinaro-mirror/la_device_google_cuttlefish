@@ -83,10 +83,10 @@ std::vector<std::string> BootconfigArgsFromConfig(
   std::vector<std::string> bootconfig_args;
 
   AppendVector(&bootconfig_args, VmManagerBootconfig(config));
-  auto vmm = vm_manager::GetVmManager(config.vm_manager());
-  AppendVector(&bootconfig_args,
-               vmm->ConfigureBootDevices(instance.virtual_disk_paths().size()));
-  // TODO(b/173815685): Resolve issue with androidboot.hardware and add GpuMode
+  auto vmm = vm_manager::GetVmManager(config.vm_manager(), config.target_arch());
+  bootconfig_args.push_back(
+      vmm->ConfigureBootDevices(instance.virtual_disk_paths().size()));
+  AppendVector(&bootconfig_args, vmm->ConfigureGpuMode(config.gpu_mode()));
 
   bootconfig_args.push_back(
       concat("androidboot.serialno=", instance.serial_number()));
@@ -154,6 +154,12 @@ std::vector<std::string> BootconfigArgsFromConfig(
                                    mac_to_str(instance.wifi_mac_address())));
 
   bootconfig_args.push_back("androidboot.verifiedbootstate=orange");
+
+  // Non-native architecture implies a significantly slower execution speed, so
+  // set a large timeout multiplier.
+  if (!IsHostCompatible(config.target_arch())) {
+    bootconfig_args.push_back("androidboot.hw_timeout_multiplier=50");
+  }
 
   // TODO(b/173815685): Create an extra_bootconfig flag and add it to bootconfig
 
