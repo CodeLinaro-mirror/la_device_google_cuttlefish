@@ -23,7 +23,6 @@
 #include "host/commands/assemble_cvd/boot_config.h"
 #include "host/commands/assemble_cvd/clean.h"
 #include "host/commands/assemble_cvd/disk_flags.h"
-#include "host/libs/config/fetcher_config.h"
 #include "host/libs/config/host_tools_version.h"
 #include "host/libs/graphics_detector/graphics_detector.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
@@ -50,8 +49,10 @@ DEFINE_int32(blank_data_image_mb, 0,
              "The size of the blank data image to generate, MB.");
 DEFINE_string(blank_data_image_fmt, "f2fs",
               "The fs format for the blank data image. Used with mkfs.");
-DEFINE_string(qemu_gdb, "",
-              "Debug flag to pass to qemu. e.g. -qemu_gdb=tcp::1234");
+DEFINE_int32(gdb_port, 0,
+             "Port number to spawn kernel gdb on e.g. -gdb_port=1234. The"
+             "kernel must have been built with CONFIG_RANDOMIZE_BASE "
+             "disabled.");
 
 DEFINE_int32(x_res, 0, "Width of the screen in pixels");
 DEFINE_int32(y_res, 0, "Height of the screen in pixels");
@@ -71,9 +72,8 @@ DEFINE_string(serial_number, cuttlefish::ForCurrentInstance("CUTTLEFISHCVD"),
               "Serial number to use for the device");
 DEFINE_bool(use_random_serial, false,
             "Whether to use random serial for the device.");
-DEFINE_string(
-    vm_manager, CrosvmManager::name(),
-    "What virtual machine manager to use, one of {qemu_cli, crosvm}");
+DEFINE_string(vm_manager, "",
+              "What virtual machine manager to use, one of {qemu_cli, crosvm}");
 DEFINE_string(gpu_mode, cuttlefish::kGpuModeAuto,
               "What gpu configuration to use, one of {auto, drm_virgl, "
               "gfxstream, guest_swiftshader}");
@@ -97,6 +97,14 @@ DEFINE_bool(pause_in_bootloader, false,
 DEFINE_bool(enable_host_bluetooth, true,
             "Enable the root-canal which is Bluetooth emulator in the host.");
 
+DEFINE_string(bluetooth_controller_properties_file,
+              "etc/rootcanal/data/controller_properties.json",
+              "The configuartion file path for root-canal which is a Bluetooth "
+              "emulator.");
+DEFINE_string(
+    bluetooth_default_commands_file, "etc/rootcanal/data/default_commands",
+    "The default commands which root-canal executes when it launches.");
+
 /**
  *
  * crosvm sandbox feature requires /var/empty and seccomp directory
@@ -119,7 +127,7 @@ DEFINE_bool(enable_sandbox,
             "Enable crosvm sandbox. Use this when you are sure about what you are doing.");
 
 static const std::string kSeccompDir =
-    std::string("usr/share/crosvm/") + cuttlefish::HostArch() + "-linux-gnu/seccomp";
+    std::string("usr/share/crosvm/") + cuttlefish::HostArchStr() + "-linux-gnu/seccomp";
 DEFINE_string(seccomp_policy_dir, DefaultHostArtifactsPath(kSeccompDir),
               "With sandbox'ed crosvm, overrieds the security comp policy directory");
 
@@ -209,9 +217,8 @@ DEFINE_string(device_title, "", "Human readable name for the instance, "
 DEFINE_string(setupwizard_mode, "DISABLED",
             "One of DISABLED,OPTIONAL,REQUIRED");
 
-DEFINE_string(qemu_binary,
-              "/usr/bin/qemu-system-x86_64",
-              "The qemu binary to use");
+DEFINE_string(qemu_binary_dir, "/usr/bin",
+              "Path to the directory containing the qemu binary to use");
 DEFINE_string(crosvm_binary, HostBinaryPath("crosvm"),
               "The Crosvm binary to use");
 DEFINE_string(tpm_device, "", "A host TPM device to pass through commands to.");
@@ -289,6 +296,11 @@ DEFINE_bool(use_sdcard, true, "Create blank SD-Card image and expose to guest");
 
 DEFINE_bool(protected_vm, false, "Boot in Protected VM mode");
 
+DEFINE_bool(enable_audio, cuttlefish::HostArch() != cuttlefish::Arch::Arm64,
+            "Whether to play or capture audio");
+
+DECLARE_string(assembly_dir);
+DECLARE_string(boot_image);
 DECLARE_string(system_image_dir);
 
 namespace cuttlefish {
@@ -296,9 +308,6 @@ using vm_manager::QemuManager;
 using vm_manager::GetVmManager;
 
 namespace {
-
-const std::string kKernelDefaultPath = "kernel";
-const std::string kInitramfsImg = "initramfs.img";
 
 bool IsFlagSet(const std::string& flag) {
   return !gflags::GetCommandLineFlagInfoOrDie(flag.c_str()).is_default;
@@ -328,19 +337,72 @@ std::string StrForInstance(const std::string& prefix, int num) {
   return stream.str();
 }
 
+#ifdef __ANDROID__
+void ReadKernelConfig(KernelConfig* kernel_config) {
+  // QEMU isn't on Android, so always follow host arch
+  kernel_config->target_arch = HostArch();
+  kernel_config->bootconfig_supported = true;
+}
+#else
+void ReadKernelConfig(KernelConfig* kernel_config) {
+  // extract-ikconfig can be called directly on the boot image since it looks
+  // for the ikconfig header in the image before extracting the config list.
+  // This code is liable to break if the boot image ever includes the
+  // ikconfig header outside the kernel.
+  const std::string kernel_image_path =
+      FLAGS_kernel_path.size() ? FLAGS_kernel_path : FLAGS_boot_image;
+
+  Command ikconfig_cmd(HostBinaryPath("extract-ikconfig"));
+  ikconfig_cmd.AddParameter(kernel_image_path);
+
+  std::string current_path = StringFromEnv("PATH", "");
+  std::string bin_folder = DefaultHostArtifactsPath("bin");
+  ikconfig_cmd.SetEnvironment({"PATH=" + current_path + ":" + bin_folder});
+
+  std::string ikconfig_path =
+      StringFromEnv("TEMP", "/tmp") + "/ikconfig.XXXXXX";
+  auto ikconfig_fd = SharedFD::Mkstemp(&ikconfig_path);
+  CHECK(ikconfig_fd->IsOpen())
+      << "Unable to create ikconfig file: " << ikconfig_fd->StrError();
+  ikconfig_cmd.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, ikconfig_fd);
+
+  auto ikconfig_proc = ikconfig_cmd.Start();
+  CHECK(ikconfig_proc.Started() && ikconfig_proc.Wait() == 0)
+      << "Failed to extract ikconfig from " << kernel_image_path;
+
+  std::string config = ReadFile(ikconfig_path);
+
+  if (config.find("\nCONFIG_ARM=y") != std::string::npos) {
+    kernel_config->target_arch = Arch::Arm;
+  } else if (config.find("\nCONFIG_ARM64=y") != std::string::npos) {
+    kernel_config->target_arch = Arch::Arm64;
+  } else if (config.find("\nCONFIG_X86_64=y") != std::string::npos) {
+    kernel_config->target_arch = Arch::X86_64;
+  } else if (config.find("\nCONFIG_X86=y") != std::string::npos) {
+    kernel_config->target_arch = Arch::X86;
+  } else {
+    LOG(FATAL) << "Unknown target architecture";
+  }
+  kernel_config->bootconfig_supported =
+      config.find("\nCONFIG_BOOT_CONFIG=y") != std::string::npos;
+
+  unlink(ikconfig_path.c_str());
+}
+#endif  // #ifdef __ANDROID__
+
 } // namespace
 
 CuttlefishConfig InitializeCuttlefishConfiguration(
-    const std::string& assembly_dir,
-    const std::string& instance_dir,
-    int modem_simulator_count,
-    const FetcherConfig& fetcher_config) {
+    const std::string& instance_dir, int modem_simulator_count,
+    KernelConfig kernel_config) {
   // At most one streamer can be started.
   CHECK(NumStreamers() <= 1);
 
   CuttlefishConfig tmp_config_obj;
-  tmp_config_obj.set_assembly_dir(assembly_dir);
-  auto vmm = GetVmManager(FLAGS_vm_manager);
+  tmp_config_obj.set_assembly_dir(FLAGS_assembly_dir);
+  tmp_config_obj.set_target_arch(kernel_config.target_arch);
+  tmp_config_obj.set_bootconfig_supported(kernel_config.bootconfig_supported);
+  auto vmm = GetVmManager(FLAGS_vm_manager, kernel_config.target_arch);
   if (!vmm) {
     LOG(FATAL) << "Invalid vm_manager: " << FLAGS_vm_manager;
   }
@@ -419,20 +481,10 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_secure_hals(
       std::set<std::string>(secure_hals.begin(), secure_hals.end()));
 
-  tmp_config_obj.set_gdb_flag(FLAGS_qemu_gdb);
+  tmp_config_obj.set_gdb_port(FLAGS_gdb_port);
+
   std::vector<std::string> adb = android::base::Split(FLAGS_adb_mode, ",");
   tmp_config_obj.set_adb_mode(std::set<std::string>(adb.begin(), adb.end()));
-  std::string discovered_kernel = fetcher_config.FindCvdFileWithSuffix(kKernelDefaultPath);
-  std::string foreign_kernel = FLAGS_kernel_path.size() ? FLAGS_kernel_path : discovered_kernel;
-  if (foreign_kernel.size()) {
-    tmp_config_obj.set_kernel_image_path(foreign_kernel);
-  } else {
-    tmp_config_obj.set_kernel_image_path(
-        tmp_config_obj.AssemblyPath(kKernelDefaultPath.c_str()));
-  }
-
-  std::string discovered_ramdisk = fetcher_config.FindCvdFileWithSuffix(kInitramfsImg);
-  std::string foreign_ramdisk = FLAGS_initramfs_path.size () ? FLAGS_initramfs_path : discovered_ramdisk;
 
   tmp_config_obj.set_guest_enforce_security(FLAGS_guest_enforce_security);
   tmp_config_obj.set_guest_audit_security(FLAGS_guest_audit_security);
@@ -445,15 +497,11 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_console(FLAGS_console);
   tmp_config_obj.set_kgdb(FLAGS_console && FLAGS_kgdb);
 
-  if(foreign_ramdisk.size()) {
-    tmp_config_obj.set_initramfs_path(foreign_ramdisk);
-  }
-
   tmp_config_obj.set_host_tools_version(HostToolsCrc());
 
   tmp_config_obj.set_deprecated_boot_completed(FLAGS_deprecated_boot_completed);
 
-  tmp_config_obj.set_qemu_binary(FLAGS_qemu_binary);
+  tmp_config_obj.set_qemu_binary_dir(FLAGS_qemu_binary_dir);
   tmp_config_obj.set_crosvm_binary(FLAGS_crosvm_binary);
   tmp_config_obj.set_tpm_device(FLAGS_tpm_device);
 
@@ -648,13 +696,16 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     instance.set_rootcanal_hci_port(7300 + num - 1);
     instance.set_rootcanal_link_port(7400 + num - 1);
     instance.set_rootcanal_test_port(7500 + num - 1);
+    instance.set_rootcanal_config_file(
+        FLAGS_bluetooth_controller_properties_file);
+    instance.set_rootcanal_default_commands_file(
+        FLAGS_bluetooth_default_commands_file);
 
     instance.set_device_title(FLAGS_device_title);
 
     if (FLAGS_protected_vm) {
-      instance.set_virtual_disk_paths({
-        const_instance.PerInstancePath("composite.img")
-      });
+      instance.set_virtual_disk_paths(
+          {const_instance.PerInstancePath("os_composite.img")});
     } else {
       std::vector<std::string> virtual_disk_paths = {
         const_instance.PerInstancePath("overlay.img"),
@@ -713,6 +764,15 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_enable_sandbox(FLAGS_enable_sandbox);
 
+  // Audio is not available for VNC server
+  SetCommandLineOptionWithMode(
+      "enable_audio",
+      (FLAGS_start_vnc_server || (cuttlefish::HostArch() == cuttlefish::Arch::Arm64))
+          ? "false"
+          : "true",
+      SET_FLAGS_DEFAULT);
+  tmp_config_obj.set_enable_audio(FLAGS_enable_audio);
+
   return tmp_config_obj;
 }
 
@@ -731,7 +791,7 @@ void SetDefaultFlagsFromConfigPreset() {
 
   // If the user specifies a --config name, then use that config
   // preset option.
-  std::string android_info_path = DefaultGuestImagePath("/android-info.txt");
+  std::string android_info_path = FLAGS_system_image_dir + "/android-info.txt";
   if (IsFlagSet("config")) {
     if (!allowed_config_presets.count(config_preset)) {
       LOG(FATAL) << "Invalid --config option '" << config_preset
@@ -807,7 +867,7 @@ void SetDefaultFlagsForCrosvm() {
 
   // for now, we support only x86_64 by default
   bool default_enable_sandbox = false;
-  std::set<const std::string> supported_archs{std::string("x86_64")};
+  std::set<Arch> supported_archs{Arch::X86_64};
   if (supported_archs.find(HostArch()) != supported_archs.end()) {
     if (DirectoryExists(kCrosvmVarEmptyDir)) {
       default_enable_sandbox = IsDirectoryEmpty(kCrosvmVarEmptyDir);
@@ -827,10 +887,25 @@ void SetDefaultFlagsForCrosvm() {
                                SET_FLAGS_DEFAULT);
 }
 
-bool ParseCommandLineFlags(int* argc, char*** argv) {
+bool ParseCommandLineFlags(int* argc, char*** argv, KernelConfig* kernel_config) {
   google::ParseCommandLineNonHelpFlags(argc, argv, true);
   SetDefaultFlagsFromConfigPreset();
+  google::HandleCommandLineHelpFlags();
   bool invalid_manager = false;
+
+  if (!ResolveInstanceFiles()) {
+    return false;
+  }
+
+  ReadKernelConfig(kernel_config);
+  if (FLAGS_vm_manager == "") {
+    if (IsHostCompatible(kernel_config->target_arch)) {
+      FLAGS_vm_manager = CrosvmManager::name();
+    } else {
+      FLAGS_vm_manager = QemuManager::name();
+    }
+  }
+
   if (FLAGS_vm_manager == QemuManager::name()) {
     SetDefaultFlagsForQemu();
   } else if (FLAGS_vm_manager == CrosvmManager::name()) {
@@ -845,14 +920,13 @@ bool ParseCommandLineFlags(int* argc, char*** argv) {
   SetCommandLineOptionWithMode("start_webrtc_sig_server",
                                FLAGS_start_webrtc ? "true" : "false",
                                SET_FLAGS_DEFAULT);
-  google::HandleCommandLineHelpFlags();
   if (invalid_manager) {
     return false;
   }
   // Set the env variable to empty (in case the caller passed a value for it).
   unsetenv(kCuttlefishConfigEnvVarName);
 
-  return ResolveInstanceFiles();
+  return true;
 }
 
 std::string GetConfigFilePath(const CuttlefishConfig& config) {

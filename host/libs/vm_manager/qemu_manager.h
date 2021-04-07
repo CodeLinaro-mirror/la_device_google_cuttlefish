@@ -31,12 +31,12 @@ class QemuManager : public VmManager {
  public:
   static std::string name() { return "qemu_cli"; }
 
-  QemuManager() = default;
+  QemuManager(Arch arch) : VmManager(arch) {}
   virtual ~QemuManager() = default;
 
   bool IsSupported() override;
   std::vector<std::string> ConfigureGpuMode(const std::string&) override;
-  std::vector<std::string> ConfigureBootDevices(int num_disks) override;
+  std::string ConfigureBootDevices(int num_disks) override;
 
   std::vector<cuttlefish::Command> StartCommands(
       const CuttlefishConfig& config) override;
