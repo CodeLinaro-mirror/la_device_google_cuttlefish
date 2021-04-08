@@ -155,8 +155,7 @@ std::vector<SharedFD> LaunchKernelLogMonitor(
   std::vector<SharedFD> ret;
 
   if (number_of_event_pipes > 0) {
-    auto param_builder = command.GetParameterBuilder();
-    param_builder << "-subscriber_fds=";
+    command.AddParameter("-subscriber_fds=");
     for (unsigned int i = 0; i < number_of_event_pipes; ++i) {
       SharedFD event_pipe_write_end, event_pipe_read_end;
       if (!SharedFD::Pipe(&event_pipe_read_end, &event_pipe_write_end)) {
@@ -164,12 +163,11 @@ std::vector<SharedFD> LaunchKernelLogMonitor(
         std::exit(RunnerExitCodes::kPipeIOError);
       }
       if (i > 0) {
-        param_builder << ",";
+        command.AppendToLastParameter(",");
       }
-      param_builder << event_pipe_write_end;
+      command.AppendToLastParameter(event_pipe_write_end);
       ret.push_back(event_pipe_read_end);
     }
-    param_builder.Build();
   }
 
   process_monitor->AddCommand(std::move(command));
@@ -356,6 +354,8 @@ void LaunchWebRTC(ProcessMonitor* process_monitor,
   cuttlefish::Command webrtc(cuttlefish::WebRtcBinary(),
                              cuttlefish::SubprocessStopper(stopper));
 
+  webrtc.UnsetFromEnvironment({"http_proxy"});
+
   CreateStreamerServers(&webrtc, config);
 
   webrtc.AddParameter("--command_fd=", client_socket);
@@ -434,8 +434,7 @@ void LaunchModemSimulatorIfEnabled(
 
   auto instance = config.ForDefaultInstance();
   auto ports = instance.modem_simulator_ports();
-  auto param_builder = cmd.GetParameterBuilder();
-  param_builder << "-server_fds=";
+  cmd.AddParameter("-server_fds=");
   for (int i = 0; i < instance_number; ++i) {
     auto pos = ports.find(',');
     auto temp = (pos != std::string::npos) ? ports.substr(0, pos - 1) : ports;
@@ -449,11 +448,10 @@ void LaunchModemSimulatorIfEnabled(
       std::exit(RunnerExitCodes::kModemSimulatorServerError);
     }
     if (i > 0) {
-      param_builder << ",";
+      cmd.AppendToLastParameter(",");
     }
-    param_builder << socket;
+    cmd.AppendToLastParameter(socket);
   }
-  param_builder.Build();
 
   process_monitor->AddCommand(std::move(cmd));
 }
