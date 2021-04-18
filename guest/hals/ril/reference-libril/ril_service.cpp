@@ -17,8 +17,8 @@
 #define LOG_TAG "RILC"
 
 #include <android/hardware/radio/1.6/IRadio.h>
-#include <android/hardware/radio/1.6/IRadioResponse.h>
 #include <android/hardware/radio/1.6/IRadioIndication.h>
+#include <android/hardware/radio/1.6/IRadioResponse.h>
 #include <android/hardware/radio/1.6/types.h>
 
 #include <android/hardware/radio/deprecated/1.0/IOemHook.h>
@@ -149,6 +149,7 @@ void populateResponseInfo_1_6(
 
 struct RadioImpl_1_6 : public V1_6::IRadio {
     int32_t mSlotId;
+    V1_1::CardPowerState mSimCardPowerState;
     sp<IRadioResponse> mRadioResponse;
     sp<IRadioIndication> mRadioIndication;
     sp<V1_1::IRadioResponse> mRadioResponseV1_1;
@@ -645,6 +646,11 @@ struct RadioImpl_1_6 : public V1_6::IRadio {
     Return<void> setCarrierInfoForImsiEncryption_1_6(
             int32_t serial,
             const ::android::hardware::radio::V1_6::ImsiEncryptionInfo& imsiEncryptionInfo);
+    Return<void> getSimPhonebookRecords(int32_t serial);
+    Return<void> getSimPhonebookCapacity(int32_t serial);
+    Return<void> updateSimPhonebookRecords(
+            int32_t serial,
+            const ::android::hardware::radio::V1_6::PhonebookRecordInfo& recordInfo);
 };
 
 struct OemHookImpl : public IOemHook {
@@ -3250,6 +3256,7 @@ Return<void> RadioImpl_1_6::setSimCardPower_1_6(int32_t serial, const V1_1::Card
     RLOGD("setSimCardPower_1_6: serial %d state %d", serial, state);
 #endif
     dispatchInts(serial, mSlotId, RIL_REQUEST_SET_SIM_CARD_POWER, 1, state);
+    mSimCardPowerState = state;
     return Void();
 }
 
@@ -3626,7 +3633,7 @@ Return<void> RadioImpl_1_6::setSystemSelectionChannels(int32_t serial, bool /* s
 
 Return<void> RadioImpl_1_6::enableModem(int32_t serial, bool /* on */) {
 #if VDBG
-    RLOGE("enableModem: serial = %d, enable = %s", serial, on);
+    RLOGE("enableModem: serial = %d", serial);
 #endif
     dispatchVoid(serial, mSlotId, RIL_REQUEST_ENABLE_MODEM);
     return Void();
@@ -4501,7 +4508,7 @@ Return<void> RadioImpl_1_6::setIndicationFilter_1_5(int32_t /* serial */,
         hidl_bitfield<::android::hardware::radio::V1_5::IndicationFilter> /* indicationFilter */) {
     // TODO implement
 #if VDBG
-    RLOGE("[%04d]< %s", serial, "Method is not implemented");
+    RLOGE("setIndicationFilter_1_5: Method is not implemented");
 #endif
     return Void();
 }
@@ -4585,7 +4592,7 @@ Return<void> RadioImpl_1_6::supplySimDepersonalization(int32_t serial,
 Return<void> RadioImpl_1_6::setNrDualConnectivityState(int32_t serial,
         V1_6::NrDualConnectivityState nrDualConnectivityState) {
 #if VDBG
-    RLOGD("setNrDualConnectivityState: serial %d enable %d", serial, enable);
+    RLOGD("setNrDualConnectivityState: serial %d", serial);
 #endif
     dispatchInts(serial, mSlotId, RIL_REQUEST_ENABLE_NR_DUAL_CONNECTIVITY, 1,
             nrDualConnectivityState);
@@ -4693,6 +4700,34 @@ Return<void> RadioImpl_1_6::setCarrierInfoForImsiEncryption_1_6(
     delete (imsiEncryption.carrierKey);
     return Void();
 }
+
+
+Return<void> RadioImpl_1_6::getSimPhonebookRecords(int32_t serial) {
+#if VDBG
+    RLOGD("getSimPhonebookRecords: serial %d", serial);
+#endif
+    dispatchVoid(serial, mSlotId, RIL_REQUEST_GET_SIM_PHONEBOOK_RECORDS);
+    return Void();
+}
+
+Return<void> RadioImpl_1_6::getSimPhonebookCapacity(int32_t serial) {
+#if VDBG
+    RLOGD("getSimPhonebookCapacity: serial %d", serial);
+#endif
+    dispatchVoid(serial, mSlotId, RIL_REQUEST_GET_SIM_PHONEBOOK_CAPACITY);
+    return Void();
+}
+
+Return<void> RadioImpl_1_6::updateSimPhonebookRecords(
+    int32_t serial,
+    const ::android::hardware::radio::V1_6::PhonebookRecordInfo& recordInfo) {
+#if VDBG
+    RLOGD("updateSimPhonebookRecords: serial %d", serial);
+#endif
+    dispatchVoid(serial, mSlotId, RIL_REQUEST_UPDATE_SIM_PHONEBOOK_RECORDS);
+    return Void();
+}
+
 
 // OEM hook methods:
 Return<void> OemHookImpl::setResponseFunctions(
@@ -4894,6 +4929,11 @@ int radio_1_6::getIccCardStatusResponse(int slotId,
                 cardStatusV1_5.applications[i].persoSubstate = (V1_5::PersoSubstate)rilAppStatus[i].perso_substate;
             }
 
+            // If POWER_DOWN then set applications to empty
+            if (radioService[slotId]->mSimCardPowerState == V1_1::CardPowerState::POWER_DOWN) {
+                RLOGD("getIccCardStatusResponse: state is POWER_DOWN so clearing apps");
+                cardStatusV1_5.applications = {};
+            }
             Return<void> retStatus = radioService[slotId]->mRadioResponseV1_5->
                     getIccCardStatusResponse_1_5(responseInfo, cardStatusV1_5);
             radioService[slotId]->checkReturnStatus(retStatus);
@@ -10296,6 +10336,31 @@ int radio_1_6::getSlicingConfigResponse(int slotId, int responseType, int serial
 
     return 0;
 }
+
+int radio_1_6::getSimPhonebookRecordsResponse(int slotId, int responseType, int serial,
+                             RIL_Errno e, void *response, size_t responseLen) {
+#if VDBG
+    RLOGD("getSimPhonebookRecordsResponse: serial %d", serial);
+#endif
+    return 0;
+}
+
+int radio_1_6::getSimPhonebookCapacityResponse(int slotId, int responseType, int serial,
+                             RIL_Errno e, void *response, size_t responseLen) {
+#if VDBG
+    RLOGD("getSimPhonebookRecordsResponse: serial %d", serial);
+#endif
+    return 0;
+}
+
+int radio_1_6::updateSimPhonebookRecordsResponse(int slotId, int responseType, int serial,
+                             RIL_Errno e, void *response, size_t responseLen) {
+#if VDBG
+    RLOGD("getSimPhonebookRecordsResponse: serial %d", serial);
+#endif
+    return 0;
+}
+
 /***************************************************************************************************
  * INDICATION FUNCTIONS
  * The below function handle unsolicited messages coming from the Radio
@@ -10757,7 +10822,7 @@ void convertRilDataCallToHal(RIL_Data_Call_Response_v12 *dcResponse,
 
     std::vector<::android::hardware::radio::V1_6::TrafficDescriptor> trafficDescriptors;
     ::android::hardware::radio::V1_6::TrafficDescriptor trafficDescriptor;
-    ::android::hardware::radio::V1_6::OSAppId osAppId;
+    ::android::hardware::radio::V1_6::OsAppId osAppId;
 
     osAppId.osAppId = 1;
     trafficDescriptor.osAppId.value(osAppId);
@@ -12544,6 +12609,8 @@ void radio_1_6::registerService(RIL_RadioFunctions *callbacks, CommandInfo *comm
 
         radioService[i] = new RadioImpl_1_6;
         radioService[i]->mSlotId = i;
+        RLOGD("registerService: initializing power state to POWER_UP");
+        radioService[i]->mSimCardPowerState = V1_1::CardPowerState::POWER_UP;
         RLOGD("registerService: starting android::hardware::radio::V1_6::IRadio %s for slot %d",
                 serviceNames[i], i);
         android::status_t status = radioService[i]->registerAsService(serviceNames[i]);

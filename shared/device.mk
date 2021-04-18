@@ -40,6 +40,8 @@ TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE ?= f2fs
 TARGET_USERDATAIMAGE_PARTITION_SIZE ?= 6442450944
 
 TARGET_VULKAN_SUPPORT ?= true
+TARGET_ENABLE_HOST_BLUETOOTH_EMULATION ?= true
+TARGET_USE_BTLINUX_HAL_IMPL ?= true
 
 AB_OTA_UPDATER := true
 AB_OTA_PARTITIONS += \
@@ -71,7 +73,7 @@ PRODUCT_PRODUCT_PROPERTIES += \
 
 # Storage: for factory reset protection feature
 PRODUCT_VENDOR_PROPERTIES += \
-    ro.frp.pst=/dev/block/vdc
+    ro.frp.pst=/dev/block/vdb
 
 # Explanation of specific properties:
 #   debug.hwui.swap_with_damage avoids boot failure on M http://b/25152138
@@ -148,13 +150,21 @@ PRODUCT_PACKAGES += \
     cuttlefish_rotate \
     rename_netiface \
     setup_wifi \
+    bt_vhci_forwarder \
     socket_vsock_proxy \
     tombstone_transmit \
     tombstone_producer \
     suspend_blocker \
     vsoc_input_service \
     vtpm_manager \
-    wpa_supplicant.vsoc.conf \
+
+SOONG_CONFIG_NAMESPACES += cvd
+SOONG_CONFIG_cvd += launch_configs
+SOONG_CONFIG_cvd_launch_configs += \
+    cvd_config_auto.json \
+    cvd_config_phone.json \
+    cvd_config_tablet.json \
+    cvd_config_tv.json \
 
 #
 # Packages for AOSP-available stuff we use from the framework
@@ -200,6 +210,7 @@ endif
 
 # GL/Vk implementation for gfxstream
 PRODUCT_PACKAGES += \
+    hwcomposer.ranchu \
     libandroidemu \
     libOpenglCodecCommon \
     libOpenglSystemCommon \
@@ -263,6 +274,7 @@ PRODUCT_COPY_FILES += \
     frameworks/av/services/audiopolicy/config/default_volume_tables.xml:$(TARGET_COPY_OUT_VENDOR)/etc/default_volume_tables.xml \
     frameworks/av/services/audiopolicy/config/surround_sound_configuration_5_0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/surround_sound_configuration_5_0.xml \
     frameworks/native/data/etc/android.hardware.audio.low_latency.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.audio.low_latency.xml \
+    frameworks/native/data/etc/android.hardware.bluetooth.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.bluetooth.xml \
     frameworks/native/data/etc/android.hardware.bluetooth_le.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.bluetooth_le.xml \
     frameworks/native/data/etc/android.hardware.camera.concurrent.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.concurrent.xml \
     frameworks/native/data/etc/android.hardware.camera.flash-autofocus.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.flash-autofocus.xml \
@@ -358,9 +370,22 @@ PRODUCT_PACKAGES += \
 #
 # Bluetooth HAL and Compatibility Bluetooth library (for older revs).
 #
-PRODUCT_PACKAGES += \
-    android.hardware.bluetooth@1.1-service.sim \
-    android.hardware.bluetooth.audio@2.1-impl
+ifeq ($(LOCAL_BLUETOOTH_PRODUCT_PACKAGE),)
+ifeq ($(TARGET_ENABLE_HOST_BLUETOOTH_EMULATION),true)
+ifeq ($(TARGET_USE_BTLINUX_HAL_IMPL),true)
+    LOCAL_BLUETOOTH_PRODUCT_PACKAGE := android.hardware.bluetooth@1.1-service.btlinux
+else
+    LOCAL_BLUETOOTH_PRODUCT_PACKAGE := android.hardware.bluetooth@1.1-service.remote
+endif
+else
+    LOCAL_BLUETOOTH_PRODUCT_PACKAGE := android.hardware.bluetooth@1.1-service.sim
+endif
+    DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/config/manifest_android.hardware.bluetooth@1.1-service.xml
+endif
+
+PRODUCT_PACKAGES += $(LOCAL_BLUETOOTH_PRODUCT_PACKAGE)
+
+PRODUCT_PACKAGES += android.hardware.bluetooth.audio@2.1-impl
 
 #
 # Audio HAL
@@ -432,15 +457,15 @@ PRODUCT_PACKAGES += $(LOCAL_DUMPSTATE_PRODUCT_PACKAGE)
 # Camera
 #
 PRODUCT_PACKAGES += \
-    android.hardware.camera.provider@2.6-service-google \
+    android.hardware.camera.provider@2.7-service-google \
     libgooglecamerahwl_impl \
-    android.hardware.camera.provider@2.6-impl-google \
+    android.hardware.camera.provider@2.7-impl-google \
 
 #
 # Gatekeeper
 #
 ifeq ($(LOCAL_GATEKEEPER_PRODUCT_PACKAGE),)
-       LOCAL_GATEKEEPER_PRODUCT_PACKAGE := android.hardware.gatekeeper@1.0-service.remote
+       LOCAL_GATEKEEPER_PRODUCT_PACKAGE := android.hardware.gatekeeper@1.0-service.software
 endif
 PRODUCT_PACKAGES += \
     $(LOCAL_GATEKEEPER_PRODUCT_PACKAGE)
@@ -495,7 +520,7 @@ PRODUCT_PACKAGES += \
 # Keymaster HAL
 #
 ifeq ($(LOCAL_KEYMASTER_PRODUCT_PACKAGE),)
-       LOCAL_KEYMASTER_PRODUCT_PACKAGE := android.hardware.keymaster@4.1-service.remote
+       LOCAL_KEYMASTER_PRODUCT_PACKAGE := android.hardware.keymaster@4.1-service
 endif
 PRODUCT_PACKAGES += \
     $(LOCAL_KEYMASTER_PRODUCT_PACKAGE)
@@ -506,8 +531,8 @@ PRODUCT_PACKAGES += \
 ifeq ($(LOCAL_KEYMINT_PRODUCT_PACKAGE),)
        LOCAL_KEYMINT_PRODUCT_PACKAGE := android.hardware.security.keymint-service
 endif
-PRODUCT_PACKAGES += \
-    $(LOCAL_KEYMINT_PRODUCT_PACKAGE)
+# PRODUCT_PACKAGES += \
+#    $(LOCAL_KEYMINT_PRODUCT_PACKAGE)
 
 #
 # Power HAL
@@ -534,7 +559,8 @@ PRODUCT_PACKAGES += \
     android.hardware.neuralnetworks-service-sample-float-fast \
     android.hardware.neuralnetworks-service-sample-float-slow \
     android.hardware.neuralnetworks-service-sample-minimal \
-    android.hardware.neuralnetworks-service-sample-quant
+    android.hardware.neuralnetworks-service-sample-quant \
+    android.hardware.neuralnetworks-shim-service-sample
 
 #
 # USB
@@ -569,6 +595,7 @@ PRODUCT_PRODUCT_PROPERTIES += \
 
 # WLAN driver configuration files
 PRODUCT_COPY_FILES += \
+    external/wpa_supplicant_8/wpa_supplicant/wpa_supplicant_template.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wifi/wpa_supplicant.conf \
     $(LOCAL_PATH)/config/wpa_supplicant_overlay.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wifi/wpa_supplicant_overlay.conf
 
 # Fastboot HAL & fastbootd

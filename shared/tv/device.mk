@@ -32,8 +32,13 @@ PRODUCT_COPY_FILES += \
 # HDMI CEC HAL
 PRODUCT_PACKAGES += android.hardware.tv.cec@1.1-service
 
+# Setup HDMI CEC as Playback Device
+PRODUCT_PROPERTY_OVERRIDES += ro.hdmi.device_type=4
+
 # Tuner HAL
 PRODUCT_PACKAGES += android.hardware.tv.tuner@1.1-service
 
 # Enabling managed profiles
 DEVICE_PACKAGE_OVERLAYS += device/google/cuttlefish/shared/tv/overlay
+
+TARGET_BOARD_INFO_FILE ?= device/google/cuttlefish/shared/tv/android-info.txt

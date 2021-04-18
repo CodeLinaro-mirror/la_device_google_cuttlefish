@@ -28,6 +28,8 @@ void LaunchVNCServer(const CuttlefishConfig& config,
 
 void LaunchTombstoneReceiver(const CuttlefishConfig& config,
                              ProcessMonitor* process_monitor);
+void LaunchRootCanal(const CuttlefishConfig& config,
+                     ProcessMonitor* process_monitor);
 void LaunchLogcatReceiver(const CuttlefishConfig& config,
                           ProcessMonitor* process_monitor);
 void LaunchConfigServer(const CuttlefishConfig& config,
@@ -44,6 +46,9 @@ void LaunchGnssGrpcProxyServerIfEnabled(const CuttlefishConfig& config,
 
 void LaunchSecureEnvironment(ProcessMonitor* process_monitor,
                              const CuttlefishConfig& config);
+
+void LaunchBluetoothConnector(ProcessMonitor* process_monitor,
+                              const CuttlefishConfig& config);
 
 void LaunchCustomActionServers(Command& webrtc_cmd,
                                ProcessMonitor* process_monitor,

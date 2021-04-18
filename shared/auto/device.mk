@@ -38,6 +38,7 @@ ifneq ($(LOCAL_SENSOR_FILE_OVERRIDES),true)
 endif
 
 PRODUCT_COPY_FILES += \
+    frameworks/native/data/etc/android.hardware.bluetooth.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.bluetooth.xml \
     frameworks/native/data/etc/android.hardware.broadcastradio.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.broadcastradio.xml \
     frameworks/native/data/etc/android.hardware.faketouch.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.faketouch.xml \
     frameworks/native/data/etc/android.hardware.screen.landscape.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.screen.landscape.xml \
@@ -90,6 +91,8 @@ $(call inherit-product, packages/services/Car/car_product/build/car.mk)
 PRODUCT_BRAND := generic
 
 DEVICE_PACKAGE_OVERLAYS += device/google/cuttlefish/shared/auto/overlay
+
+TARGET_BOARD_INFO_FILE ?= device/google/cuttlefish/shared/auto/android-info.txt
 
 PRODUCT_ENFORCE_RRO_TARGETS := framework-res
 

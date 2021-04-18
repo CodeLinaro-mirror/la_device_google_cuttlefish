@@ -29,32 +29,39 @@
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/files.h"
+#include "host/frontend/webrtc/audio_handler.h"
 #include "host/frontend/webrtc/connection_observer.h"
 #include "host/frontend/webrtc/display_handler.h"
 #include "host/frontend/webrtc/lib/local_recorder.h"
 #include "host/frontend/webrtc/lib/streamer.h"
+#include "host/libs/audio_connector/server.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/logging.h"
 #include "host/libs/screen_connector/screen_connector.h"
 
 DEFINE_int32(touch_fd, -1, "An fd to listen on for touch connections.");
 DEFINE_int32(keyboard_fd, -1, "An fd to listen on for keyboard connections.");
+DEFINE_int32(switches_fd, -1, "An fd to listen on for switch connections.");
 DEFINE_int32(frame_server_fd, -1, "An fd to listen on for frame updates");
-DEFINE_int32(kernel_log_events_fd, -1, "An fd to listen on for kernel log events.");
+DEFINE_int32(kernel_log_events_fd, -1,
+             "An fd to listen on for kernel log events.");
 DEFINE_int32(command_fd, -1, "An fd to listen to for control messages");
 DEFINE_string(action_servers, "",
               "A comma-separated list of server_name:fd pairs, "
               "where each entry corresponds to one custom action server.");
-DEFINE_bool(write_virtio_input, false,
+DEFINE_bool(write_virtio_input, true,
             "Whether to send input events in virtio format.");
+DEFINE_int32(audio_server_fd, -1, "An fd to listen on for audio frames");
 
+using cuttlefish::AudioHandler;
 using cuttlefish::CfConnectionObserverFactory;
 using cuttlefish::DisplayHandler;
 using cuttlefish::webrtc_streaming::LocalRecorder;
 using cuttlefish::webrtc_streaming::Streamer;
 using cuttlefish::webrtc_streaming::StreamerConfig;
 
-class CfOperatorObserver : public cuttlefish::webrtc_streaming::OperatorObserver {
+class CfOperatorObserver
+    : public cuttlefish::webrtc_streaming::OperatorObserver {
  public:
   virtual ~CfOperatorObserver() = default;
   virtual void OnRegistered() override {
@@ -108,7 +115,14 @@ static std::vector<std::pair<std::string, std::string>> ParseHttpHeaders(
   return headers;
 }
 
-int main(int argc, char **argv) {
+std::unique_ptr<cuttlefish::AudioServer> CreateAudioServer() {
+  cuttlefish::SharedFD audio_server_fd =
+      cuttlefish::SharedFD::Dup(FLAGS_audio_server_fd);
+  close(FLAGS_audio_server_fd);
+  return std::make_unique<cuttlefish::AudioServer>(audio_server_fd);
+}
+
+int main(int argc, char** argv) {
   cuttlefish::DefaultSubprocessLogging(argv);
   ::gflags::ParseCommandLineFlags(&argc, &argv, true);
 
@@ -116,9 +130,11 @@ int main(int argc, char **argv) {
 
   input_sockets.touch_server = cuttlefish::SharedFD::Dup(FLAGS_touch_fd);
   input_sockets.keyboard_server = cuttlefish::SharedFD::Dup(FLAGS_keyboard_fd);
+  input_sockets.switches_server = cuttlefish::SharedFD::Dup(FLAGS_switches_fd);
   auto control_socket = cuttlefish::SharedFD::Dup(FLAGS_command_fd);
   close(FLAGS_touch_fd);
   close(FLAGS_keyboard_fd);
+  close(FLAGS_switches_fd);
   close(FLAGS_command_fd);
   // Accepting on these sockets here means the device won't register with the
   // operator as soon as it could, but rather wait until crosvm's input display
@@ -129,26 +145,36 @@ int main(int argc, char **argv) {
       cuttlefish::SharedFD::Accept(*input_sockets.touch_server);
   input_sockets.keyboard_client =
       cuttlefish::SharedFD::Accept(*input_sockets.keyboard_server);
+  input_sockets.switches_client =
+      cuttlefish::SharedFD::Accept(*input_sockets.switches_server);
 
-  std::thread touch_accepter([&input_sockets](){
+  std::thread touch_accepter([&input_sockets]() {
     for (;;) {
       input_sockets.touch_client =
           cuttlefish::SharedFD::Accept(*input_sockets.touch_server);
     }
   });
-  std::thread keyboard_accepter([&input_sockets](){
+  std::thread keyboard_accepter([&input_sockets]() {
     for (;;) {
       input_sockets.keyboard_client =
           cuttlefish::SharedFD::Accept(*input_sockets.keyboard_server);
     }
   });
+  std::thread switches_accepter([&input_sockets]() {
+    for (;;) {
+      input_sockets.switches_client =
+          cuttlefish::SharedFD::Accept(*input_sockets.switches_server);
+    }
+  });
 
-  auto kernel_log_events_client = cuttlefish::SharedFD::Dup(FLAGS_kernel_log_events_fd);
+  auto kernel_log_events_client =
+      cuttlefish::SharedFD::Dup(FLAGS_kernel_log_events_fd);
   close(FLAGS_kernel_log_events_fd);
 
   auto cvd_config = cuttlefish::CuttlefishConfig::Get();
   auto instance = cvd_config->ForDefaultInstance();
-  auto screen_connector = cuttlefish::DisplayHandler::ScreenConnector::Get(FLAGS_frame_server_fd);
+  auto screen_connector =
+      cuttlefish::DisplayHandler::ScreenConnector::Get(FLAGS_frame_server_fd);
 
   StreamerConfig streamer_config;
 
@@ -199,16 +225,40 @@ int main(int argc, char **argv) {
 
   observer_factory->SetDisplayHandler(display_handler);
 
-  streamer->SetHardwareSpecs(cvd_config->cpus(), cvd_config->memory_mb());
+  streamer->SetHardwareSpec("CPUs", cvd_config->cpus());
+  streamer->SetHardwareSpec("RAM", std::to_string(cvd_config->memory_mb()) + " mb");
+
+  std::string user_friendly_gpu_mode;
+  if (cvd_config->gpu_mode() == cuttlefish::kGpuModeGuestSwiftshader) {
+    user_friendly_gpu_mode = "SwiftShader (Guest CPU Rendering)";
+  } else if (cvd_config->gpu_mode() == cuttlefish::kGpuModeDrmVirgl) {
+    user_friendly_gpu_mode = "VirglRenderer (Accelerated Host GPU Rendering)";
+  } else if (cvd_config->gpu_mode() == cuttlefish::kGpuModeGfxStream) {
+    user_friendly_gpu_mode = "Gfxstream (Accelerated Host GPU Rendering)";
+  } else {
+    user_friendly_gpu_mode = cvd_config->gpu_mode();
+  }
+  streamer->SetHardwareSpec("GPU Mode", user_friendly_gpu_mode);
+
+  std::shared_ptr<AudioHandler> audio_handler;
+  if (cvd_config->enable_audio()) {
+    auto audio_stream = streamer->AddAudioStream("audio");
+    auto audio_server = CreateAudioServer();
+    audio_handler =
+        std::make_shared<AudioHandler>(audio_stream, std::move(audio_server));
+  }
 
   // Parse the -action_servers flag, storing a map of action server name -> fd
   std::map<std::string, int> action_server_fds;
-  for (const std::string& action_server : android::base::Split(FLAGS_action_servers, ",")) {
+  for (const std::string& action_server :
+       android::base::Split(FLAGS_action_servers, ",")) {
     if (action_server.empty()) {
       continue;
     }
-    const std::vector<std::string> server_and_fd = android::base::Split(action_server, ":");
-    CHECK(server_and_fd.size() == 2) << "Wrong format for action server flag: " << action_server;
+    const std::vector<std::string> server_and_fd =
+        android::base::Split(action_server, ":");
+    CHECK(server_and_fd.size() == 2)
+        << "Wrong format for action server flag: " << action_server;
     std::string server = server_and_fd[0];
     int fd = std::stoi(server_and_fd[1]);
     action_server_fds[server] = fd;
@@ -221,11 +271,10 @@ int main(int argc, char **argv) {
                    << *(custom_action.shell_command);
       }
       const auto button = custom_action.buttons[0];
-      streamer->AddCustomControlPanelButton(button.command, button.title,
-                                            button.icon_name,
-                                            custom_action.shell_command);
-    }
-    if (custom_action.server) {
+      streamer->AddCustomControlPanelButtonWithShellCommand(
+          button.command, button.title, button.icon_name,
+          *(custom_action.shell_command));
+    } else if (custom_action.server) {
       if (action_server_fds.find(*(custom_action.server)) !=
           action_server_fds.end()) {
         LOG(INFO) << "Connecting to custom action server "
@@ -252,6 +301,15 @@ int main(int argc, char **argv) {
         LOG(ERROR) << "Custom action server not provided as command line flag: "
                    << *(custom_action.server);
       }
+    } else if (!custom_action.device_states.empty()) {
+      if (custom_action.buttons.size() != 1) {
+        LOG(FATAL)
+            << "Expected exactly one button for custom action device states.";
+      }
+      const auto button = custom_action.buttons[0];
+      streamer->AddCustomControlPanelButtonWithDeviceStates(
+          button.command, button.title, button.icon_name,
+          custom_action.device_states);
     }
   }
 
@@ -278,6 +336,9 @@ int main(int argc, char **argv) {
     LOG(DEBUG) << "control socket closed";
   });
 
+  if (audio_handler) {
+    audio_handler->Start();
+  }
   display_handler->Loop();
 
   return 0;

@@ -56,7 +56,6 @@ std::string TargetFilesZip(const FetcherConfig& fetcher_config,
 const std::string kMiscInfoPath = "META/misc_info.txt";
 const std::set<std::string> kDefaultTargetImages = {
   "IMAGES/boot.img",
-  "IMAGES/cache.img",
   "IMAGES/odm.img",
   "IMAGES/odm_dlkm.img",
   "IMAGES/recovery.img",
@@ -226,9 +225,9 @@ bool BuildSuperImage(const std::string& combined_target_zip,
     build_super_image_binary =
         DefaultHostArtifactsPath("otatools/bin/build_super_image");
     otatools_path = DefaultHostArtifactsPath("otatools");
-  } else if (FileExists(DefaultHostArtifactsPath("bin/build_super_image"))) {
+  } else if (FileExists(HostBinaryPath("build_super_image"))) {
     build_super_image_binary =
-        DefaultHostArtifactsPath("bin/build_super_image");
+        HostBinaryPath("build_super_image");
     otatools_path = DefaultHostArtifactsPath("");
   } else {
     LOG(ERROR) << "Could not find otatools";

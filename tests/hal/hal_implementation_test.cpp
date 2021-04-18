@@ -102,15 +102,19 @@ static const std::set<std::string> kKnownMissingAidl = {
     "android.hardware.common.fmq.",
     "android.hardware.graphics.common.",
 
-    // Temporarily add the keystore2 interface. The service implementation is
-    // in full swing but we cannot register the service by default just yet.
-    // b/170144267
-    "android.system.keystore2.",
-
     // These KeyMaster types are in an AIDL types-only HAL because they're used
     // by the Identity Credential AIDL HAL. Remove this when fully porting
     // KeyMaster to AIDL.
     "android.hardware.keymaster.",
+
+    // Temporarily disable keymint, secureclock, and shared secret in favor of
+    // keymaster 4.1. This is required for the transition to Keystore 2.0.
+    // Software keymint does not work with Gatekeeper. This can be removed when
+    // the remote keymaster implementation was ported to keymint.
+    // b/182928606
+    "android.hardware.security.keymint.",
+    "android.hardware.security.secureclock.",
+    "android.hardware.security.sharedsecret.",
 
     // These types are only used in Automotive.
     "android.automotive.computepipe.registry.",

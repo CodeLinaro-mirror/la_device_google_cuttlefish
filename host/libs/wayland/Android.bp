@@ -13,6 +13,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
 cc_library_static {
     name: "libcuttlefish_wayland_server",
     srcs: [
@@ -23,6 +27,7 @@ cc_library_static {
         "wayland_server.cpp",
         "wayland_subcompositor.cpp",
         "wayland_surface.cpp",
+        "wayland_surfaces.cpp",
     ],
     shared_libs: [
         "libbase",
@@ -37,4 +42,3 @@ cc_library_static {
     ],
     defaults: ["cuttlefish_host"],
 }
-

@@ -12,12 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
 android_test {
     name: "CuttlefishRilTests",
     srcs: ["src/**/*.java"],
     libs: ["android.test.runner.stubs"],
     static_libs: [
         "androidx.test.rules",
+        "compatibility-device-util-axt",
         "hamcrest-library",
         "platform-test-annotations",
     ],

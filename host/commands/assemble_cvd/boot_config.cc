@@ -50,9 +50,6 @@ size_t WriteEnvironment(const CuttlefishConfig& config,
   if (!config.boot_slot().empty()) {
       env << "android_slot_suffix=_" << config.boot_slot() << '\0';
   }
-  // Points to the misc partition.
-  // Note that the 0 index points to the GPT table.
-  env << "bootdevice=0:2" << '\0';
 
   if(FLAGS_pause_in_bootloader) {
     env << "bootdelay=-1" << '\0';
@@ -60,9 +57,10 @@ size_t WriteEnvironment(const CuttlefishConfig& config,
     env << "bootdelay=0" << '\0';
   }
 
-  env << "bootcmd=boot_android virtio -" << '\0';
+  // Note that the 0 index points to the GPT table.
+  env << "bootcmd=boot_android virtio 0#misc" << '\0';
   if (FLAGS_vm_manager == CrosvmManager::name() &&
-          HostArch() == "aarch64") {
+      config.target_arch() == Arch::Arm64) {
     env << "fdtaddr=0x80000000" << '\0';
   } else {
     env << "fdtaddr=0x40000000" << '\0';
@@ -87,13 +85,13 @@ bool InitBootloaderEnvPartition(const CuttlefishConfig& config,
   auto boot_env_image_path = instance.uboot_env_image_path();
   auto tmp_boot_env_image_path = boot_env_image_path + ".tmp";
   auto uboot_env_path = instance.PerInstancePath("mkenvimg_input");
-  auto kernel_args = KernelCommandLineFromConfig(config, instance);
+  auto kernel_args = KernelCommandLineFromConfig(config);
   if(!WriteEnvironment(config, kernel_args, uboot_env_path)) {
     LOG(ERROR) << "Unable to write out plaintext env '" << uboot_env_path << ".'";
     return false;
   }
 
-  auto mkimage_path = DefaultHostArtifactsPath("bin/mkenvimage");
+  auto mkimage_path = HostBinaryPath("mkenvimage");
   Command cmd(mkimage_path);
   cmd.AddParameter("-s");
   cmd.AddParameter("4096");

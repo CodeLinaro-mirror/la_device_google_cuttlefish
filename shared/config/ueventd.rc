@@ -22,7 +22,11 @@
 # gatekeeper
 /dev/hvc4 0660 system system
 
+# bluetooth
+/dev/hvc5 0660 bluetooth bluetooth
+/dev/vhci 0660 bluetooth bluetooth
+
 /dev/gnss0 0666 system system
 
 # Factory Reset Protection
-/dev/block/vdc 0660 system system
+/dev/block/vdb 0660 system system

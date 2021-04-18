@@ -177,16 +177,18 @@ bool CreateQcowOverlay(const std::string& crosvm_path,
 }
 
 void DeleteFifos(const CuttlefishConfig::InstanceSpecific& instance) {
-    // TODO(schuffelen): Create these FIFOs in assemble_cvd instead of run_cvd.
+  // TODO(schuffelen): Create these FIFOs in assemble_cvd instead of run_cvd.
   std::vector<std::string> pipes = {
-    instance.kernel_log_pipe_name(),
-    instance.console_in_pipe_name(),
-    instance.console_out_pipe_name(),
-    instance.logcat_pipe_name(),
-    instance.PerInstanceInternalPath("keymaster_fifo_vm.in"),
-    instance.PerInstanceInternalPath("keymaster_fifo_vm.out"),
-    instance.PerInstanceInternalPath("gatekeeper_fifo_vm.in"),
-    instance.PerInstanceInternalPath("gatekeeper_fifo_vm.out"),
+      instance.kernel_log_pipe_name(),
+      instance.console_in_pipe_name(),
+      instance.console_out_pipe_name(),
+      instance.logcat_pipe_name(),
+      instance.PerInstanceInternalPath("keymaster_fifo_vm.in"),
+      instance.PerInstanceInternalPath("keymaster_fifo_vm.out"),
+      instance.PerInstanceInternalPath("gatekeeper_fifo_vm.in"),
+      instance.PerInstanceInternalPath("gatekeeper_fifo_vm.out"),
+      instance.PerInstanceInternalPath("bt_fifo_vm.in"),
+      instance.PerInstanceInternalPath("bt_fifo_vm.out"),
   };
   for (const auto& pipe : pipes) {
     unlink(pipe.c_str());
@@ -222,8 +224,8 @@ bool PowerwashFiles() {
 
   auto overlay_path = instance.PerInstancePath("overlay.img");
   unlink(overlay_path.c_str());
-  if (!CreateQcowOverlay(
-      config->crosvm_binary(), instance.composite_disk_path(), overlay_path)) {
+  if (!CreateQcowOverlay(config->crosvm_binary(),
+                         instance.os_composite_disk_path(), overlay_path)) {
     LOG(ERROR) << "CreateQcowOverlay failed";
     return false;
   }
@@ -435,8 +437,9 @@ int RunCvdMain(int argc, char** argv) {
     LOG(ERROR) << "Ethernet TAP device already in use";
   }
 
-  auto vm_manager = GetVmManager(config->vm_manager());
+  auto vm_manager = GetVmManager(config->vm_manager(), config->target_arch());
 
+#ifndef __ANDROID__
   // Check host configuration
   std::vector<std::string> config_commands;
   if (!ValidateHostConfiguration(&config_commands)) {
@@ -449,6 +452,7 @@ int RunCvdMain(int argc, char** argv) {
               << std::endl;
     return RunnerExitCodes::kInvalidHostConfiguration;
   }
+#endif
 
   if (!WriteCuttlefishEnvironment(*config)) {
     LOG(ERROR) << "Unable to write cuttlefish environment file";
@@ -534,11 +538,15 @@ int RunCvdMain(int argc, char** argv) {
   CvdBootStateMachine boot_state_machine(foreground_launcher_pipe,
                                          reboot_notification, boot_events_pipe);
 
+  LaunchRootCanal(*config, &process_monitor);
   LaunchLogcatReceiver(*config, &process_monitor);
   LaunchConfigServer(*config, &process_monitor);
   LaunchTombstoneReceiver(*config, &process_monitor);
   LaunchGnssGrpcProxyServerIfEnabled(*config, &process_monitor);
   LaunchSecureEnvironment(&process_monitor, *config);
+  if (config->enable_host_bluetooth()) {
+    LaunchBluetoothConnector(&process_monitor, *config);
+  }
   LaunchVehicleHalServerIfEnabled(*config, &process_monitor);
   LaunchConsoleForwarderIfEnabled(*config, &process_monitor);
 
@@ -551,12 +559,8 @@ int RunCvdMain(int argc, char** argv) {
     LaunchWebRTC(&process_monitor, *config, webrtc_events_pipe);
   }
 
-  auto kernel_args =
-      KernelCommandLineFromConfig(*config, config->ForDefaultInstance());
-
   // Start the guest VM
-  auto vmm_commands = vm_manager->StartCommands(
-      *config, android::base::Join(kernel_args, " "));
+  auto vmm_commands = vm_manager->StartCommands(*config);
   for (auto& vmm_cmd: vmm_commands) {
     process_monitor.AddCommand(std::move(vmm_cmd));
   }

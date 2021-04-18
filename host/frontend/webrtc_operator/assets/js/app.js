@@ -22,6 +22,7 @@ function ConnectToDevice(device_id) {
   keyboardCaptureButton.addEventListener('click', onKeyboardCaptureClick);
 
   const deviceScreen = document.getElementById('deviceScreen');
+  const deviceAudio = document.getElementById('deviceAudio');
   const deviceView = document.getElementById('device_view');
   const webrtcStatusMessage = document.getElementById('webrtc_status_message');
   const adbStatusMessage = document.getElementById('adb_status_message');
@@ -231,6 +232,12 @@ function ConnectToDevice(device_id) {
         display_label = stream_id;
         deviceScreen.srcObject = videoStream;
       }).catch(e => console.error('Unable to get display stream: ', e));
+      for (const audio_desc of devConn.description.audio_streams) {
+        let stream_id = audio_desc.stream_id;
+        devConn.getStream(stream_id).then(stream => {
+          deviceAudio.srcObject = stream;
+        }).catch(e => console.error('Unable to get audio stream: ', e));
+      }
       startMouseTracking();  // TODO stopMouseTracking() when disconnected
       updateDeviceHardwareDetails(deviceConnection.description.hardware);
       updateDeviceDisplayDetails(deviceConnection.description.displays[0]);
@@ -244,6 +251,11 @@ function ConnectToDevice(device_id) {
                 e => onCustomShellButton(button.shell_command, e),
                 'control_panel_custom_buttons');
             buttons[button.command].adb = true;
+          } else if (button.device_states) {
+            // This button corresponds to variable hardware device state(s).
+            createControlPanelButton(button.command, button.title, button.icon_name,
+                getCustomDeviceStateButtonCb(button.device_states),
+                'control_panel_custom_buttons');
           } else {
             // This button's command is handled by custom action server.
             createControlPanelButton(button.command, button.title, button.icon_name,
@@ -260,11 +272,11 @@ function ConnectToDevice(device_id) {
       // connected long after the device boots up.
       deviceConnection.sendControlMessage(JSON.stringify({
         command: 'home',
-        state: 'down',
+        button_state: 'down',
       }));
       deviceConnection.sendControlMessage(JSON.stringify({
         command: 'home',
-        state: 'up',
+        button_state: 'up',
       }));
       // Show the error message and disable buttons when the WebRTC connection fails.
       deviceConnection.onConnectionStateChange(state => {
@@ -285,9 +297,13 @@ function ConnectToDevice(device_id) {
     ].join('\n');
   }
   function updateDeviceHardwareDetails(hardware) {
-    let cpus = hardware.cpus;
-    let memory_mb = hardware.memory_mb;
-    hardwareDetailsText = `CPUs - ${cpus}\nDevice RAM - ${memory_mb}mb`;
+    let hardwareDetailsTextLines = [];
+    Object.keys(hardware).forEach(function(key) {
+      let value = hardware[key];
+      hardwareDetailsTextLines.push(`${key} - ${value}`);
+    });
+
+    hardwareDetailsText = hardwareDetailsTextLines.join('\n');
     updateDeviceDetailsText();
   }
   function updateDeviceDisplayDetails(display) {
@@ -295,7 +311,8 @@ function ConnectToDevice(device_id) {
     let dpi = display.dpi;
     let x_res = display.x_res;
     let y_res = display.y_res;
-    displayDetailsText = `Display - ${x_res}x${y_res} (${dpi}DPI)`;
+    let rotated = currentRotation == 1 ? ' (Rotated)' : '';
+    displayDetailsText = `Display - ${x_res}x${y_res} (${dpi}DPI)${rotated}`;
     updateDeviceDetailsText();
   }
 
@@ -317,7 +334,7 @@ function ConnectToDevice(device_id) {
     }
     deviceConnection.sendControlMessage(JSON.stringify({
       command: e.target.dataset.command,
-      state: e.type == 'mousedown' ? "down" : "up",
+      button_state: e.type == 'mousedown' ? "down" : "up",
     }));
   }
 
@@ -331,12 +348,33 @@ function ConnectToDevice(device_id) {
           (currentRotation == 0 ? 'landscape' : 'portrait'))
     }
   }
+
   function onCustomShellButton(shell_command, e) {
     // Attempt to init adb again, in case the initial connection failed.
     // This succeeds immediately if already connected.
     initializeAdb();
     if (e.type == 'mousedown') {
       adbShell(shell_command);
+    }
+  }
+
+  function getCustomDeviceStateButtonCb(device_states) {
+    let states = device_states;
+    let index = 0;
+    return e => {
+      if (e.type == 'mousedown') {
+        // Reset any overridden device state.
+        adbShell('cmd device_state state reset');
+        // Send a device_state message for the current state.
+        let message = {
+          command: 'device_state',
+          ...states[index],
+        };
+        deviceConnection.sendControlMessage(JSON.stringify(message));
+        console.log(JSON.stringify(message));
+        // Cycle to the next state.
+        index = (index + 1) % states.length;
+      }
     }
   }
 
@@ -465,7 +503,6 @@ function ConnectToDevice(device_id) {
     var idArr = [];
     var slotArr = [];
 
-    console.log('e.type: ' + e.type);
     if (eventType == "mouse" || eventType == "point") {
       xArr.push(e.offsetX);
       yArr.push(e.offsetY);
@@ -486,7 +523,6 @@ function ConnectToDevice(device_id) {
       for (var i=0; i < changes.length; i++) {
         xArr.push(changes[i].pageX - rect.left);
         yArr.push(changes[i].pageY - rect.top);
-        idArr.push(changes[i].identifier);
         if (touchIdSlotMap.has(changes[i].identifier)) {
           let slot = touchIdSlotMap.get(changes[i].identifier);
 

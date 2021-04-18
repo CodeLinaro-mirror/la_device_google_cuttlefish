@@ -21,10 +21,8 @@
 #include "common/libs/utils/files.h"
 #include "host/commands/assemble_cvd/alloc.h"
 #include "host/commands/assemble_cvd/boot_config.h"
-#include "host/commands/assemble_cvd/boot_image_unpacker.h"
 #include "host/commands/assemble_cvd/clean.h"
 #include "host/commands/assemble_cvd/disk_flags.h"
-#include "host/libs/config/fetcher_config.h"
 #include "host/libs/config/host_tools_version.h"
 #include "host/libs/graphics_detector/graphics_detector.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
@@ -32,14 +30,16 @@
 #include "host/libs/vm_manager/vm_manager.h"
 
 using cuttlefish::DefaultHostArtifactsPath;
+using cuttlefish::HostBinaryPath;
 using cuttlefish::StringFromEnv;
 using cuttlefish::vm_manager::CrosvmManager;
 using google::FlagSettingMode::SET_FLAGS_DEFAULT;
 
 DEFINE_string(config, "phone",
               "Config preset name. Will automatically set flag fields "
-              "using the values from this file of presets. Possible values: "
-              "phone,tablet,foldable,auto,tv");
+              "using the values from this file of presets. See "
+              "device/google/cuttlefish/shared/config/config_*.json "
+              "for possible values.");
 
 DEFINE_int32(cpus, 2, "Virtual CPU count.");
 DEFINE_string(data_policy, "use_existing", "How to handle userdata partition."
@@ -49,8 +49,10 @@ DEFINE_int32(blank_data_image_mb, 0,
              "The size of the blank data image to generate, MB.");
 DEFINE_string(blank_data_image_fmt, "f2fs",
               "The fs format for the blank data image. Used with mkfs.");
-DEFINE_string(qemu_gdb, "",
-              "Debug flag to pass to qemu. e.g. -qemu_gdb=tcp::1234");
+DEFINE_int32(gdb_port, 0,
+             "Port number to spawn kernel gdb on e.g. -gdb_port=1234. The"
+             "kernel must have been built with CONFIG_RANDOMIZE_BASE "
+             "disabled.");
 
 DEFINE_int32(x_res, 0, "Width of the screen in pixels");
 DEFINE_int32(y_res, 0, "Height of the screen in pixels");
@@ -59,24 +61,19 @@ DEFINE_int32(refresh_rate_hz, 60, "Screen refresh rate in Hertz");
 DEFINE_string(kernel_path, "",
               "Path to the kernel. Overrides the one from the boot image");
 DEFINE_string(initramfs_path, "", "Path to the initramfs");
-DEFINE_bool(decompress_kernel, false,
-            "Whether to decompress the kernel image.");
 DEFINE_string(extra_kernel_cmdline, "",
               "Additional flags to put on the kernel command line");
 DEFINE_bool(guest_enforce_security, true,
             "Whether to run in enforcing mode (non permissive).");
 DEFINE_bool(guest_audit_security, true,
             "Whether to log security audits.");
-DEFINE_bool(guest_force_normal_boot, true,
-            "Whether to force the boot sequence to skip recovery.");
 DEFINE_int32(memory_mb, 0, "Total amount of memory available for guest, MB.");
 DEFINE_string(serial_number, cuttlefish::ForCurrentInstance("CUTTLEFISHCVD"),
               "Serial number to use for the device");
 DEFINE_bool(use_random_serial, false,
             "Whether to use random serial for the device.");
-DEFINE_string(
-    vm_manager, CrosvmManager::name(),
-    "What virtual machine manager to use, one of {qemu_cli, crosvm}");
+DEFINE_string(vm_manager, "",
+              "What virtual machine manager to use, one of {qemu_cli, crosvm}");
 DEFINE_string(gpu_mode, cuttlefish::kGpuModeAuto,
               "What gpu configuration to use, one of {auto, drm_virgl, "
               "gfxstream, guest_swiftshader}");
@@ -97,6 +94,16 @@ DEFINE_bool(enable_minimal_mode, false,
 DEFINE_bool(pause_in_bootloader, false,
             "Stop the bootflow in u-boot. You can continue the boot by connecting "
             "to the device console and typing in \"boot\".");
+DEFINE_bool(enable_host_bluetooth, true,
+            "Enable the root-canal which is Bluetooth emulator in the host.");
+
+DEFINE_string(bluetooth_controller_properties_file,
+              "etc/rootcanal/data/controller_properties.json",
+              "The configuartion file path for root-canal which is a Bluetooth "
+              "emulator.");
+DEFINE_string(
+    bluetooth_default_commands_file, "etc/rootcanal/data/default_commands",
+    "The default commands which root-canal executes when it launches.");
 
 /**
  *
@@ -120,7 +127,7 @@ DEFINE_bool(enable_sandbox,
             "Enable crosvm sandbox. Use this when you are sure about what you are doing.");
 
 static const std::string kSeccompDir =
-    std::string("usr/share/crosvm/") + cuttlefish::HostArch() + "-linux-gnu/seccomp";
+    std::string("usr/share/crosvm/") + cuttlefish::HostArchStr() + "-linux-gnu/seccomp";
 DEFINE_string(seccomp_policy_dir, DefaultHostArtifactsPath(kSeccompDir),
               "With sandbox'ed crosvm, overrieds the security comp policy directory");
 
@@ -210,10 +217,9 @@ DEFINE_string(device_title, "", "Human readable name for the instance, "
 DEFINE_string(setupwizard_mode, "DISABLED",
             "One of DISABLED,OPTIONAL,REQUIRED");
 
-DEFINE_string(qemu_binary,
-              "/usr/bin/qemu-system-x86_64",
-              "The qemu binary to use");
-DEFINE_string(crosvm_binary, DefaultHostArtifactsPath("bin/crosvm"),
+DEFINE_string(qemu_binary_dir, "/usr/bin",
+              "Path to the directory containing the qemu binary to use");
+DEFINE_string(crosvm_binary, HostBinaryPath("crosvm"),
               "The Crosvm binary to use");
 DEFINE_string(tpm_device, "", "A host TPM device to pass through commands to.");
 DEFINE_bool(restart_subprocesses, true, "Restart any crashed host process");
@@ -230,14 +236,11 @@ DEFINE_string(custom_actions, "",
               "--custom_action_config to specify a custom config file on the "
               "command line. Actions in this flag are combined with actions "
               "in --custom_action_config.");
-DEFINE_bool(use_bootloader, true, "Boots the device using a bootloader");
 DEFINE_string(bootloader, "", "Bootloader binary path");
 DEFINE_string(boot_slot, "", "Force booting into the given slot. If empty, "
              "the slot will be chosen based on the misc partition if using a "
              "bootloader. It will default to 'a' if empty and not using a "
              "bootloader.");
-DEFINE_bool(use_slot_suffix, true, "Whether to pass the slot_suffix kernel "
-            "parameter if not using a bootloader.");
 DEFINE_int32(num_instances, 1, "Number of Android guests to launch");
 DEFINE_string(report_anonymous_usage_stats, "", "Report anonymous usage "
             "statistics for metrics collection and analysis.");
@@ -267,6 +270,8 @@ DEFINE_bool(record_screen, false, "Enable screen recording. "
 
 DEFINE_bool(ethernet, false, "Enable Ethernet network interface");
 
+DEFINE_bool(smt, false, "Enable simultaneous multithreading (SMT/HT)");
+
 DEFINE_int32(vsock_guest_cid,
              cuttlefish::GetDefaultVsockCid(),
              "vsock_guest_cid is used to determine the guest vsock cid as well as all the ports"
@@ -287,6 +292,15 @@ DEFINE_string(secure_hals, "keymint,gatekeeper",
               "Which HALs to use enable host security features for. Supports "
               "keymint and gatekeeper at the moment.");
 
+DEFINE_bool(use_sdcard, true, "Create blank SD-Card image and expose to guest");
+
+DEFINE_bool(protected_vm, false, "Boot in Protected VM mode");
+
+DEFINE_bool(enable_audio, cuttlefish::HostArch() != cuttlefish::Arch::Arm64,
+            "Whether to play or capture audio");
+
+DECLARE_string(assembly_dir);
+DECLARE_string(boot_image);
 DECLARE_string(system_image_dir);
 
 namespace cuttlefish {
@@ -294,10 +308,6 @@ using vm_manager::QemuManager;
 using vm_manager::GetVmManager;
 
 namespace {
-
-const std::string kKernelDefaultPath = "kernel";
-const std::string kInitramfsImg = "initramfs.img";
-const std::string kRamdiskConcatExt = ".concat";
 
 bool IsFlagSet(const std::string& flag) {
   return !gflags::GetCommandLineFlagInfoOrDie(flag.c_str()).is_default;
@@ -327,20 +337,72 @@ std::string StrForInstance(const std::string& prefix, int num) {
   return stream.str();
 }
 
+#ifdef __ANDROID__
+void ReadKernelConfig(KernelConfig* kernel_config) {
+  // QEMU isn't on Android, so always follow host arch
+  kernel_config->target_arch = HostArch();
+  kernel_config->bootconfig_supported = true;
+}
+#else
+void ReadKernelConfig(KernelConfig* kernel_config) {
+  // extract-ikconfig can be called directly on the boot image since it looks
+  // for the ikconfig header in the image before extracting the config list.
+  // This code is liable to break if the boot image ever includes the
+  // ikconfig header outside the kernel.
+  const std::string kernel_image_path =
+      FLAGS_kernel_path.size() ? FLAGS_kernel_path : FLAGS_boot_image;
+
+  Command ikconfig_cmd(HostBinaryPath("extract-ikconfig"));
+  ikconfig_cmd.AddParameter(kernel_image_path);
+
+  std::string current_path = StringFromEnv("PATH", "");
+  std::string bin_folder = DefaultHostArtifactsPath("bin");
+  ikconfig_cmd.SetEnvironment({"PATH=" + current_path + ":" + bin_folder});
+
+  std::string ikconfig_path =
+      StringFromEnv("TEMP", "/tmp") + "/ikconfig.XXXXXX";
+  auto ikconfig_fd = SharedFD::Mkstemp(&ikconfig_path);
+  CHECK(ikconfig_fd->IsOpen())
+      << "Unable to create ikconfig file: " << ikconfig_fd->StrError();
+  ikconfig_cmd.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, ikconfig_fd);
+
+  auto ikconfig_proc = ikconfig_cmd.Start();
+  CHECK(ikconfig_proc.Started() && ikconfig_proc.Wait() == 0)
+      << "Failed to extract ikconfig from " << kernel_image_path;
+
+  std::string config = ReadFile(ikconfig_path);
+
+  if (config.find("\nCONFIG_ARM=y") != std::string::npos) {
+    kernel_config->target_arch = Arch::Arm;
+  } else if (config.find("\nCONFIG_ARM64=y") != std::string::npos) {
+    kernel_config->target_arch = Arch::Arm64;
+  } else if (config.find("\nCONFIG_X86_64=y") != std::string::npos) {
+    kernel_config->target_arch = Arch::X86_64;
+  } else if (config.find("\nCONFIG_X86=y") != std::string::npos) {
+    kernel_config->target_arch = Arch::X86;
+  } else {
+    LOG(FATAL) << "Unknown target architecture";
+  }
+  kernel_config->bootconfig_supported =
+      config.find("\nCONFIG_BOOT_CONFIG=y") != std::string::npos;
+
+  unlink(ikconfig_path.c_str());
+}
+#endif  // #ifdef __ANDROID__
+
 } // namespace
 
 CuttlefishConfig InitializeCuttlefishConfiguration(
-    const std::string& assembly_dir,
-    const std::string& instance_dir,
-    int modem_simulator_count,
-    const BootImageUnpacker& boot_image_unpacker,
-    const FetcherConfig& fetcher_config) {
+    const std::string& instance_dir, int modem_simulator_count,
+    KernelConfig kernel_config) {
   // At most one streamer can be started.
   CHECK(NumStreamers() <= 1);
 
   CuttlefishConfig tmp_config_obj;
-  tmp_config_obj.set_assembly_dir(assembly_dir);
-  auto vmm = GetVmManager(FLAGS_vm_manager);
+  tmp_config_obj.set_assembly_dir(FLAGS_assembly_dir);
+  tmp_config_obj.set_target_arch(kernel_config.target_arch);
+  tmp_config_obj.set_bootconfig_supported(kernel_config.bootconfig_supported);
+  auto vmm = GetVmManager(FLAGS_vm_manager, kernel_config.target_arch);
   if (!vmm) {
     LOG(FATAL) << "Invalid vm_manager: " << FLAGS_vm_manager;
   }
@@ -398,7 +460,11 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
                " does not work with vm_manager=" << FLAGS_vm_manager;
   }
 
+  CHECK(!FLAGS_smt || FLAGS_cpus % 2 == 0)
+      << "CPUs must be a multiple of 2 in SMT mode";
   tmp_config_obj.set_cpus(FLAGS_cpus);
+  tmp_config_obj.set_smt(FLAGS_smt);
+
   tmp_config_obj.set_memory_mb(FLAGS_memory_mb);
 
   tmp_config_obj.set_setupwizard_mode(FLAGS_setupwizard_mode);
@@ -415,39 +481,13 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_secure_hals(
       std::set<std::string>(secure_hals.begin(), secure_hals.end()));
 
-  tmp_config_obj.set_gdb_flag(FLAGS_qemu_gdb);
+  tmp_config_obj.set_gdb_port(FLAGS_gdb_port);
+
   std::vector<std::string> adb = android::base::Split(FLAGS_adb_mode, ",");
   tmp_config_obj.set_adb_mode(std::set<std::string>(adb.begin(), adb.end()));
-  std::string discovered_kernel = fetcher_config.FindCvdFileWithSuffix(kKernelDefaultPath);
-  std::string foreign_kernel = FLAGS_kernel_path.size() ? FLAGS_kernel_path : discovered_kernel;
-  if (foreign_kernel.size()) {
-    tmp_config_obj.set_kernel_image_path(foreign_kernel);
-    tmp_config_obj.set_use_unpacked_kernel(false);
-  } else {
-    tmp_config_obj.set_kernel_image_path(
-        tmp_config_obj.AssemblyPath(kKernelDefaultPath.c_str()));
-    tmp_config_obj.set_use_unpacked_kernel(true);
-  }
 
-  tmp_config_obj.set_decompress_kernel(FLAGS_decompress_kernel);
-  if (tmp_config_obj.decompress_kernel()) {
-    tmp_config_obj.set_decompressed_kernel_image_path(
-        tmp_config_obj.AssemblyPath("vmlinux"));
-  }
-
-  auto ramdisk_path = tmp_config_obj.AssemblyPath("ramdisk.img");
-  auto vendor_ramdisk_path = tmp_config_obj.AssemblyPath("vendor_ramdisk.img");
-  if (!boot_image_unpacker.HasRamdiskImage()) {
-    LOG(FATAL) << "A ramdisk is required, but the boot image did not have one.";
-  }
-
-  std::string discovered_ramdisk = fetcher_config.FindCvdFileWithSuffix(kInitramfsImg);
-  std::string foreign_ramdisk = FLAGS_initramfs_path.size () ? FLAGS_initramfs_path : discovered_ramdisk;
-
-  tmp_config_obj.set_boot_image_kernel_cmdline(boot_image_unpacker.kernel_cmdline());
   tmp_config_obj.set_guest_enforce_security(FLAGS_guest_enforce_security);
   tmp_config_obj.set_guest_audit_security(FLAGS_guest_audit_security);
-  tmp_config_obj.set_guest_force_normal_boot(FLAGS_guest_force_normal_boot);
   tmp_config_obj.set_extra_kernel_cmdline(FLAGS_extra_kernel_cmdline);
 
   if (FLAGS_console) {
@@ -457,28 +497,11 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_console(FLAGS_console);
   tmp_config_obj.set_kgdb(FLAGS_console && FLAGS_kgdb);
 
-  tmp_config_obj.set_ramdisk_image_path(ramdisk_path);
-  tmp_config_obj.set_vendor_ramdisk_image_path(vendor_ramdisk_path);
-
-  if (foreign_kernel.size() && !foreign_ramdisk.size()) {
-    // If there's a kernel that's passed in without an initramfs, that implies
-    // user error or a kernel built with no modules. In either case, let's
-    // choose to avoid loading the modules from the vendor ramdisk which are
-    // built for the default cf kernel. Once boot occurs, user error will
-    // become obvious.
-    tmp_config_obj.set_final_ramdisk_path(ramdisk_path);
-  } else {
-    tmp_config_obj.set_final_ramdisk_path(ramdisk_path + kRamdiskConcatExt);
-    if(foreign_ramdisk.size()) {
-      tmp_config_obj.set_initramfs_path(foreign_ramdisk);
-    }
-  }
-
   tmp_config_obj.set_host_tools_version(HostToolsCrc());
 
   tmp_config_obj.set_deprecated_boot_completed(FLAGS_deprecated_boot_completed);
 
-  tmp_config_obj.set_qemu_binary(FLAGS_qemu_binary);
+  tmp_config_obj.set_qemu_binary_dir(FLAGS_qemu_binary_dir);
   tmp_config_obj.set_crosvm_binary(FLAGS_crosvm_binary);
   tmp_config_obj.set_tpm_device(FLAGS_tpm_device);
 
@@ -521,7 +544,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_enable_vehicle_hal_grpc_server(FLAGS_enable_vehicle_hal_grpc_server);
   tmp_config_obj.set_vehicle_hal_grpc_server_binary(
-      DefaultHostArtifactsPath("bin/android.hardware.automotive.vehicle@2.0-virtualization-grpc-server"));
+      HostBinaryPath("android.hardware.automotive.vehicle@2.0-virtualization-grpc-server"));
 
   std::string custom_action_config;
   if (!FLAGS_custom_action_config.empty()) {
@@ -545,15 +568,16 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     }
   }
   std::vector<CustomActionConfig> custom_actions;
-  Json::Reader reader;
+  Json::CharReaderBuilder builder;
   Json::Value custom_action_array(Json::arrayValue);
   if (custom_action_config != "") {
     // Load the custom action config JSON.
     std::ifstream ifs(custom_action_config);
-    if (!reader.parse(ifs, custom_action_array)) {
+    std::string errorMessage;
+    if (!Json::parseFromStream(builder, ifs, &custom_action_array, &errorMessage)) {
       LOG(FATAL) << "Could not read custom actions config file "
                  << custom_action_config << ": "
-                 << reader.getFormattedErrorMessages();
+                 << errorMessage;
     }
     for (const auto& custom_action : custom_action_array) {
       custom_actions.push_back(CustomActionConfig(custom_action));
@@ -561,9 +585,12 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   }
   if (FLAGS_custom_actions != "") {
     // Load the custom action from the --config preset file.
-    if (!reader.parse(FLAGS_custom_actions, custom_action_array)) {
+    std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+    std::string errorMessage;
+    if (!reader->parse(&*FLAGS_custom_actions.begin(), &*FLAGS_custom_actions.end(),
+                       &custom_action_array, &errorMessage)) {
       LOG(FATAL) << "Could not read custom actions config flag: "
-                 << reader.getFormattedErrorMessages();
+                 << errorMessage;
     }
     for (const auto& custom_action : custom_action_array) {
       custom_actions.push_back(CustomActionConfig(custom_action));
@@ -571,7 +598,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   }
   tmp_config_obj.set_custom_actions(custom_actions);
 
-  tmp_config_obj.set_use_bootloader(FLAGS_use_bootloader);
   tmp_config_obj.set_bootloader(FLAGS_bootloader);
 
   tmp_config_obj.set_enable_metrics(FLAGS_report_anonymous_usage_stats);
@@ -579,7 +605,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   if (!FLAGS_boot_slot.empty()) {
       tmp_config_obj.set_boot_slot(FLAGS_boot_slot);
   }
-  tmp_config_obj.set_use_slot_suffix(FLAGS_use_slot_suffix);
 
   tmp_config_obj.set_cuttlefish_env_path(GetCuttlefishEnvPath());
 
@@ -588,9 +613,14 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_enable_minimal_mode(FLAGS_enable_minimal_mode);
 
   tmp_config_obj.set_vhost_net(FLAGS_vhost_net);
+
   tmp_config_obj.set_record_screen(FLAGS_record_screen);
 
   tmp_config_obj.set_ethernet(FLAGS_ethernet);
+
+  tmp_config_obj.set_enable_host_bluetooth(FLAGS_enable_host_bluetooth);
+
+  tmp_config_obj.set_protected_vm(FLAGS_protected_vm);
 
   std::vector<int> num_instances;
   for (int i = 0; i < FLAGS_num_instances; i++) {
@@ -648,8 +678,8 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     instance.set_audiocontrol_server_port(9410);  /* OK to use the same port number across instances */
     instance.set_config_server_port(calc_vsock_port(6800));
 
-    if (FLAGS_gpu_mode != kGpuModeDrmVirgl &&
-        FLAGS_gpu_mode != kGpuModeGfxStream) {
+    if (tmp_config_obj.gpu_mode() != kGpuModeDrmVirgl &&
+        tmp_config_obj.gpu_mode() != kGpuModeGfxStream) {
         instance.set_frames_server_port(calc_vsock_port(6900));
       if (FLAGS_vm_manager == QemuManager::name()) {
         instance.set_keyboard_server_port(calc_vsock_port(7000));
@@ -663,13 +693,29 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
       instance.set_gnss_file_path(gnss_file_paths[num-1]);
     }
 
+    instance.set_rootcanal_hci_port(7300 + num - 1);
+    instance.set_rootcanal_link_port(7400 + num - 1);
+    instance.set_rootcanal_test_port(7500 + num - 1);
+    instance.set_rootcanal_config_file(
+        FLAGS_bluetooth_controller_properties_file);
+    instance.set_rootcanal_default_commands_file(
+        FLAGS_bluetooth_default_commands_file);
+
     instance.set_device_title(FLAGS_device_title);
 
-    instance.set_virtual_disk_paths({
-      const_instance.PerInstancePath("overlay.img"),
-      const_instance.sdcard_path(),
-      const_instance.factory_reset_protected_path(),
-    });
+    if (FLAGS_protected_vm) {
+      instance.set_virtual_disk_paths(
+          {const_instance.PerInstancePath("os_composite.img")});
+    } else {
+      std::vector<std::string> virtual_disk_paths = {
+        const_instance.PerInstancePath("overlay.img"),
+        const_instance.factory_reset_protected_path(),
+      };
+      if (FLAGS_use_sdcard) {
+        virtual_disk_paths.push_back(const_instance.sdcard_path());
+      }
+      instance.set_virtual_disk_paths(virtual_disk_paths);
+    }
 
     std::array<unsigned char, 6> mac_address;
     mac_address[0] = 1 << 6; // locally administered
@@ -718,42 +764,54 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_enable_sandbox(FLAGS_enable_sandbox);
 
+  // Audio is not available for VNC server
+  SetCommandLineOptionWithMode(
+      "enable_audio",
+      (FLAGS_start_vnc_server || (cuttlefish::HostArch() == cuttlefish::Arch::Arm64))
+          ? "false"
+          : "true",
+      SET_FLAGS_DEFAULT);
+  tmp_config_obj.set_enable_audio(FLAGS_enable_audio);
+
   return tmp_config_obj;
 }
 
 void SetDefaultFlagsFromConfigPreset() {
   std::string config_preset = FLAGS_config;  // The name of the preset config.
   std::string config_file_path;  // The path to the preset config JSON.
-  const std::set<std::string> allowed_config_presets = {
-      "phone", "tablet", "foldable", "tv", "auto",
-  };
+  std::set<std::string> allowed_config_presets;
+  for (const std::string& file :
+       DirectoryContents(DefaultHostArtifactsPath("etc/cvd_config"))) {
+    std::string_view local_file(file);
+    if (android::base::ConsumePrefix(&local_file, "cvd_config_") &&
+        android::base::ConsumeSuffix(&local_file, ".json")) {
+      allowed_config_presets.emplace(local_file);
+    }
+  }
 
   // If the user specifies a --config name, then use that config
-  // preset option and save their choice to a file.
-  std::string config_preset_file_path =
-      StringFromEnv("HOME", ".") + "/.cuttlefish_config_preset";
+  // preset option.
+  std::string android_info_path = FLAGS_system_image_dir + "/android-info.txt";
   if (IsFlagSet("config")) {
     if (!allowed_config_presets.count(config_preset)) {
       LOG(FATAL) << "Invalid --config option '" << config_preset
                  << "'. Valid options: "
                  << android::base::Join(allowed_config_presets, ",");
     }
-    // Write the name of the config preset to a file. Only the name is
-    // written, not the contents of the config itself, in order to allow
-    // forwards compatibility if config fields change.
-    std::ofstream ofs(config_preset_file_path);
-    if (ofs.is_open()) {
-      ofs << config_preset;
-    }
-  } else if (FileExists(config_preset_file_path)) {
-    // Load the config preset option from the file if it exists.
-    std::ifstream ifs(config_preset_file_path);
+  } else if (FileExists(android_info_path)) {
+    // Otherwise try to load the correct preset using android-info.txt.
+    std::ifstream ifs(android_info_path);
     if (ifs.is_open()) {
-      ifs >> config_preset;
+      std::string android_info;
+      ifs >> android_info;
+      std::string_view local_android_info(android_info);
+      if (android::base::ConsumePrefix(&local_android_info, "config=")) {
+        config_preset = local_android_info;
+      }
       if (!allowed_config_presets.count(config_preset)) {
-        LOG(WARNING) << config_preset_file_path
-                     << " contains invalid config preset: '" << config_preset
-                     << "'. Defaulting to 'phone'.";
+        LOG(WARNING) << android_info_path
+                     << " contains invalid config preset: '"
+                     << local_android_info << "'. Defaulting to 'phone'.";
         config_preset = "phone";
       }
     }
@@ -763,17 +821,18 @@ void SetDefaultFlagsFromConfigPreset() {
   config_file_path = DefaultHostArtifactsPath("etc/cvd_config/cvd_config_" +
                                               config_preset + ".json");
   Json::Value config;
-  Json::Reader config_reader;
+  Json::CharReaderBuilder builder;
   std::ifstream ifs(config_file_path);
-  if (!config_reader.parse(ifs, config)) {
+  std::string errorMessage;
+  if (!Json::parseFromStream(builder, ifs, &config, &errorMessage)) {
     LOG(FATAL) << "Could not read config file " << config_file_path << ": "
-               << config_reader.getFormattedErrorMessages();
+               << errorMessage;
   }
   for (const std::string& flag : config.getMemberNames()) {
     std::string value;
     if (flag == "custom_actions") {
-      Json::FastWriter writer;
-      value = writer.write(config[flag]);
+      Json::StreamWriterBuilder factory;
+      value = Json::writeString(factory, config[flag]);
     } else {
       value = config[flag].asString();
     }
@@ -808,7 +867,7 @@ void SetDefaultFlagsForCrosvm() {
 
   // for now, we support only x86_64 by default
   bool default_enable_sandbox = false;
-  std::set<const std::string> supported_archs{std::string("x86_64")};
+  std::set<Arch> supported_archs{Arch::X86_64};
   if (supported_archs.find(HostArch()) != supported_archs.end()) {
     if (DirectoryExists(kCrosvmVarEmptyDir)) {
       default_enable_sandbox = IsDirectoryEmpty(kCrosvmVarEmptyDir);
@@ -828,10 +887,25 @@ void SetDefaultFlagsForCrosvm() {
                                SET_FLAGS_DEFAULT);
 }
 
-bool ParseCommandLineFlags(int* argc, char*** argv) {
+bool ParseCommandLineFlags(int* argc, char*** argv, KernelConfig* kernel_config) {
   google::ParseCommandLineNonHelpFlags(argc, argv, true);
   SetDefaultFlagsFromConfigPreset();
+  google::HandleCommandLineHelpFlags();
   bool invalid_manager = false;
+
+  if (!ResolveInstanceFiles()) {
+    return false;
+  }
+
+  ReadKernelConfig(kernel_config);
+  if (FLAGS_vm_manager == "") {
+    if (IsHostCompatible(kernel_config->target_arch)) {
+      FLAGS_vm_manager = CrosvmManager::name();
+    } else {
+      FLAGS_vm_manager = QemuManager::name();
+    }
+  }
+
   if (FLAGS_vm_manager == QemuManager::name()) {
     SetDefaultFlagsForQemu();
   } else if (FLAGS_vm_manager == CrosvmManager::name()) {
@@ -846,14 +920,13 @@ bool ParseCommandLineFlags(int* argc, char*** argv) {
   SetCommandLineOptionWithMode("start_webrtc_sig_server",
                                FLAGS_start_webrtc ? "true" : "false",
                                SET_FLAGS_DEFAULT);
-  google::HandleCommandLineHelpFlags();
   if (invalid_manager) {
     return false;
   }
   // Set the env variable to empty (in case the caller passed a value for it).
   unsetenv(kCuttlefishConfigEnvVarName);
 
-  return ResolveInstanceFiles();
+  return true;
 }
 
 std::string GetConfigFilePath(const CuttlefishConfig& config) {
