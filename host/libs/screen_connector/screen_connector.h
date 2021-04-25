@@ -25,6 +25,7 @@
 #include <type_traits>
 
 #include <android-base/logging.h>
+
 #include "common/libs/utils/size_utils.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/screen_connector/screen_connector_common.h"
@@ -110,7 +111,7 @@ class ScreenConnector : public ScreenConnectorInfo,
   ProcessedFrameType OnNextFrame() {
     // sc_ctrl has a semaphore internally
     // passing beyond SemWait means either queue has an item
-    sc_ctrl_.SemWaitItem();
+    sc_ctrl_.SemWait();
     return sc_android_queue_.PopFront();
 
     // TODO: add confirmation ui
