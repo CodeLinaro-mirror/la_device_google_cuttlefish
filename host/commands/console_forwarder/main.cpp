@@ -38,6 +38,8 @@ DEFINE_int32(console_out_fd,
              -1,
              "File descriptor for the console's output channel");
 
+namespace cuttlefish {
+
 // Handles forwarding the serial console to a pseudo-terminal (PTY)
 // It receives a couple of fds for the console (could be the same fd twice if,
 // for example a socket_pair were used).
@@ -49,14 +51,12 @@ DEFINE_int32(console_out_fd,
 // protected by a mutex.
 class ConsoleForwarder {
  public:
-  ConsoleForwarder(std::string console_path,
-                   cuttlefish::SharedFD console_in,
-                   cuttlefish::SharedFD console_out,
-                   cuttlefish::SharedFD console_log) :
-                                                console_path_(console_path),
-                                                console_in_(console_in),
-                                                console_out_(console_out),
-                                                console_log_(console_log) {}
+  ConsoleForwarder(std::string console_path, SharedFD console_in,
+                   SharedFD console_out, SharedFD console_log)
+      : console_path_(console_path),
+        console_in_(console_in),
+        console_out_(console_out),
+        console_log_(console_log) {}
   [[noreturn]] void StartServer() {
     // Create a new thread to handle writes to the console
     writer_thread_ = std::thread([this]() { WriteLoop(); });
@@ -65,61 +65,45 @@ class ConsoleForwarder {
     ReadLoop();
   }
  private:
-
-  cuttlefish::SharedFD OpenPTY() {
+  SharedFD OpenPTY() {
     // Remove any stale symlink to a pts device
     auto ret = unlink(console_path_.c_str());
-    if (ret < 0 && errno != ENOENT) {
-      LOG(ERROR) << "Failed to unlink " << console_path_.c_str()
-                 << ": " << strerror(errno);
-      std::exit(-5);
-    }
+    CHECK(!(ret < 0 && errno != ENOENT))
+        << "Failed to unlink " << console_path_ << ": " << strerror(errno);
 
     auto pty = posix_openpt(O_RDWR | O_NOCTTY | O_NONBLOCK);
-    if (pty < 0) {
-      LOG(ERROR) << "Failed to open a PTY: " << strerror(errno);
-      std::exit(-6);
-    }
+    CHECK(pty >= 0) << "Failed to open a PTY: " << strerror(errno);
+
     grantpt(pty);
     unlockpt(pty);
 
     // Disable all echo modes on the PTY
     struct termios termios;
-    if (tcgetattr(pty, &termios) < 0) {
-      LOG(ERROR) << "Failed to get terminal control: " << strerror(errno);
-      std::exit(-7);
-    }
+    CHECK(tcgetattr(pty, &termios) >= 0)
+        << "Failed to get terminal control: " << strerror(errno);
+
     termios.c_lflag &= ~(ECHO | ECHOE | ECHOK | ECHONL);
     termios.c_oflag &= ~(ONLCR);
-    if (tcsetattr(pty, TCSANOW, &termios) < 0) {
-      LOG(ERROR) << "Failed to set terminal control: " << strerror(errno);
-      std::exit(-8);
-    }
+    CHECK(tcsetattr(pty, TCSANOW, &termios) >= 0)
+        << "Failed to set terminal control: " << strerror(errno);
 
     auto pty_dev_name = ptsname(pty);
-    if (pty_dev_name == nullptr) {
-      LOG(ERROR) << "Failed to obtain PTY device name: " << strerror(errno);
-      std::exit(-9);
-    }
+    CHECK(pty_dev_name != nullptr)
+        << "Failed to obtain PTY device name: " << strerror(errno);
 
-    if (symlink(pty_dev_name, console_path_.c_str()) < 0) {
-      LOG(ERROR) << "Failed to create symlink to " << pty_dev_name << " at "
-                 << console_path_.c_str() << ": " << strerror(errno);
-      std::exit(-10);
-    }
+    CHECK(symlink(pty_dev_name, console_path_.c_str()) >= 0)
+        << "Failed to create symlink to " << pty_dev_name << " at "
+        << console_path_ << ": " << strerror(errno);
 
-    auto pty_shared_fd = cuttlefish::SharedFD::Dup(pty);
+    auto pty_shared_fd = SharedFD::Dup(pty);
     close(pty);
-    if (!pty_shared_fd->IsOpen()) {
-      LOG(ERROR) << "Error dupping fd " << pty << ": "
-                 << pty_shared_fd->StrError();
-      std::exit(-11);
-    }
+    CHECK(pty_shared_fd->IsOpen())
+        << "Error dupping fd " << pty << ": " << pty_shared_fd->StrError();
 
     return pty_shared_fd;
   }
 
-  void EnqueueWrite(std::shared_ptr<std::vector<char>> buf_ptr, cuttlefish::SharedFD fd) {
+  void EnqueueWrite(std::shared_ptr<std::vector<char>> buf_ptr, SharedFD fd) {
     std::lock_guard<std::mutex> lock(write_queue_mutex_);
     write_queue_.emplace_back(fd, buf_ptr);
     condvar_.notify_one();
@@ -129,7 +113,7 @@ class ConsoleForwarder {
     while (true) {
       while (!write_queue_.empty()) {
         std::shared_ptr<std::vector<char>> buf_ptr;
-        cuttlefish::SharedFD fd;
+        SharedFD fd;
         {
           std::lock_guard<std::mutex> lock(write_queue_mutex_);
           auto& front = write_queue_.front();
@@ -170,26 +154,23 @@ class ConsoleForwarder {
   }
 
   [[noreturn]] void ReadLoop() {
-    cuttlefish::SharedFD client_fd;
+    SharedFD client_fd;
     while (true) {
       if (!client_fd->IsOpen()) {
         client_fd = OpenPTY();
       }
 
-      cuttlefish::SharedFDSet read_set;
+      SharedFDSet read_set;
       read_set.Set(console_out_);
       read_set.Set(client_fd);
 
-      cuttlefish::Select(&read_set, nullptr, nullptr, nullptr);
+      Select(&read_set, nullptr, nullptr, nullptr);
       if (read_set.IsSet(console_out_)) {
         std::shared_ptr<std::vector<char>> buf_ptr = std::make_shared<std::vector<char>>(4096);
         auto bytes_read = console_out_->Read(buf_ptr->data(), buf_ptr->size());
-        if (bytes_read <= 0) {
-          LOG(ERROR) << "Error reading from console output: "
-                     << console_out_->StrError();
-          // This is likely unrecoverable, so exit here
-          std::exit(-12);
-        }
+        // This is likely unrecoverable, so exit here
+        CHECK(bytes_read > 0) << "Error reading from console output: "
+                              << console_out_->StrError();
         buf_ptr->resize(bytes_read);
         EnqueueWrite(buf_ptr, console_log_);
         if (client_fd->IsOpen()) {
@@ -215,59 +196,53 @@ class ConsoleForwarder {
   }
 
   std::string console_path_;
-  cuttlefish::SharedFD console_in_;
-  cuttlefish::SharedFD console_out_;
-  cuttlefish::SharedFD console_log_;
+  SharedFD console_in_;
+  SharedFD console_out_;
+  SharedFD console_log_;
   std::thread writer_thread_;
   std::mutex write_queue_mutex_;
   std::condition_variable condvar_;
-  std::deque<std::pair<cuttlefish::SharedFD, std::shared_ptr<std::vector<char>>>> write_queue_;
+  std::deque<std::pair<SharedFD, std::shared_ptr<std::vector<char>>>>
+      write_queue_;
 };
 
-int main(int argc, char** argv) {
-  cuttlefish::DefaultSubprocessLogging(argv);
+int ConsoleForwarderMain(int argc, char** argv) {
+  DefaultSubprocessLogging(argv);
   ::gflags::ParseCommandLineFlags(&argc, &argv, true);
 
-  if (FLAGS_console_in_fd < 0 || FLAGS_console_out_fd < 0) {
-    LOG(ERROR) << "Invalid file descriptors: " << FLAGS_console_in_fd << ", "
-               << FLAGS_console_out_fd;
-    return -1;
-  }
+  CHECK(!(FLAGS_console_in_fd < 0 || FLAGS_console_out_fd < 0))
+      << "Invalid file descriptors: " << FLAGS_console_in_fd << ", "
+      << FLAGS_console_out_fd;
 
-  auto console_in = cuttlefish::SharedFD::Dup(FLAGS_console_in_fd);
-  close(FLAGS_console_in_fd);
-  if (!console_in->IsOpen()) {
-    LOG(ERROR) << "Error dupping fd " << FLAGS_console_in_fd << ": "
-               << console_in->StrError();
-    return -2;
-  }
+  auto console_in = SharedFD::Dup(FLAGS_console_in_fd);
+  CHECK(console_in->IsOpen()) << "Error dupping fd " << FLAGS_console_in_fd
+                              << ": " << console_in->StrError();
   close(FLAGS_console_in_fd);
 
-  auto console_out = cuttlefish::SharedFD::Dup(FLAGS_console_out_fd);
+  auto console_out = SharedFD::Dup(FLAGS_console_out_fd);
+  CHECK(console_out->IsOpen()) << "Error dupping fd " << FLAGS_console_out_fd
+                               << ": " << console_out->StrError();
   close(FLAGS_console_out_fd);
-  if (!console_out->IsOpen()) {
-    LOG(ERROR) << "Error dupping fd " << FLAGS_console_out_fd << ": "
-               << console_out->StrError();
-    return -3;
-  }
 
-  auto config = cuttlefish::CuttlefishConfig::Get();
-  if (!config) {
-    LOG(ERROR) << "Unable to get config object";
-    return -4;
-  }
+  auto config = CuttlefishConfig::Get();
+  CHECK(config) << "Unable to get config object";
 
   auto instance = config->ForDefaultInstance();
   auto console_path = instance.console_path();
   auto console_log = instance.PerInstancePath("console_log");
-  auto console_log_fd = cuttlefish::SharedFD::Open(console_log.c_str(), O_CREAT | O_APPEND | O_WRONLY, 0666);
+  auto console_log_fd =
+      SharedFD::Open(console_log.c_str(), O_CREAT | O_APPEND | O_WRONLY, 0666);
   ConsoleForwarder console_forwarder(console_path, console_in, console_out, console_log_fd);
 
   // Don't get a SIGPIPE from the clients
-  if (sigaction(SIGPIPE, nullptr, nullptr) != 0) {
-    LOG(FATAL) << "Failed to set SIGPIPE to be ignored: " << strerror(errno);
-    return -13;
-  }
+  CHECK(sigaction(SIGPIPE, nullptr, nullptr) == 0)
+      << "Failed to set SIGPIPE to be ignored: " << strerror(errno);
 
   console_forwarder.StartServer();
+}
+
+}  // namespace cuttlefish
+
+int main(int argc, char** argv) {
+  return cuttlefish::ConsoleForwarderMain(argc, argv);
 }
