@@ -132,8 +132,8 @@ PRODUCT_PACKAGES += \
     libGLESv2_swiftshader
 
 # GL implementation for virgl
-PRODUCT_PACKAGES += \
-    libGLES_mesa \
+#PRODUCT_PACKAGES += \
+#    libGLES_mesa \
 
 #
 # Packages for the Vulkan implementation
@@ -462,6 +462,8 @@ PRODUCT_HOST_PACKAGES += socket_vsock_proxy
 PRODUCT_EXTRA_VNDK_VERSIONS := 28 29
 
 PRODUCT_SOONG_NAMESPACES += external/mesa3d
+
+PRODUCT_PROPERTY_OVERRIDES += ro.hardware.egl=adreno
 
 # Need this so that the application's loop on reading input can be synchronized
 # with HW VSYNC
