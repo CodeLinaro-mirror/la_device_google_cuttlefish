@@ -72,6 +72,8 @@ function ConnectToDevice(device_id) {
   let deviceConnection;
   let touchIdSlotMap = new Map();
   let touchSlots = new Array();
+  let deviceStateLidSwitchOpen = null;
+  let deviceStateHingeAngleValue = null;
 
   let bootCompleted = false;
   let adbConnected = false;
@@ -294,17 +296,6 @@ function ConnectToDevice(device_id) {
       deviceConnection.onControlMessage(msg => onControlMessage(msg));
       // Start the screen as hidden. Only show when data is ready.
       deviceScreen.style.visibility = 'hidden';
-      // Send an initial home button press when WebRTC connects. This is needed
-      // so that the device screen receives an initial frame even if WebRTC is
-      // connected long after the device boots up.
-      deviceConnection.sendControlMessage(JSON.stringify({
-        command: 'home',
-        button_state: 'down',
-      }));
-      deviceConnection.sendControlMessage(JSON.stringify({
-        command: 'home',
-        button_state: 'up',
-      }));
       // Show the error message and disable buttons when the WebRTC connection fails.
       deviceConnection.onConnectionStateChange(state => {
         if (state == 'disconnected' || state == 'failed') {
@@ -318,11 +309,13 @@ function ConnectToDevice(device_id) {
 
   let hardwareDetailsText = '';
   let displayDetailsText = '';
+  let deviceStateDetailsText = '';
   function updateDeviceDetailsText() {
     document.getElementById('device-details-hardware').textContent = [
       hardwareDetailsText,
+      deviceStateDetailsText,
       displayDetailsText,
-    ].join('\n');
+    ].filter(e => e /*remove empty*/).join('\n');
   }
   function updateDeviceHardwareDetails(hardware) {
     let hardwareDetailsTextLines = [];
@@ -341,6 +334,18 @@ function ConnectToDevice(device_id) {
     let y_res = display.y_res;
     let rotated = currentRotation == 1 ? ' (Rotated)' : '';
     displayDetailsText = `Display - ${x_res}x${y_res} (${dpi}DPI)${rotated}`;
+    updateDeviceDetailsText();
+  }
+  function updateDeviceStateDetails() {
+    let deviceStateDetailsTextLines = [];
+    if (deviceStateLidSwitchOpen != null) {
+      let state = deviceStateLidSwitchOpen ? 'Opened' : 'Closed';
+      deviceStateDetailsTextLines.push(`Lid Switch - ${state}`);
+    }
+    if (deviceStateHingeAngleValue != null) {
+      deviceStateDetailsTextLines.push(`Hinge Angle - ${deviceStateHingeAngleValue}`);
+    }
+    deviceStateDetailsText = deviceStateDetailsTextLines.join('\n');
     updateDeviceDetailsText();
   }
 
@@ -401,13 +406,19 @@ function ConnectToDevice(device_id) {
         };
         deviceConnection.sendControlMessage(JSON.stringify(message));
         console.log(JSON.stringify(message));
-        // TODO(b/181157794): Use a custom Sensor HAL for hinge_angle injection
-        // instead of this guest binary.
+        if ('lid_switch_open' in states[index]) {
+          deviceStateLidSwitchOpen = states[index].lid_switch_open;
+        }
         if ('hinge_angle_value' in states[index]) {
+          deviceStateHingeAngleValue = states[index].hinge_angle_value;
+          // TODO(b/181157794): Use a custom Sensor HAL for hinge_angle injection
+          // instead of this guest binary.
           adbShell(
               '/vendor/bin/cuttlefish_sensor_injection hinge_angle ' +
               states[index].hinge_angle_value);
         }
+        // Update the Device Details view.
+        updateDeviceStateDetails();
         // Cycle to the next state.
         index = (index + 1) % states.length;
       }
