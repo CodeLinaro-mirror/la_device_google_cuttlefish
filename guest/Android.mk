@@ -1,5 +1,4 @@
-#
-# Copyright (C) 2020 The Android Open Source Project
+# Copyright (C) 2021 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-TARGET_KERNEL_USE ?= 5.10
+LOCAL_PATH:= $(call my-dir)
 
-PRODUCT_COPY_FILES += device/google/cuttlefish_prebuilts/kernel/$(TARGET_KERNEL_USE)-i686/kernel-$(TARGET_KERNEL_USE):kernel
+include $(CLEAR_VARS)
+include $(call all-makefiles-under,$(LOCAL_PATH))

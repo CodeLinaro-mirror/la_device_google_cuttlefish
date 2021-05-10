@@ -126,7 +126,7 @@ std::vector<std::string> CrosvmManager::ConfigureGpuMode(
     return {
         "androidboot.cpuvulkan.version=0",
         "androidboot.hardware.gralloc=minigbm",
-        "androidboot.hardware.hwcomposer=drm_minigbm",
+        "androidboot.hardware.hwcomposer=ranchu",
         "androidboot.hardware.egl=emulation",
         "androidboot.hardware.vulkan=ranchu",
         "androidboot.hardware.gltransport=virtio-gpu-asg",
@@ -376,7 +376,7 @@ std::vector<Command> CrosvmManager::StartCommands(
       << VmManager::kMaxDisks + VmManager::kDefaultNumHvcs << " devices";
 
   if (config.enable_audio()) {
-    crosvm_cmd.AddParameter("--ac97=backend=vios,capture=false,server=" +
+    crosvm_cmd.AddParameter("--ac97=backend=vios,server=" +
                             config.ForDefaultInstance().audio_server_path());
   }
 

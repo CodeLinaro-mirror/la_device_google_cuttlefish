@@ -22,9 +22,6 @@ function ConnectToDevice(device_id) {
   createToggleControl(keyboardCaptureCtrl, "keyboard", onKeyboardCaptureToggle);
   const micCaptureCtrl = document.getElementById('mic-capture-control');
   createToggleControl(micCaptureCtrl, "mic", onMicCaptureToggle);
-  // TODO(b/163867676): Enable the microphone control when the audio stream is
-  // injected into the guest. Until then, control is disabled.
-  micCaptureCtrl.style.display = 'none';
 
   const deviceScreen = document.getElementById('device-screen');
   const deviceAudio = document.getElementById('device-audio');
@@ -206,25 +203,71 @@ function ConnectToDevice(device_id) {
   createControlPanelButton('volumedown', 'Volume Down', 'volume_down');
   createControlPanelButton('volumeup', 'Volume Up', 'volume_up');
 
-  const deviceDetailsModal = document.getElementById('device-details-modal');
-  const deviceDetailsButton = document.getElementById('device-details-button');
-  const deviceDetailsClose = document.getElementById('device-details-close');
-  function showHideDeviceDetailsModal(show) {
-    // Position the modal to the right of the device details button.
-    deviceDetailsModal.style.top = deviceDetailsButton.offsetTop;
-    deviceDetailsModal.style.left = deviceDetailsButton.offsetWidth + 30;
-    if (show) {
-      deviceDetailsModal.style.display = 'block';
-    } else {
-      deviceDetailsModal.style.display = 'none';
+  let modalOffsets = {}
+  function createModalButton(button_id, modal_id, close_id) {
+    const modalButton = document.getElementById(button_id);
+    const modalDiv = document.getElementById(modal_id);
+    const modalHeader = modalDiv.querySelector('.modal-header');
+    const modalClose = document.getElementById(close_id);
+
+    // Position the modal to the right of the show modal button.
+    modalDiv.style.top = modalButton.offsetTop;
+    modalDiv.style.left = modalButton.offsetWidth + 30;
+
+    function showHideModal(show) {
+      if (show) {
+        modalButton.classList.add('modal-button-opened')
+        modalDiv.style.display = 'block';
+      } else {
+        modalButton.classList.remove('modal-button-opened')
+        modalDiv.style.display = 'none';
+      }
     }
+    // Allow the show modal button to toggle the modal,
+    modalButton.addEventListener('click',
+        evt => showHideModal(modalDiv.style.display != 'block'));
+    // but the close button always closes.
+    modalClose.addEventListener('click',
+        evt => showHideModal(false));
+
+    // Allow the modal to be dragged by the header.
+    modalOffsets[modal_id] = {
+      midDrag: false,
+      mouseDownOffsetX: null,
+      mouseDownOffsetY: null,
+    }
+    modalHeader.addEventListener('mousedown',
+        evt => {
+            modalOffsets[modal_id].midDrag = true;
+            // Store the offset of the mouse location from the
+            // modal's current location.
+            modalOffsets[modal_id].mouseDownOffsetX =
+                parseInt(modalDiv.style.left) - evt.clientX;
+            modalOffsets[modal_id].mouseDownOffsetY =
+                parseInt(modalDiv.style.top) - evt.clientY;
+        });
+    modalHeader.addEventListener('mousemove',
+        evt => {
+            let offsets = modalOffsets[modal_id];
+            if (offsets.midDrag) {
+              // Move the modal to the mouse location plus the
+              // offset calculated on the initial mouse-down.
+              modalDiv.style.left =
+                  evt.clientX + offsets.mouseDownOffsetX;
+              modalDiv.style.top =
+                  evt.clientY + offsets.mouseDownOffsetY;
+            }
+        });
+    document.addEventListener('mouseup',
+        evt => {
+          modalOffsets[modal_id].midDrag = false;
+        });
   }
-  // Allow the device details button to toggle the modal,
-  deviceDetailsButton.addEventListener('click',
-      evt => showHideDeviceDetailsModal(deviceDetailsModal.style.display != 'block'));
-  // but the close button always closes.
-  deviceDetailsClose.addEventListener('click',
-      evt => showHideDeviceDetailsModal(false));
+
+  createModalButton(
+    'device-details-button', 'device-details-modal', 'device-details-close');
+  createModalButton(
+    'bluetooth-console-button', 'bluetooth-console-modal', 'bluetooth-console-close');
 
   let options = {
     wsUrl: ((location.protocol == 'http:') ? 'ws://' : 'wss://') +
@@ -302,6 +345,9 @@ function ConnectToDevice(device_id) {
           showWebrtcError();
         }
       });
+      deviceConnection.onBluetoothMessage(msg => {
+        bluetoothConsole.addLine(decodeRootcanalMessage(msg));
+      });
   }, rejection => {
       console.error('Unable to connect: ', rejection);
       showWebrtcError();
@@ -360,6 +406,68 @@ function ConnectToDevice(device_id) {
   function onMicCaptureToggle(enabled) {
     deviceConnection.useMic(enabled);
   }
+
+  function cmdConsole(consoleViewName, consoleInputName) {
+    let consoleView = document.getElementById(consoleViewName);
+
+    let addString = function(str) {
+      consoleView.value += str;
+      consoleView.scrollTop = consoleView.scrollHeight;
+    }
+
+    let addLine = function(line) {
+      addString(line + "\r\n");
+    }
+
+    let commandCallbacks = [];
+
+    let addCommandListener = function(f) {
+      commandCallbacks.push(f);
+    }
+
+    let onCommand = function(cmd) {
+      cmd = cmd.trim();
+
+      if (cmd.length == 0) return;
+
+      commandCallbacks.forEach(f => {
+        f(cmd);
+      })
+    }
+
+    addCommandListener(cmd => addLine(">> " + cmd));
+
+    let consoleInput = document.getElementById(consoleInputName);
+
+    consoleInput.addEventListener('keydown', e => {
+      if ((e.key && e.key == 'Enter') || e.keyCode == 13) {
+        let command = e.target.value;
+
+        e.target.value = '';
+
+        onCommand(command);
+      }
+    })
+
+    return {
+      consoleView: consoleView,
+      consoleInput: consoleInput,
+      addLine: addLine,
+      addString: addString,
+      addCommandListener: addCommandListener,
+    };
+  }
+
+  var bluetoothConsole = cmdConsole(
+    'bluetooth-console-view', 'bluetooth-console-input');
+
+  bluetoothConsole.addCommandListener(cmd => {
+    let inputArr = cmd.split(' ');
+    let command = inputArr[0];
+    inputArr.shift();
+    let args = inputArr;
+    deviceConnection.sendBluetoothMessage(createRootcanalMessage(command, args));
+  })
 
   function onControlPanelButton(e) {
     if (e.type == 'mouseout' && e.which == 0) {
