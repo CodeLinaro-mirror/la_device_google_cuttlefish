@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#define LOG_TAG "android.hardware.security.keymint-impl"
+#define LOG_TAG "android.hardware.security.keymint-impl.remote"
 #include <android-base/logging.h>
 
 #include "guest/hals/keymint/remote/remote_keymint_device.h"
@@ -358,11 +358,10 @@ ScopedAStatus RemoteKeyMintDevice::destroyAttestationIds() {
   return kmError2ScopedAStatus(KM_ERROR_UNIMPLEMENTED);
 }
 
-ScopedAStatus RemoteKeyMintDevice::begin(KeyPurpose purpose,
-                                         const vector<uint8_t>& keyBlob,
-                                         const vector<KeyParameter>& params,
-                                         const HardwareAuthToken& authToken,
-                                         BeginResult* result) {
+ScopedAStatus RemoteKeyMintDevice::begin(
+    KeyPurpose purpose, const vector<uint8_t>& keyBlob,
+    const vector<KeyParameter>& params,
+    const optional<HardwareAuthToken>& authToken, BeginResult* result) {
   BeginOperationRequest request(impl_.message_version());
   request.purpose = legacy_enum_conversion(purpose);
   request.SetKeyMaterial(keyBlob.data(), keyBlob.size());
@@ -413,9 +412,11 @@ ScopedAStatus RemoteKeyMintDevice::convertStorageKeyToEphemeral(
   return kmError2ScopedAStatus(KM_ERROR_UNIMPLEMENTED);
 }
 
-ScopedAStatus RemoteKeyMintDevice::performOperation(
-    const vector<uint8_t>& /* request */, vector<uint8_t>* /* response */) {
+ScopedAStatus RemoteKeyMintDevice::getKeyCharacteristics(
+    const std::vector<uint8_t>& /* storageKeyBlob */,
+    const std::vector<uint8_t>& /* appId */,
+    const std::vector<uint8_t>& /* appData */,
+    std::vector<KeyCharacteristics>* /* keyCharacteristics */) {
   return kmError2ScopedAStatus(KM_ERROR_UNIMPLEMENTED);
 }
-
 }  // namespace aidl::android::hardware::security::keymint
