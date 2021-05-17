@@ -32,6 +32,8 @@ PRODUCT_SHIPPING_API_LEVEL := 31
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
 
+PRODUCT_SET_DEBUGFS_RESTRICTIONS := true
+
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish-opengl # for vulkan
 
 PRODUCT_FS_COMPRESSION := 1
@@ -73,7 +75,7 @@ PRODUCT_PRODUCT_PROPERTIES += \
 
 # Storage: for factory reset protection feature
 PRODUCT_VENDOR_PROPERTIES += \
-    ro.frp.pst=/dev/block/vdb
+    ro.frp.pst=/dev/block/by-name/frp
 
 # Explanation of specific properties:
 #   debug.hwui.swap_with_damage avoids boot failure on M http://b/25152138
@@ -94,6 +96,7 @@ PRODUCT_VENDOR_PROPERTIES += \
     ro.rebootescrow.device=/dev/block/pmem0 \
     ro.incremental.enable=1 \
     debug.c2.use_dmabufheaps=1 \
+    ro.camerax.extensions.enabled=true \
 
 # Below is a list of properties we probably should get rid of.
 PRODUCT_VENDOR_PROPERTIES += \
@@ -109,7 +112,7 @@ PRODUCT_VENDOR_PROPERTIES += \
     debug.stagefright.c2inputsurface=-1
 
 # Enforce privapp permissions control.
-PRODUCT_VENDOR_PROPERTIES += ro.control_privapp_permissions=enforce
+PRODUCT_VENDOR_PROPERTIES += ro.control_privapp_permissions?=enforce
 
 # aes-256-heh default is not supported in standard kernels.
 PRODUCT_VENDOR_PROPERTIES += ro.crypto.volume.filenames_mode=aes-256-cts
@@ -147,7 +150,7 @@ PRODUCT_SOONG_NAMESPACES += hardware/google/camera/devices/EmulatedCamera
 #
 PRODUCT_PACKAGES += \
     CuttlefishService \
-    cuttlefish_rotate \
+    cuttlefish_sensor_injection \
     rename_netiface \
     setup_wifi \
     bt_vhci_forwarder \
@@ -295,17 +298,21 @@ PRODUCT_COPY_FILES += \
 
 ifeq ($(TARGET_RO_FILE_SYSTEM_TYPE),ext4)
 PRODUCT_COPY_FILES += \
+    device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/first_stage_ramdisk/fstab.f2fs \
     device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/fstab.f2fs \
     device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.f2fs \
     device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.f2fs \
+    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/first_stage_ramdisk/fstab.ext4 \
     device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/fstab.ext4 \
     device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.ext4 \
     device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.ext4
 else
 PRODUCT_COPY_FILES += \
+    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).f2fs:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/first_stage_ramdisk/fstab.f2fs \
     device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).f2fs:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/fstab.f2fs \
     device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).f2fs:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.f2fs \
     device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).f2fs:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.f2fs \
+    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).ext4:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/first_stage_ramdisk/fstab.ext4 \
     device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).ext4:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/fstab.ext4 \
     device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).ext4:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.ext4 \
     device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).ext4:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.ext4
@@ -357,8 +364,8 @@ PRODUCT_PACKAGES += \
     hwcomposer.drm_minigbm \
     hwcomposer.cutf \
     hwcomposer-stats \
-    android.hardware.graphics.composer@2.2-impl \
-    android.hardware.graphics.composer@2.2-service
+    android.hardware.graphics.composer@2.3-impl \
+    android.hardware.graphics.composer@2.3-service
 
 #
 # Gralloc HAL
@@ -531,8 +538,8 @@ PRODUCT_PACKAGES += \
 ifeq ($(LOCAL_KEYMINT_PRODUCT_PACKAGE),)
        LOCAL_KEYMINT_PRODUCT_PACKAGE := android.hardware.security.keymint-service
 endif
-# PRODUCT_PACKAGES += \
-#    $(LOCAL_KEYMINT_PRODUCT_PACKAGE)
+ PRODUCT_PACKAGES += \
+    $(LOCAL_KEYMINT_PRODUCT_PACKAGE)
 
 #
 # Power HAL
@@ -560,6 +567,7 @@ PRODUCT_PACKAGES += \
     android.hardware.neuralnetworks-service-sample-float-slow \
     android.hardware.neuralnetworks-service-sample-minimal \
     android.hardware.neuralnetworks-service-sample-quant \
+    android.hardware.neuralnetworks-shell-service-sample \
     android.hardware.neuralnetworks-shim-service-sample
 
 #

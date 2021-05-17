@@ -22,16 +22,18 @@
 #include <utility>
 #include <vector>
 
-#include "common/libs/threads/thread_annotations.h"
+#include "common/libs/concurrency/thread_annotations.h"
 #include "host/frontend/vnc_server/blackboard.h"
 #include "host/frontend/vnc_server/jpeg_compressor.h"
 #include "host/frontend/vnc_server/simulated_hw_composer.h"
+#include "host/libs/screen_connector/screen_connector.h"
 
 namespace cuttlefish {
 namespace vnc {
 class FrameBufferWatcher {
  public:
-  explicit FrameBufferWatcher(BlackBoard* bb);
+  explicit FrameBufferWatcher(BlackBoard* bb,
+                              ScreenConnector& screen_connector);
   FrameBufferWatcher(const FrameBufferWatcher&) = delete;
   FrameBufferWatcher& operator=(const FrameBufferWatcher&) = delete;
   ~FrameBufferWatcher();
@@ -72,7 +74,7 @@ class FrameBufferWatcher {
   mutable std::mutex m_;
   bool closed_ GUARDED_BY(m_){};
   BlackBoard* bb_{};
-  SimulatedHWComposer hwcomposer{bb_};
+  SimulatedHWComposer hwcomposer;
 };
 
 }  // namespace vnc

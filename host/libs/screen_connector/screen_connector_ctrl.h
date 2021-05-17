@@ -16,12 +16,14 @@
 
 #pragma once
 
-#include <memory>
-#include <thread>
-#include <condition_variable>
-#include <mutex>
 #include <atomic>
+#include <condition_variable>
 #include <functional>
+#include <memory>
+#include <mutex>
+#include <thread>
+
+#include "common/libs/concurrency/semaphore.h"
 
 namespace cuttlefish {
 /**
@@ -34,44 +36,13 @@ namespace cuttlefish {
  * etc, can't be in the queue
  */
 class ScreenConnectorCtrl {
-  /**
-   * An ad-hoc semaphore used to track the number of items in all queue
-   */
-  class ScreenConnectorCtrlSemaphore {
-   public:
-    ScreenConnectorCtrlSemaphore(const int init_val = 0)
-        : count_{init_val}
-    {}
-
-    // called by the threads that consumes all of the multiple queues
-    void SemWait() {
-      std::unique_lock<std::mutex> lock(mtx_);
-      cv_.wait(lock, [this]() -> bool {return this->count_ > 0;});
-      --count_;
-    }
-
-    // called by each producer thread effectively, whenever an item is added
-    void SemPost() {
-      std::unique_lock<std::mutex> lock(mtx_);
-      if (++count_ > 0) {
-        cv_.notify_all();
-      }
-    }
-   private:
-    std::mutex mtx_;
-    std::condition_variable cv_;
-    int count_;
-  };
-
  public:
   enum class ModeType {
     kAndroidMode,
     kConfUI_Mode
   };
 
-  ScreenConnectorCtrl()
-      : atomic_mode_(ModeType::kAndroidMode)
-  {}
+  ScreenConnectorCtrl() : atomic_mode_(ModeType::kAndroidMode) {}
 
   /**
    * The thread that enqueues Android frames will call this to wait until
@@ -116,14 +87,10 @@ class ScreenConnectorCtrl {
     return ret_val;
   }
 
-  void SemWaitItem() {
-    sem_.SemWait();
-  }
+  void SemWait() { sem_.SemWait(); }
 
   // Only called by the producers
-  void SemPostItem() {
-    sem_.SemPost();
-  }
+  void SemPost() { sem_.SemPost(); }
 
  private:
   std::mutex mode_mtx_;
@@ -131,7 +98,7 @@ class ScreenConnectorCtrl {
   std::atomic<ModeType> atomic_mode_;
 
   // track the total number of items in all queues
-  ScreenConnectorCtrlSemaphore sem_;
+  Semaphore sem_;
 };
 
 } // namespace cuttlefish

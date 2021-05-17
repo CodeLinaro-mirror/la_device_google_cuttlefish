@@ -17,21 +17,6 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-cc_library {
-    name: "libcdisk_spec",
-    srcs: [
-        "cdisk_spec.proto",
-    ],
-    proto: {
-        type: "full",
-        export_proto_headers: true,
-        include_dirs: [
-            "external/protobuf/src",
-        ],
-    },
-    defaults: ["cuttlefish_host"],
-}
-
 cc_binary {
     name: "assemble_cvd",
     srcs: [
@@ -42,7 +27,6 @@ cc_binary {
         "clean.cc",
         "disk_flags.cc",
         "flags.cc",
-        "image_aggregator.cc",
         "misc_info.cc",
         "super_image_mixer.cc",
     ],
@@ -63,6 +47,7 @@ cc_binary {
     static_libs: [
         "libcdisk_spec",
         "libext2_uuid",
+        "libimage_aggregator",
         "libsparse",
         "libcuttlefish_graphics_detector",
         "libcuttlefish_host_config",

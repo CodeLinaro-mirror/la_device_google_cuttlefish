@@ -33,6 +33,7 @@ const char TMP_EXTENSION[] = ".tmp";
 const char CPIO_EXT[] = ".cpio";
 const char TMP_RD_DIR[] = "stripped_ramdisk_dir";
 const char STRIPPED_RD[] = "stripped_ramdisk";
+const char CONCATENATED_VENDOR_RAMDISK[] = "concatenated_vendor_ramdisk";
 namespace cuttlefish {
 namespace {
 std::string ExtractValue(const std::string& dictionary, const std::string& key) {
@@ -70,16 +71,6 @@ bool DeleteTmpFileIfNotChanged(const std::string& tmp_file, const std::string& c
   return true;
 }
 
-std::string FindCpio() {
-  for (const auto& path : {"/usr/bin/cpio", "/bin/cpio"}) {
-    if (FileExists(path)) {
-      return path;
-    }
-  }
-  LOG(FATAL) << "Could not find a cpio executable.";
-  return "";
-}
-
 bool UnpackBootImage(const std::string& boot_image_path,
                      const std::string& unpack_dir) {
   auto unpack_path = HostBinaryPath("unpack_bootimg");
@@ -110,30 +101,33 @@ void RepackVendorRamdisk(const std::string& kernel_modules_ramdisk_path,
                          const std::string& original_ramdisk_path,
                          const std::string& new_ramdisk_path,
                          const std::string& build_dir) {
-  const auto& cpio_path = FindCpio();
   int success = execute({"/bin/bash", "-c", HostBinaryPath("lz4") + " -c -d -l " +
                         original_ramdisk_path + " > " + original_ramdisk_path + CPIO_EXT});
   CHECK(success == 0) << "Unable to run lz4. Exited with status " << success;
 
-  success = mkdir((build_dir + "/" + TMP_RD_DIR).c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-  CHECK(success == 0) << "Could not mkdir \"" << TMP_RD_DIR << "\", error was " << strerror(errno);
+  const std::string ramdisk_stage_dir = build_dir + "/" + TMP_RD_DIR;
+  success =
+      mkdir(ramdisk_stage_dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+  CHECK(success == 0) << "Could not mkdir \"" << ramdisk_stage_dir
+                      << "\", error was " << strerror(errno);
 
-  success = execute({"/bin/bash", "-c",
-                     "(cd " + build_dir + "/" + TMP_RD_DIR + " && (while " +
-                         cpio_path + " -id ; do :; done) < " +
-                         original_ramdisk_path + CPIO_EXT + ")"});
-  CHECK(success == 0) << "Unable to run cd or cpio. Exited with status " << success;
+  success = execute(
+      {"/bin/bash", "-c",
+       "(cd " + ramdisk_stage_dir + " && while " + HostBinaryPath("toybox") +
+           " cpio -idu; do :; done) < " + original_ramdisk_path + CPIO_EXT});
+  CHECK(success == 0) << "Unable to run cd or cpio. Exited with status "
+                      << success;
 
-  success = execute({"/bin/bash", "-c", "rm -rf " + build_dir + "/" + TMP_RD_DIR + "/lib/modules"});
-  CHECK(success == 0) << "Could not rmdir \"lib/modules\" in TMP_RD_DIR. Exited with status "
-                  << success;
+  success = execute({"rm", "-rf", ramdisk_stage_dir + "/lib/modules"});
+  CHECK(success == 0) << "Could not rmdir \"lib/modules\" in TMP_RD_DIR. "
+                      << "Exited with status " << success;
 
   const std::string stripped_ramdisk_path = build_dir + "/" + STRIPPED_RD;
   success = execute({"/bin/bash", "-c",
-                     "(cd " + build_dir + "/" + TMP_RD_DIR + " && find . | " +
-                         cpio_path + " -H newc -o --quiet > " +
-                         stripped_ramdisk_path + CPIO_EXT + ")"});
-  CHECK(success == 0) << "Unable to run cd or cpio. Exited with status " << success;
+                     HostBinaryPath("mkbootfs") + " " + ramdisk_stage_dir +
+                         " > " + stripped_ramdisk_path + CPIO_EXT});
+  CHECK(success == 0) << "Unable to run cd or cpio. Exited with status "
+                      << success;
 
   success = execute({"/bin/bash", "-c", HostBinaryPath("lz4") +
                      " -c -l -12 --favor-decSpeed " + stripped_ramdisk_path + CPIO_EXT + " > " +
@@ -172,6 +166,24 @@ bool UnpackVendorBootImageIfNotUnpacked(
   int success = unpack_cmd.Start().Wait();
   if (success != 0) {
     LOG(ERROR) << "Unable to run unpack_bootimg. Exited with status " << success;
+    return false;
+  }
+
+  // Concatenates all vendor ramdisk into one single ramdisk.
+  Command concat_cmd("/bin/bash");
+  concat_cmd.AddParameter("-c");
+  concat_cmd.AddParameter("cat " + unpack_dir + "/vendor_ramdisk*");
+  auto concat_file =
+      SharedFD::Creat(unpack_dir + "/" + CONCATENATED_VENDOR_RAMDISK, 0666);
+  if (!concat_file->IsOpen()) {
+    LOG(ERROR) << "Unable to create concatenated vendor ramdisk file: "
+               << concat_file->StrError();
+    return false;
+  }
+  concat_cmd.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, concat_file);
+  success = concat_cmd.Start().Wait();
+  if (success != 0) {
+    LOG(ERROR) << "Unable to run cat. Exited with status " << success;
     return false;
   }
   return true;
@@ -241,11 +253,12 @@ bool RepackVendorBootImage(const std::string& new_ramdisk,
   if (new_ramdisk.size()) {
     ramdisk_path = unpack_dir + "/vendor_ramdisk_repacked";
     if (!FileExists(ramdisk_path)) {
-      RepackVendorRamdisk(new_ramdisk, unpack_dir + "/vendor_ramdisk0",
+      RepackVendorRamdisk(new_ramdisk,
+                          unpack_dir + "/" + CONCATENATED_VENDOR_RAMDISK,
                           ramdisk_path, unpack_dir);
     }
   } else {
-    ramdisk_path = unpack_dir + "/vendor_ramdisk0";
+    ramdisk_path = unpack_dir + "/" + CONCATENATED_VENDOR_RAMDISK;
   }
 
   auto bootconfig_fd = SharedFD::Creat(repack_dir + "/bootconfig", 0666);

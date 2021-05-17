@@ -401,6 +401,9 @@ class CuttlefishConfig {
     std::string switches_socket_path() const;
     std::string frames_socket_path() const;
 
+    // mock hal guest socket that will be vsock/virtio later on
+    std::string confui_hal_guest_socket_path() const;
+
     std::string access_kregistry_path() const;
 
     std::string pstore_path() const;
@@ -428,6 +431,8 @@ class CuttlefishConfig {
     std::string sdcard_path() const;
 
     std::string os_composite_disk_path() const;
+
+    std::string persistent_composite_disk_path() const;
 
     std::string uboot_env_image_path() const;
 

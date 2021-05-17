@@ -169,6 +169,11 @@ std::string CuttlefishConfig::InstanceSpecific::os_composite_disk_path() const {
   return AbsolutePath(PerInstancePath("os_composite.img"));
 }
 
+std::string CuttlefishConfig::InstanceSpecific::persistent_composite_disk_path()
+    const {
+  return AbsolutePath(PerInstancePath("persistent_composite.img"));
+}
+
 std::string CuttlefishConfig::InstanceSpecific::uboot_env_image_path() const {
   return AbsolutePath(PerInstancePath("uboot_env.img"));
 }
@@ -198,6 +203,11 @@ std::string CuttlefishConfig::InstanceSpecific::mobile_tap_name() const {
 void CuttlefishConfig::MutableInstanceSpecific::set_mobile_tap_name(
     const std::string& mobile_tap_name) {
   (*Dictionary())[kMobileTapName] = mobile_tap_name;
+}
+
+std::string CuttlefishConfig::InstanceSpecific::confui_hal_guest_socket_path()
+    const {
+  return PerInstanceInternalPath("confui_mock_hal_guest.sock");
 }
 
 static constexpr char kWifiTapName[] = "wifi_tap_name";
