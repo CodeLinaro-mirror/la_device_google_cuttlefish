@@ -64,6 +64,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.health.storage@1.0", // converted to AIDL, see b/177470478
     "android.hardware.ir@1.0",
     "android.hardware.keymaster@3.0",
+    "android.hardware.keymaster@4.1", // Replaced by KeyMint
     "android.hardware.light@2.0",
     "android.hardware.media.bufferpool@1.0",
     "android.hardware.media.bufferpool@2.0",
@@ -194,7 +195,9 @@ static std::set<std::string> allAidlManifestInterfaces() {
 
 TEST(Hal, AllHidlInterfacesAreInAosp) {
     for (const FQName& name : allHidlManifestInterfaces()) {
-        EXPECT_TRUE(isAospHidlInterface(name)) << name.string();
+      EXPECT_TRUE(isAospHidlInterface(name))
+          << "This device should only have AOSP interfaces, not: "
+          << name.string();
     }
 }
 
@@ -252,7 +255,8 @@ TEST(Hal, HidlInterfacesImplemented) {
 
 TEST(Hal, AllAidlInterfacesAreInAosp) {
     for (const std::string& name : allAidlManifestInterfaces()) {
-        EXPECT_TRUE(isAospAidlInterface(name)) << name;
+      EXPECT_TRUE(isAospAidlInterface(name))
+          << "This device should only have AOSP interfaces, not: " << name;
     }
 }
 
