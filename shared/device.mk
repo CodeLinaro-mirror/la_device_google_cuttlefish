@@ -31,6 +31,7 @@ DISABLE_RILD_OEM_HOOK := true
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish-opengl # for vulkan
 
 TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE ?= f2fs
+TARGET_USERDATAIMAGE_PARTITION_SIZE ?= 6442450944
 
 TARGET_VULKAN_SUPPORT ?= true
 
@@ -271,9 +272,15 @@ PRODUCT_PACKAGES += \
 #
 # Bluetooth HAL and Compatibility Bluetooth library (for older revs).
 #
-PRODUCT_PACKAGES += \
-    android.hardware.bluetooth@1.1-service.sim \
-    android.hardware.bluetooth.audio@2.0-impl
+ifeq ($(LOCAL_BLUETOOTH_PRODUCT_PACKAGE),)
+    LOCAL_BLUETOOTH_PRODUCT_PACKAGE := \
+        android.hardware.bluetooth@1.1-service.sim
+    DEVICE_MANIFEST_FILE +=  device/google/cuttlefish/shared/config/manifest_android.hardware.bluetooth@1.1-service.xml
+endif
+
+PRODUCT_PACKAGES += $(LOCAL_BLUETOOTH_PRODUCT_PACKAGE)
+
+PRODUCT_PACKAGES += android.hardware.bluetooth.audio@2.0-impl
 
 #
 # Audio HAL
