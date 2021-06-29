@@ -25,6 +25,7 @@
 #include "common/libs/confui/confui.h"
 #include "host/libs/confui/host_utils.h"
 
+using cuttlefish::confui::DebugLog;
 namespace cuttlefish {
 /**
  * mechanism to orchestrate concurrent executions of threads
@@ -58,11 +59,11 @@ class HostModeCtrl {
    * amd64 desktop, with Linux 5.10
    */
   void WaitAndroidMode() {
-    ConfUiLog(DEBUG) << cuttlefish::confui::thread::GetName()
-                     << "checking atomic Android mode";
+    DebugLog(cuttlefish::confui::thread::GetName(),
+             " checking atomic Android mode");
     if (atomic_mode_ == ModeType::kAndroidMode) {
-      ConfUiLog(DEBUG) << cuttlefish::confui::thread::GetName()
-                       << "returns as it is already Android mode";
+      DebugLog(cuttlefish::confui::thread::GetName(),
+               " returns as it is already Android mode");
       return;
     }
     auto check = [this]() -> bool {
@@ -70,25 +71,25 @@ class HostModeCtrl {
     };
     std::unique_lock<std::mutex> lock(mode_mtx_);
     and_mode_cv_.wait(lock, check);
-    ConfUiLog(DEBUG) << cuttlefish::confui::thread::GetName()
-                     << "awakes from cond var waiting for Android mode";
+    DebugLog(cuttlefish::confui::thread::GetName(),
+             " awakes from cond var waiting for Android mode");
   }
 
   void SetMode(const ModeType mode) {
-    ConfUiLog(DEBUG) << cuttlefish::confui::thread::GetName()
-                     << "tries to acquire the lock in SetMode";
+    DebugLog(cuttlefish::confui::thread::GetName(),
+             " tries to acquire the lock in SetMode");
     std::lock_guard<std::mutex> lock(mode_mtx_);
-    ConfUiLog(DEBUG) << cuttlefish::confui::thread::GetName()
-                     << "acquired the lock in SetMode";
+    DebugLog(cuttlefish::confui::thread::GetName(),
+             " acquired the lock in SetMode");
     atomic_mode_ = mode;
     if (atomic_mode_ == ModeType::kAndroidMode) {
-      ConfUiLog(DEBUG) << cuttlefish::confui::thread::GetName()
-                       << "signals kAndroidMode in SetMode";
+      DebugLog(cuttlefish::confui::thread::GetName(),
+               " signals kAndroidMode in SetMode");
       and_mode_cv_.notify_all();
       return;
     }
-    ConfUiLog(DEBUG) << cuttlefish::confui::thread::GetName()
-                     << "signals kConfUI_Mode in SetMode";
+    DebugLog(cuttlefish::confui::thread::GetName(),
+             " signals kConfUI_Mode in SetMode");
     confui_mode_cv_.notify_all();
   }
 

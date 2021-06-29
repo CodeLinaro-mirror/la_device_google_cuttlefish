@@ -47,6 +47,12 @@
 namespace cuttlefish {
 namespace {
 
+// Keep the full disk size a multiple of 64k, for crosvm's virtio_blk driver
+constexpr int DISK_SIZE_SHIFT = 16;
+
+// Keep all partitions 4k aligned, for host performance reasons
+constexpr int PARTITION_SIZE_SHIFT = 12;
+
 constexpr int GPT_NUM_PARTITIONS = 128;
 
 /**
@@ -116,7 +122,7 @@ struct __attribute__((packed)) GptEnd {
 static_assert(sizeof(GptEnd) == SECTOR_SIZE * 33);
 
 struct PartitionInfo {
-  MultipleImagePartition source;
+  ImagePartition source;
   std::uint64_t guest_size;
   std::uint64_t host_size;
   std::uint64_t offset;
@@ -159,15 +165,6 @@ void u16cpy(std::uint16_t* dest, std::uint16_t* src, std::size_t size) {
   }
 }
 
-MultipleImagePartition ToMultipleImagePartition(ImagePartition source) {
-  return MultipleImagePartition{
-      .label = source.label,
-      .image_file_paths = std::vector{source.image_file_path},
-      .type = source.type,
-      .read_only = source.read_only,
-  };
-}
-
 /**
  * Incremental builder class for producing partition tables. Add partitions
  * one-by-one, then produce specification files
@@ -177,7 +174,7 @@ private:
   std::vector<PartitionInfo> partitions_;
   std::uint64_t next_disk_offset_;
 
-  static const char* GetPartitionGUID(MultipleImagePartition source) {
+  static const char *GetPartitionGUID(ImagePartition source) {
     // Due to some endianness mismatch in e2fsprogs GUID vs GPT, the GUIDs are
     // rearranged to make the right GUIDs appear in gdisk
     switch (source.type) {
@@ -191,22 +188,14 @@ private:
         LOG(FATAL) << "Unknown partition type: " << (int) source.type;
     }
   }
-
 public:
   CompositeDiskBuilder() : next_disk_offset_(sizeof(GptBeginning)) {}
 
-  void AppendPartition(ImagePartition source) {
-    AppendPartition(ToMultipleImagePartition(source));
-  }
-
-  void AppendPartition(MultipleImagePartition source) {
-    uint64_t host_size = 0;
-    for (const auto& path : source.image_file_paths) {
-      host_size += UnsparsedSize(path);
-    }
+  void AppendDisk(ImagePartition source) {
+    auto host_size = UnsparsedSize(source.image_file_path);
     auto guest_size = AlignToPowerOf2(host_size, PARTITION_SIZE_SHIFT);
     CHECK(host_size == guest_size || source.read_only)
-        << "read-write partition " << source.label
+        << "read-write file " << source.image_file_path
         << " is not aligned to the size of " << (1 << PARTITION_SIZE_SHIFT);
     partitions_.push_back(PartitionInfo{
         .source = source,
@@ -239,17 +228,12 @@ public:
     header->set_offset(0);
 
     for (auto& partition : partitions_) {
-      uint64_t host_size = 0;
-      for (const auto& path : partition.source.image_file_paths) {
-        ComponentDisk* component = disk.add_component_disks();
-        component->set_file_path(AbsolutePath(path));
-        component->set_offset(partition.offset + host_size);
-        component->set_read_write_capability(
-            partition.source.read_only ? ReadWriteCapability::READ_ONLY
-                                       : ReadWriteCapability::READ_WRITE);
-        host_size += UnsparsedSize(path);
-      }
-      CHECK(partition.host_size == host_size);
+      ComponentDisk* component = disk.add_component_disks();
+      component->set_file_path(AbsolutePath(partition.source.image_file_path));
+      component->set_offset(partition.offset);
+      component->set_read_write_capability(
+          partition.source.read_only ? ReadWriteCapability::READ_ONLY
+                                     : ReadWriteCapability::READ_WRITE);
       // When partition's size differs from its size on the host
       // reading the disk within the guest os would fail due to the gap.
       // Putting any disk bigger than 4K can fill this gap.
@@ -410,16 +394,12 @@ void DeAndroidSparse(const std::vector<ImagePartition>& partitions) {
 
 } // namespace
 
-uint64_t AlignToPartitionSize(uint64_t size) {
-  return AlignToPowerOf2(size, PARTITION_SIZE_SHIFT);
-}
-
 void AggregateImage(const std::vector<ImagePartition>& partitions,
                     const std::string& output_path) {
   DeAndroidSparse(partitions);
   CompositeDiskBuilder builder;
-  for (auto& partition : partitions) {
-    builder.AppendPartition(partition);
+  for (auto& disk : partitions) {
+    builder.AppendDisk(disk);
   }
   auto output = SharedFD::Creat(output_path, 0600);
   auto beginning = builder.Beginning();
@@ -456,21 +436,9 @@ void CreateCompositeDisk(std::vector<ImagePartition> partitions,
                          const std::string& header_file,
                          const std::string& footer_file,
                          const std::string& output_composite_path) {
-  std::vector<MultipleImagePartition> multiple_image_partitions;
-  for (const auto& partition : partitions) {
-    multiple_image_partitions.push_back(ToMultipleImagePartition(partition));
-  }
-  return CreateCompositeDisk(std::move(multiple_image_partitions), header_file,
-                             footer_file, output_composite_path);
-}
-
-void CreateCompositeDisk(std::vector<MultipleImagePartition> partitions,
-                         const std::string& header_file,
-                         const std::string& footer_file,
-                         const std::string& output_composite_path) {
   CompositeDiskBuilder builder;
-  for (auto& partition : partitions) {
-    builder.AppendPartition(partition);
+  for (auto& disk : partitions) {
+    builder.AppendDisk(disk);
   }
   auto header = SharedFD::Creat(header_file, 0600);
   auto beginning = builder.Beginning();

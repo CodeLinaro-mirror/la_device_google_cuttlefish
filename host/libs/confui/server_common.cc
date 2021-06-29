@@ -49,8 +49,7 @@ FsmInput ToFsmInput(const ConfUiMessage& confui_msg) {
     case ConfUiCmd::kCliAck:
     case ConfUiCmd::kCliRespond:
     default:
-      ConfUiLog(FATAL) << "The" << ToString(hal_cmd)
-                       << "is not handled by Session";
+      FatalLog("The ", ToString(hal_cmd), " is not handled by Session");
   }
   return FsmInput::kHalUnknown;
 }

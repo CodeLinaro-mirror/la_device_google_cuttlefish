@@ -146,8 +146,7 @@ class ConfUiRenderer {
     auto& label = std::get<Label>(layout_);
     str = localization::lookup(TranslationId(label.textId()));
     if (str == nullptr) {
-      ConfUiLog(ERROR) << "Given translation_id" << label.textId()
-                       << "not found";
+      ErrorLog("Given translation_id ", label.textId(), " not found");
       return Error::Localization;
     }
     label.setText({str, str + strlen(str)});

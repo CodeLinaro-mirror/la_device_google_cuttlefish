@@ -40,6 +40,10 @@
 
 DECLARE_bool(write_virtio_input);
 
+// LOG(DEBUG) for confirmation UI debugging
+// that stands for LOG(DEBUG) << "ConfUI: " << ...
+using cuttlefish::confui::DebugLog;
+
 namespace cuttlefish {
 
 // TODO (b/147511234): de-dup this from vnc server and here
@@ -367,7 +371,7 @@ class ConnectionObserverDemuxer
   void OnTouchEvent(const std::string &label, int x, int y,
                     bool down) override {
     if (confui_input_.IsConfUiActive()) {
-      ConfUiLog(DEBUG) << "touch event ignored in confirmation UI mode";
+      DebugLog("touch event ignored in confirmation UI mode");
       return;
     }
     android_input_.OnTouchEvent(label, x, y, down);
@@ -377,7 +381,7 @@ class ConnectionObserverDemuxer
                          Json::Value slot, Json::Value x, Json::Value y,
                          bool down, int size) override {
     if (confui_input_.IsConfUiActive()) {
-      ConfUiLog(DEBUG) << "multi-touch event ignored in confirmation UI mode";
+      DebugLog("multi-touch event ignored in confirmation UI mode");
       return;
     }
     android_input_.OnMultiTouchEvent(label, id, slot, x, y, down, size);
@@ -393,8 +397,7 @@ class ConnectionObserverDemuxer
           confui_input_.PressCancelButton(down);
           break;
         default:
-          ConfUiLog(DEBUG) << "key" << code
-                           << "is ignored in confirmation UI mode";
+          DebugLog("key ", code, " is ignored in confirmation UI mode");
           break;
       }
       return;

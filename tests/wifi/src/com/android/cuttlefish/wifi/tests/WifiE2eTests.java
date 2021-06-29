@@ -121,11 +121,9 @@ public class WifiE2eTests {
         Assert.assertNotNull(configs);
         for (WifiConfiguration config : configs) {
             Log.i(TAG, "Removing network " + config.networkId + ": " + config.SSID);
-            mWifiManager.disableNetwork(config.networkId);
-            mWifiManager.removeNetwork(config.networkId);
+            Assert.assertTrue(mWifiManager.disableNetwork(config.networkId));
+            Assert.assertTrue(mWifiManager.removeNetwork(config.networkId));
         }
-        configs = mWifiManager.getConfiguredNetworks();
-        Assert.assertEquals(0, configs.size());
 
         waitForSupplicantState(
                 SupplicantState.INACTIVE,
