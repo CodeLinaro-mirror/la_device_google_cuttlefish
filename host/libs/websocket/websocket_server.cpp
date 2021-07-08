@@ -109,6 +109,11 @@ std::string WebSocketServer::GetPath(struct lws* wsi) {
   auto len = lws_hdr_total_length(wsi, WSI_TOKEN_GET_URI);
   std::string path(len + 1, '\0');
   auto ret = lws_hdr_copy(wsi, path.data(), path.size(), WSI_TOKEN_GET_URI);
+  if (ret <= 0) {
+      len = lws_hdr_total_length(wsi, WSI_TOKEN_HTTP_COLON_PATH);
+      path.resize(len + 1, '\0');
+      ret = lws_hdr_copy(wsi, path.data(), path.size(), WSI_TOKEN_HTTP_COLON_PATH);
+  }
   if (ret < 0) {
     LOG(FATAL) << "Something went wrong getting the path";
   }
@@ -156,8 +161,10 @@ int WebSocketServer::ServerCallback(struct lws* wsi, enum lws_callback_reasons r
     case LWS_CALLBACK_RECEIVE: {
       auto handler = handlers_[wsi];
       if (handler) {
+        bool is_final = (lws_remaining_packet_payload(wsi) == 0) &&
+                        lws_is_final_fragment(wsi);
         handler->OnReceive(reinterpret_cast<const uint8_t*>(in), len,
-                           lws_frame_is_binary(wsi));
+                           lws_frame_is_binary(wsi), is_final);
       } else {
         LOG(WARNING) << "Unkwnown wsi sent data";
       }
