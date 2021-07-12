@@ -14,9 +14,9 @@
 // limitations under the License.
 
 cc_binary_host {
-    name: "cvd_status",
+    name: "cvd_internal_status",
     srcs: [
-        "cvd_status.cc",
+        "main.cc",
     ],
     header_libs: [
         "cuttlefish_glog",

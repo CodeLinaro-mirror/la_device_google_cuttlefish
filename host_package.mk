@@ -53,8 +53,8 @@ cvd_host_executables := \
     console_forwarder \
     assemble_cvd \
     run_cvd \
-    cvd_host_bugreport \
-    cvd_status \
+    cvd_internal_host_bugreport \
+    cvd_internal_status \
     powerwash_cvd \
     mkbootimg \
     unpack_bootimg \

@@ -14,7 +14,7 @@
 // limitations under the License.
 
 cc_binary_host {
-    name: "cvd_host_bugreport",
+    name: "cvd_internal_host_bugreport",
     srcs: [
         "main.cc",
     ],
