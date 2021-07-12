@@ -43,6 +43,8 @@ cvd_host_tools = [
     "common_crosvm",
     "config_server",
     "console_forwarder",
+    "cvd_internal_host_bugreport",
+    "cvd_internal_status",
     "cvd_host_bugreport",
     "cvd_status",
     "extract-ikconfig",
