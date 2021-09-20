@@ -23,6 +23,7 @@
 #include <string.h>
 #include "common.h"
 #include "linux_ioctl.h"
+#include "includes.h"
 #include "wpa_supplicant_i.h"
 
 #define VSOC_WPA_SUPPLICANT_DEBUG 0
