@@ -13,7 +13,7 @@ on early-init
     setprop ro.hw_timeout_multiplier ${ro.boot.hw_timeout_multiplier}
 
     # start module load in the background
-    start vendor.insmod_sh
+    start vendor.dlkm_loader
 
 on init
     # ZRAM setup
@@ -47,14 +47,16 @@ on fs
     mount_all --early
     restorecon_recursive /vendor
 
-    start setup_wifi
     # works around framework netiface enumeration issue
-    start rename_eth1
+    start rename_eth0
 
     start bt_vhci_forwarder
 
     # So GceBootReporter can print to kmsg
     chmod 622 /dev/kmsg
+
+on fs && property:ro.vendor.wifi_impl=virt_wifi
+    start setup_wifi
 
 on post-fs
     # set RLIMIT_MEMLOCK to 64MB
@@ -65,13 +67,14 @@ on post-fs-data
     mkdir /data/vendor/radio 0777 system system
 
 on late-fs
-    # Wait for keymaster
-    exec_start wait_for_keymaster
-
     # Mount RW partitions which need run fsck
     mount_all --late
 
     write /dev/kmsg "GUEST_BUILD_FINGERPRINT: ${ro.build.fingerprint}"
+
+on post-fs-data && property:ro.vendor.wifi_impl=mac8011_hwsim_virtio
+    setprop vold.post_fs_data_done 1
+    start wifi-net-sh
 
 on boot
     chmod 0660 /dev/cpuctl
@@ -80,6 +83,13 @@ on boot
     mkdir /data/vendor/wifi/wpa/sockets 0770 wifi wifi
     start socket_vsock_proxy
 
+service wifi-net-sh /vendor/bin/init.wifi.sh
+    class late_start
+    user root
+    group root wakelock wifi
+    oneshot
+    disabled    # Started on post-fs-data
+
 service bt_vhci_forwarder /vendor/bin/bt_vhci_forwarder -virtio_console_dev=/dev/hvc5
     user bluetooth
     group bluetooth
@@ -87,7 +97,7 @@ service bt_vhci_forwarder /vendor/bin/bt_vhci_forwarder -virtio_console_dev=/dev
 service setup_wifi /vendor/bin/setup_wifi
     oneshot
 
-service rename_eth1 /vendor/bin/rename_netiface eth1 rmnet0
+service rename_eth0 /vendor/bin/rename_netiface eth0 rmnet0
     oneshot
 
 on property:sys.boot_completed=1
@@ -100,7 +110,7 @@ on property:sys.boot_completed=1
 on sys-boot-completed-set && property:persist.sys.zram_enabled=1
     swapon_all
 
-service vendor.insmod_sh /vendor/bin/init.insmod.sh
+service vendor.dlkm_loader /vendor/bin/dlkm_loader
     class main
     user root
     group root system

@@ -40,9 +40,10 @@ namespace vm_manager {
 
 namespace {
 
-std::string GetControlSocketPath(const CuttlefishConfig& config) {
-  return config.ForDefaultInstance()
-      .PerInstanceInternalPath("crosvm_control.sock");
+std::string GetControlSocketPath(const CuttlefishConfig& config,
+                                 const std::string& socket_name) {
+  return config.ForDefaultInstance().PerInstanceInternalPath(
+      socket_name.c_str());
 }
 
 SharedFD AddTapFdParameter(Command* crosvm_cmd,
@@ -77,11 +78,11 @@ bool ReleaseDhcpLeases(const std::string& lease_path, SharedFD tap_fd) {
   return success;
 }
 
-bool Stop() {
+bool Stop(const std::string& socket_name) {
   auto config = CuttlefishConfig::Get();
   Command command(config->crosvm_binary());
   command.AddParameter("stop");
-  command.AddParameter(GetControlSocketPath(*config));
+  command.AddParameter(GetControlSocketPath(*config, socket_name));
 
   auto process = command.Start();
 
@@ -147,18 +148,35 @@ std::string CrosvmManager::ConfigureBootDevices(int num_disks) {
   }
 }
 
+constexpr auto crosvm_socket = "crosvm_control.sock";
+constexpr auto crosvm_for_ap_socket = "crosvm_for_ap_control.sock";
+
 std::vector<Command> CrosvmManager::StartCommands(
     const CuttlefishConfig& config) {
   auto instance = config.ForDefaultInstance();
   Command crosvm_cmd(config.crosvm_binary(), [](Subprocess* proc) {
-    auto stopped = Stop();
+    auto stopped = Stop(crosvm_socket);
     if (stopped) {
-      return true;
+      return StopperResult::kStopSuccess;
     }
     LOG(WARNING) << "Failed to stop VMM nicely, attempting to KILL";
-    return KillSubprocess(proc);
+    return KillSubprocess(proc) == StopperResult::kStopSuccess
+               ? StopperResult::kStopCrash
+               : StopperResult::kStopFailure;
   });
+  bool use_ap_instance =
+      !config.ap_rootfs_image().empty() && !config.ap_kernel_image().empty();
 
+  Command ap_cmd(config.crosvm_binary(), [](Subprocess* proc) {
+    auto stopped = Stop(crosvm_for_ap_socket);
+    if (stopped) {
+      return StopperResult::kStopSuccess;
+    }
+    LOG(WARNING) << "Failed to stop VMM for AP nicely, attempting to KILL";
+    return KillSubprocess(proc) == StopperResult::kStopSuccess
+               ? StopperResult::kStopCrash
+               : StopperResult::kStopFailure;
+  });
   int hvc_num = 0;
   int serial_num = 0;
   auto add_hvc_sink = [&crosvm_cmd, &hvc_num]() {
@@ -202,6 +220,7 @@ std::vector<Command> CrosvmManager::StartCommands(
   };
 
   crosvm_cmd.AddParameter("run");
+  ap_cmd.AddParameter("run");
 
   if (!config.smt()) {
     crosvm_cmd.AddParameter("--no-smt");
@@ -209,6 +228,13 @@ std::vector<Command> CrosvmManager::StartCommands(
 
   if (config.vhost_net()) {
     crosvm_cmd.AddParameter("--vhost-net");
+  }
+
+  if (!config.vhost_user_mac80211_hwsim().empty()) {
+    crosvm_cmd.AddParameter("--vhost-user-mac80211-hwsim=",
+                            config.vhost_user_mac80211_hwsim());
+    ap_cmd.AddParameter("--vhost-user-mac80211-hwsim=",
+                        config.vhost_user_mac80211_hwsim());
   }
 
   if (config.protected_vm()) {
@@ -220,23 +246,20 @@ std::vector<Command> CrosvmManager::StartCommands(
     crosvm_cmd.AddParameter("--gdb=", config.gdb_port());
   }
 
-  auto display_configs = config.display_configs();
-  CHECK_GE(display_configs.size(), 1);
-  auto display_config = display_configs[0];
-
   auto gpu_mode = config.gpu_mode();
-
   if (gpu_mode == kGpuModeGuestSwiftshader) {
-    crosvm_cmd.AddParameter("--gpu=2D,",
-                            "width=", display_config.width, ",",
-                            "height=", display_config.height);
+    crosvm_cmd.AddParameter("--gpu=2D");
   } else if (gpu_mode == kGpuModeDrmVirgl || gpu_mode == kGpuModeGfxStream) {
     crosvm_cmd.AddParameter(gpu_mode == kGpuModeGfxStream ?
                                 "--gpu=gfxstream," : "--gpu=",
-                            "width=", display_config.width, ",",
-                            "height=", display_config.height, ",",
                             "egl=true,surfaceless=true,glx=false,gles=true");
   }
+
+  for (const auto& display_config : config.display_configs()) {
+    crosvm_cmd.AddParameter("--gpu-display=", "width=", display_config.width,
+                            ",", "height=", display_config.height);
+  }
+
   crosvm_cmd.AddParameter("--wayland-sock=", instance.frames_socket_path());
 
   // crosvm_cmd.AddParameter("--null-audio");
@@ -251,22 +274,39 @@ std::vector<Command> CrosvmManager::StartCommands(
     crosvm_cmd.AddParameter(config.protected_vm() ? "--disk=" :
                                                     "--rwdisk=", disk);
   }
-  crosvm_cmd.AddParameter("--socket=", GetControlSocketPath(config));
+  crosvm_cmd.AddParameter("--socket=",
+                          GetControlSocketPath(config, crosvm_socket));
+  ap_cmd.AddParameter("--socket=",
+                      GetControlSocketPath(config, crosvm_for_ap_socket));
 
   if (config.enable_vnc_server() || config.enable_webrtc()) {
     auto touch_type_parameter =
         config.enable_webrtc() ? "--multi-touch=" : "--single-touch=";
-    crosvm_cmd.AddParameter(touch_type_parameter, instance.touch_socket_path(),
-                            ":", display_config.width, ":",
-                            display_config.height);
+
+    auto display_configs = config.display_configs();
+    CHECK_GE(display_configs.size(), 1);
+
+    for (int i = 0; i < display_configs.size(); ++i) {
+      auto display_config = display_configs[i];
+
+      crosvm_cmd.AddParameter(touch_type_parameter,
+                              instance.touch_socket_path(i), ":",
+                              display_config.width, ":", display_config.height);
+    }
     crosvm_cmd.AddParameter("--keyboard=", instance.keyboard_socket_path());
   }
   if (config.enable_webrtc()) {
     crosvm_cmd.AddParameter("--switches=", instance.switches_socket_path());
   }
 
-  auto wifi_tap = AddTapFdParameter(&crosvm_cmd, instance.wifi_tap_name());
   AddTapFdParameter(&crosvm_cmd, instance.mobile_tap_name());
+
+  SharedFD wifi_tap;
+  if (config.vhost_user_mac80211_hwsim().empty()) {
+    wifi_tap = AddTapFdParameter(&crosvm_cmd, instance.wifi_tap_name());
+  } else if (use_ap_instance) {
+    wifi_tap = AddTapFdParameter(&ap_cmd, instance.wifi_tap_name());
+  }
 
   if (FileExists(instance.access_kregistry_path())) {
     crosvm_cmd.AddParameter("--rw-pmem-device=",
@@ -289,8 +329,10 @@ std::vector<Command> CrosvmManager::StartCommands(
       return {};
     }
     crosvm_cmd.AddParameter("--seccomp-policy-dir=", config.seccomp_policy_dir());
+    ap_cmd.AddParameter("--seccomp-policy-dir=", config.seccomp_policy_dir());
   } else {
     crosvm_cmd.AddParameter("--disable-sandbox");
+    ap_cmd.AddParameter("--disable-sandbox");
   }
 
   if (instance.vsock_guest_cid() >= 2) {
@@ -376,7 +418,7 @@ std::vector<Command> CrosvmManager::StartCommands(
       << VmManager::kMaxDisks + VmManager::kDefaultNumHvcs << " devices";
 
   if (config.enable_audio()) {
-    crosvm_cmd.AddParameter("--ac97=backend=vios,server=" +
+    crosvm_cmd.AddParameter("--sound=",
                             config.ForDefaultInstance().audio_server_path());
   }
 
@@ -399,7 +441,8 @@ std::vector<Command> CrosvmManager::StartCommands(
   // Only run the leases workaround if we are not using the new network
   // bridge architecture - in that case, we have a wider DHCP address
   // space and stale leases should be much less of an issue
-  if (!FileExists("/var/run/cuttlefish-dnsmasq-cvd-wbr.leases")) {
+  if (!FileExists("/var/run/cuttlefish-dnsmasq-cvd-wbr.leases") &&
+      (config.vhost_user_mac80211_hwsim().empty() || use_ap_instance)) {
     // TODO(schuffelen): QEMU also needs this and this is not the best place for
     // this code. Find a better place to put it.
     auto lease_file =
@@ -409,9 +452,14 @@ std::vector<Command> CrosvmManager::StartCommands(
                  << "network may not work.";
     }
   }
+  ap_cmd.AddParameter("--root=", config.ap_rootfs_image());
+  ap_cmd.AddParameter(config.ap_kernel_image());
 
   std::vector<Command> ret;
   ret.push_back(std::move(crosvm_cmd));
+  if (use_ap_instance) {
+    ret.push_back(std::move(ap_cmd));
+  }
   ret.push_back(std::move(log_tee_cmd));
   return ret;
 }

@@ -144,7 +144,13 @@ BOARD_FLASH_BLOCK_SIZE := 512
 USE_OPENGL_RENDERER := true
 
 # Wifi.
+ifeq ($(PRODUCT_ENFORCE_MAC80211_HWSIM),true)
+BOARD_WLAN_DEVICE           := emulator
+BOARD_HOSTAPD_PRIVATE_LIB   := lib_driver_cmd_simulated_cf
+WIFI_HIDL_FEATURE_DUAL_INTERFACE := true
+else
 BOARD_WLAN_DEVICE           := wlan0
+endif
 BOARD_HOSTAPD_DRIVER        := NL80211
 BOARD_WPA_SUPPLICANT_DRIVER := NL80211
 BOARD_WPA_SUPPLICANT_PRIVATE_LIB := lib_driver_cmd_simulated_cf
@@ -160,7 +166,7 @@ BOARD_VENDOR_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor/go
 BOARD_SEPOLICY_DIRS += system/bt/vendor_libs/linux/sepolicy
 
 # Avoid multiple includes of sepolicy already included by Pixel experience.
-ifneq ($(filter aosp_% %_auto %_go_phone trout_% %_tv,$(PRODUCT_NAME)),)
+ifneq ($(filter aosp_% %_auto %_go_phone trout_% gull% %_tv,$(PRODUCT_NAME)),)
 
 SYSTEM_EXT_PRIVATE_SEPOLICY_DIRS += hardware/google/pixel-sepolicy/flipendo
 
@@ -220,8 +226,6 @@ BOARD_KERNEL_CMDLINE += loop.max_part=7
 # TODO(b/182417593): Move all of these module options to modules.options
 # TODO(b/176860479): Remove once goldfish and cuttlefish share a wifi implementation
 BOARD_BOOTCONFIG += kernel.mac80211_hwsim.radios=0
-# TODO(b/175151042): Remove once we are using virtio-snd on cuttlefish
-BOARD_BOOTCONFIG += kernel.snd-hda-intel.enable=0
 # Reduce slab size usage from virtio vsock to reduce slab fragmentation
 BOARD_BOOTCONFIG += \
     kernel.vmw_vsock_virtio_transport_common.virtio_transport_max_vsock_pkt_buf_size=16384
@@ -254,16 +258,6 @@ else
   BOARD_MOVE_RECOVERY_RESOURCES_TO_VENDOR_BOOT := true
 endif
 BOARD_MOVE_GSI_AVB_KEYS_TO_VENDOR_BOOT := true
-
-# TARGET_KERNEL_USE is defined in kernel.mk, if not defined in the environment variable.
-# Keep in sync with GKI APEX in device.mk
-ifneq (,$(TARGET_KERNEL_USE))
-  ifneq (,$(filter 5.4, $(TARGET_KERNEL_USE)))
-    BOARD_KERNEL_MODULE_INTERFACE_VERSIONS := 5.4-android12-0
-  else
-    BOARD_KERNEL_MODULE_INTERFACE_VERSIONS := $(TARGET_KERNEL_USE)-android12-unstable
-  endif
-endif
 
 BOARD_GENERIC_RAMDISK_KERNEL_MODULES_LOAD := dm-user.ko
 

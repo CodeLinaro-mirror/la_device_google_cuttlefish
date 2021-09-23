@@ -22,6 +22,7 @@
 #include <tuple>
 
 #include "common/libs/confui/confui.h"
+#include "common/libs/fs/shared_buf.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/confui/host_utils.h"
 
@@ -33,8 +34,8 @@ static auto CuttlefishConfigDefaultInstance() {
   return config->ForDefaultInstance();
 }
 
-static std::string HalGuestSocketPath() {
-  return CuttlefishConfigDefaultInstance().confui_hal_guest_socket_path();
+static int HalHostVsockPort() {
+  return CuttlefishConfigDefaultInstance().confui_host_vsock_port();
 }
 
 HostServer& HostServer::Get(
@@ -51,15 +52,21 @@ HostServer::HostServer(
       host_mode_ctrl_(host_mode_ctrl),
       screen_connector_{screen_connector},
       renderer_(display_num_),
-      hal_socket_path_(HalGuestSocketPath()),
-      input_multiplexer_{/* max n_elems */ 20, /* n_Qs */ 2} {
-  hal_cmd_q_id_ = input_multiplexer_.GetNewQueueId();         // return 0
-  user_input_evt_q_id_ = input_multiplexer_.GetNewQueueId();  // return 1
+      hal_vsock_port_(HalHostVsockPort()) {
+  const size_t max_elements = 20;
+  auto ignore_new = [](ThreadSafeQueue<ConfUiMessage>::QueueImpl*) {
+    // no op, so the queue is still full, and the new item will be discarded
+    return;
+  };
+  hal_cmd_q_id_ = input_multiplexer_.RegisterQueue(
+      HostServer::Multiplexer::CreateQueue(max_elements, ignore_new));
+  user_input_evt_q_id_ = input_multiplexer_.RegisterQueue(
+      HostServer::Multiplexer::CreateQueue(max_elements, ignore_new));
 }
 
 void HostServer::Start() {
-  guest_hal_socket_ = cuttlefish::SharedFD::SocketLocalServer(
-      hal_socket_path_, false, SOCK_STREAM, 0666);
+  guest_hal_socket_ =
+      cuttlefish::SharedFD::VsockServer(hal_vsock_port_, SOCK_STREAM);
   if (!guest_hal_socket_->IsOpen()) {
     ConfUiLog(FATAL) << "Confirmation UI host service mandates a server socket"
                      << "to which the guest HAL to connect.";
@@ -70,7 +77,7 @@ void HostServer::Start() {
   hal_input_fetcher_thread_ =
       thread::RunThread("HalInputLoop", hal_cmd_fetching);
   main_loop_thread_ = thread::RunThread("MainLoop", main);
-  ConfUiLog(DEBUG) << "configured internal socket based input.";
+  ConfUiLog(DEBUG) << "configured internal vsock based input.";
   return;
 }
 
@@ -186,11 +193,11 @@ std::unique_ptr<Session> HostServer::ComputeCurrentSession(
     const bool is_user_input = (cmd == ConfUiCmd::kUserInputEvent);
     std::string src = is_user_input ? "input" : "hal";
 
-    ConfUiLog(DEBUG) << "In Session" << GetCurrentSessionId() << ","
-                     << "in state" << GetCurrentState() << ","
-                     << "received input from" << src << "cmd =" << cmd_str
-                     << "and additional_info =" << additional_info
-                     << "going to session" << session_id;
+    ConfUiLog(DEBUG) << "In Session" << GetCurrentSessionId() << ", "
+                     << "in state" << GetCurrentState() << ", "
+                     << "received input from " << src << " cmd =" << cmd_str
+                     << " and additional_info =" << additional_info
+                     << " going to session " << session_id;
 
     FsmInput fsm_input = ToFsmInput(input);
 

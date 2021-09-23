@@ -15,51 +15,44 @@
 
 #pragma once
 
+#include <fruit/fruit.h>
 #include <string>
 #include <vector>
 
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/config/feature.h"
 
 namespace cuttlefish {
 
-struct KernelLogMonitorData {
-  std::vector<SharedFD> pipes;
-  std::vector<Command> commands;
+class CommandSource : public virtual Feature {
+ public:
+  virtual ~CommandSource();
+  virtual std::vector<Command> Commands() = 0;
 };
 
-KernelLogMonitorData LaunchKernelLogMonitor(const CuttlefishConfig& config,
-                                            unsigned int number_of_event_pipes);
-std::vector<Command> LaunchAdbConnectorIfEnabled(
-    const CuttlefishConfig& config);
-std::vector<Command> LaunchSocketVsockProxyIfEnabled(
-    const CuttlefishConfig& config, SharedFD adbd_events_pipe);
-std::vector<Command> LaunchModemSimulatorIfEnabled(
-    const CuttlefishConfig& config);
+class KernelLogPipeProvider : public virtual Feature {
+ public:
+  virtual ~KernelLogPipeProvider();
+  virtual SharedFD KernelLogPipe() = 0;
+};
 
-std::vector<Command> LaunchVNCServer(const CuttlefishConfig& config);
+fruit::Component<fruit::Required<const CuttlefishConfig,
+                                 const CuttlefishConfig::InstanceSpecific>,
+                 KernelLogPipeProvider>
+launchComponent();
 
-std::vector<Command> LaunchTombstoneReceiver(const CuttlefishConfig& config);
-std::vector<Command> LaunchRootCanal(const CuttlefishConfig& config);
-std::vector<Command> LaunchLogcatReceiver(const CuttlefishConfig& config);
-std::vector<Command> LaunchConfigServer(const CuttlefishConfig& config);
+fruit::Component<fruit::Required<const CuttlefishConfig,
+                                 const CuttlefishConfig::InstanceSpecific>>
+launchModemComponent();
 
-std::vector<Command> LaunchWebRTC(const CuttlefishConfig& config,
-                                  SharedFD kernel_log_events_pipe);
+fruit::Component<fruit::Required<const CuttlefishConfig, KernelLogPipeProvider,
+                                 const CuttlefishConfig::InstanceSpecific>>
+launchAdbComponent();
 
-std::vector<Command> LaunchMetrics();
-
-std::vector<Command> LaunchGnssGrpcProxyServerIfEnabled(
-    const CuttlefishConfig& config);
-
-std::vector<Command> LaunchSecureEnvironment(const CuttlefishConfig& config);
-
-std::vector<Command> LaunchBluetoothConnector(const CuttlefishConfig& config);
-std::vector<Command> LaunchVehicleHalServerIfEnabled(
-    const CuttlefishConfig& config);
-
-std::vector<Command> LaunchConsoleForwarderIfEnabled(
-    const CuttlefishConfig& config);
+fruit::Component<fruit::Required<const CuttlefishConfig, KernelLogPipeProvider,
+                                 const CuttlefishConfig::InstanceSpecific>>
+launchStreamerComponent();
 
 } // namespace cuttlefish

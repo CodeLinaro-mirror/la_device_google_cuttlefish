@@ -23,29 +23,63 @@ cc_library {
         "archive.cpp",
         "subprocess.cpp",
         "environment.cpp",
-        "size_utils.cpp",
+        "flag_parser.cpp",
+        "shared_fd_flag.cpp",
         "files.cpp",
         "users.cpp",
         "network.cpp",
         "base64.cpp",
         "tcp_socket.cpp",
         "tee_logging.cpp",
+        "vsock_connection.cpp",
     ],
     shared: {
         shared_libs: [
             "libbase",
             "libcuttlefish_fs",
             "libcrypto",
+            "libjsoncpp",
         ],
     },
     static: {
         static_libs: [
             "libbase",
             "libcuttlefish_fs",
+            "libjsoncpp",
         ],
         shared_libs: [
           "libcrypto", // libcrypto_static is not accessible from all targets
         ],
     },
     defaults: ["cuttlefish_host"],
+}
+
+cc_test_host {
+    name: "libcuttlefish_utils_test",
+    srcs: [
+        "flag_parser_test.cpp",
+    ],
+    static_libs: [
+        "libbase",
+        "libcuttlefish_fs",
+        "libcuttlefish_utils",
+    ],
+    shared_libs: [
+        "libcrypto",
+        "liblog",
+        "libxml2",
+    ],
+    test_options: {
+        unit_test: true,
+    },
+    defaults: ["cuttlefish_host"],
+}
+
+cc_library {
+    name: "libvsock_utils",
+    srcs: ["vsock_connection.cpp"],
+    shared_libs: ["libbase", "libcuttlefish_fs", "liblog", "libjsoncpp"],
+    defaults: ["cuttlefish_guest_only"],
+    include_dirs: ["device/google/cuttlefish"],
+    export_include_dirs: ["."],
 }

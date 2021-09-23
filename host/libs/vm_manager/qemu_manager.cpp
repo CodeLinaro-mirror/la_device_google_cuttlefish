@@ -102,7 +102,7 @@ std::vector<std::string> QemuManager::ConfigureGpuMode(
         "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_1),
         "androidboot.hardware.gralloc=minigbm",
         "androidboot.hardware.hwcomposer=ranchu",
-        "androidboot.hardware.egl=swiftshader",
+        "androidboot.hardware.egl=angle",
         "androidboot.hardware.vulkan=pastel",
     };
   }
@@ -140,11 +140,13 @@ std::vector<Command> QemuManager::StartCommands(
   auto stop = [](Subprocess* proc) {
     auto stopped = Stop();
     if (stopped) {
-      return true;
+      return StopperResult::kStopSuccess;
     }
     LOG(WARNING) << "Failed to stop VMM nicely, "
                   << "attempting to KILL";
-    return KillSubprocess(proc);
+    return KillSubprocess(proc) == StopperResult::kStopSuccess
+               ? StopperResult::kStopCrash
+               : StopperResult::kStopFailure;
   };
   std::string qemu_binary = config.qemu_binary_dir();
   switch (arch_) {
@@ -170,7 +172,7 @@ std::vector<Command> QemuManager::StartCommands(
     qemu_cmd.AddParameter("null,id=hvc", hvc_num);
     qemu_cmd.AddParameter("-device");
     qemu_cmd.AddParameter(
-        "virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial",
+        "virtio-serial-pci,max_ports=1,id=virtio-serial",
         hvc_num);
     qemu_cmd.AddParameter("-device");
     qemu_cmd.AddParameter("virtconsole,bus=virtio-serial", hvc_num,
@@ -207,7 +209,7 @@ std::vector<Command> QemuManager::StartCommands(
                           ",append=on");
     qemu_cmd.AddParameter("-device");
     qemu_cmd.AddParameter(
-        "virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial",
+        "virtio-serial-pci,max_ports=1,id=virtio-serial",
         hvc_num);
     qemu_cmd.AddParameter("-device");
     qemu_cmd.AddParameter("virtconsole,bus=virtio-serial", hvc_num,
@@ -219,7 +221,7 @@ std::vector<Command> QemuManager::StartCommands(
     qemu_cmd.AddParameter("pipe,id=hvc", hvc_num, ",path=", prefix);
     qemu_cmd.AddParameter("-device");
     qemu_cmd.AddParameter(
-        "virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial",
+        "virtio-serial-pci,max_ports=1,id=virtio-serial",
         hvc_num);
     qemu_cmd.AddParameter("-device");
     qemu_cmd.AddParameter("virtconsole,bus=virtio-serial", hvc_num,
@@ -374,7 +376,7 @@ std::vector<Command> QemuManager::StartCommands(
     qemu_cmd.AddParameter("file=", disk, ",if=none,id=drive-virtio-disk", i,
                           ",aio=threads", format, readonly);
     qemu_cmd.AddParameter("-device");
-    qemu_cmd.AddParameter("virtio-blk-pci-non-transitional,scsi=off,drive=drive-virtio-disk", i,
+    qemu_cmd.AddParameter("virtio-blk-pci,scsi=off,drive=drive-virtio-disk", i,
                           ",id=virtio-disk", i, bootindex);
   }
 
@@ -417,36 +419,45 @@ std::vector<Command> QemuManager::StartCommands(
   qemu_cmd.AddParameter("rng-random,id=objrng0,filename=/dev/urandom");
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-rng-pci-non-transitional,rng=objrng0,id=rng0,",
+  qemu_cmd.AddParameter("virtio-rng-pci,rng=objrng0,id=rng0,",
                         "max-bytes=1024,period=2000");
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-mouse-pci");
+  qemu_cmd.AddParameter("virtio-mouse-pci,disable-legacy=on");
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-keyboard-pci");
+  qemu_cmd.AddParameter("virtio-keyboard-pci,disable-legacy=on");
+
+  // device padding for unsupported "switches" input
+  qemu_cmd.AddParameter("-device");
+  qemu_cmd.AddParameter("virtio-keyboard-pci,disable-legacy=on");
 
   auto vhost_net = config.vhost_net() ? ",vhost=on" : "";
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-balloon-pci-non-transitional,id=balloon0");
+  qemu_cmd.AddParameter("virtio-balloon-pci,id=balloon0");
 
   qemu_cmd.AddParameter("-netdev");
   qemu_cmd.AddParameter("tap,id=hostnet0,ifname=", instance.wifi_tap_name(),
                         ",script=no,downscript=no", vhost_net);
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-net-pci-non-transitional,netdev=hostnet0,id=net0");
+  qemu_cmd.AddParameter("virtio-net-pci,netdev=hostnet0,id=net0");
 
   qemu_cmd.AddParameter("-netdev");
   qemu_cmd.AddParameter("tap,id=hostnet1,ifname=", instance.mobile_tap_name(),
                         ",script=no,downscript=no", vhost_net);
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-net-pci-non-transitional,netdev=hostnet1,id=net1");
+  qemu_cmd.AddParameter("virtio-net-pci,netdev=hostnet1,id=net1");
+
+  auto display_configs = config.display_configs();
+  CHECK_GE(display_configs.size(), 1);
+  auto display_config = display_configs[0];
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-gpu-pci,id=gpu0");
+  qemu_cmd.AddParameter("virtio-gpu-pci,id=gpu0,"
+                        "xres=", display_config.width, ",yres=", display_config.height);
 
   qemu_cmd.AddParameter("-cpu");
   qemu_cmd.AddParameter(IsHostCompatible(arch_) ? "host" : "max");
@@ -455,7 +466,7 @@ std::vector<Command> QemuManager::StartCommands(
   qemu_cmd.AddParameter("timestamp=on");
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("vhost-vsock-pci-non-transitional,guest-cid=",
+  qemu_cmd.AddParameter("vhost-vsock-pci,guest-cid=",
                         instance.vsock_guest_cid());
 
   qemu_cmd.AddParameter("-device");
@@ -469,7 +480,7 @@ std::vector<Command> QemuManager::StartCommands(
                           ",script=no,downscript=no", vhost_net);
 
     qemu_cmd.AddParameter("-device");
-    qemu_cmd.AddParameter("virtio-net-pci-non-transitional,netdev=hostnet2,id=net2");
+    qemu_cmd.AddParameter("virtio-net-pci,netdev=hostnet2,id=net2");
   }
 
   qemu_cmd.AddParameter("-device");
