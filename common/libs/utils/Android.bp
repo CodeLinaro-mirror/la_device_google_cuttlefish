@@ -23,9 +23,7 @@ cc_library {
         "files.cpp",
         "users.cpp",
         "network.cpp",
-    ],
-    header_libs: [
-        "cuttlefish_glog",
+        "tee_logging.cpp",
     ],
     shared: {
         shared_libs: [
