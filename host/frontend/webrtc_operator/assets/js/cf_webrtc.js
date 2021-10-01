@@ -15,7 +15,7 @@
  */
 
 function createDataChannel(pc, label, onMessage) {
-  console.log('creating data channel: ' + label);
+  console.debug('creating data channel: ' + label);
   let dataChannel = pc.createDataChannel(label);
   // Return an object with a send function like that of the dataChannel, but
   // that only actually sends over the data channel once it has connected.
@@ -25,11 +25,11 @@ function createDataChannel(pc, label, onMessage) {
         resolve(dataChannel);
       };
       dataChannel.onclose = () => {
-        console.log(
+        console.debug(
             'Data channel=' + label + ' state=' + dataChannel.readyState);
       };
       dataChannel.onmessage = onMessage ? onMessage : (msg) => {
-        console.log('Data channel=' + label + ' data="' + msg.data + '"');
+        console.debug('Data channel=' + label + ' data="' + msg.data + '"');
       };
       dataChannel.onerror = err => {
         reject(err);
@@ -45,7 +45,7 @@ function createDataChannel(pc, label, onMessage) {
 }
 
 function awaitDataChannel(pc, label, onMessage) {
-  console.log('expecting data channel: ' + label);
+  console.debug('expecting data channel: ' + label);
   // Return an object with a send function like that of the dataChannel, but
   // that only actually sends over the data channel once it has connected.
   return {
@@ -58,11 +58,11 @@ function awaitDataChannel(pc, label, onMessage) {
             resolve(dataChannel);
           };
           dataChannel.onclose = () => {
-            console.log(
+            console.debug(
                 'Data channel=' + label + ' state=' + dataChannel.readyState);
           };
           dataChannel.onmessage = onMessage ? onMessage : (msg) => {
-            console.log('Data channel=' + label + ' data="' + msg.data + '"');
+            console.debug('Data channel=' + label + ' data="' + msg.data + '"');
           };
           dataChannel.onerror = err => {
             reject(err);
@@ -82,12 +82,22 @@ function awaitDataChannel(pc, label, onMessage) {
 }
 
 class DeviceConnection {
-  constructor(pc, control, audio_stream) {
+  constructor(pc, control, media_stream) {
     this._pc = pc;
     this._control = control;
-    this._audio_stream = audio_stream;
+    this._media_stream = media_stream;
     // Disable the microphone by default
     this.useMic(false);
+    this.useVideo(false);
+    this._cameraDataChannel = pc.createDataChannel('camera-data-channel');
+    this._cameraDataChannel.binaryType = 'arraybuffer';
+    this._cameraInputQueue = new Array();
+    var self = this;
+    this._cameraDataChannel.onbufferedamountlow = () => {
+      if (self._cameraInputQueue.length > 0) {
+        self.sendCameraData(self._cameraInputQueue.shift());
+      }
+    };
     this._inputChannel = createDataChannel(pc, 'input-channel');
     this._adbChannel = createDataChannel(pc, 'adb-channel', (msg) => {
       if (this._onAdbMessage) {
@@ -103,18 +113,20 @@ class DeviceConnection {
         console.error('Received unexpected Control message');
       }
     });
-    this._bluetoothChannel = createDataChannel(pc, 'bluetooth-channel', (msg) => {
-      if (this._onBluetoothMessage) {
-        this._onBluetoothMessage(msg.data);
-      } else {
-        console.error('Received unexpected Bluetooth message');
-      }
-    });
+    this._bluetoothChannel =
+        createDataChannel(pc, 'bluetooth-channel', (msg) => {
+          if (this._onBluetoothMessage) {
+            this._onBluetoothMessage(msg.data);
+          } else {
+            console.error('Received unexpected Bluetooth message');
+          }
+        });
+    this.sendCameraResolution();
     this._streams = {};
     this._streamPromiseResolvers = {};
 
     pc.addEventListener('track', e => {
-      console.log('Got remote stream: ', e);
+      console.debug('Got remote stream: ', e);
       for (const stream of e.streams) {
         this._streams[stream.id] = stream;
         if (this._streamPromiseResolvers[stream.id]) {
@@ -133,6 +145,28 @@ class DeviceConnection {
 
   get description() {
     return this._description;
+  }
+
+  get imageCapture() {
+    if (this._media_stream) {
+      const track = this._media_stream.getVideoTracks()[0];
+      return new ImageCapture(track);
+    }
+    return undefined;
+  }
+
+  get cameraWidth() {
+    return this._x_res;
+  }
+
+  get cameraHeight() {
+    return this._y_res;
+  }
+
+  get cameraEnabled() {
+    if (this._media_stream) {
+      return this._media_stream.getVideoTracks().some(track => track.enabled);
+    }
   }
 
   getStream(stream_id) {
@@ -200,9 +234,54 @@ class DeviceConnection {
   }
 
   useMic(in_use) {
-    if (this._audio_stream) {
-      this._audio_stream.getTracks().forEach(track => track.enabled = in_use);
+    if (this._media_stream) {
+      this._media_stream.getAudioTracks().forEach(
+          track => track.enabled = in_use);
     }
+  }
+
+  useVideo(in_use) {
+    if (this._media_stream) {
+      this._media_stream.getVideoTracks().forEach(
+          track => track.enabled = in_use);
+    }
+  }
+
+  sendCameraResolution() {
+    if (this._media_stream) {
+      const cameraTracks = this._media_stream.getVideoTracks();
+      if (cameraTracks.length > 0) {
+        const settings = cameraTracks[0].getSettings();
+        this._x_res = settings.width;
+        this._y_res = settings.height;
+        this.sendControlMessage(JSON.stringify({
+          command: 'camera_settings',
+          width: settings.width,
+          height: settings.height,
+          frame_rate: settings.frameRate,
+          facing: settings.facingMode
+        }));
+      }
+    }
+  }
+
+  sendOrQueueCameraData(data) {
+    if (this._cameraDataChannel.bufferedAmount > 0 ||
+        this._cameraInputQueue.length > 0) {
+      this._cameraInputQueue.push(data);
+    } else {
+      this.sendCameraData(data);
+    }
+  }
+
+  sendCameraData(data) {
+    const MAX_SIZE = 65535;
+    const END_MARKER = 'EOF';
+    for (let i = 0; i < data.byteLength; i += MAX_SIZE) {
+      // range is clamped to the valid index range
+      this._cameraDataChannel.send(data.slice(i, i + MAX_SIZE));
+    }
+    this._cameraDataChannel.send(END_MARKER);
   }
 
   // Provide a callback to receive control-related comms from the device
@@ -221,8 +300,7 @@ class DeviceConnection {
   // Provide a callback to receive connectionstatechange states.
   onConnectionStateChange(cb) {
     this._pc.addEventListener(
-      'connectionstatechange',
-      evt => cb(this._pc.connectionState));
+        'connectionstatechange', evt => cb(this._pc.connectionState));
   }
 }
 
@@ -247,7 +325,7 @@ class WebRTCControl {
     this._wsPromise = new Promise((resolve, reject) => {
       let ws = new WebSocket(wsUrl);
       ws.onopen = () => {
-        console.info(`Connected to ${wsUrl}`);
+        console.debug(`Connected to ${wsUrl}`);
         resolve(ws);
       };
       ws.onerror = evt => {
@@ -287,7 +365,8 @@ class WebRTCControl {
         break;
       default:
         console.error('Unrecognized message type from server: ', type);
-        this._on_connection_failed('Unrecognized message type from server: ' + type);
+        this._on_connection_failed(
+            'Unrecognized message type from server: ' + type);
         console.error(message);
     }
   }
@@ -349,7 +428,7 @@ class WebRTCControl {
   }
 
   ConnectDevice() {
-    console.log('ConnectDevice');
+    console.debug('ConnectDevice');
     this._sendToDevice({type: 'request-offer'});
   }
 
@@ -357,7 +436,7 @@ class WebRTCControl {
    * Sends a remote description to the device.
    */
   async sendClientDescription(desc) {
-    console.log('sendClientDescription');
+    console.debug('sendClientDescription');
     this._sendToDevice({type: 'answer', sdp: desc.sdp});
   }
 
@@ -377,15 +456,15 @@ function createPeerConnection(infra_config) {
   let pc = new RTCPeerConnection(pc_config);
 
   pc.addEventListener('icecandidate', evt => {
-    console.log('Local ICE Candidate: ', evt.candidate);
+    console.debug('Local ICE Candidate: ', evt.candidate);
   });
   pc.addEventListener('iceconnectionstatechange', evt => {
-    console.log(`ICE State Change: ${pc.iceConnectionState}`);
+    console.debug(`ICE State Change: ${pc.iceConnectionState}`);
   });
   pc.addEventListener(
       'connectionstatechange',
-      evt =>
-          console.log(`WebRTC Connection State Change: ${pc.connectionState}`));
+      evt => console.debug(
+          `WebRTC Connection State Change: ${pc.connectionState}`));
   return pc;
 }
 
@@ -394,8 +473,8 @@ export async function Connect(deviceId, options) {
   let requestRet = await control.requestDevice(deviceId);
   let deviceInfo = requestRet.deviceInfo;
   let infraConfig = requestRet.infraConfig;
-  console.log('Device available:');
-  console.log(deviceInfo);
+  console.debug('Device available:');
+  console.debug(deviceInfo);
   let pc_config = {iceServers: []};
   if (infraConfig.ice_servers && infraConfig.ice_servers.length > 0) {
     for (const server of infraConfig.ice_servers) {
@@ -404,27 +483,26 @@ export async function Connect(deviceId, options) {
   }
   let pc = createPeerConnection(infraConfig, control);
 
-  let audioStream;
+  let mediaStream;
   try {
-    audioStream =
-        await navigator.mediaDevices.getUserMedia({video: false, audio: true});
-    const audioTracks = audioStream.getAudioTracks();
-    if (audioTracks.length > 0) {
-      console.log(`Using Audio device: ${audioTracks[0].label}, with ${
-        audioTracks.length} tracks`);
-      audioTracks.forEach(track => pc.addTrack(track, audioStream));
-    }
+    mediaStream =
+        await navigator.mediaDevices.getUserMedia({audio: true});
+    const tracks = mediaStream.getTracks();
+    tracks.forEach(track => {
+      console.info(`Using ${track.kind} device: ${track.label}`);
+      pc.addTrack(track, mediaStream);
+    });
   } catch (e) {
-    console.error("Failed to open audio device: ", e);
+    console.error('Failed to open device: ', e);
   }
 
-  let deviceConnection = new DeviceConnection(pc, control, audioStream);
+  let deviceConnection = new DeviceConnection(pc, control, mediaStream);
   deviceConnection.description = deviceInfo;
   async function acceptOfferAndReplyAnswer(offer) {
     try {
       await pc.setRemoteDescription(offer);
       let answer = await pc.createAnswer();
-      console.log('Answer: ', answer);
+      console.debug('Answer: ', answer);
       await pc.setLocalDescription(answer);
       await control.sendClientDescription(answer);
     } catch (e) {
@@ -433,11 +511,11 @@ export async function Connect(deviceId, options) {
     }
   }
   control.onOffer(desc => {
-    console.log('Offer: ', desc);
+    console.debug('Offer: ', desc);
     acceptOfferAndReplyAnswer(desc);
   });
   control.onIceCandidate(iceCandidate => {
-    console.log(`Remote ICE Candidate: `, iceCandidate);
+    console.debug(`Remote ICE Candidate: `, iceCandidate);
     pc.addIceCandidate(iceCandidate);
   });
 

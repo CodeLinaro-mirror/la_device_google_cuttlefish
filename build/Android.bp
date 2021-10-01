@@ -23,6 +23,7 @@ soong_config_module_type {
     module_type: "cvd_host_package",
     config_namespace: "cvd",
     value_variables: [
+        "grub_config",
         "launch_configs",
         "custom_action_config",
         "custom_action_servers",
@@ -42,12 +43,18 @@ cvd_host_tools = [
     "config_server",
     "console_forwarder",
     "crosvm",
+    "cvd",
+    "cvd_internal_host_bugreport",
+    "cvd_internal_start",
+    "cvd_internal_status",
+    "cvd_internal_stop",
     "cvd_host_bugreport",
     "cvd_status",
     "extract-ikconfig",
     "extract-vmlinux",
     "fsck.f2fs",
     "gnss_grpc_proxy",
+    "health",
     "kernel_log_monitor",
     "launch_cvd",
     "libgrpc++",
@@ -64,18 +71,17 @@ cvd_host_tools = [
     "mkenvimage",
     "modem_simulator",
     "ms-tpm-20-ref",
+    "mcopy",
+    "mmd",
+    "mtools",
     "newfs_msdos",
     "powerwash_cvd",
     "restart_cvd",
     "root-canal",
-    // TODO(b/186487510): remove libchrome and libbacktrace when ASan-related dependency issue is resolved.
-    "libchrome",
-    "libbacktrace",
     "run_cvd",
     "secure_env",
     "socket_vsock_proxy",
     "stop_cvd",
-    "tapsetiff",
     "tombstone_receiver",
     "toybox",
     "unpack_bootimg",
@@ -159,6 +165,12 @@ cvd_host_seccomp_policy_arm64 = [
     "xhci.policy_aarch64",
 ]
 
+cvd_host_qemu_bootloader = [
+    "bootloader_qemu_x86_64",
+    "bootloader_qemu_aarch64",
+    "bootloader_qemu_arm",
+]
+
 cvd_host_package_customization {
     name: "cvd-host_package",
     deps: cvd_host_tools +
@@ -167,6 +179,7 @@ cvd_host_package_customization {
         common: {
             deps: cvd_host_webrtc_assets +
                 cvd_host_model_simulator_files +
+                cvd_host_qemu_bootloader +
                 cvd_bluetooth_config_files,
         },
     },

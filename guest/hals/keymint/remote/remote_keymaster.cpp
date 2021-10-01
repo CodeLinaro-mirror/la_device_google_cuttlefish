@@ -67,6 +67,28 @@ bool RemoteKeymaster::Initialize() {
     return false;
   }
 
+  // Set the vendor patchlevel to value retrieved from system property (which
+  // requires SELinux permission).
+  ConfigureVendorPatchlevelRequest vendor_req(message_version());
+  vendor_req.vendor_patchlevel = GetVendorPatchlevel();
+  ConfigureVendorPatchlevelResponse vendor_rsp =
+      ConfigureVendorPatchlevel(vendor_req);
+  if (vendor_rsp.error != KM_ERROR_OK) {
+    LOG(ERROR) << "Failed to configure keymaster vendor patchlevel: "
+               << vendor_rsp.error;
+    return false;
+  }
+
+  // Set the boot patchlevel to zero for Cuttlefish.
+  ConfigureBootPatchlevelRequest boot_req(message_version());
+  boot_req.boot_patchlevel = 0;
+  ConfigureBootPatchlevelResponse boot_rsp = ConfigureBootPatchlevel(boot_req);
+  if (boot_rsp.error != KM_ERROR_OK) {
+    LOG(ERROR) << "Failed to configure keymaster boot patchlevel: "
+               << boot_rsp.error;
+    return false;
+  }
+
   return true;
 }
 
@@ -122,15 +144,25 @@ void RemoteKeymaster::Configure(const ConfigureRequest& request,
 
 void RemoteKeymaster::GenerateKey(const GenerateKeyRequest& request,
                                   GenerateKeyResponse* response) {
-  GenerateKeyRequest datedRequest(request.message_version);
-  datedRequest.key_description = request.key_description;
-
-  if (!request.key_description.Contains(TAG_CREATION_DATETIME)) {
+  if (message_version_ < MessageVersion(KmVersion::KEYMINT_1) &&
+      !request.key_description.Contains(TAG_CREATION_DATETIME)) {
+    GenerateKeyRequest datedRequest(request.message_version);
     datedRequest.key_description.push_back(TAG_CREATION_DATETIME,
                                            java_time(time(NULL)));
+    ForwardCommand(GENERATE_KEY, datedRequest, response);
+  } else {
+    ForwardCommand(GENERATE_KEY, request, response);
   }
+}
 
-  ForwardCommand(GENERATE_KEY, datedRequest, response);
+void RemoteKeymaster::GenerateRkpKey(const GenerateRkpKeyRequest& request,
+                                     GenerateRkpKeyResponse* response) {
+  ForwardCommand(GENERATE_RKP_KEY, request, response);
+}
+
+void RemoteKeymaster::GenerateCsr(const GenerateCsrRequest& request,
+                                  GenerateCsrResponse* response) {
+  ForwardCommand(GENERATE_CSR, request, response);
 }
 
 void RemoteKeymaster::GetKeyCharacteristics(
@@ -234,8 +266,21 @@ EarlyBootEndedResponse RemoteKeymaster::EarlyBootEnded() {
 void RemoteKeymaster::GenerateTimestampToken(
     GenerateTimestampTokenRequest& request,
     GenerateTimestampTokenResponse* response) {
-  // TODO(aosp/1641315): Send a message to the host.
   ForwardCommand(GENERATE_TIMESTAMP_TOKEN, request, response);
+}
+
+ConfigureVendorPatchlevelResponse RemoteKeymaster::ConfigureVendorPatchlevel(
+    const ConfigureVendorPatchlevelRequest& request) {
+  ConfigureVendorPatchlevelResponse response(message_version());
+  ForwardCommand(CONFIGURE_VENDOR_PATCHLEVEL, request, &response);
+  return response;
+}
+
+ConfigureBootPatchlevelResponse RemoteKeymaster::ConfigureBootPatchlevel(
+    const ConfigureBootPatchlevelRequest& request) {
+  ConfigureBootPatchlevelResponse response(message_version());
+  ForwardCommand(CONFIGURE_BOOT_PATCHLEVEL, request, &response);
+  return response;
 }
 
 }  // namespace keymaster

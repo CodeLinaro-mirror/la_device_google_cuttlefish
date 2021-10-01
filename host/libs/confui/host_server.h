@@ -154,7 +154,7 @@ class HostServer : public HostVirtualInput {
   ConfUiRenderer renderer_;
 
   std::string input_socket_path_;
-  std::string hal_socket_path_;
+  int hal_vsock_port_;
 
   // session id to Session object map, for those that are suspended
   std::unordered_map<std::string, std::unique_ptr<Session>> session_map_;
@@ -166,6 +166,8 @@ class HostServer : public HostVirtualInput {
   SharedFD hal_cli_socket_;
   std::mutex input_socket_mtx_;
 
+  using Multiplexer =
+      Multiplexer<ConfUiMessage, ThreadSafeQueue<ConfUiMessage>>;
   /*
    * Multiplexer has N queues. When pop(), it is going to sleep until
    * there's at least one item in at least one queue. The lower the Q
@@ -174,7 +176,7 @@ class HostServer : public HostVirtualInput {
    * For HostServer, we have a queue for the user input events, and
    * another for hal cmd/msg queues
    */
-  Multiplexer<ConfUiMessage> input_multiplexer_;
+  Multiplexer input_multiplexer_;
   int hal_cmd_q_id_;         // Q id in input_multiplexer_
   int user_input_evt_q_id_;  // Q id in input_multiplexer_
 

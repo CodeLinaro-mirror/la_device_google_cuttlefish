@@ -26,9 +26,15 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/userspace_reboot.mk)
 # Enforce generic ramdisk allow list
 $(call inherit-product, $(SRC_TARGET_DIR)/product/generic_ramdisk.mk)
 
+# Set Vendor SPL to match platform
+VENDOR_SECURITY_PATCH = $(PLATFORM_SECURITY_PATCH)
+
+# Set boot SPL
+BOOT_SECURITY_PATCH = $(PLATFORM_SECURITY_PATCH)
+
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish-opengl # for vulkan
 
-PRODUCT_SHIPPING_API_LEVEL := 31
+PRODUCT_SHIPPING_API_LEVEL := 32
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
 
@@ -45,6 +51,9 @@ TARGET_VULKAN_SUPPORT ?= true
 TARGET_ENABLE_HOST_BLUETOOTH_EMULATION ?= true
 TARGET_USE_BTLINUX_HAL_IMPL ?= true
 
+# TODO(b/65201432): Swiftshader needs to create executable memory.
+PRODUCT_REQUIRES_INSECURE_EXECMEM_FOR_SWIFTSHADER := true
+
 AB_OTA_UPDATER := true
 AB_OTA_PARTITIONS += \
     boot \
@@ -60,7 +69,7 @@ AB_OTA_PARTITIONS += \
     vendor_dlkm \
 
 # Enable Virtual A/B
-$(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/compression.mk)
+$(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/compression_with_xor.mk)
 
 # Enable Scoped Storage related
 $(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
@@ -155,7 +164,6 @@ PRODUCT_PACKAGES += \
     CuttlefishService \
     cuttlefish_sensor_injection \
     rename_netiface \
-    setup_wifi \
     bt_vhci_forwarder \
     socket_vsock_proxy \
     tombstone_transmit \
@@ -171,6 +179,10 @@ SOONG_CONFIG_cvd_launch_configs += \
     cvd_config_phone.json \
     cvd_config_tablet.json \
     cvd_config_tv.json \
+
+SOONG_CONFIG_cvd += grub_config
+SOONG_CONFIG_cvd_grub_config += \
+    grub.cfg \
 
 #
 # Packages for AOSP-available stuff we use from the framework
@@ -191,14 +203,7 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     libEGL_angle \
     libGLESv1_CM_angle \
-    libGLESv2_angle \
-    libfeature_support_angle.so
-
-# SwiftShader provides a software-only implementation that is not thread-safe
-PRODUCT_PACKAGES += \
-    libEGL_swiftshader \
-    libGLESv1_CM_swiftshader \
-    libGLESv2_swiftshader
+    libGLESv2_angle
 
 # GL implementation for virgl
 PRODUCT_PACKAGES += \
@@ -233,7 +238,9 @@ PRODUCT_PACKAGES += \
 #
 PRODUCT_PACKAGES += \
     aidl_lazy_test_server \
-    hidl_lazy_test_server
+    aidl_lazy_cb_test_server \
+    hidl_lazy_test_server \
+    hidl_lazy_cb_test_server
 
 DEVICE_PACKAGE_OVERLAYS := device/google/cuttlefish/shared/overlay
 # PRODUCT_AAPT_CONFIG and PRODUCT_AAPT_PREF_CONFIG are intentionally not set to
@@ -266,7 +273,7 @@ PRODUCT_COPY_FILES += \
     hardware/google/camera/devices/EmulatedCamera/hwl/configs/emu_camera_depth.json:$(TARGET_COPY_OUT_VENDOR)/etc/config/emu_camera_depth.json \
     device/google/cuttlefish/shared/config/init.vendor.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/hw/init.cutf_cvm.rc \
     device/google/cuttlefish/shared/config/init.product.rc:$(TARGET_COPY_OUT_PRODUCT)/etc/init/init.rc \
-    device/google/cuttlefish/shared/config/ueventd.rc:$(TARGET_COPY_OUT_VENDOR)/ueventd.rc \
+    device/google/cuttlefish/shared/config/ueventd.rc:$(TARGET_COPY_OUT_VENDOR)/etc/ueventd.rc \
     device/google/cuttlefish/shared/config/media_codecs.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs.xml \
     device/google/cuttlefish/shared/config/media_codecs_google_video.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_video.xml \
     device/google/cuttlefish/shared/config/media_codecs_performance.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_performance.xml \
@@ -300,28 +307,23 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.software.verified_boot.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.verified_boot.xml \
     system/bt/vendor_libs/test_vendor_lib/data/controller_properties.json:vendor/etc/bluetooth/controller_properties.json \
     device/google/cuttlefish/shared/config/task_profiles.json:$(TARGET_COPY_OUT_VENDOR)/etc/task_profiles.json \
-    device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Multitouch_Touchscreen.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Multitouch_Touchscreen.idc
+    device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Multitouch_Touchscreen_0.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Multitouch_Touchscreen_0.idc \
+    device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Multitouch_Touchscreen_1.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Multitouch_Touchscreen_1.idc \
+    device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Multitouch_Touchscreen_2.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Multitouch_Touchscreen_2.idc \
+    device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Multitouch_Touchscreen_3.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Multitouch_Touchscreen_3.idc
 
 ifeq ($(TARGET_RO_FILE_SYSTEM_TYPE),ext4)
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/first_stage_ramdisk/fstab.f2fs \
-    device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/fstab.f2fs \
     device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.f2fs \
-    device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.f2fs \
     device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/first_stage_ramdisk/fstab.ext4 \
-    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/fstab.ext4 \
-    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.ext4 \
-    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.ext4
+    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.ext4
 else
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).f2fs:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/first_stage_ramdisk/fstab.f2fs \
-    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).f2fs:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/fstab.f2fs \
     device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).f2fs:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.f2fs \
-    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).f2fs:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.f2fs \
     device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).ext4:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/first_stage_ramdisk/fstab.ext4 \
-    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).ext4:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/fstab.ext4 \
-    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).ext4:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.ext4 \
-    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).ext4:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.ext4
+    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).ext4:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.ext4
 endif
 
 ifeq ($(TARGET_VULKAN_SUPPORT),true)
@@ -469,16 +471,24 @@ PRODUCT_PACKAGES += $(LOCAL_DUMPSTATE_PRODUCT_PACKAGE)
 #
 # Camera
 #
+ifeq ($(TARGET_USE_VSOCK_CAMERA_HAL_IMPL),true)
+PRODUCT_PACKAGES += \
+    android.hardware.camera.provider@2.7-external-vsock-service \
+    android.hardware.camera.provider@2.7-impl-cuttlefish
+DEVICE_MANIFEST_FILE += \
+    device/google/cuttlefish/guest/hals/camera/manifest.xml
+else
 PRODUCT_PACKAGES += \
     android.hardware.camera.provider@2.7-service-google \
     libgooglecamerahwl_impl \
     android.hardware.camera.provider@2.7-impl-google \
 
+endif
 #
 # Gatekeeper
 #
 ifeq ($(LOCAL_GATEKEEPER_PRODUCT_PACKAGE),)
-       LOCAL_GATEKEEPER_PRODUCT_PACKAGE := android.hardware.gatekeeper@1.0-service.software
+       LOCAL_GATEKEEPER_PRODUCT_PACKAGE := android.hardware.gatekeeper@1.0-service.remote
 endif
 PRODUCT_PACKAGES += \
     $(LOCAL_GATEKEEPER_PRODUCT_PACKAGE)
@@ -533,7 +543,7 @@ PRODUCT_PACKAGES += \
 # KeyMint HAL
 #
 ifeq ($(LOCAL_KEYMINT_PRODUCT_PACKAGE),)
-       LOCAL_KEYMINT_PRODUCT_PACKAGE := android.hardware.security.keymint-service
+       LOCAL_KEYMINT_PRODUCT_PACKAGE := android.hardware.security.keymint-service.remote
 endif
  PRODUCT_PACKAGES += \
     $(LOCAL_KEYMINT_PRODUCT_PACKAGE)
@@ -593,21 +603,6 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     android.hardware.memtrack-service.example
 
-# GKI APEX
-# Keep in sync with BOARD_KERNEL_MODULE_INTERFACE_VERSIONS
-ifneq (,$(TARGET_KERNEL_USE))
-  ifneq (,$(filter 5.4, $(TARGET_KERNEL_USE)))
-    PRODUCT_PACKAGES += com.android.gki.kmi_5_4_android12_unstable
-  else
-    PRODUCT_PACKAGES += com.android.gki.kmi_$(subst .,_,$(TARGET_KERNEL_USE))_android12_unstable
-  endif
-endif
-
-# Prevent GKI and boot image downgrades
-PRODUCT_PRODUCT_PROPERTIES += \
-    ro.build.ab_update.gki.prevent_downgrade_version=true \
-    ro.build.ab_update.gki.prevent_downgrade_spl=true \
-
 # WLAN driver configuration files
 PRODUCT_COPY_FILES += \
     external/wpa_supplicant_8/wpa_supplicant/wpa_supplicant_template.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wifi/wpa_supplicant.conf \
@@ -638,11 +633,23 @@ else
 PRODUCT_PACKAGES += linker.recovery shell_and_utilities_recovery
 endif
 
-#
-# Shell script Vendor Module Loading
-#
+# wifi
+ifeq ($(PRODUCT_ENFORCE_MAC80211_HWSIM),true)
+PRODUCT_PACKAGES += \
+    mac80211_create_radios \
+    hostapd \
+    android.hardware.wifi@1.0-service
+
 PRODUCT_COPY_FILES += \
-   $(LOCAL_PATH)/config/init.insmod.sh:$(TARGET_COPY_OUT_VENDOR)/bin/init.insmod.sh \
+    device/google/cuttlefish/guest/services/wifi/init.wifi.sh:$(TARGET_COPY_OUT_VENDOR)/bin/init.wifi.sh \
+
+PRODUCT_SOONG_NAMESPACES += device/generic/goldfish
+
+PRODUCT_VENDOR_PROPERTIES += ro.vendor.wifi_impl=mac8011_hwsim_virtio
+else
+PRODUCT_PACKAGES += setup_wifi
+PRODUCT_VENDOR_PROPERTIES += ro.vendor.wifi_impl=virt_wifi
+endif
 
 # Host packages to install
 PRODUCT_HOST_PACKAGES += socket_vsock_proxy
@@ -670,3 +677,7 @@ PRODUCT_PRODUCT_PROPERTIES += \
 # Set one_handed_mode translate animation duration milliseconds
 PRODUCT_PRODUCT_PROPERTIES += \
     persist.debug.one_handed_translate_animation_duration=300
+
+# Vendor Dlkm Locader
+PRODUCT_PACKAGES += \
+   dlkm_loader

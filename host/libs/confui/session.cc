@@ -50,8 +50,13 @@ bool Session::RenderDialog(const std::string& msg, const std::string& locale) {
 
   ConfUiLog(DEBUG) << "actually trying to render the frame"
                    << thread::GetName();
-  auto raw_frame = reinterpret_cast<std::uint8_t*>(teeui_frame.data());
-  return screen_connector_.RenderConfirmationUi(display_num_, raw_frame);
+  auto frame_width = ScreenConnectorInfo::ScreenWidth(display_num_);
+  auto frame_height = ScreenConnectorInfo::ScreenHeight(display_num_);
+  auto frame_stride_bytes =
+      ScreenConnectorInfo::ScreenStrideBytes(display_num_);
+  auto frame_bytes = reinterpret_cast<std::uint8_t*>(teeui_frame.data());
+  return screen_connector_.RenderConfirmationUi(
+      display_num_, frame_width, frame_height, frame_stride_bytes, frame_bytes);
 }
 
 bool Session::IsSuspended() const {
@@ -70,14 +75,15 @@ MainLoopState Session::Transition(const bool is_user_input, SharedFD& hal_cli,
     } break;
     case MainLoopState::kWaitStop: {
       if (is_user_input) {
-        ConfUiLog(DEBUG) << "User input ignored" << ToString(fsm_input) << " : "
-                         << additional_info << "at state" << ToString(state_);
+        ConfUiLog(DEBUG) << "User input ignored " << ToString(fsm_input)
+                         << " : " << additional_info << " at the state "
+                         << ToString(state_);
       }
       HandleWaitStop(is_user_input, hal_cli, fsm_input);
     } break;
     default:
       // host service explicitly calls restore and suspend
-      ConfUiLog(FATAL) << "Must not be in the state of" << ToString(state_);
+      ConfUiLog(FATAL) << "Must not be in the state of " << ToString(state_);
       break;
   }
   return state_;
@@ -210,8 +216,8 @@ void Session::HandleInit(const bool is_user_input, SharedFD hal_cli,
 void Session::HandleInSession(const bool is_user_input, SharedFD hal_cli,
                               const FsmInput fsm_input) {
   if (!is_user_input) {
-    ConfUiLog(FATAL) << "cmd" << ToString(fsm_input)
-                     << "should not be handled in HandleInSession";
+    ConfUiLog(FATAL) << "cmd " << ToString(fsm_input)
+                     << " should not be handled in HandleInSession";
     ReportErrorToHal(hal_cli, "wrong hal command");
     return;
   }
@@ -232,8 +238,8 @@ void Session::HandleInSession(const bool is_user_input, SharedFD hal_cli,
     return;
   }
 
-  ConfUiLog(DEBUG) << "In HandlieInSession, session" << session_id_
-                   << "is sending the user input" << ToString(fsm_input);
+  ConfUiLog(DEBUG) << "In HandlieInSession, session " << session_id_
+                   << " is sending the user input " << ToString(fsm_input);
   auto selection = UserResponse::kConfirm;
   if (fsm_input == FsmInput::kUserCancel) {
     selection = UserResponse::kCancel;

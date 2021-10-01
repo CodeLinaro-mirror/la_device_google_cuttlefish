@@ -23,10 +23,12 @@
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
+#include "common/libs/utils/flag_parser.h"
 #include "common/libs/utils/tee_logging.h"
 #include "host/commands/assemble_cvd/clean.h"
 #include "host/commands/assemble_cvd/disk_flags.h"
 #include "host/commands/assemble_cvd/flags.h"
+#include "host/libs/config/adb_config.h"
 #include "host/libs/config/fetcher_config.h"
 
 using cuttlefish::StringFromEnv;
@@ -90,7 +92,9 @@ bool SaveConfig(const CuttlefishConfig& tmp_config_obj) {
 }
 
 void ValidateAdbModeFlag(const CuttlefishConfig& config) {
-  auto adb_modes = config.adb_mode();
+  AdbConfig adb_config;
+  CHECK(config.LoadFragment(adb_config)) << "No adb fragment";
+  auto adb_modes = adb_config.adb_mode();
   adb_modes.erase(AdbMode::Unknown);
   if (adb_modes.size() < 1) {
     LOG(INFO) << "ADB not enabled";
@@ -133,11 +137,12 @@ const CuttlefishConfig* InitFilesystemAndCreateConfig(
     auto config = InitializeCuttlefishConfiguration(
         FLAGS_instance_dir, FLAGS_modem_simulator_count, kernel_config);
     std::set<std::string> preserving;
-    if (FLAGS_resume && ShouldCreateAllCompositeDisks(config)) {
+    bool create_os_composite_disk = ShouldCreateOsCompositeDisk(config);
+    if (FLAGS_resume && create_os_composite_disk) {
       LOG(INFO) << "Requested resuming a previous session (the default behavior) "
                 << "but the base images have changed under the overlay, making the "
                 << "overlay incompatible. Wiping the overlay files.";
-    } else if (FLAGS_resume && !ShouldCreateAllCompositeDisks(config)) {
+    } else if (FLAGS_resume && !create_os_composite_disk) {
       preserving.insert("overlay.img");
       preserving.insert("os_composite_disk_config.txt");
       preserving.insert("os_composite_gpt_header.img");
@@ -248,7 +253,9 @@ int AssembleCvdMain(int argc, char** argv) {
   ExtractKernelParamsFromFetcherConfig(fetcher_config);
 
   KernelConfig kernel_config;
-  CHECK(ParseCommandLineFlags(&argc, &argv, &kernel_config)) << "Failed to parse arguments";
+  auto flags = ArgsToVec(argc - 1, argv + 1);
+  CHECK(ParseCommandLineFlags(flags, &kernel_config))
+      << "Failed to parse arguments";
 
   auto config =
       InitFilesystemAndCreateConfig(std::move(fetcher_config), kernel_config);
