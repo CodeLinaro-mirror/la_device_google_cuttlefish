@@ -15,17 +15,18 @@
  */
 
 #include <gflags/gflags.h>
-#include <glog/logging.h>
+#include <android-base/logging.h>
 
 #include "common/libs/fs/shared_fd.h"
 #include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/config/logging.h"
 
 DEFINE_int32(
     server_fd, -1,
     "File descriptor to an already created vsock server. Must be specified.");
 
 int main(int argc, char** argv) {
-  ::android::base::InitLogging(argv, android::base::StderrLogger);
+  cvd::DefaultSubprocessLogging(argv);
   google::ParseCommandLineFlags(&argc, &argv, true);
 
   auto config = vsoc::CuttlefishConfig::Get();
