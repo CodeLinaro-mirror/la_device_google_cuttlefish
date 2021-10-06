@@ -13,43 +13,41 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#pragma once
+#include "host/libs/config/adb/adb.h"
 
 #include <fruit/fruit.h>
 #include <set>
 
-#include "host/libs/config/config_fragment.h"
-
 namespace cuttlefish {
+namespace {}
 
-enum class AdbMode {
-  VsockTunnel,
-  VsockHalfTunnel,
-  NativeVsock,
-  Unknown,
-};
-
-class AdbConfig : public ConfigFragment {
+class AdbConfigImpl : public AdbConfig {
  public:
-  INJECT(AdbConfig());
+  INJECT(AdbConfigImpl()) {}
 
-  void set_adb_mode(const std::set<std::string>& modes);
-  void set_adb_mode(const std::set<AdbMode>& modes);
-  std::set<AdbMode> adb_mode() const;
+  const std::set<AdbMode>& Modes() const override { return modes_; }
+  bool SetModes(const std::set<AdbMode>& modes) override {
+    modes_ = modes;
+    return true;
+  }
+  bool SetModes(std::set<AdbMode>&& modes) override {
+    modes_ = std::move(modes);
+    return true;
+  }
 
-  void set_run_adb_connector(bool run_adb_connector);
-  bool run_adb_connector() const;
-
-  // ConfigFragment
-  std::string Name() const override;
-  Json::Value Serialize() const override;
-  bool Deserialize(const Json::Value&) override;
+  bool RunConnector() const override { return run_connector_; }
+  bool SetRunConnector(bool run) override {
+    run_connector_ = run;
+    return true;
+  }
 
  private:
-  std::set<AdbMode> adb_mode_;
-  bool run_adb_connector_;
+  std::set<AdbMode> modes_;
+  bool run_connector_;
 };
 
-fruit::Component<AdbConfig> AdbConfigComponent();
+fruit::Component<AdbConfig> AdbConfigComponent() {
+  return fruit::createComponent().bind<AdbConfig, AdbConfigImpl>();
+}
 
 }  // namespace cuttlefish

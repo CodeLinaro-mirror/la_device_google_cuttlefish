@@ -15,15 +15,15 @@
 
 #include "host/commands/secure_env/tpm_keymaster_enforcement.h"
 
+#include <android-base/endian.h>
 #include <android-base/logging.h>
-#if defined(__BIONIC__)
-#include <sys/endian.h> // for be64toh
-#endif
 
 #include "host/commands/secure_env/primary_key_builder.h"
 #include "host/commands/secure_env/tpm_hmac.h"
 #include "host/commands/secure_env/tpm_key_blob_maker.h"
 #include "host/commands/secure_env/tpm_random_source.h"
+
+namespace cuttlefish {
 
 using keymaster::km_id_t;
 using keymaster::HmacSharingParameters;
@@ -99,7 +99,7 @@ bool TpmKeymasterEnforcement::activation_date_valid(
 
 bool TpmKeymasterEnforcement::expiration_date_passed(
     uint64_t expiration_date) const {
-  return expiration_date > get_wall_clock_time_ms();
+  return expiration_date < get_wall_clock_time_ms();
 }
 
 bool TpmKeymasterEnforcement::auth_token_timed_out(
@@ -326,16 +326,6 @@ keymaster_error_t TpmKeymasterEnforcement::GenerateTimestampToken(
 
 bool TpmKeymasterEnforcement::CreateKeyId(
     const keymaster_key_blob_t& key_blob, km_id_t* keyid) const {
-  keymaster::AuthorizationSet hw_enforced;
-  keymaster::AuthorizationSet sw_enforced;
-  keymaster::KeymasterKeyBlob key_material;
-  auto rc =
-      TpmKeyBlobMaker(resource_manager_)
-          .UnwrapKeyBlob(key_blob, &hw_enforced, &sw_enforced, &key_material);
-  if (rc != KM_ERROR_OK) {
-    LOG(ERROR) << "Could not unwrap key: " << rc;
-    return false;
-  }
   auto signing_key_builder = PrimaryKeyBuilder();
   signing_key_builder.SigningKey();
   signing_key_builder.UniqueData("key_id");
@@ -344,12 +334,9 @@ bool TpmKeymasterEnforcement::CreateKeyId(
     LOG(ERROR) << "Could not make signing key for key id";
     return false;
   }
-  auto hmac = TpmHmac(
-      resource_manager_,
-      signing_key->get(),
-      TpmAuth(ESYS_TR_PASSWORD),
-      key_material.key_material,
-      key_material.key_material_size);
+  auto hmac =
+      TpmHmac(resource_manager_, signing_key->get(), TpmAuth(ESYS_TR_PASSWORD),
+              key_blob.key_material, key_blob.key_material_size);
   if (!hmac) {
     LOG(ERROR) << "Failed to make a signature for a key id";
     return false;
@@ -362,3 +349,5 @@ bool TpmKeymasterEnforcement::CreateKeyId(
   memcpy(keyid, hmac->buffer, sizeof(km_id_t));
   return true;
 }
+
+}  // namespace cuttlefish

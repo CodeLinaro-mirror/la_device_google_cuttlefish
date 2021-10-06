@@ -51,13 +51,15 @@ HostServer::HostServer(
     : display_num_(0),
       host_mode_ctrl_(host_mode_ctrl),
       screen_connector_{screen_connector},
-      renderer_(display_num_),
       hal_vsock_port_(HalHostVsockPort()) {
+  ConfUiLog(DEBUG) << "Confirmation UI Host session is listening on: "
+                   << hal_vsock_port_;
   const size_t max_elements = 20;
-  auto ignore_new = [](ThreadSafeQueue<ConfUiMessage>::QueueImpl*) {
-    // no op, so the queue is still full, and the new item will be discarded
-    return;
-  };
+  auto ignore_new =
+      [](ThreadSafeQueue<std::unique_ptr<ConfUiMessage>>::QueueImpl*) {
+        // no op, so the queue is still full, and the new item will be discarded
+        return;
+      };
   hal_cmd_q_id_ = input_multiplexer_.RegisterQueue(
       HostServer::Multiplexer::CreateQueue(max_elements, ignore_new));
   user_input_evt_q_id_ = input_multiplexer_.RegisterQueue(
@@ -82,20 +84,22 @@ void HostServer::Start() {
 }
 
 void HostServer::HalCmdFetcherLoop() {
-  hal_cli_socket_ = EstablishHalConnection();
-  if (!hal_cli_socket_->IsOpen()) {
-    ConfUiLog(FATAL)
-        << "Confirmation UI host service mandates connection with HAL.";
-    return;
-  }
   while (true) {
-    auto opted_msg = RecvConfUiMsg(hal_cli_socket_);
-    if (!opted_msg) {
-      ConfUiLog(ERROR) << "Error in RecvConfUiMsg from HAL";
+    if (!hal_cli_socket_->IsOpen()) {
+      ConfUiLog(DEBUG) << "client is disconnected";
+      std::unique_lock<std::mutex> lk(socket_flag_mtx_);
+      hal_cli_socket_ = EstablishHalConnection();
+      is_socket_ok_ = true;
       continue;
     }
-    auto input = std::move(opted_msg.value());
-    input_multiplexer_.Push(hal_cmd_q_id_, std::move(input));
+    auto msg = RecvConfUiMsg(hal_cli_socket_);
+    if (!msg) {
+      ConfUiLog(ERROR) << "Error in RecvConfUiMsg from HAL";
+      hal_cli_socket_->Close();
+      is_socket_ok_ = false;
+      continue;
+    }
+    input_multiplexer_.Push(hal_cmd_q_id_, std::move(msg));
   }
 }
 
@@ -108,17 +112,18 @@ bool HostServer::SendUserSelection(UserResponse::type selection) {
     // ignore
     return true;
   }
-
   std::lock_guard<std::mutex> lock(input_socket_mtx_);
   if (selection != UserResponse::kConfirm &&
-      selection != UserResponse::kCancel) {
-    ConfUiLog(FATAL) << selection << " must be either" << UserResponse::kConfirm
-                     << "or" << UserResponse::kCancel;
+      selection != UserResponse::kCancel &&
+      selection != UserResponse::kUserAbort) {
+    ConfUiLog(FATAL) << selection << " must be either "
+                     << UserResponse::kConfirm << " or "
+                     << UserResponse::kCancel << " or "
+                     << UserResponse::kUserAbort;
     return false;  // not reaching here
   }
 
-  ConfUiMessage input{GetCurrentSessionId(),
-                      ToString(ConfUiCmd::kUserInputEvent), selection};
+  auto input = CreateFromUserSelection(GetCurrentSessionId(), selection);
 
   input_multiplexer_.Push(user_input_evt_q_id_, std::move(input));
   return true;
@@ -140,6 +145,11 @@ void HostServer::PressCancelButton(const bool is_down) {
   SendUserSelection(UserResponse::kCancel);
 }
 
+void HostServer::UserAbortEvent() {
+  // shared by N vnc/webRTC clients
+  SendUserSelection(UserResponse::kUserAbort);
+}
+
 bool HostServer::IsConfUiActive() {
   if (!curr_session_) {
     return false;
@@ -148,35 +158,16 @@ bool HostServer::IsConfUiActive() {
 }
 
 SharedFD HostServer::EstablishHalConnection() {
-  ConfUiLog(DEBUG) << "Waiting hal accepting";
-  auto new_cli = SharedFD::Accept(*guest_hal_socket_);
-  ConfUiLog(DEBUG) << "hal client accepted";
-  return new_cli;
-}
-
-std::unique_ptr<Session> HostServer::ComputeCurrentSession(
-    const std::string& session_id) {
-  if (curr_session_ && (GetCurrentSessionId() != session_id)) {
-    ConfUiLog(FATAL) << curr_session_->GetId() << " is active and in the"
-                     << GetCurrentState() << "but HAL sends command to"
-                     << session_id;
+  using namespace std::chrono_literals;
+  while (true) {
+    ConfUiLog(VERBOSE) << "Waiting hal accepting";
+    auto new_cli = SharedFD::Accept(*guest_hal_socket_);
+    ConfUiLog(VERBOSE) << "hal client accepted";
+    if (new_cli->IsOpen()) {
+      return new_cli;
+    }
+    std::this_thread::sleep_for(500ms);
   }
-  if (curr_session_) {
-    return std::move(curr_session_);
-  }
-
-  // pick up a new session, or create one
-  auto result = GetSession(session_id);
-  if (result) {
-    return std::move(result);
-  }
-
-  auto raw_ptr = new Session(session_id, display_num_, renderer_,
-                             host_mode_ctrl_, screen_connector_);
-  result = std::unique_ptr<Session>(raw_ptr);
-  // note that the new session is directly going to curr_session_
-  // when it is suspended, it will be moved to session_map_
-  return std::move(result);
 }
 
 // read the comments in the header file
@@ -185,81 +176,72 @@ std::unique_ptr<Session> HostServer::ComputeCurrentSession(
     // this gets one input from either queue:
     // from HAL or from all webrtc/vnc clients
     // if no input, sleep until there is
-    const auto input = input_multiplexer_.Pop();
-    const auto& [session_id, cmd_str, additional_info] = input;
+    auto input_ptr = input_multiplexer_.Pop();
+    auto& input = *input_ptr;
+    const auto session_id = input.GetSessionId();
+    const auto cmd = input.GetType();
+    const std::string cmd_str(ToString(cmd));
 
     // take input for the Finite States Machine below
-    const ConfUiCmd cmd = ToCmd(cmd_str);
     const bool is_user_input = (cmd == ConfUiCmd::kUserInputEvent);
     std::string src = is_user_input ? "input" : "hal";
+    ConfUiLog(VERBOSE) << "In Session " << GetCurrentSessionId() << ", "
+                       << "in state " << GetCurrentState() << ", "
+                       << "received input from " << src << " cmd =" << cmd_str
+                       << " going to session " << session_id;
 
-    ConfUiLog(DEBUG) << "In Session" << GetCurrentSessionId() << ", "
-                     << "in state" << GetCurrentState() << ", "
-                     << "received input from " << src << " cmd =" << cmd_str
-                     << " and additional_info =" << additional_info
-                     << " going to session " << session_id;
-
-    FsmInput fsm_input = ToFsmInput(input);
-
-    if (is_user_input && !curr_session_) {
-      // discard the input, there's no session to take it yet
-      // actually, no confirmation UI screen is available
-      ConfUiLog(DEBUG) << "Took user input but no active session is available.";
-      continue;
-    }
-
-    /**
-     * if the curr_session_ is null, create one
-     * if the curr_session_ is not null but the session id doesn't match,
-     * something is wrong. Confirmation UI doesn't allow preemption by
-     * another confirmation UI session back to back. When it's preempted,
-     * HAL must send "kSuspend"
-     *
-     */
-    curr_session_ = ComputeCurrentSession(session_id);
-    ConfUiLog(DEBUG) << "Host service picked up "
-                     << (curr_session_ ? curr_session_->GetId()
-                                       : "null session");
-    ConfUiLog(DEBUG) << "The state of current session is "
-                     << (curr_session_ ? ToString(curr_session_->GetState())
-                                       : "null session");
-
-    if (is_user_input) {
-      curr_session_->Transition(is_user_input, hal_cli_socket_, fsm_input,
-                                additional_info);
-    } else {
-      ConfUiCmd cmd = ToCmd(cmd_str);
-      switch (cmd) {
-        case ConfUiCmd::kSuspend:
-          curr_session_->Suspend(hal_cli_socket_);
-          break;
-        case ConfUiCmd::kRestore:
-          curr_session_->Restore(hal_cli_socket_);
-          break;
-        case ConfUiCmd::kAbort:
-          curr_session_->Abort(hal_cli_socket_);
-          break;
-        default:
-          curr_session_->Transition(is_user_input, hal_cli_socket_, fsm_input,
-                                    additional_info);
-          break;
+    if (!curr_session_) {
+      if (cmd != ConfUiCmd::kStart) {
+        ConfUiLog(VERBOSE) << ToString(cmd) << " to " << session_id
+                           << " is ignored as there is no session to receive";
+        continue;
       }
+      // the session is created as kInit
+      curr_session_ = CreateSession(input.GetSessionId());
     }
+    Transition(input_ptr);
 
-    // check the session if it is inactive (e.g. init, suspended)
-    // and if it is done (transitioned to init from any other state)
-    if (curr_session_->IsSuspended()) {
-      session_map_[GetCurrentSessionId()] = std::move(curr_session_);
-      curr_session_ = nullptr;
-      continue;
-    }
-
-    if (curr_session_->GetState() == MainLoopState::kAwaitCleanup) {
+    // finalize
+    if (curr_session_ &&
+        curr_session_->GetState() == MainLoopState::kAwaitCleanup) {
       curr_session_->CleanUp();
       curr_session_ = nullptr;
     }
-    // otherwise, continue with keeping the curr_session_
   }  // end of the infinite while loop
+}
+
+std::unique_ptr<Session> HostServer::CreateSession(const std::string& name) {
+  return std::make_unique<Session>(name, display_num_, host_mode_ctrl_,
+                                   screen_connector_);
+}
+
+static bool IsUserAbort(ConfUiMessage& msg) {
+  if (msg.GetType() != ConfUiCmd::kUserInputEvent) {
+    return false;
+  }
+  ConfUiUserSelectionMessage& selection =
+      static_cast<ConfUiUserSelectionMessage&>(msg);
+  return (selection.GetResponse() == UserResponse::kUserAbort);
+}
+
+void HostServer::Transition(std::unique_ptr<ConfUiMessage>& input_ptr) {
+  auto& input = *input_ptr;
+  const auto session_id = input.GetSessionId();
+  const auto cmd = input.GetType();
+  const std::string cmd_str(ToString(cmd));
+  const bool is_user_input = (cmd == ConfUiCmd::kUserInputEvent);
+  FsmInput fsm_input = ToFsmInput(input);
+  ConfUiLog(VERBOSE) << "Handling " << ToString(cmd);
+  if (IsUserAbort(input)) {
+    curr_session_->UserAbort(hal_cli_socket_);
+    return;
+  }
+
+  if (cmd == ConfUiCmd::kAbort) {
+    curr_session_->Abort();
+    return;
+  }
+  curr_session_->Transition(is_user_input, hal_cli_socket_, fsm_input, input);
 }
 
 }  // end of namespace confui

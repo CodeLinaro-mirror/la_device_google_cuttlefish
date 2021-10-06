@@ -87,6 +87,8 @@ bool Stop() {
 
 }  // namespace
 
+QemuManager::QemuManager(Arch arch) : arch_(arch) {}
+
 bool QemuManager::IsSupported() {
   return HostSupportsQemuCli();
 }
@@ -238,6 +240,8 @@ std::vector<Command> QemuManager::StartCommands(
         << instance.access_kregistry_path() <<  " file size ("
         << access_kregistry_size_bytes << ") not a multiple of 1MB";
   }
+  // TODO(162770965) Re-enable once QEMU on GCE supports virtio pci pmem devices
+  access_kregistry_size_bytes = 0;
 
   auto pstore_size_bytes = 0;
   if (FileExists(instance.pstore_path())) {
@@ -338,10 +342,6 @@ std::vector<Command> QemuManager::StartCommands(
     add_hvc_sink();
   }
 
-  if (config.enable_gnss_grpc_proxy()) {
-    add_serial_console(instance.gnss_pipe_prefix());
-  }
-
   // Serial port for logcat, redirected to a pipe
   add_hvc_ro(instance.logcat_pipe_name());
 
@@ -349,6 +349,12 @@ std::vector<Command> QemuManager::StartCommands(
   add_hvc(instance.PerInstanceInternalPath("gatekeeper_fifo_vm"));
   if (config.enable_host_bluetooth()) {
     add_hvc(instance.PerInstanceInternalPath("bt_fifo_vm"));
+  } else {
+    add_hvc_sink();
+  }
+
+  if (config.enable_gnss_grpc_proxy()) {
+    add_hvc(instance.PerInstanceInternalPath("gnsshvc_fifo_vm"));
   } else {
     add_hvc_sink();
   }
@@ -405,7 +411,7 @@ std::vector<Command> QemuManager::StartCommands(
 
   // QEMU does not implement virtio-pmem-pci for ARM64 yet; restore this
   // when the device has been added
-  if (!is_arm && FileExists(instance.access_kregistry_path())) {
+  if (!is_arm && access_kregistry_size_bytes > 0) {
     qemu_cmd.AddParameter("-object");
     qemu_cmd.AddParameter("memory-backend-file,id=objpmem1,share,mem-path=",
                           instance.access_kregistry_path(), ",size=",
@@ -438,18 +444,25 @@ std::vector<Command> QemuManager::StartCommands(
   qemu_cmd.AddParameter("virtio-balloon-pci,id=balloon0");
 
   qemu_cmd.AddParameter("-netdev");
-  qemu_cmd.AddParameter("tap,id=hostnet0,ifname=", instance.wifi_tap_name(),
+  qemu_cmd.AddParameter("tap,id=hostnet0,ifname=", instance.mobile_tap_name(),
                         ",script=no,downscript=no", vhost_net);
 
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("virtio-net-pci,netdev=hostnet0,id=net0");
 
   qemu_cmd.AddParameter("-netdev");
-  qemu_cmd.AddParameter("tap,id=hostnet1,ifname=", instance.mobile_tap_name(),
+  qemu_cmd.AddParameter("tap,id=hostnet1,ifname=", instance.ethernet_tap_name(),
                         ",script=no,downscript=no", vhost_net);
 
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("virtio-net-pci,netdev=hostnet1,id=net1");
+
+  qemu_cmd.AddParameter("-netdev");
+  qemu_cmd.AddParameter("tap,id=hostnet2,ifname=", instance.wifi_tap_name(),
+                        ",script=no,downscript=no", vhost_net);
+
+  qemu_cmd.AddParameter("-device");
+  qemu_cmd.AddParameter("virtio-net-pci,netdev=hostnet2,id=net2");
 
   auto display_configs = config.display_configs();
   CHECK_GE(display_configs.size(), 1);
@@ -471,17 +484,6 @@ std::vector<Command> QemuManager::StartCommands(
 
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("AC97");
-
-  // TODO(b/172286896): This is temporarily optional, but should be made
-  // unconditional and moved up to the other network devices area
-  if (config.ethernet()) {
-    qemu_cmd.AddParameter("-netdev");
-    qemu_cmd.AddParameter("tap,id=hostnet2,ifname=", instance.ethernet_tap_name(),
-                          ",script=no,downscript=no", vhost_net);
-
-    qemu_cmd.AddParameter("-device");
-    qemu_cmd.AddParameter("virtio-net-pci,netdev=hostnet2,id=net2");
-  }
 
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("qemu-xhci,id=xhci");

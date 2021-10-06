@@ -35,11 +35,11 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.audio@2.0",
     "android.hardware.audio@4.0",
     "android.hardware.audio@5.0",
-    "android.hardware.audio@7.0",
+    "android.hardware.audio@6.0",
     "android.hardware.audio.effect@2.0",
     "android.hardware.audio.effect@4.0",
     "android.hardware.audio.effect@5.0",
-    "android.hardware.audio.effect@7.0",
+    "android.hardware.audio.effect@6.0",
     "android.hardware.automotive.audiocontrol@1.0",
     "android.hardware.automotive.audiocontrol@2.0",
     "android.hardware.automotive.can@1.0",
@@ -51,8 +51,8 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.broadcastradio@1.1",
     "android.hardware.broadcastradio@2.0",
     "android.hardware.cas.native@1.0",
-    "android.hardware.confirmationui@1.0",
     "android.hardware.configstore@1.1", // deprecated, see b/149050985, b/149050733
+    "android.hardware.contexthub@1.2",
     "android.hardware.fastboot@1.1",
     "android.hardware.gnss.measurement_corrections@1.1", // is sub-interface of gnss
     "android.hardware.gnss.visibility_control@1.0",
@@ -77,7 +77,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.power.stats@1.0",
     "android.hardware.radio.deprecated@1.0",
     "android.hardware.renderscript@1.0",
-    "android.hardware.soundtrigger@2.4",
+    "android.hardware.soundtrigger@2.3",
     "android.hardware.secure_element@1.2",
     "android.hardware.sensors@1.0",
     "android.hardware.tetheroffload.config@1.0",
@@ -96,6 +96,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.wifi.offload@1.0",
     "android.hidl.base@1.0",
     "android.hidl.memory.token@1.0",
+    "android.system.suspend@1.0", // Converted to AIDL (see b/170260236)
 };
 // clang-format on
 
@@ -115,6 +116,10 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.hardware.common.fmq.", 1},
     {"android.hardware.graphics.common.", 1},
     {"android.hardware.graphics.common.", 2},
+    {"android.hardware.graphics.common.", 3},
+
+    // This interface needs to be implemented (b/193240715)
+    {"android.hardware.graphics.composer3.", 1},
 
     // These KeyMaster types are in an AIDL types-only HAL because they're used
     // by the Identity Credential AIDL HAL. Remove this when fully porting
@@ -137,12 +142,32 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.frameworks.automotive.telemetry.", 1},
     {"android.hardware.automotive.audiocontrol.", 1},
     {"android.hardware.automotive.occupant_awareness.", 1},
+    {"android.hardware.automotive.vehicle.", 1},
 
     // These types are only used in TV.
     {"android.hardware.tv.tuner.", 1},
 
     // This version needs to be implemented (b/190505425)
     {"android.system.keystore2.", 2},
+
+    // These versions need to be implemented (b/198331776)
+    {"android.hardware.radio.", 1},
+    {"android.hardware.radio.data.", 1},
+    {"android.hardware.radio.messaging.", 1},
+    {"android.hardware.radio.modem.", 1},
+    {"android.hardware.radio.network.", 1},
+    {"android.hardware.radio.sim.", 1},
+    {"android.hardware.radio.voice.", 1},
+
+    // This version needs to be implemented (b/198331886)
+    {"android.hardware.radio.config.", 1},
+
+    // No implementations on cuttlefish for wifi aidl hal
+    {"android.hardware.wifi.hostapd.", 1},
+};
+
+static const std::set<VersionedAidlPackage> kComingSoonAidl = {
+    {"android.hardware.wifi.hostapd.", 1},
 };
 
 // AOSP packages which are never considered
@@ -306,6 +331,7 @@ struct AidlPackageCheck {
 TEST(Hal, AidlInterfacesImplemented) {
   std::set<VersionedAidlPackage> manifest = allAidlManifestInterfaces();
   std::set<VersionedAidlPackage> thoughtMissing = kKnownMissingAidl;
+  std::set<VersionedAidlPackage> comingSoon = kComingSoonAidl;
 
   for (const auto& treePackage : AidlInterfaceMetadata::all()) {
     ASSERT_FALSE(treePackage.types.empty()) << treePackage.name;
@@ -370,8 +396,11 @@ TEST(Hal, AidlInterfacesImplemented) {
   }
 
   for (const auto& package : thoughtMissing) {
-    ADD_FAILURE() << "Interface in missing list and cannot find it anywhere: "
-                  << package.name << " V" << package.version;
+    // TODO: b/194806512 : Remove after Wifi hostapd AIDL interface lands on aosp
+    if (comingSoon.erase(package) == 0) {
+      ADD_FAILURE() << "Interface in missing list and cannot find it anywhere: "
+                    << package.name << " V" << package.version;
+    }
   }
 
   for (const auto& package : manifest) {

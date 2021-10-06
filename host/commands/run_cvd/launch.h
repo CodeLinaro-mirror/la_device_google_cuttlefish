@@ -16,29 +16,22 @@
 #pragma once
 
 #include <fruit/fruit.h>
+
 #include <string>
 #include <vector>
 
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/subprocess.h"
+#include "host/libs/config/command_source.h"
+#include "host/libs/config/custom_actions.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/feature.h"
+#include "host/libs/config/kernel_log_pipe_provider.h"
+#include "host/libs/vm_manager/vm_manager.h"
 
 namespace cuttlefish {
 
-class CommandSource : public virtual Feature {
- public:
-  virtual ~CommandSource();
-  virtual std::vector<Command> Commands() = 0;
-};
-
-class KernelLogPipeProvider : public virtual Feature {
- public:
-  virtual ~KernelLogPipeProvider();
-  virtual SharedFD KernelLogPipe() = 0;
-};
-
-fruit::Component<fruit::Required<const CuttlefishConfig,
+fruit::Component<fruit::Required<const CuttlefishConfig, vm_manager::VmManager,
                                  const CuttlefishConfig::InstanceSpecific>,
                  KernelLogPipeProvider>
 launchComponent();
@@ -48,11 +41,8 @@ fruit::Component<fruit::Required<const CuttlefishConfig,
 launchModemComponent();
 
 fruit::Component<fruit::Required<const CuttlefishConfig, KernelLogPipeProvider,
-                                 const CuttlefishConfig::InstanceSpecific>>
-launchAdbComponent();
-
-fruit::Component<fruit::Required<const CuttlefishConfig, KernelLogPipeProvider,
-                                 const CuttlefishConfig::InstanceSpecific>>
+                                 const CuttlefishConfig::InstanceSpecific,
+                                 const CustomActionConfigProvider>>
 launchStreamerComponent();
 
 } // namespace cuttlefish

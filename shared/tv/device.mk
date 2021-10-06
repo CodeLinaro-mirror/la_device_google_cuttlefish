@@ -38,8 +38,10 @@ PRODUCT_PACKAGES += android.hardware.tv.cec@1.1-service
 PRODUCT_PROPERTY_OVERRIDES += ro.hdmi.device_type=4
 
 # Tuner HAL
-PRODUCT_PACKAGES += android.hardware.tv.tuner@1.1-service
 PRODUCT_PACKAGES += android.hardware.tv.tuner-service.example
+
+# Sample Tuner Input for testing
+PRODUCT_PACKAGES += LiveTv sampletunertvinput
 
 # Enabling managed profiles
 DEVICE_PACKAGE_OVERLAYS += device/google/cuttlefish/shared/tv/overlay

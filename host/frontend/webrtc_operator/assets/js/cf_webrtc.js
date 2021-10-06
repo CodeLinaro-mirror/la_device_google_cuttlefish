@@ -81,113 +81,139 @@ function awaitDataChannel(pc, label, onMessage) {
   };
 }
 
+async function ajaxPostJson(url, data) {
+  const response = await fetch(url, {
+    method: 'POST',
+    cache: 'no-cache',
+    headers: {'Content-Type': 'application/json'},
+    redirect: 'follow',
+    body: JSON.stringify(data),
+  });
+  return response.json();
+}
+
 class DeviceConnection {
-  constructor(pc, control, media_stream) {
-    this._pc = pc;
-    this._control = control;
-    this._media_stream = media_stream;
-    // Disable the microphone by default
-    this.useMic(false);
-    this.useVideo(false);
-    this._cameraDataChannel = pc.createDataChannel('camera-data-channel');
-    this._cameraDataChannel.binaryType = 'arraybuffer';
-    this._cameraInputQueue = new Array();
+  #pc;
+  #control;
+  #description;
+
+  #cameraDataChannel;
+  #cameraInputQueue;
+  #controlChannel;
+  #inputChannel;
+  #adbChannel;
+  #bluetoothChannel;
+
+  #streams;
+  #streamPromiseResolvers;
+  #micSenders = [];
+  #cameraSenders = [];
+  #camera_res_x;
+  #camera_res_y;
+
+  #onAdbMessage;
+  #onControlMessage;
+  #onBluetoothMessage;
+
+  constructor(pc, control) {
+    this.#pc = pc;
+    this.#control = control;
+    this.#cameraDataChannel = pc.createDataChannel('camera-data-channel');
+    this.#cameraDataChannel.binaryType = 'arraybuffer';
+    this.#cameraInputQueue = new Array();
     var self = this;
-    this._cameraDataChannel.onbufferedamountlow = () => {
-      if (self._cameraInputQueue.length > 0) {
-        self.sendCameraData(self._cameraInputQueue.shift());
+    this.#cameraDataChannel.onbufferedamountlow = () => {
+      if (self.#cameraInputQueue.length > 0) {
+        self.sendCameraData(self.#cameraInputQueue.shift());
       }
     };
-    this._inputChannel = createDataChannel(pc, 'input-channel');
-    this._adbChannel = createDataChannel(pc, 'adb-channel', (msg) => {
-      if (this._onAdbMessage) {
-        this._onAdbMessage(msg.data);
+    this.#inputChannel = createDataChannel(pc, 'input-channel');
+    this.#adbChannel = createDataChannel(pc, 'adb-channel', (msg) => {
+      if (this.#onAdbMessage) {
+        this.#onAdbMessage(msg.data);
       } else {
         console.error('Received unexpected ADB message');
       }
     });
-    this._controlChannel = awaitDataChannel(pc, 'device-control', (msg) => {
-      if (this._onControlMessage) {
-        this._onControlMessage(msg);
+    this.#controlChannel = awaitDataChannel(pc, 'device-control', (msg) => {
+      if (this.#onControlMessage) {
+        this.#onControlMessage(msg);
       } else {
         console.error('Received unexpected Control message');
       }
     });
-    this._bluetoothChannel =
+    this.#bluetoothChannel =
         createDataChannel(pc, 'bluetooth-channel', (msg) => {
-          if (this._onBluetoothMessage) {
-            this._onBluetoothMessage(msg.data);
+          if (this.#onBluetoothMessage) {
+            this.#onBluetoothMessage(msg.data);
           } else {
             console.error('Received unexpected Bluetooth message');
           }
         });
-    this.sendCameraResolution();
-    this._streams = {};
-    this._streamPromiseResolvers = {};
+    this.#streams = {};
+    this.#streamPromiseResolvers = {};
 
     pc.addEventListener('track', e => {
       console.debug('Got remote stream: ', e);
       for (const stream of e.streams) {
-        this._streams[stream.id] = stream;
-        if (this._streamPromiseResolvers[stream.id]) {
-          for (let resolver of this._streamPromiseResolvers[stream.id]) {
+        this.#streams[stream.id] = stream;
+        if (this.#streamPromiseResolvers[stream.id]) {
+          for (let resolver of this.#streamPromiseResolvers[stream.id]) {
             resolver();
           }
-          delete this._streamPromiseResolvers[stream.id];
+          delete this.#streamPromiseResolvers[stream.id];
         }
       }
     });
   }
 
   set description(desc) {
-    this._description = desc;
+    this.#description = desc;
   }
 
   get description() {
-    return this._description;
+    return this.#description;
   }
 
   get imageCapture() {
-    if (this._media_stream) {
-      const track = this._media_stream.getVideoTracks()[0];
+    if (this.#cameraSenders && this.#cameraSenders.length > 0) {
+      let track = this.#cameraSenders[0].track;
       return new ImageCapture(track);
     }
     return undefined;
   }
 
   get cameraWidth() {
-    return this._x_res;
+    return this.#camera_res_x;
   }
 
   get cameraHeight() {
-    return this._y_res;
+    return this.#camera_res_y;
   }
 
   get cameraEnabled() {
-    if (this._media_stream) {
-      return this._media_stream.getVideoTracks().some(track => track.enabled);
-    }
+    return this.#cameraSenders && this.#cameraSenders.length > 0;
   }
 
   getStream(stream_id) {
     return new Promise((resolve, reject) => {
-      if (this._streams[stream_id]) {
-        resolve(this._streams[stream_id]);
+      if (this.#streams[stream_id]) {
+        resolve(this.#streams[stream_id]);
       } else {
-        if (!this._streamPromiseResolvers[stream_id]) {
-          this._streamPromiseResolvers[stream_id] = [];
+        if (!this.#streamPromiseResolvers[stream_id]) {
+          this.#streamPromiseResolvers[stream_id] = [];
         }
-        this._streamPromiseResolvers[stream_id].push(resolve);
+        this.#streamPromiseResolvers[stream_id].push(resolve);
       }
     });
   }
 
-  _sendJsonInput(evt) {
-    this._inputChannel.send(JSON.stringify(evt));
+  #sendJsonInput(evt) {
+    this.#inputChannel.send(JSON.stringify(evt));
   }
 
   sendMousePosition({x, y, down, display_label}) {
-    this._sendJsonInput({
+    this.#sendJsonInput({
       type: 'mouse',
       down: down ? 1 : 0,
       x,
@@ -199,7 +225,7 @@ class DeviceConnection {
   // TODO (b/124121375): This should probably be an array of pointer events and
   // have different properties.
   sendMultiTouch({idArr, xArr, yArr, down, slotArr, display_label}) {
-    this._sendJsonInput({
+    this.#sendJsonInput({
       type: 'multi-touch',
       id: idArr,
       x: xArr,
@@ -211,64 +237,95 @@ class DeviceConnection {
   }
 
   sendKeyEvent(code, type) {
-    this._sendJsonInput({type: 'keyboard', keycode: code, event_type: type});
+    this.#sendJsonInput({type: 'keyboard', keycode: code, event_type: type});
   }
 
   disconnect() {
-    this._pc.close();
+    this.#pc.close();
   }
 
   // Sends binary data directly to the in-device adb daemon (skipping the host)
   sendAdbMessage(msg) {
-    this._adbChannel.send(msg);
+    this.#adbChannel.send(msg);
   }
 
   // Provide a callback to receive data from the in-device adb daemon
   onAdbMessage(cb) {
-    this._onAdbMessage = cb;
+    this.#onAdbMessage = cb;
   }
 
   // Send control commands to the device
   sendControlMessage(msg) {
-    this._controlChannel.send(msg);
+    this.#controlChannel.send(msg);
   }
 
-  useMic(in_use) {
-    if (this._media_stream) {
-      this._media_stream.getAudioTracks().forEach(
-          track => track.enabled = in_use);
+  async #useDevice(in_use, senders_arr, device_opt) {
+    // An empty array means no tracks are currently in use
+    if (senders_arr.length > 0 === !!in_use) {
+      console.warn('Device is already ' + (in_use ? '' : 'not ') + 'in use');
+      return in_use;
     }
-  }
-
-  useVideo(in_use) {
-    if (this._media_stream) {
-      this._media_stream.getVideoTracks().forEach(
-          track => track.enabled = in_use);
-    }
-  }
-
-  sendCameraResolution() {
-    if (this._media_stream) {
-      const cameraTracks = this._media_stream.getVideoTracks();
-      if (cameraTracks.length > 0) {
-        const settings = cameraTracks[0].getSettings();
-        this._x_res = settings.width;
-        this._y_res = settings.height;
-        this.sendControlMessage(JSON.stringify({
-          command: 'camera_settings',
-          width: settings.width,
-          height: settings.height,
-          frame_rate: settings.frameRate,
-          facing: settings.facingMode
-        }));
+    let renegotiation_needed = false;
+    if (in_use) {
+      try {
+        let stream = await navigator.mediaDevices.getUserMedia(device_opt);
+        stream.getTracks().forEach(track => {
+          console.info(`Using ${track.kind} device: ${track.label}`);
+          senders_arr.push(this.#pc.addTrack(track));
+          renegotiation_needed = true;
+        });
+      } catch (e) {
+        console.error('Failed to add stream to peer connection: ', e);
+        // Don't return yet, if there were errors some tracks may have been
+        // added so the connection should be renegotiated again.
       }
+    } else {
+      for (const sender of senders_arr) {
+        console.info(
+            `Removing ${sender.track.kind} device: ${sender.track.label}`);
+        let track = sender.track;
+        track.stop();
+        this.#pc.removeTrack(sender);
+        renegotiation_needed = true;
+      }
+      // Empty the array passed by reference, just assigning [] won't do that.
+      senders_arr.length = 0;
+    }
+    if (renegotiation_needed) {
+      this.#control.renegotiateConnection();
+    }
+    // Return the new state
+    return senders_arr.length > 0;
+  }
+
+  async useMic(in_use) {
+    return this.#useDevice(in_use, this.#micSenders, {audio: true, video: false});
+  }
+
+  async useCamera(in_use) {
+    return this.#useDevice(in_use, this.#micSenders, {audio: false, video: true});
+  }
+
+  sendCameraResolution(stream) {
+    const cameraTracks = stream.getVideoTracks();
+    if (cameraTracks.length > 0) {
+      const settings = cameraTracks[0].getSettings();
+      this.#camera_res_x = settings.width;
+      this.#camera_res_y = settings.height;
+      this.sendControlMessage(JSON.stringify({
+        command: 'camera_settings',
+        width: settings.width,
+        height: settings.height,
+        frame_rate: settings.frameRate,
+        facing: settings.facingMode
+      }));
     }
   }
 
   sendOrQueueCameraData(data) {
-    if (this._cameraDataChannel.bufferedAmount > 0 ||
-        this._cameraInputQueue.length > 0) {
-      this._cameraInputQueue.push(data);
+    if (this.#cameraDataChannel.bufferedAmount > 0 ||
+        this.#cameraInputQueue.length > 0) {
+      this.#cameraInputQueue.push(data);
     } else {
       this.sendCameraData(data);
     }
@@ -279,69 +336,137 @@ class DeviceConnection {
     const END_MARKER = 'EOF';
     for (let i = 0; i < data.byteLength; i += MAX_SIZE) {
       // range is clamped to the valid index range
-      this._cameraDataChannel.send(data.slice(i, i + MAX_SIZE));
+      this.#cameraDataChannel.send(data.slice(i, i + MAX_SIZE));
     }
-    this._cameraDataChannel.send(END_MARKER);
+    this.#cameraDataChannel.send(END_MARKER);
   }
 
   // Provide a callback to receive control-related comms from the device
   onControlMessage(cb) {
-    this._onControlMessage = cb;
+    this.#onControlMessage = cb;
   }
 
   sendBluetoothMessage(msg) {
-    this._bluetoothChannel.send(msg);
+    this.#bluetoothChannel.send(msg);
   }
 
   onBluetoothMessage(cb) {
-    this._onBluetoothMessage = cb;
+    this.#onBluetoothMessage = cb;
   }
 
   // Provide a callback to receive connectionstatechange states.
   onConnectionStateChange(cb) {
-    this._pc.addEventListener(
-        'connectionstatechange', evt => cb(this._pc.connectionState));
+    this.#pc.addEventListener(
+        'connectionstatechange', evt => cb(this.#pc.connectionState));
   }
 }
 
+class Controller {
+  #pc;
 
-class WebRTCControl {
-  constructor({
-    wsUrl = '',
-  }) {
-    /*
-     * Private attributes:
-     *
-     * _wsPromise: promises the underlying websocket, should resolve when the
-     *             socket passes to OPEN state, will be rejecte/replaced by a
-     *             rejected promise if an error is detected on the socket.
-     *
-     * _onOffer
-     * _onIceCandidate
-     */
+  constructor() {}
 
-    this._promiseResolvers = {};
-
-    this._wsPromise = new Promise((resolve, reject) => {
-      let ws = new WebSocket(wsUrl);
-      ws.onopen = () => {
-        console.debug(`Connected to ${wsUrl}`);
-        resolve(ws);
-      };
-      ws.onerror = evt => {
-        console.error('WebSocket error:', evt);
-        reject(evt);
-        // If the promise was already resolved the previous line has no effect
-        this._wsPromise = Promise.reject(new Error(evt));
-      };
-      ws.onmessage = e => {
-        let data = JSON.parse(e.data);
-        this._onWebsocketMessage(data);
-      };
-    });
+  _onDeviceMessage(message) {
+    let type = message.type;
+    switch (type) {
+      case 'offer':
+        this.#onOffer({type: 'offer', sdp: message.sdp});
+        break;
+      case 'answer':
+        this.#onAnswer({type: 'answer', sdp: message.sdp});
+        break;
+      case 'ice-candidate':
+          this.#onIceCandidate(new RTCIceCandidate({
+            sdpMid: message.mid,
+            sdpMLineIndex: message.mLineIndex,
+            candidate: message.candidate
+          }));
+        break;
+      case 'error':
+        console.error('Device responded with error message: ', message.error);
+        break;
+      default:
+        console.error('Unrecognized message type from device: ', type);
+    }
   }
 
-  _onWebsocketMessage(message) {
+  async #sendClientDescription(desc) {
+    console.debug('sendClientDescription');
+    return this._sendToDevice({type: 'answer', sdp: desc.sdp});
+  }
+
+  async #sendIceCandidate(candidate) {
+    return this._sendToDevice({type: 'ice-candidate', candidate});
+  }
+
+  async #onOffer(desc) {
+    console.debug('Remote description (offer): ', desc);
+    try {
+      await this.#pc.setRemoteDescription(desc);
+      let answer = await this.#pc.createAnswer();
+      console.debug('Answer: ', answer);
+      await this.#pc.setLocalDescription(answer);
+      await this.#sendClientDescription(answer);
+    } catch (e) {
+      console.error('Error processing remote description (offer)', e)
+      throw e;
+    }
+  }
+
+  async #onAnswer(answer) {
+    console.debug('Remote description (answer): ', answer);
+    try {
+      await this.#pc.setRemoteDescription(answer);
+    } catch (e) {
+      console.error('Error processing remote description (answer)', e)
+      throw e;
+    }
+  }
+
+  #onIceCandidate(iceCandidate) {
+    console.debug(`Remote ICE Candidate: `, iceCandidate);
+    this.#pc.addIceCandidate(iceCandidate);
+  }
+
+  ConnectDevice(pc) {
+    this.#pc = pc;
+    console.debug('ConnectDevice');
+    // ICE candidates will be generated when we add the offer. Adding it here
+    // instead of in _onOffer because this function is called once per peer
+    // connection, while _onOffer may be called more than once due to
+    // renegotiations.
+    this.#pc.addEventListener('icecandidate', evt => {
+      if (evt.candidate) this.#sendIceCandidate(evt.candidate);
+    });
+    this._sendToDevice({type: 'request-offer'});
+  }
+
+  async renegotiateConnection() {
+    console.debug('Re-negotiating connection');
+    let offer = await this.#pc.createOffer();
+    console.debug('Local description (offer): ', offer);
+    await this.#pc.setLocalDescription(offer);
+    this._sendToDevice({type: 'offer', sdp: offer.sdp});
+  }
+}
+
+class WebsocketController extends Controller {
+  #promiseResolvers;
+  #websocket;
+
+  constructor(websocket) {
+    super();
+
+    websocket.onmessage = e => {
+      let data = JSON.parse(e.data);
+      this.#onWebsocketMessage(data);
+    };
+    this.#websocket = websocket;
+
+    this.#promiseResolvers = {};
+  }
+
+  #onWebsocketMessage(message) {
     const type = message.message_type;
     if (message.error) {
       console.error(message.error);
@@ -371,46 +496,12 @@ class WebRTCControl {
     }
   }
 
-  _onDeviceMessage(message) {
-    let type = message.type;
-    switch (type) {
-      case 'offer':
-        if (this._onOffer) {
-          this._onOffer({type: 'offer', sdp: message.sdp});
-        } else {
-          console.error('Receive offer, but nothing is wating for it');
-        }
-        break;
-      case 'ice-candidate':
-        if (this._onIceCandidate) {
-          this._onIceCandidate(new RTCIceCandidate({
-            sdpMid: message.mid,
-            sdpMLineIndex: message.mLineIndex,
-            candidate: message.candidate
-          }));
-        } else {
-          console.error('Received ice candidate but nothing is waiting for it');
-        }
-        break;
-      default:
-        console.error('Unrecognized message type from device: ', type);
-    }
+  async #wsSendJson(obj) {
+    return this.#websocket.send(JSON.stringify(obj));
   }
 
-  async _wsSendJson(obj) {
-    let ws = await this._wsPromise;
-    return ws.send(JSON.stringify(obj));
-  }
   async _sendToDevice(payload) {
-    this._wsSendJson({message_type: 'forward', payload});
-  }
-
-  onOffer(cb) {
-    this._onOffer = cb;
-  }
-
-  onIceCandidate(cb) {
-    this._onIceCandidate = cb;
+    return this.#wsSendJson({message_type: 'forward', payload});
   }
 
   async requestDevice(device_id) {
@@ -420,32 +511,106 @@ class WebRTCControl {
         infraConfig: this._infra_config,
       });
       this._on_connection_failed = (error) => reject(error);
-      this._wsSendJson({
+      this.#wsSendJson({
         message_type: 'connect',
         device_id,
       });
     });
   }
+}
 
-  ConnectDevice() {
-    console.debug('ConnectDevice');
-    this._sendToDevice({type: 'request-offer'});
+class PollingController extends Controller {
+  #connectUrl;
+  #forwardUrl;
+  #pollUrl;
+  #connection_id;
+  #infraConfig;
+  #pollerSchedule;
+
+  constructor(connectUrl, forwardUrl, pollUrl, infra_config) {
+    super();
+
+    this.#connectUrl = connectUrl;
+    this.#forwardUrl = forwardUrl;
+    this.#pollUrl = pollUrl;
+    this.#infraConfig = infra_config;
   }
 
-  /**
-   * Sends a remote description to the device.
-   */
-  async sendClientDescription(desc) {
-    console.debug('sendClientDescription');
-    this._sendToDevice({type: 'answer', sdp: desc.sdp});
+  #startPolling() {
+    if (this.#pollerSchedule !== undefined) {
+      return;
+    }
+
+    let currentPollDelay = 1000;
+    let pollerRoutine = async () => {
+      let messages = await ajaxPostJson(this.#pollUrl, {
+        connection_id: this.#connection_id,
+      });
+      // Do exponential backoff on the polling up to 60 seconds
+      currentPollDelay = Math.min(60000, 2 * currentPollDelay);
+      for (const message of messages) {
+        this._onDeviceMessage(message);
+        // There is at least one message, poll sooner
+        currentPollDelay = 1000;
+      }
+      this.#pollerSchedule = setTimeout(pollerRoutine, currentPollDelay);
+    };
+
+    this.#pollerSchedule = setTimeout(pollerRoutine, currentPollDelay);
   }
 
-  /**
-   * Sends an ICE candidate to the device
-   */
-  async sendIceCandidate(candidate) {
-    this._sendToDevice({type: 'ice-candidate', candidate});
+  async _sendToDevice(obj) {
+    // Forward messages act like polling messages as well
+    let device_messages = await ajaxPostJson(this.#forwardUrl, {
+      connection_id: this.#connection_id,
+      payload: obj,
+    });
+    for (const message of device_messages) {
+      this._onDeviceMessage(message);
+    }
   }
+
+  async requestDevice(device_id) {
+    let response = await ajaxPostJson(this.#connectUrl, {
+             device_id
+           });
+    this.#connection_id = response.connection_id;
+
+    // Start polling after we get a connection id
+    this.#startPolling();
+
+    return {
+      deviceInfo: response.device_info,
+      infraConfig: this.#infraConfig,
+    };
+  }
+}
+
+async function createController(options) {
+  try {
+    let ws = await new Promise((resolve, reject) => {
+      let ws = new WebSocket(options.wsUrl);
+      ws.onopen = () => {
+        console.debug(`Connected to ${options.wsUrl}`);
+        resolve(ws);
+      };
+      ws.onerror = evt => {
+        console.error('WebSocket error:', evt);
+        reject(evt);
+      };
+    });
+    return new WebsocketController(ws);
+  } catch (e) {
+    console.warn('Failed to connect websocket, trying polling instead');
+  }
+
+  const config = (await fetch(options.pollConfigUrl, {
+                   method: 'GET',
+                   redirect: 'follow',
+                 })).json();
+  return new PollingController(
+      options.pollConnectUrl, options.pollForwardUrl, options.pollMessagesUrl,
+      await config);
 }
 
 function createPeerConnection(infra_config) {
@@ -469,7 +634,8 @@ function createPeerConnection(infra_config) {
 }
 
 export async function Connect(deviceId, options) {
-  let control = new WebRTCControl(options);
+  let control = await createController(options);
+
   let requestRet = await control.requestDevice(deviceId);
   let deviceInfo = requestRet.deviceInfo;
   let infraConfig = requestRet.infraConfig;
@@ -481,47 +647,11 @@ export async function Connect(deviceId, options) {
       pc_config.iceServers.push(server);
     }
   }
-  let pc = createPeerConnection(infraConfig, control);
+  let pc = createPeerConnection(infraConfig);
 
-  let mediaStream;
-  try {
-    mediaStream =
-        await navigator.mediaDevices.getUserMedia({audio: true});
-    const tracks = mediaStream.getTracks();
-    tracks.forEach(track => {
-      console.info(`Using ${track.kind} device: ${track.label}`);
-      pc.addTrack(track, mediaStream);
-    });
-  } catch (e) {
-    console.error('Failed to open device: ', e);
-  }
-
-  let deviceConnection = new DeviceConnection(pc, control, mediaStream);
+  let deviceConnection = new DeviceConnection(pc, control);
   deviceConnection.description = deviceInfo;
-  async function acceptOfferAndReplyAnswer(offer) {
-    try {
-      await pc.setRemoteDescription(offer);
-      let answer = await pc.createAnswer();
-      console.debug('Answer: ', answer);
-      await pc.setLocalDescription(answer);
-      await control.sendClientDescription(answer);
-    } catch (e) {
-      console.error('Error establishing WebRTC connection: ', e)
-      throw e;
-    }
-  }
-  control.onOffer(desc => {
-    console.debug('Offer: ', desc);
-    acceptOfferAndReplyAnswer(desc);
-  });
-  control.onIceCandidate(iceCandidate => {
-    console.debug(`Remote ICE Candidate: `, iceCandidate);
-    pc.addIceCandidate(iceCandidate);
-  });
 
-  pc.addEventListener('icecandidate', evt => {
-    if (evt.candidate) control.sendIceCandidate(evt.candidate);
-  });
   let connected_promise = new Promise((resolve, reject) => {
     pc.addEventListener('connectionstatechange', evt => {
       let state = pc.connectionState;
@@ -532,7 +662,8 @@ export async function Connect(deviceId, options) {
       }
     });
   });
-  control.ConnectDevice();
+
+  control.ConnectDevice(pc);
 
   return connected_promise;
 }

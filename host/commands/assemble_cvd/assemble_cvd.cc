@@ -27,8 +27,11 @@
 #include "common/libs/utils/tee_logging.h"
 #include "host/commands/assemble_cvd/clean.h"
 #include "host/commands/assemble_cvd/disk_flags.h"
+#include "host/commands/assemble_cvd/flag_feature.h"
 #include "host/commands/assemble_cvd/flags.h"
-#include "host/libs/config/adb_config.h"
+#include "host/libs/config/adb/adb.h"
+#include "host/libs/config/config_flag.h"
+#include "host/libs/config/custom_actions.h"
 #include "host/libs/config/fetcher_config.h"
 
 using cuttlefish::StringFromEnv;
@@ -53,8 +56,7 @@ std::string kFetcherConfigFile = "fetcher_config.json";
 FetcherConfig FindFetcherConfig(const std::vector<std::string>& files) {
   FetcherConfig fetcher_config;
   for (const auto& file : files) {
-    auto expected_pos = file.size() - kFetcherConfigFile.size();
-    if (file.rfind(kFetcherConfigFile) == expected_pos) {
+    if (android::base::EndsWith(file, kFetcherConfigFile)) {
       if (fetcher_config.LoadFromFile(file)) {
         return fetcher_config;
       }
@@ -91,22 +93,13 @@ bool SaveConfig(const CuttlefishConfig& tmp_config_obj) {
   return true;
 }
 
-void ValidateAdbModeFlag(const CuttlefishConfig& config) {
-  AdbConfig adb_config;
-  CHECK(config.LoadFragment(adb_config)) << "No adb fragment";
-  auto adb_modes = adb_config.adb_mode();
-  adb_modes.erase(AdbMode::Unknown);
-  if (adb_modes.size() < 1) {
-    LOG(INFO) << "ADB not enabled";
-  }
-}
-
 #ifndef O_TMPFILE
 # define O_TMPFILE (020000000 | O_DIRECTORY)
 #endif
 
 const CuttlefishConfig* InitFilesystemAndCreateConfig(
-    FetcherConfig fetcher_config, KernelConfig kernel_config) {
+    FetcherConfig fetcher_config, KernelConfig kernel_config,
+    fruit::Injector<>& injector) {
   std::string assembly_dir_parent = AbsolutePath(FLAGS_assembly_dir);
   while (assembly_dir_parent[assembly_dir_parent.size() - 1] == '/') {
     assembly_dir_parent =
@@ -134,8 +127,9 @@ const CuttlefishConfig* InitFilesystemAndCreateConfig(
     // SaveConfig line below. Don't launch cuttlefish subprocesses between these
     // two operations, as those will assume they can read the config object from
     // disk.
-    auto config = InitializeCuttlefishConfiguration(
-        FLAGS_instance_dir, FLAGS_modem_simulator_count, kernel_config);
+    auto config = InitializeCuttlefishConfiguration(FLAGS_instance_dir,
+                                                    FLAGS_modem_simulator_count,
+                                                    kernel_config, injector);
     std::set<std::string> preserving;
     bool create_os_composite_disk = ShouldCreateOsCompositeDisk(config);
     if (FLAGS_resume && create_os_composite_disk) {
@@ -202,9 +196,7 @@ const CuttlefishConfig* InitFilesystemAndCreateConfig(
   auto config = CuttlefishConfig::Get();
   CHECK(config) << "Failed to obtain config singleton";
 
-  ValidateAdbModeFlag(*config);
-
-  CreateDynamicDiskFiles(fetcher_config, config);
+  CreateDynamicDiskFiles(fetcher_config, *config);
 
   return config;
 }
@@ -224,6 +216,17 @@ static void ExtractKernelParamsFromFetcherConfig(
   SetCommandLineOptionWithMode("initramfs_path", discovered_ramdisk.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
 }
+
+fruit::Component<> FlagsComponent() {
+  return fruit::createComponent()
+      .install(AdbConfigComponent)
+      .install(AdbConfigFlagComponent)
+      .install(AdbConfigFragmentComponent)
+      .install(GflagsComponent)
+      .install(ConfigFlagComponent)
+      .install(CustomActionsComponent);
+}
+
 } // namespace
 
 int AssembleCvdMain(int argc, char** argv) {
@@ -253,12 +256,54 @@ int AssembleCvdMain(int argc, char** argv) {
   ExtractKernelParamsFromFetcherConfig(fetcher_config);
 
   KernelConfig kernel_config;
-  auto flags = ArgsToVec(argc - 1, argv + 1);
-  CHECK(ParseCommandLineFlags(flags, &kernel_config))
+  auto args = ArgsToVec(argc - 1, argv + 1);
+
+  bool help = false;
+  std::string help_str;
+  bool helpxml = false;
+
+  std::vector<Flag> help_flags = {
+      GflagsCompatFlag("help", help),
+      GflagsCompatFlag("helpfull", help),
+      GflagsCompatFlag("helpshort", help),
+      GflagsCompatFlag("helpmatch", help_str),
+      GflagsCompatFlag("helpon", help_str),
+      GflagsCompatFlag("helppackage", help_str),
+      GflagsCompatFlag("helpxml", helpxml),
+  };
+  for (const auto& help_flag : help_flags) {
+    if (!help_flag.Parse(args)) {
+      LOG(ERROR) << "Failed to process help flag.";
+      return false;
+    }
+  }
+
+  fruit::Injector<> injector(FlagsComponent);
+  auto flag_features = injector.getMultibindings<FlagFeature>();
+  if (!FlagFeature::ProcessFlags(flag_features, args)) {
+    LOG(ERROR) << "Failed to parse flags.";
+    return false;
+  }
+
+  if (help || help_str != "") {
+    LOG(WARNING) << "TODO(schuffelen): Implement `--help` for assemble_cvd.";
+    LOG(WARNING) << "In the meantime, call `launch_cvd --help`";
+    return false;
+  } else if (helpxml) {
+    if (!FlagFeature::WriteGflagsHelpXml(flag_features, std::cout)) {
+      LOG(ERROR) << "Failure in writing gflags helpxml output";
+    }
+    std::exit(1);  // For parity with gflags
+  }
+  // TODO(schuffelen): Put in "unknown flag" guards after gflags is removed.
+  // gflags either consumes all arguments that start with - or leaves all of
+  // them in place, and either errors out on unknown flags or accepts any flags.
+
+  CHECK(GetKernelConfigAndSetDefaults(&kernel_config))
       << "Failed to parse arguments";
 
-  auto config =
-      InitFilesystemAndCreateConfig(std::move(fetcher_config), kernel_config);
+  auto config = InitFilesystemAndCreateConfig(std::move(fetcher_config),
+                                              kernel_config, injector);
 
   std::cout << GetConfigFilePath(*config) << "\n";
   std::cout << std::flush;

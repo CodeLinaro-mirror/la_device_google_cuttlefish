@@ -1,3 +1,4 @@
+//
 // Copyright (C) 2019 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,16 +13,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package {
-    default_applicable_licenses: ["Android-Apache-2.0"],
-}
+#pragma once
 
-cc_library_shared {
-    name: "audio.primary.cutf",
-    relative_install_path: "hw",
-    defaults: ["cuttlefish_guest_only"],
-    vendor: true,
-    srcs: ["audio_hw.c"],
-    cflags: ["-Wno-unused-parameter"],
-    shared_libs: ["libcutils", "libhardware", "liblog", "libtinyalsa"],
-}
+#include <fruit/fruit.h>
+#include <vector>
+
+#include "common/libs/utils/subprocess.h"
+#include "host/libs/config/feature.h"
+
+namespace cuttlefish {
+
+class CommandSource : public virtual Feature {
+ public:
+  virtual ~CommandSource() = default;
+  virtual std::vector<Command> Commands() = 0;
+};
+
+}  // namespace cuttlefish

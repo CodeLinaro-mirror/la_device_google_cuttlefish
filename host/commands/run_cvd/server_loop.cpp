@@ -163,6 +163,8 @@ class ServerLoopImpl : public ServerLoop, public Feature {
         instance_.PerInstanceInternalPath("gatekeeper_fifo_vm.out"),
         instance_.PerInstanceInternalPath("bt_fifo_vm.in"),
         instance_.PerInstanceInternalPath("bt_fifo_vm.out"),
+        instance_.PerInstanceInternalPath("gnsshvc_fifo_vm.in"),
+        instance_.PerInstanceInternalPath("gnsshvc_fifo_vm.out"),
     };
     for (const auto& pipe : pipes) {
       unlink(pipe.c_str());
@@ -173,6 +175,8 @@ class ServerLoopImpl : public ServerLoop, public Feature {
     DeleteFifos();
 
     // TODO(schuffelen): Clean up duplication with assemble_cvd
+    unlink(instance_.PerInstancePath("NVChip").c_str());
+
     auto kregistry_path = instance_.access_kregistry_path();
     unlink(kregistry_path.c_str());
     CreateBlankImage(kregistry_path, 2 /* mb */, "none");

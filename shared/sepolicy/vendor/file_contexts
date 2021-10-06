@@ -27,20 +27,16 @@
 
 /dev/vhci  u:object_r:bt_device:s0
 
+# gnss hal can also read/write from hvc6
+# /dev/hvc6  u:object_r:serial_device:s0
+/dev/hvc6  u:object_r:gnss_device:s0
+
 # ARM serial console device
 /dev/ttyAMA[0-9]*  u:object_r:serial_device:s0
 
 #############################
-# Root files
-/ts_snap\.txt  u:object_r:tombstone_snapshot_file:s0
-
-#############################
 # data files
 /data/vendor/mediadrm(/.*)?  u:object_r:mediadrm_vendor_data_file:s0
-
-#############################
-# var files
-/var/run/system(/.*)?  u:object_r:var_run_system_file:s0
 
 #############################
 # sys files
@@ -91,6 +87,7 @@
 /vendor/bin/hw/android\.hardware\.security\.keymint-service\.remote  u:object_r:hal_keymint_remote_exec:s0
 /vendor/bin/hw/android\.hardware\.keymaster@4\.1-service.remote  u:object_r:hal_keymaster_remote_exec:s0
 /vendor/bin/hw/android\.hardware\.gatekeeper@1\.0-service.remote  u:object_r:hal_gatekeeper_remote_exec:s0
+/vendor/bin/hw/android\.hardware\.confirmationui@1\.0-service.cuttlefish  u:object_r:hal_confirmationui_cuttlefish_exec:s0
 /vendor/bin/hw/android\.hardware\.oemlock-service.example u:object_r:hal_oemlock_default_exec:s0
 /vendor/bin/hw/android\.hardware\.weaver-service.example u:object_r:hal_weaver_default_exec:s0
 /vendor/bin/hw/android\.hardware\.authsecret@1\.0-service  u:object_r:hal_authsecret_default_exec:s0

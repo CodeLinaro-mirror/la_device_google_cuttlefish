@@ -25,10 +25,12 @@ cc_binary {
         "main.cc",
     ],
     shared_libs: [
+        "libext2_blkid",
         "libcuttlefish_fs",
         "libcuttlefish_utils",
         "libbase",
         "libjsoncpp",
+        "libfruit",
         "libnl",
         "libxml2",
         "libz",
@@ -39,7 +41,9 @@ cc_binary {
         "libgflags",
     ],
     required: [
+        "assemble_cvd",
         "mkenvimage",
+        "run_cvd",
     ],
     defaults: ["cuttlefish_host", "cuttlefish_libicuuc"],
 }

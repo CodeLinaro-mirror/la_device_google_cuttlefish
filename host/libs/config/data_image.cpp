@@ -9,6 +9,8 @@
 
 #include "host/libs/config/mbr.h"
 
+#include "blkid.h"
+
 namespace cuttlefish {
 
 namespace {
@@ -35,11 +37,17 @@ const std::pair<std::string, std::string> kGrubBlobTable[] = {
     {"/usr/lib/grub/arm64-efi/monolithic/grubaa64.efi", kBootPathAA64},
 };
 
-bool ForceFsckImage(const char* data_image) {
-  auto fsck_path = HostBinaryPath("fsck.f2fs");
+bool ForceFsckImage(const CuttlefishConfig& config,
+                    const std::string& data_image) {
+  std::string fsck_path;
+  if (config.userdata_format() == "f2fs") {
+    fsck_path = HostBinaryPath("fsck.f2fs");
+  } else if (config.userdata_format() == "ext4") {
+    fsck_path = "/sbin/e2fsck";
+  }
   int fsck_status = execute({fsck_path, "-y", "-f", data_image});
   if (fsck_status & ~(FSCK_ERROR_CORRECTED|FSCK_ERROR_CORRECTED_REQUIRES_REBOOT)) {
-    LOG(ERROR) << "`fsck.f2fs -y -f " << data_image << "` failed with code "
+    LOG(ERROR) << "`" << fsck_path << " -y -f " << data_image << "` failed with code "
                << fsck_status;
     return false;
   }
@@ -77,7 +85,8 @@ bool NewfsMsdos(const std::string& data_image, int data_image_mb,
                          data_image}) == 0;
 }
 
-bool ResizeImage(const char* data_image, int data_image_mb) {
+bool ResizeImage(const CuttlefishConfig& config, const std::string& data_image,
+                 int data_image_mb) {
   auto file_mb = FileSize(data_image) >> 20;
   if (file_mb > data_image_mb) {
     LOG(ERROR) << data_image << " is already " << file_mb << " MB, will not "
@@ -94,18 +103,23 @@ bool ResizeImage(const char* data_image, int data_image_mb) {
                   << data_image << "` failed:" << fd->StrError();
       return false;
     }
-    bool fsck_success = ForceFsckImage(data_image);
+    bool fsck_success = ForceFsckImage(config, data_image);
     if (!fsck_success) {
       return false;
     }
-    auto resize_path = HostBinaryPath("resize.f2fs");
+    std::string resize_path;
+    if (config.userdata_format() == "f2fs") {
+      resize_path = HostBinaryPath("resize.f2fs");
+    } else if (config.userdata_format() == "ext4") {
+      resize_path = "/sbin/resize2fs";
+    }
     int resize_status = execute({resize_path, data_image});
     if (resize_status != 0) {
-      LOG(ERROR) << "`resize.f2fs " << data_image << "` failed with code "
+      LOG(ERROR) << "`" << resize_path << " " << data_image << "` failed with code "
                  << resize_status;
       return false;
     }
-    fsck_success = ForceFsckImage(data_image);
+    fsck_success = ForceFsckImage(config, data_image);
     if (!fsck_success) {
       return false;
     }
@@ -114,7 +128,7 @@ bool ResizeImage(const char* data_image, int data_image_mb) {
 }
 } // namespace
 
-void CreateBlankImage(
+bool CreateBlankImage(
     const std::string& image, int num_mb, const std::string& image_fmt) {
   LOG(DEBUG) << "Creating " << image;
 
@@ -126,23 +140,29 @@ void CreateBlankImage(
     if (fd->Truncate(image_size_bytes) != 0) {
       LOG(ERROR) << "`truncate --size=" << num_mb << "M " << image
                  << "` failed:" << fd->StrError();
-      return;
+      return false;
     }
   }
 
   if (image_fmt == "ext4") {
-    execute({"/sbin/mkfs.ext4", image});
+    if (execute({"/sbin/mkfs.ext4", image}) != 0) {
+      return false;
+    }
   } else if (image_fmt == "f2fs") {
     auto make_f2fs_path = cuttlefish::HostBinaryPath("make_f2fs");
-    execute({make_f2fs_path, "-t", image_fmt, image, "-C", "utf8", "-O",
-             "compression,extra_attr,prjquota", "-g", "android"});
+    if (execute({make_f2fs_path, "-t", image_fmt, image, "-C", "utf8", "-O",
+             "compression,extra_attr,project_quota", "-g", "android"}) != 0) {
+      return false;
+    }
   } else if (image_fmt == "sdcard") {
     // Reserve 1MB in the image for the MBR and padding, to simulate what
     // other OSes do by default when partitioning a drive
     off_t offset_size_bytes = 1 << 20;
     image_size_bytes -= offset_size_bytes;
-    CHECK(NewfsMsdos(image, num_mb, 1) == true)
-        << "Failed to create SD-Card filesystem";
+    if (!NewfsMsdos(image, num_mb, 1)) {
+      LOG(ERROR) << "Failed to create SD-Card filesystem";
+      return false;
+    }
     // Write the MBR after the filesystem is formatted, as the formatting tools
     // don't consistently preserve the image contents
     MasterBootRecord mbr = {
@@ -156,87 +176,232 @@ void CreateBlankImage(
     auto fd = SharedFD::Open(image, O_RDWR);
     if (WriteAllBinary(fd, &mbr) != sizeof(MasterBootRecord)) {
       LOG(ERROR) << "Writing MBR to " << image << " failed:" << fd->StrError();
-      return;
+      return false;
     }
   } else if (image_fmt != "none") {
     LOG(WARNING) << "Unknown image format '" << image_fmt
                  << "' for " << image << ", treating as 'none'.";
   }
+  return true;
 }
 
-DataImageResult ApplyDataImagePolicy(const CuttlefishConfig& config,
-                                     const std::string& data_image) {
-  bool data_exists = FileHasContent(data_image.c_str());
-  bool remove{};
-  bool create{};
-  bool resize{};
-
-  if (config.data_policy() == kDataPolicyUseExisting) {
-    if (!data_exists) {
-      LOG(ERROR) << "Specified data image file does not exists: " << data_image;
-      return DataImageResult::Error;
-    }
-    if (config.blank_data_image_mb() > 0) {
-      LOG(ERROR) << "You should NOT use -blank_data_image_mb with -data_policy="
-                 << kDataPolicyUseExisting;
-      return DataImageResult::Error;
-    }
-    create = false;
-    remove = false;
-    resize = false;
-  } else if (config.data_policy() == kDataPolicyAlwaysCreate) {
-    remove = data_exists;
-    create = true;
-    resize = false;
-  } else if (config.data_policy() == kDataPolicyCreateIfMissing) {
-    create = !data_exists;
-    remove = false;
-    resize = false;
-  } else if (config.data_policy() == kDataPolicyResizeUpTo) {
-    create = false;
-    remove = false;
-    resize = true;
-  } else {
-    LOG(ERROR) << "Invalid data_policy: " << config.data_policy();
-    return DataImageResult::Error;
+std::string GetFsType(const std::string& path) {
+  std::string fs_type;
+  blkid_cache cache;
+  if (blkid_get_cache(&cache, NULL) < 0) {
+    LOG(INFO) << "blkid_get_cache failed";
+    return fs_type;
+  }
+  blkid_dev dev = blkid_get_dev(cache, path.c_str(), BLKID_DEV_NORMAL);
+  if (!dev) {
+    LOG(INFO) << "blkid_get_dev failed";
+    blkid_put_cache(cache);
+    return fs_type;
   }
 
-  if (remove) {
-    RemoveFile(data_image.c_str());
-  }
-
-  if (create) {
-    if (config.blank_data_image_mb() <= 0) {
-      LOG(ERROR) << "-blank_data_image_mb is required to create data image";
-      return DataImageResult::Error;
+  const char *type, *value;
+  blkid_tag_iterate iter = blkid_tag_iterate_begin(dev);
+  while (blkid_tag_next(iter, &type, &value) == 0) {
+    if (!strcmp(type, "TYPE")) {
+      fs_type = value;
     }
-    CreateBlankImage(data_image.c_str(), config.blank_data_image_mb(),
-                     config.blank_data_image_fmt());
-    return DataImageResult::FileUpdated;
-  } else if (resize) {
-    if (!data_exists) {
-      LOG(ERROR) << data_image << " does not exist, but resizing was requested";
-      return DataImageResult::Error;
-    }
-    bool success = ResizeImage(data_image.c_str(), config.blank_data_image_mb());
-    return success ? DataImageResult::FileUpdated : DataImageResult::Error;
-  } else {
-    LOG(DEBUG) << data_image << " exists. Not creating it.";
-    return DataImageResult::NoChange;
   }
+  blkid_tag_iterate_end(iter);
+  blkid_put_cache(cache);
+  return fs_type;
 }
 
-bool InitializeMiscImage(const std::string& misc_image) {
-  bool misc_exists = FileHasContent(misc_image.c_str());
+struct DataImageTag {};
 
-  if (misc_exists) {
-    LOG(DEBUG) << "misc partition image: use existing";
+class FixedDataImagePath : public DataImagePath {
+ public:
+  INJECT(FixedDataImagePath(ANNOTATED(DataImageTag, std::string) path))
+      : path_(path) {}
+
+  const std::string& Path() const override { return path_; }
+
+ private:
+  std::string path_;
+};
+
+fruit::Component<DataImagePath> FixedDataImagePathComponent(
+    const std::string* path) {
+  return fruit::createComponent()
+      .bind<DataImagePath, FixedDataImagePath>()
+      .bindInstance<fruit::Annotated<DataImageTag, std::string>>(*path);
+}
+
+class InitializeDataImageImpl : public InitializeDataImage {
+ public:
+  INJECT(InitializeDataImageImpl(const CuttlefishConfig& config,
+                                 DataImagePath& data_path))
+      : config_(config), data_path_(data_path) {}
+
+  // Feature
+  std::string Name() const override { return "InitializeDataImageImpl"; }
+  std::unordered_set<Feature*> Dependencies() const override { return {}; }
+  bool Enabled() const override { return true; }
+
+ protected:
+  bool Setup() override {
+    bool data_exists = FileHasContent(data_path_.Path());
+    bool remove{};
+    bool create{};
+    bool resize{};
+    bool change_format{};
+    std::string fs_type;
+    int file_mb = config_.blank_data_image_mb();
+
+    if (data_exists) {
+      fs_type = GetFsType(data_path_.Path());
+      if (fs_type != config_.userdata_format()) {
+        change_format = true;
+        if (file_mb <= 0) {
+          file_mb = FileSize(data_path_.Path()) >> 20;
+        }
+      }
+    }
+
+    if (config_.data_policy() == kDataPolicyUseExisting) {
+      if (!data_exists) {
+        LOG(ERROR) << "Specified data image file does not exist: "
+                   << data_path_.Path();
+        return false;
+      }
+      if (config_.blank_data_image_mb() > 0) {
+        LOG(ERROR)
+            << "You should NOT use -blank_data_image_mb with -data_policy="
+            << kDataPolicyUseExisting;
+        return false;
+      }
+      create = false;
+      remove = false;
+      resize = false;
+    } else if (config_.data_policy() == kDataPolicyAlwaysCreate) {
+      remove = data_exists;
+      create = true;
+      resize = false;
+    } else if (config_.data_policy() == kDataPolicyCreateIfMissing) {
+      create = !data_exists;
+      remove = false;
+      resize = false;
+    } else if (config_.data_policy() == kDataPolicyResizeUpTo) {
+      if (change_format) {
+        LOG(ERROR) << "You should NOT change the fs format with -data_policy="
+                   << kDataPolicyResizeUpTo;
+        return false;
+      }
+      create = false;
+      remove = false;
+      resize = true;
+    } else {
+      LOG(ERROR) << "Invalid data_policy: " << config_.data_policy();
+      return false;
+    }
+
+    if (remove) {
+      RemoveFile(data_path_.Path());
+    }
+
+    if (create || change_format) {
+      if (file_mb <= 0) {
+        LOG(ERROR) << "-blank_data_image_mb is required to create data image";
+        return false;
+      }
+      if (!CreateBlankImage(data_path_.Path(), file_mb,
+                            config_.userdata_format())) {
+        return false;
+      }
+      return true;
+    } else if (resize) {
+      if (!data_exists) {
+        LOG(ERROR) << data_path_.Path()
+                   << " does not exist, but resizing was requested";
+        return false;
+      }
+      bool success = ResizeImage(config_, data_path_.Path(), file_mb);
+      if (!success) {
+        LOG(ERROR) << "Resizing \"" << data_path_.Path() << "\" to " << file_mb
+                   << " MB failed";
+      }
+      return success;
+    } else {
+      LOG(DEBUG) << data_path_.Path() << " exists. Not creating it.";
+      return true;
+    }
+  }
+
+ private:
+  const CuttlefishConfig& config_;
+  DataImagePath& data_path_;
+};
+
+fruit::Component<fruit::Required<const CuttlefishConfig, DataImagePath>,
+                 InitializeDataImage>
+InitializeDataImageComponent() {
+  return fruit::createComponent()
+      .addMultibinding<Feature, InitializeDataImage>()
+      .bind<InitializeDataImage, InitializeDataImageImpl>();
+}
+
+struct MiscImageTag {};
+
+class FixedMiscImagePath : public MiscImagePath {
+ public:
+  INJECT(FixedMiscImagePath(ANNOTATED(MiscImageTag, std::string) path))
+      : path_(path) {}
+
+  const std::string& Path() const override { return path_; }
+
+ private:
+  std::string path_;
+};
+
+class InitializeMiscImageImpl : public InitializeMiscImage {
+ public:
+  INJECT(InitializeMiscImageImpl(MiscImagePath& misc_path))
+      : misc_path_(misc_path) {}
+
+  // Feature
+  std::string Name() const override { return "InitializeMiscImageImpl"; }
+  std::unordered_set<Feature*> Dependencies() const override { return {}; }
+  bool Enabled() const override { return true; }
+
+ protected:
+  bool Setup() override {
+    bool misc_exists = FileHasContent(misc_path_.Path());
+
+    if (misc_exists) {
+      LOG(DEBUG) << "misc partition image: use existing at \""
+                 << misc_path_.Path() << "\"";
+      return true;
+    }
+
+    LOG(DEBUG) << "misc partition image: creating empty at \""
+               << misc_path_.Path() << "\"";
+    if (!CreateBlankImage(misc_path_.Path(), 1 /* mb */, "none")) {
+      LOG(ERROR) << "Failed to create misc image";
+      return false;
+    }
     return true;
   }
 
-  LOG(DEBUG) << "misc partition image: creating empty";
-  CreateBlankImage(misc_image, 1 /* mb */, "none");
-  return true;
+ private:
+  MiscImagePath& misc_path_;
+};
+
+fruit::Component<MiscImagePath> FixedMiscImagePathComponent(
+    const std::string* path) {
+  return fruit::createComponent()
+      .bind<MiscImagePath, FixedMiscImagePath>()
+      .bindInstance<fruit::Annotated<MiscImageTag, std::string>>(*path);
+}
+
+fruit::Component<fruit::Required<MiscImagePath>, InitializeMiscImage>
+InitializeMiscImageComponent() {
+  return fruit::createComponent()
+      .addMultibinding<Feature, InitializeMiscImage>()
+      .bind<InitializeMiscImage, InitializeMiscImageImpl>();
 }
 
 bool InitializeEspImage(const std::string& esp_image,

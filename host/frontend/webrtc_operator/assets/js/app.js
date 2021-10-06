@@ -33,8 +33,12 @@ function showDeviceControlUI() {
 }
 
 function websocketUrl(path) {
-  return ((location.protocol == 'http:') ? 'ws:' : 'wss:') + location.host +
+  return ((location.protocol == 'http:') ? 'ws://' : 'wss://') + location.host +
       '/' + path;
+}
+
+function httpUrl(path) {
+  return location.protocol + '//' + location.host + '/' + path;
 }
 
 async function ConnectDevice(deviceId) {
@@ -56,6 +60,10 @@ async function ConnectDevice(deviceId) {
 
   let options = {
     wsUrl: websocketUrl('connect_client'),
+    pollConfigUrl: httpUrl('infra_config'),
+    pollConnectUrl: httpUrl('connect'),
+    pollForwardUrl: httpUrl('forward'),
+    pollMessagesUrl: httpUrl('poll_messages'),
   };
 
   let module = await import('./cf_webrtc.js');
@@ -80,11 +88,11 @@ function showError(msg) {
 }
 
 class DeviceListApp {
-  #websocketUrl;
+  #url;
   #selectDeviceCb;
 
-  constructor({websocketUrl, selectDeviceCb}) {
-    this.#websocketUrl = websocketUrl;
+  constructor({url, selectDeviceCb}) {
+    this.#url = url;
     this.#selectDeviceCb = selectDeviceCb;
   }
 
@@ -97,15 +105,17 @@ class DeviceListApp {
         .addEventListener('click', evt => this.#UpdateDeviceList());
   }
 
-  #UpdateDeviceList() {
-    let ws = new WebSocket(this.#websocketUrl);
-    ws.onopen = () => {
-      ws.send('give me those device ids');
-    };
-    ws.onmessage = msg => {
-      let device_ids = JSON.parse(msg.data);
-      this.#ShowNewDeviceList(device_ids);
-    };
+  async #UpdateDeviceList() {
+    try {
+      const device_ids = await fetch(this.#url, {
+        method: 'GET',
+        cache: 'no-cache',
+        redirect: 'follow',
+      });
+      this.#ShowNewDeviceList(await device_ids.json());
+    } catch (e) {
+      console.error('Error getting list of device ids: ', e);
+    }
   }
 
   #ShowNewDeviceList(device_ids) {
@@ -173,6 +183,7 @@ class DeviceControlApp {
   #currentRotation = 0;
   #displayDescriptions = [];
   #buttons = {};
+  #recording = {};
 
   constructor(deviceConnection) {
     this.#deviceConnection = deviceConnection;
@@ -185,10 +196,16 @@ class DeviceControlApp {
         document.getElementById('keyboard-capture-control'), 'keyboard');
     let micCaptureCtrl = createToggleControl(
         document.getElementById('mic-capture-control'), 'mic');
+    let cameraCtrl = createToggleControl(
+        document.getElementById('camera-control'), 'videocam');
+    let videoCaptureCtrl = createToggleControl(
+        document.getElementById('record-video-control'), 'movie_creation');
 
     keyboardCaptureCtrl.OnClick(
         enabled => this.#onKeyboardCaptureToggle(enabled));
     micCaptureCtrl.OnClick(enabled => this.#onMicCaptureToggle(enabled));
+    cameraCtrl.OnClick(enabled => this.#onCameraCaptureToggle(enabled));
+    videoCaptureCtrl.OnClick(enabled => this.#onVideoCaptureToggle(enabled));
 
     this.#showDeviceUI();
   }
@@ -492,9 +509,12 @@ class DeviceControlApp {
           {dpi: metadata.dpi, x_res: metadata.width, y_res: metadata.height});
     }
     if (message_data.event == 'VIRTUAL_DEVICE_CAPTURE_IMAGE') {
-      if (this.$deviceConnection.cameraEnabled) {
+      if (this.#deviceConnection.cameraEnabled) {
         this.#takePhoto();
       }
+    }
+    if (message_data.event == 'VIRTUAL_DEVICE_DISPLAY_POWER_MODE_CHANGED') {
+      this.#updateDisplayVisibility(metadata.display, metadata.mode);
     }
   }
 
@@ -882,12 +902,87 @@ class DeviceControlApp {
         {idArr, xArr, yArr, down: ctx.down, slotArr, display_label});
   }
 
+  #updateDisplayVisibility(displayId, powerMode) {
+    const display = document.getElementById('display_' + displayId);
+    if (display == null) {
+      console.error('Unknown display id: ' + displayId);
+      return;
+    }
+    switch (powerMode) {
+      case 'On':
+        display.style.visibility = 'visible';
+        break;
+      case 'Off':
+        display.style.visibility = 'hidden';
+        break;
+      default:
+        console.error('Display ' + displayId + ' has unknown display power mode: ' + powerMode);
+    }
+  }
+
   #onMicCaptureToggle(enabled) {
-    this.#deviceConnection.useMic(enabled);
+    return this.#deviceConnection.useMic(enabled);
+  }
+
+  #onCameraCaptureToggle(enabled) {
+    return this.#deviceConnection.useCamera(enabled);
+  }
+
+  #getZeroPaddedString(value, desiredLength) {
+    const s = String(value);
+    return '0'.repeat(desiredLength - s.length) + s;
+  }
+
+  #getTimestampString() {
+    const now = new Date();
+    return [
+      now.getFullYear(),
+      this.#getZeroPaddedString(now.getMonth(), 2),
+      this.#getZeroPaddedString(now.getDay(), 2),
+      this.#getZeroPaddedString(now.getHours(), 2),
+      this.#getZeroPaddedString(now.getMinutes(), 2),
+      this.#getZeroPaddedString(now.getSeconds(), 2),
+    ].join('_');
   }
 
   #onVideoCaptureToggle(enabled) {
-    this.#deviceConnection.useVideo(enabled);
+    const recordToggle = document.getElementById('record-video-control');
+    if (enabled) {
+      let recorders = [];
+
+      const timestamp = this.#getTimestampString();
+
+      let deviceDisplayVideoList =
+        document.getElementsByClassName('device-display-video');
+      for (let i = 0; i < deviceDisplayVideoList.length; i++) {
+        const deviceDisplayVideo = deviceDisplayVideoList[i];
+
+        const recorder = new MediaRecorder(deviceDisplayVideo.captureStream());
+        const recordedData = [];
+
+        recorder.ondataavailable = event => recordedData.push(event.data);
+        recorder.onstop = event => {
+          const recording = new Blob(recordedData, { type: "video/webm" });
+
+          const downloadLink = document.createElement('a');
+          downloadLink.setAttribute('download', timestamp + '_display_' + i + '.webm');
+          downloadLink.setAttribute('href', URL.createObjectURL(recording));
+          downloadLink.click();
+        };
+
+        recorder.start();
+        recorders.push(recorder);
+      }
+      this.#recording['recorders'] = recorders;
+
+      recordToggle.style.backgroundColor = 'red';
+    } else {
+      for (const recorder of this.#recording['recorders']) {
+        recorder.stop();
+      }
+      recordToggle.style.backgroundColor = '';
+    }
+    return Promise.resolve(enabled);
   }
 
   #onCustomShellButton(shell_command, e) {
@@ -903,7 +998,7 @@ class DeviceControlApp {
 
 // The app starts by showing the device list
 showDeviceListUI();
-let listDevicesUrl = websocketUrl('list_devices');
+let listDevicesUrl = httpUrl('devices');
 let selectDeviceCb = deviceId => {
   ConnectDevice(deviceId).then(
       deviceConnection => {
@@ -919,5 +1014,5 @@ let selectDeviceCb = deviceId => {
       });
 };
 let deviceListApp =
-    new DeviceListApp({websocketUrl: listDevicesUrl, selectDeviceCb});
+    new DeviceListApp({url: listDevicesUrl, selectDeviceCb});
 deviceListApp.start();
