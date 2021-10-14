@@ -16,10 +16,14 @@
 
 #include <set>
 #include <thread>
-#include <glog/logging.h>
+#include <android-base/logging.h>
 #include <gflags/gflags.h>
 
 #include "common/libs/fs/shared_fd.h"
+
+#ifdef CUTTLEFISH_HOST
+#include "host/libs/config/logging.h"
+#endif // CUTTLEFISH_HOST
 
 constexpr std::size_t kMaxPacketSize = 8192;
 
@@ -216,7 +220,12 @@ bool socketErrorIsRecoverable(int error) {
 }  // namespace
 
 int main(int argc, char* argv[]) {
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
+#ifdef CUTTLEFISH_HOST
+  cvd::DefaultSubprocessLogging(argv);
+#else
+  ::android::base::InitLogging(argv, android::base::LogdLogger());
+#endif
+  google::ParseCommandLineFlags(&argc, &argv, true);
 
   CHECK(FLAGS_tcp_port != 0) << "Must specify -tcp_port flag";
   CHECK(FLAGS_vsock_port != 0) << "Must specify -vsock_port flag";
