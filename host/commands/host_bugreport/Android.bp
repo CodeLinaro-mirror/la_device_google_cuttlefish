@@ -15,6 +15,7 @@
 
 cc_binary_host {
     name: "cvd_internal_host_bugreport",
+    symlinks: ["cvd_host_bugreport"],
     srcs: [
         "main.cc",
     ],

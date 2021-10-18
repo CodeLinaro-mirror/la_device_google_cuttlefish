@@ -55,6 +55,8 @@ cvd_host_executables := \
     run_cvd \
     cvd_internal_host_bugreport \
     cvd_internal_status \
+    cvd_host_bugreport \
+    cvd_status \
     powerwash_cvd \
     mkbootimg \
     unpack_bootimg \

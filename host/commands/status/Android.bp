@@ -15,6 +15,7 @@
 
 cc_binary_host {
     name: "cvd_internal_status",
+    symlinks: ["cvd_status"],
     srcs: [
         "main.cc",
     ],
