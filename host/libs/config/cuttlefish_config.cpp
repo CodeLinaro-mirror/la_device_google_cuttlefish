@@ -136,6 +136,14 @@ void CuttlefishConfig::set_gpu_mode(const std::string& name) {
   (*dictionary_)[kGpuMode] = name;
 }
 
+static constexpr char kGpuCaptureBinary[] = "gpu_capture_binary";
+std::string CuttlefishConfig::gpu_capture_binary() const {
+  return (*dictionary_)[kGpuCaptureBinary].asString();
+}
+void CuttlefishConfig::set_gpu_capture_binary(const std::string& name) {
+  (*dictionary_)[kGpuCaptureBinary] = name;
+}
+
 static constexpr char kCpus[] = "cpus";
 int CuttlefishConfig::cpus() const { return (*dictionary_)[kCpus].asInt(); }
 void CuttlefishConfig::set_cpus(int cpus) { (*dictionary_)[kCpus] = cpus; }
@@ -326,22 +334,6 @@ bool CuttlefishConfig::enable_vehicle_hal_grpc_server() const {
   return (*dictionary_)[kEnableVehicleHalServer].asBool();
 }
 
-static constexpr char kCustomActions[] = "custom_actions";
-void CuttlefishConfig::set_custom_actions(const std::vector<CustomActionConfig>& actions) {
-  Json::Value actions_array(Json::arrayValue);
-  for (const auto& action : actions) {
-    actions_array.append(action.ToJson());
-  }
-  (*dictionary_)[kCustomActions] = actions_array;
-}
-std::vector<CustomActionConfig> CuttlefishConfig::custom_actions() const {
-  std::vector<CustomActionConfig> result;
-  for (Json::Value custom_action : (*dictionary_)[kCustomActions]) {
-    result.push_back(CustomActionConfig(custom_action));
-  }
-  return result;
-}
-
 static constexpr char kWebRTCAssetsDir[] = "webrtc_assets_dir";
 void CuttlefishConfig::set_webrtc_assets_dir(const std::string& webrtc_assets_dir) {
   (*dictionary_)[kWebRTCAssetsDir] = webrtc_assets_dir;
@@ -389,14 +381,6 @@ int CuttlefishConfig::blank_data_image_mb() const {
 }
 void CuttlefishConfig::set_blank_data_image_mb(int blank_data_image_mb) {
   (*dictionary_)[kBlankDataImageMb] = blank_data_image_mb;
-}
-
-static constexpr char kBlankDataImageFmt[] = "blank_data_image_fmt";
-std::string CuttlefishConfig::blank_data_image_fmt() const {
-  return (*dictionary_)[kBlankDataImageFmt].asString();
-}
-void CuttlefishConfig::set_blank_data_image_fmt(const std::string& blank_data_image_fmt) {
-  (*dictionary_)[kBlankDataImageFmt] = blank_data_image_fmt;
 }
 
 static constexpr char kBootloader[] = "bootloader";
@@ -702,12 +686,12 @@ void CuttlefishConfig::set_ap_kernel_image(const std::string& ap_kernel_image) {
   (*dictionary_)[kApKernelImage] = ap_kernel_image;
 }
 
-static constexpr char kEthernet[] = "ethernet";
-void CuttlefishConfig::set_ethernet(bool ethernet) {
-  (*dictionary_)[kEthernet] = ethernet;
+static constexpr char kWmediumdConfig[] = "wmediumd_config";
+void CuttlefishConfig::set_wmediumd_config(const std::string& config) {
+  (*dictionary_)[kWmediumdConfig] = config;
 }
-bool CuttlefishConfig::ethernet() const {
-  return (*dictionary_)[kEthernet].asBool();
+std::string CuttlefishConfig::wmediumd_config() const {
+  return (*dictionary_)[kWmediumdConfig].asString();
 }
 
 static constexpr char kRecordScreen[] = "record_screen";
@@ -758,14 +742,14 @@ void CuttlefishConfig::set_bootconfig_supported(bool bootconfig_supported) {
   (*dictionary_)[kBootconfigSupported] = bootconfig_supported;
 }
 
-static constexpr char kFsFormats[] = "fs_format";
-std::string CuttlefishConfig::fs_format() const {
-  return (*dictionary_)[kFsFormats].asString();
+static constexpr char kUserdataFormat[] = "userdata_format";
+std::string CuttlefishConfig::userdata_format() const {
+  return (*dictionary_)[kUserdataFormat].asString();
 }
-void CuttlefishConfig::set_fs_format(const std::string& fs_format) {
-  auto fmt = fs_format;
+void CuttlefishConfig::set_userdata_format(const std::string& userdata_format) {
+  auto fmt = userdata_format;
   std::transform(fmt.begin(), fmt.end(), fmt.begin(), ::tolower);
-  (*dictionary_)[kFsFormats] = fmt;
+  (*dictionary_)[kUserdataFormat] = fmt;
 }
 
 // Creates the (initially empty) config object and populates it with values from

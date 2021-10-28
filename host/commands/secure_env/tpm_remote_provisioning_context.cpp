@@ -29,8 +29,11 @@
 #include "host/commands/secure_env/primary_key_builder.h"
 #include "host/commands/secure_env/tpm_hmac.h"
 #include "tpm_remote_provisioning_context.h"
+#include "tpm_resource_manager.h"
 
 using namespace cppcose;
+
+namespace cuttlefish {
 
 TpmRemoteProvisioningContext::TpmRemoteProvisioningContext(
     TpmResourceManager& resource_manager)
@@ -40,12 +43,19 @@ TpmRemoteProvisioningContext::TpmRemoteProvisioningContext(
 
 std::vector<uint8_t> TpmRemoteProvisioningContext::DeriveBytesFromHbk(
     const std::string& context, size_t num_bytes) const {
-  // TODO(182928606) Derive using TPM-held secret.
-  std::vector<uint8_t> fakeHbk(32);
+  PrimaryKeyBuilder key_builder;
+  key_builder.SigningKey();
+  key_builder.UniqueData("HardwareBoundKey");
+  TpmObjectSlot key = key_builder.CreateKey(resource_manager_);
+
+  auto hbk =
+      TpmHmac(resource_manager_, key->get(), TpmAuth(ESYS_TR_PASSWORD),
+              reinterpret_cast<const uint8_t*>(context.data()), context.size());
+
   std::vector<uint8_t> result(num_bytes);
   if (!HKDF(result.data(), num_bytes,              //
             EVP_sha256(),                          //
-            fakeHbk.data(), fakeHbk.size(),        //
+            hbk->buffer, hbk->size,                //
             nullptr /* salt */, 0 /* salt len */,  //
             reinterpret_cast<const uint8_t*>(context.data()), context.size())) {
     // Should never fail. Even if it could the API has no way of reporting the
@@ -72,13 +82,14 @@ TpmRemoteProvisioningContext::GenerateBcc(bool testMode) const {
   std::vector<uint8_t> privKey(ED25519_PRIVATE_KEY_LEN);
   std::vector<uint8_t> pubKey(ED25519_PUBLIC_KEY_LEN);
 
-  // Length is hard-coded in the BoringCrypto API without a constant
   std::vector<uint8_t> seed;
   if (testMode) {
+    // Length is hard-coded in the BoringCrypto API without a constant
     seed.resize(32);
     RAND_bytes(seed.data(), seed.size());
   } else {
-    seed = DeriveBytesFromHbk("Device Key Seed", 32);
+    // TODO: Switch to P256 signing keys that are TPM-bound.
+    seed = DeriveBytesFromHbk("BccKey", 32);
   }
   ED25519_keypair_from_seed(pubKey.data(), privKey.data(), seed.data());
 
@@ -105,6 +116,30 @@ TpmRemoteProvisioningContext::GenerateBcc(bool testMode) const {
 
   return {privKey,
           cppbor::Array().add(std::move(coseKey)).add(coseSign1.moveValue())};
+}
+
+ErrMsgOr<std::vector<uint8_t>>
+TpmRemoteProvisioningContext::BuildProtectedDataPayload(
+    bool isTestMode,                     //
+    const std::vector<uint8_t>& macKey,  //
+    const std::vector<uint8_t>& aad) const {
+  std::vector<uint8_t> devicePrivKey;
+  cppbor::Array bcc;
+  if (isTestMode) {
+    std::tie(devicePrivKey, bcc) = GenerateBcc(/*testMode=*/true);
+  } else {
+    devicePrivKey = devicePrivKey_;
+    auto clone = bcc_.clone();
+    if (!clone->asArray()) {
+      return "The BCC is not an array";
+    }
+    bcc = std::move(*clone->asArray());
+  }
+  auto sign1 = constructCoseSign1(devicePrivKey, macKey, aad);
+  if (!sign1) {
+    return sign1.moveMessage();
+  }
+  return cppbor::Array().add(sign1.moveValue()).add(std::move(bcc)).encode();
 }
 
 std::optional<cppcose::HmacSha256>
@@ -139,3 +174,5 @@ TpmRemoteProvisioningContext::GenerateHmacSha256(
             hmac.begin());
   return hmac;
 }
+
+}  // namespace cuttlefish

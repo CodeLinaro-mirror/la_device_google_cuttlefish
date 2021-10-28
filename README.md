@@ -12,15 +12,26 @@
    take cloud-vendor-specific steps to enable. For Google Compute Engine
    specifically, see the [GCE guide].
 
-   [GCE guide]: https://cloud.google.com/compute/docs/instances/enable-nested-virtualization-vm-instances
+  [GCE guide]: https://cloud.google.com/compute/docs/instances/enable-nested-virtualization-vm-instances
+
+*** promo
+   ARM specific steps:
+   - When running on an ARM machine, the most direct way is to check
+   for the existence of `/dev/kvm`. Note that this method can also be used to
+   confirm support of KVM on any environment.
+   - Before proceeding to the next step, please first follow
+   [the guide](multiarch-howto.md) to adjust APT sources.
+***
 
 2. Download, build, and install the host debian package:
 
    ```bash
+   sudo apt install -y git devscripts config-package-dev debhelper-compat
    git clone https://github.com/google/android-cuttlefish
    cd android-cuttlefish
    debuild -i -us -uc -b
-   sudo dpkg -i ../cuttlefish-common_*_amd64.deb || sudo apt-get install -f
+   sudo dpkg -i ../cuttlefish-common_*_*64.deb || sudo apt-get install -f
+   sudo usermod -aG kvm,cvdnetwork $USER
    sudo reboot
    ```
 

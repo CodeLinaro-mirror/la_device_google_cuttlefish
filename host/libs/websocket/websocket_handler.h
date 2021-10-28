@@ -66,6 +66,17 @@ class WebSocketHandlerFactory {
 
 class WebSocketServer;
 
+enum class HttpStatusCode : int {
+  // From https://developer.mozilla.org/en-US/docs/Web/HTTP/Status
+  Ok = 200,
+  NoContent = 204,
+  BadRequest = 400,
+  Unauthorized = 401,
+  NotFound = 404,
+  MethodNotAllowed = 405,
+  Conflict = 409,
+};
+
 class DynHandler {
  public:
   DynHandler(struct lws* wsi);
@@ -73,10 +84,10 @@ class DynHandler {
   virtual ~DynHandler() = default;
   // TODO (jemoreira): Allow more than just JSON replies
   // TODO (jemoreira): Receive request parameters
-  // Handle a GET request. Returns the status code of the request.
-  virtual int DoGet() = 0;
-  // Handle a POST request. Returns the status code of the request.
-  virtual int DoPost() = 0;
+  // Handle a GET request.
+  virtual HttpStatusCode DoGet() = 0;
+  // Handle a POST request.
+  virtual HttpStatusCode DoPost() = 0;
 
  protected:
   void AppendDataOut(const std::string& data);
@@ -85,18 +96,14 @@ class DynHandler {
  private:
   friend WebSocketServer;
   void AppendDataIn(void* data, size_t len);
-  void OnWritable();
+  int OnWritable();
+  size_t content_len() const;
 
   struct lws* wsi_;
   std::string in_buffer_ = {};
   std::string out_buffer_ = {};
 };
 
-class DynHandlerFactory {
- public:
-  virtual ~DynHandlerFactory() = default;
-  // A new Handler will be created for each connection
-  virtual std::unique_ptr<DynHandler> Build(struct lws* wsi) = 0;
-};
-
+using DynHandlerFactory =
+    std::function<std::unique_ptr<DynHandler>(struct lws*)>;
 }  // namespace cuttlefish

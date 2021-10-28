@@ -16,13 +16,13 @@
 
 #include "host/commands/assemble_cvd/disk_flags.h"
 
+#include <android-base/logging.h>
+#include <android-base/strings.h>
+#include <fruit/fruit.h>
+#include <gflags/gflags.h>
 #include <sys/statvfs.h>
 
 #include <fstream>
-
-#include <android-base/logging.h>
-#include <android-base/strings.h>
-#include <gflags/gflags.h>
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/utils/environment.h"
@@ -41,8 +41,7 @@
 // Taken from external/avb/libavb/avb_slot_verify.c; this define is not in the headers
 #define VBMETA_MAX_SIZE 65536ul
 
-DEFINE_string(system_image_dir, cuttlefish::DefaultGuestImagePath(""),
-              "Location of the system partition images.");
+DECLARE_string(system_image_dir);
 
 DEFINE_string(boot_image, "",
               "Location of cuttlefish boot image. If empty it is assumed to be "
@@ -135,63 +134,77 @@ bool ResolveInstanceFiles() {
 
 std::vector<ImagePartition> os_composite_disk_config() {
   std::vector<ImagePartition> partitions;
-  partitions.push_back(ImagePartition {
-    .label = "misc",
-    .image_file_path = FLAGS_misc_image,
+  partitions.push_back(ImagePartition{
+      .label = "misc",
+      .image_file_path = FLAGS_misc_image,
+      .read_only = true,
   });
-  partitions.push_back(ImagePartition {
-    .label = "boot_a",
-    .image_file_path = FLAGS_boot_image,
+  partitions.push_back(ImagePartition{
+      .label = "boot_a",
+      .image_file_path = FLAGS_boot_image,
+      .read_only = true,
   });
-  partitions.push_back(ImagePartition {
-    .label = "boot_b",
-    .image_file_path = FLAGS_boot_image,
+  partitions.push_back(ImagePartition{
+      .label = "boot_b",
+      .image_file_path = FLAGS_boot_image,
+      .read_only = true,
   });
   partitions.push_back(ImagePartition{
       .label = "vendor_boot_a",
       .image_file_path = FLAGS_vendor_boot_image,
+      .read_only = true,
   });
   partitions.push_back(ImagePartition{
       .label = "vendor_boot_b",
       .image_file_path = FLAGS_vendor_boot_image,
+      .read_only = true,
   });
-  partitions.push_back(ImagePartition {
-    .label = "vbmeta_a",
-    .image_file_path = FLAGS_vbmeta_image,
+  partitions.push_back(ImagePartition{
+      .label = "vbmeta_a",
+      .image_file_path = FLAGS_vbmeta_image,
+      .read_only = true,
   });
-  partitions.push_back(ImagePartition {
-    .label = "vbmeta_b",
-    .image_file_path = FLAGS_vbmeta_image,
+  partitions.push_back(ImagePartition{
+      .label = "vbmeta_b",
+      .image_file_path = FLAGS_vbmeta_image,
+      .read_only = true,
   });
-  partitions.push_back(ImagePartition {
-    .label = "vbmeta_system_a",
-    .image_file_path = FLAGS_vbmeta_system_image,
+  partitions.push_back(ImagePartition{
+      .label = "vbmeta_system_a",
+      .image_file_path = FLAGS_vbmeta_system_image,
+      .read_only = true,
   });
-  partitions.push_back(ImagePartition {
-    .label = "vbmeta_system_b",
-    .image_file_path = FLAGS_vbmeta_system_image,
+  partitions.push_back(ImagePartition{
+      .label = "vbmeta_system_b",
+      .image_file_path = FLAGS_vbmeta_system_image,
+      .read_only = true,
   });
-  partitions.push_back(ImagePartition {
-    .label = "super",
-    .image_file_path = FLAGS_super_image,
+  partitions.push_back(ImagePartition{
+      .label = "super",
+      .image_file_path = FLAGS_super_image,
+      .read_only = true,
   });
-  partitions.push_back(ImagePartition {
-    .label = "userdata",
-    .image_file_path = FLAGS_data_image,
+  partitions.push_back(ImagePartition{
+      .label = "userdata",
+      .image_file_path = FLAGS_data_image,
+      .read_only = true,
   });
-  partitions.push_back(ImagePartition {
-    .label = "metadata",
-    .image_file_path = FLAGS_metadata_image,
+  partitions.push_back(ImagePartition{
+      .label = "metadata",
+      .image_file_path = FLAGS_metadata_image,
+      .read_only = true,
   });
   if (!FLAGS_otheros_root_image.empty()) {
     partitions.push_back(ImagePartition{
         .label = "otheros_esp",
         .image_file_path = FLAGS_otheros_esp_image,
         .type = kEfiSystemPartition,
+        .read_only = true,
     });
     partitions.push_back(ImagePartition{
         .label = "otheros_root",
         .image_file_path = FLAGS_otheros_root_image,
+        .read_only = true,
     });
   }
   return partitions;
@@ -361,7 +374,7 @@ bool CreatePersistentCompositeDisk(
   return true;
 }
 
-static void RepackAllBootImages(const CuttlefishConfig* config) {
+static void RepackAllBootImages(const CuttlefishConfig& config) {
   CHECK(FileHasContent(FLAGS_boot_image))
       << "File not found: " << FLAGS_boot_image;
 
@@ -370,9 +383,9 @@ static void RepackAllBootImages(const CuttlefishConfig* config) {
 
   if (FLAGS_kernel_path.size()) {
     const std::string new_boot_image_path =
-        config->AssemblyPath("boot_repacked.img");
+        config.AssemblyPath("boot_repacked.img");
     bool success = RepackBootImage(FLAGS_kernel_path, FLAGS_boot_image,
-                                   new_boot_image_path, config->assembly_dir());
+                                   new_boot_image_path, config.assembly_dir());
     CHECK(success) << "Failed to regenerate the boot image with the new kernel";
     SetCommandLineOptionWithMode("boot_image", new_boot_image_path.c_str(),
                                  google::FlagSettingMode::SET_FLAGS_DEFAULT);
@@ -380,13 +393,13 @@ static void RepackAllBootImages(const CuttlefishConfig* config) {
 
   if (FLAGS_kernel_path.size() || FLAGS_initramfs_path.size()) {
     const std::string new_vendor_boot_image_path =
-        config->AssemblyPath("vendor_boot_repacked.img");
+        config.AssemblyPath("vendor_boot_repacked.img");
     // Repack the vendor boot images if kernels and/or ramdisks are passed in.
     if (FLAGS_initramfs_path.size()) {
       bool success = RepackVendorBootImage(
           FLAGS_initramfs_path, FLAGS_vendor_boot_image,
-          new_vendor_boot_image_path, config->assembly_dir(),
-          config->bootconfig_supported());
+          new_vendor_boot_image_path, config.assembly_dir(),
+          config.bootconfig_supported());
       CHECK(success) << "Failed to regenerate the vendor boot image with the "
                         "new ramdisk";
     } else {
@@ -395,7 +408,7 @@ static void RepackAllBootImages(const CuttlefishConfig* config) {
       // ramdisk.
       bool success = RepackVendorBootImageWithEmptyRamdisk(
           FLAGS_vendor_boot_image, new_vendor_boot_image_path,
-          config->assembly_dir(), config->bootconfig_supported());
+          config.assembly_dir(), config.bootconfig_supported());
       CHECK(success)
           << "Failed to regenerate the vendor boot image without a ramdisk";
     }
@@ -406,7 +419,7 @@ static void RepackAllBootImages(const CuttlefishConfig* config) {
 }
 
 static void GeneratePersistentBootconfig(
-    const CuttlefishConfig* config,
+    const CuttlefishConfig& config,
     const CuttlefishConfig::InstanceSpecific& instance) {
   const auto bootconfig_path = instance.persistent_bootconfig_path();
   if (!FileExists(bootconfig_path)) {
@@ -422,12 +435,12 @@ static void GeneratePersistentBootconfig(
   //  is stopped (via stop_cvd). This is rarely an issue since OTA testing run
   //  on cuttlefish is done within one launch cycle of the device. If this ever
   //  becomes an issue, this code will have to be rewritten.
-  if (!config->bootconfig_supported()) {
+  if (!config.bootconfig_supported()) {
     return;
   }
 
   const std::string bootconfig =
-      android::base::Join(BootconfigArgsFromConfig(*config, instance), "\n") +
+      android::base::Join(BootconfigArgsFromConfig(config, instance), "\n") +
       "\n";
   ssize_t bytesWritten = WriteAll(bootconfig_fd, bootconfig);
   CHECK(bytesWritten == bootconfig.size());
@@ -441,24 +454,56 @@ static void GeneratePersistentBootconfig(
       << bootconfig_path << "` failed:" << bootconfig_fd->StrError();
 }
 
+class InitializeMetadataImage : public Feature {
+ public:
+  INJECT(InitializeMetadataImage()) {}
+
+  // Feature
+  std::string Name() const override { return "InitializeMetadataImage"; }
+  std::unordered_set<Feature*> Dependencies() const override { return {}; }
+  bool Enabled() const override { return true; }
+
+ private:
+  bool Setup() {
+    if (!FileExists(FLAGS_metadata_image)) {
+      bool success = CreateBlankImage(FLAGS_metadata_image,
+                                      FLAGS_blank_metadata_image_mb, "none");
+      if (!success) {
+        LOG(ERROR) << "Failed to create \"" << FLAGS_metadata_image
+                   << "\" with size " << FLAGS_blank_metadata_image_mb;
+      }
+      return success;
+    }
+    return true;
+  }
+};
+
+static fruit::Component<> DiskChangesComponent(const FetcherConfig* fetcher,
+                                               const CuttlefishConfig* config) {
+  return fruit::createComponent()
+      .bindInstance(*fetcher)
+      .bindInstance(*config)
+      .addMultibinding<Feature, InitializeMetadataImage>()
+      .install(FixedMiscImagePathComponent, &FLAGS_misc_image)
+      .install(InitializeMiscImageComponent)
+      .install(FixedDataImagePathComponent, &FLAGS_data_image)
+      .install(InitializeDataImageComponent);
+}
+
 void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
-                            const CuttlefishConfig* config) {
-  // Create misc if necessary
-  CHECK(InitializeMiscImage(FLAGS_misc_image)) << "Failed to create misc image";
+                            const CuttlefishConfig& config) {
+  // TODO(schuffelen): Unify this with the other injector created in
+  // assemble_cvd.cpp
+  fruit::Injector<> injector(DiskChangesComponent, &fetcher_config, &config);
+
+  const auto& features = injector.getMultibindings<Feature>();
+  CHECK(Feature::RunSetup(features)) << "Failed to run feature setup.";
 
   // Create esp if necessary
   if (!FLAGS_otheros_root_image.empty()) {
     CHECK(InitializeEspImage(FLAGS_otheros_esp_image, FLAGS_otheros_kernel_path,
                              FLAGS_otheros_initramfs_path))
         << "Failed to create esp image";
-  }
-
-  // Create data if necessary
-  DataImageResult dataImageResult = ApplyDataImagePolicy(*config, FLAGS_data_image);
-  CHECK(dataImageResult != DataImageResult::Error) << "Failed to set up userdata";
-
-  if (!FileExists(FLAGS_metadata_image)) {
-    CreateBlankImage(FLAGS_metadata_image, FLAGS_blank_metadata_image_mb, "none");
   }
 
   // If we are booting a protected VM, for now, assume we want a super minimal
@@ -469,11 +514,10 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
   if (!FLAGS_protected_vm) {
     RepackAllBootImages(config);
 
-    for (const auto& instance : config->Instances()) {
-      // TODO(162770965) Re-enable once QEMU on GCE supports virtio pci pmem devices
-      // if (!FileExists(instance.access_kregistry_path())) {
-      //  CreateBlankImage(instance.access_kregistry_path(), 2 /* mb */, "none");
-      // }
+    for (const auto& instance : config.Instances()) {
+      if (!FileExists(instance.access_kregistry_path())) {
+        CreateBlankImage(instance.access_kregistry_path(), 2 /* mb */, "none");
+      }
 
       if (!FileExists(instance.pstore_path())) {
         CreateBlankImage(instance.pstore_path(), 2 /* mb */, "none");
@@ -484,7 +528,7 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
                          FLAGS_blank_sdcard_image_mb, "sdcard");
       }
 
-      CHECK(InitBootloaderEnvPartition(*config, instance))
+      CHECK(InitBootloaderEnvPartition(config, instance))
           << "Failed to create bootloader environment partition";
 
       const auto frp = instance.factory_reset_protected_path();
@@ -496,7 +540,7 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
     }
   }
 
-  for (const auto& instance : config->Instances()) {
+  for (const auto& instance : config.Instances()) {
     bool compositeMatchesDiskConfig = DoesCompositeMatchCurrentDiskConfig(
         instance.PerInstancePath("persistent_composite_disk_config.txt"),
         persistent_composite_disk_config(instance));
@@ -505,7 +549,7 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
                                   persistent_composite_disk_config(instance));
 
     if (!compositeMatchesDiskConfig || oldCompositeDisk) {
-      CHECK(CreatePersistentCompositeDisk(*config, instance))
+      CHECK(CreatePersistentCompositeDisk(config, instance))
           << "Failed to create persistent composite disk";
     }
   }
@@ -524,32 +568,29 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
   CHECK(FileHasContent(FLAGS_bootloader))
       << "File not found: " << FLAGS_bootloader;
 
-  if (SuperImageNeedsRebuilding(fetcher_config, *config)) {
-    bool success = RebuildSuperImage(fetcher_config, *config, FLAGS_super_image);
+  if (SuperImageNeedsRebuilding(fetcher_config, config)) {
+    bool success = RebuildSuperImage(fetcher_config, config, FLAGS_super_image);
     CHECK(success) << "Super image rebuilding requested but could not be completed.";
   }
 
-  bool oldOsCompositeDisk = ShouldCreateOsCompositeDisk(*config);
-  bool newDataImage = dataImageResult == DataImageResult::FileUpdated;
+  bool oldOsCompositeDisk = ShouldCreateOsCompositeDisk(config);
   bool osCompositeMatchesDiskConfig = DoesCompositeMatchCurrentDiskConfig(
-      config->AssemblyPath("os_composite_disk_config.txt"),
+      config.AssemblyPath("os_composite_disk_config.txt"),
       os_composite_disk_config());
-  if (!osCompositeMatchesDiskConfig || oldOsCompositeDisk || !FLAGS_resume ||
-      newDataImage) {
-    CHECK(CreateOsCompositeDisk(*config))
+  if (!osCompositeMatchesDiskConfig || oldOsCompositeDisk || !FLAGS_resume) {
+    CHECK(CreateOsCompositeDisk(config))
         << "Failed to create OS composite disk";
 
-    for (auto instance : config->Instances()) {
+    for (auto instance : config.Instances()) {
       if (FLAGS_resume) {
         LOG(INFO) << "Requested to continue an existing session, (the default) "
                   << "but the disk files have become out of date. Wiping the "
                   << "old session files and starting a new session for device "
                   << instance.serial_number();
       }
-      // TODO(162770965) Re-enable once QEMU on GCE supports virtio pci pmem devices
-      // if (FileExists(instance.access_kregistry_path())) {
-      //   CreateBlankImage(instance.access_kregistry_path(), 2 /* mb */, "none");
-      // }
+      if (FileExists(instance.access_kregistry_path())) {
+        CreateBlankImage(instance.access_kregistry_path(), 2 /* mb */, "none");
+      }
       if (FileExists(instance.pstore_path())) {
         CreateBlankImage(instance.pstore_path(), 2 /* mb */, "none");
       }
@@ -557,19 +598,19 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
   }
 
   if (!FLAGS_protected_vm) {
-    for (auto instance : config->Instances()) {
+    for (auto instance : config.Instances()) {
       auto overlay_path = instance.PerInstancePath("overlay.img");
       bool missingOverlay = !FileExists(overlay_path);
       bool newOverlay = FileModificationTime(overlay_path) <
-                        FileModificationTime(config->os_composite_disk_path());
+                        FileModificationTime(config.os_composite_disk_path());
       if (missingOverlay || !FLAGS_resume || newOverlay) {
-        CreateQcowOverlay(config->crosvm_binary(),
-                          config->os_composite_disk_path(), overlay_path);
+        CreateQcowOverlay(config.crosvm_binary(),
+                          config.os_composite_disk_path(), overlay_path);
       }
     }
   }
 
-  for (auto instance : config->Instances()) {
+  for (auto instance : config.Instances()) {
     // Check that the files exist
     for (const auto& file : instance.virtual_disk_paths()) {
       if (!file.empty()) {

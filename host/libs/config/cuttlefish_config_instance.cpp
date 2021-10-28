@@ -444,6 +444,22 @@ bool CuttlefishConfig::InstanceSpecific::start_webrtc_sig_server() const {
   return (*Dictionary())[kStartSigServer].asBool();
 }
 
+static constexpr char kStartWmediumd[] = "start_wmediumd";
+void CuttlefishConfig::MutableInstanceSpecific::set_start_wmediumd(bool start) {
+  (*Dictionary())[kStartWmediumd] = start;
+}
+bool CuttlefishConfig::InstanceSpecific::start_wmediumd() const {
+  return (*Dictionary())[kStartWmediumd].asBool();
+}
+
+static constexpr char kStartAp[] = "start_ap";
+void CuttlefishConfig::MutableInstanceSpecific::set_start_ap(bool start) {
+  (*Dictionary())[kStartAp] = start;
+}
+bool CuttlefishConfig::InstanceSpecific::start_ap() const {
+  return (*Dictionary())[kStartAp].asBool();
+}
+
 std::string CuttlefishConfig::InstanceSpecific::touch_socket_path(
     int screen_idx) const {
   return PerInstanceInternalPath(

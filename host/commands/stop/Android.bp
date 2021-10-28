@@ -23,10 +23,12 @@ cc_binary {
         "main.cc",
     ],
     shared_libs: [
+        "libext2_blkid",
         "libbase",
         "libcuttlefish_fs",
         "libcuttlefish_utils",
         "libcuttlefish_allocd_utils",
+        "libfruit",
         "libjsoncpp",
     ],
     static_libs: [

@@ -39,7 +39,7 @@ for i in "${debs[@]}"; do
 done
 
 # Now install the packages on the disk
-sudo mkdir /mnt/image
+sudo mkdir -p /mnt/image
 sudo mount /dev/sdb1 /mnt/image
 cp "${debs[@]}" /mnt/image/tmp
 sudo mount -t sysfs none /mnt/image/sys
@@ -60,30 +60,18 @@ sudo chroot /mnt/image /usr/bin/apt install -y screen # needed by tradefed
 
 sudo chroot /mnt/image /usr/bin/find /home -ls
 
-
 # Install GPU driver dependencies
 sudo chroot /mnt/image /usr/bin/apt install -y gcc
 sudo chroot /mnt/image /usr/bin/apt install -y linux-source
 sudo chroot /mnt/image /usr/bin/apt install -y linux-headers-`uname -r`
 sudo chroot /mnt/image /usr/bin/apt install -y make
-
-# Download the latest GPU driver installer
-gsutil cp \
-  $(gsutil ls gs://nvidia-drivers-us-public/GRID/GRID*/*-Linux-x86_64-*.run \
-    | sort \
-    | tail -n 1) \
-  /mnt/image/tmp/nvidia-driver-installer.run
-
-# Make GPU driver installer executable
-chmod +x /mnt/image/tmp/nvidia-driver-installer.run
-
-# Install the latest GPU driver with default options and the dispatch libs
-sudo chroot /mnt/image /tmp/nvidia-driver-installer.run \
-  --silent \
-  --install-libglvnd
-
-# Cleanup after install
-rm /mnt/image/tmp/nvidia-driver-installer.run
+sudo chroot /mnt/image /usr/bin/apt install -y software-properties-common
+sudo chroot /mnt/image /usr/bin/add-apt-repository non-free
+sudo chroot /mnt/image /usr/bin/add-apt-repository contrib
+sudo chroot /mnt/image /usr/bin/apt update
+sudo chroot /mnt/image /bin/bash -c 'DEBIAN_FRONTEND=noninteractive /usr/bin/apt install -y nvidia-driver'
+sudo chroot /mnt/image /usr/bin/apt install -y firmware-misc-nonfree
+sudo chroot /mnt/image /usr/bin/apt install -y libglvnd-dev
 
 # Verify
 query_nvidia() {

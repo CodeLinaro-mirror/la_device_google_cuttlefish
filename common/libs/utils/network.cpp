@@ -17,14 +17,18 @@
 #include "common/libs/utils/network.h"
 
 #include <arpa/inet.h>
-#include <linux/if.h>
-#include <linux/if_tun.h>
-#include <linux/types.h>
-#include <linux/if_packet.h>
+#include <net/if.h>
+#include <netinet/ether.h>
 #include <netinet/ip.h>
 #include <netinet/udp.h>
-#include <netinet/ether.h>
 #include <string.h>
+
+// Kernel headers don't mix well with userspace headers, but there is no
+// userspace header that provides the if_tun.h #defines.  Include the kernel
+// header, but move conflicting definitions out of the way using macros.
+#define ethhdr __kernel_ethhdr
+#include <linux/if_tun.h>
+#undef ethdhr
 
 #include <android-base/strings.h>
 #include "android-base/logging.h"
@@ -119,9 +123,9 @@ std::set<std::string> TapInterfacesInUse() {
   Command cmd("/bin/bash");
   cmd.AddParameter("-c");
   cmd.AddParameter("egrep -h -e \"^iff:.*\" /proc/*/fdinfo/*");
-  std::string stdin, stdout, stderr;
-  RunWithManagedStdio(std::move(cmd), &stdin, &stdout, &stderr);
-  auto lines = android::base::Split(stdout, "\n");
+  std::string stdin_str, stdout_str, stderr_str;
+  RunWithManagedStdio(std::move(cmd), &stdin_str, &stdout_str, &stderr_str);
+  auto lines = android::base::Split(stdout_str, "\n");
   std::set<std::string> tap_interfaces;
   for (const auto& line : lines) {
     if (line == "") {
@@ -288,6 +292,27 @@ bool ReleaseDhcp4(SharedFD tap, const std::uint8_t mac_address[6],
     return false;
   }
   return true;
+}
+
+bool ReleaseDhcpLeases(const std::string& lease_path, SharedFD tap_fd,
+                       const std::uint8_t dhcp_server_ip[4]) {
+  auto lease_file_fd = SharedFD::Open(lease_path, O_RDONLY);
+  if (!lease_file_fd->IsOpen()) {
+    LOG(ERROR) << "Could not open leases file \"" << lease_path << '"';
+    return false;
+  }
+  bool success = true;
+  auto dhcp_leases = ParseDnsmasqLeases(lease_file_fd);
+  for (auto& lease : dhcp_leases) {
+    if (!ReleaseDhcp4(tap_fd, lease.mac_address, lease.ip_address,
+                      dhcp_server_ip)) {
+      LOG(ERROR) << "Failed to release " << lease;
+      success = false;
+    } else {
+      LOG(INFO) << "Successfully dropped " << lease;
+    }
+  }
+  return success;
 }
 
 }  // namespace cuttlefish
