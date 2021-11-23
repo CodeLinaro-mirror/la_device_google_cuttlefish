@@ -17,6 +17,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <memory>
 #include <string>
 
@@ -53,9 +54,8 @@ class Session {
 
   MainLoopState GetState() { return state_; }
 
-  MainLoopState Transition(const bool is_user_input, SharedFD& hal_cli,
-                           const FsmInput fsm_input,
-                           const ConfUiMessage& additional_info);
+  MainLoopState Transition(SharedFD& hal_cli, const FsmInput fsm_input,
+                           const ConfUiMessage& conf_ui_message);
 
   /**
    * this make a transition from kWaitStop or kInSession to kSuspend
@@ -77,7 +77,22 @@ class Session {
   bool IsSuspended() const;
   void CleanUp();
 
+  bool IsConfirm(const int x, const int y) {
+    return renderer_->IsInConfirm(x, y);
+  }
+
+  bool IsCancel(const int x, const int y) {
+    return renderer_->IsInCancel(x, y);
+  }
+
+  // tell if grace period has passed
+  bool IsReadyForUserInput() const;
+
  private:
+  bool IsUserInput(const FsmInput fsm_input) {
+    return fsm_input == FsmInput::kUserEvent;
+  }
+
   /** create a frame, and render it on the vnc/webRTC client
    *
    * note that this does not check host_ctrl_mode_
@@ -89,25 +104,25 @@ class Session {
   //
   // when false is returned, the FSM must terminate
   // and, no need to let the guest know
-  bool HandleInit(const bool is_user_input, SharedFD hal_cli,
-                  const FsmInput fsm_input,
-                  const ConfUiMessage& additional_info);
+  bool HandleInit(SharedFD hal_cli, const FsmInput fsm_input,
+                  const ConfUiMessage& conf_ui_msg);
 
-  bool HandleWaitStop(const bool is_user_input, SharedFD hal_cli,
-                      const FsmInput fsm_input);
+  bool HandleWaitStop(SharedFD hal_cli, const FsmInput fsm_input);
 
-  bool HandleInSession(const bool is_user_input, SharedFD hal_cli,
-                       const FsmInput fsm_input);
+  bool HandleInSession(SharedFD hal_cli, const FsmInput fsm_input,
+                       const ConfUiMessage& conf_ui_msg);
 
   // report with an error ack to HAL, and reset the FSM
   bool ReportErrorToHal(SharedFD hal_cli, const std::string& msg);
 
   void ScheduleToTerminate();
 
+  bool IsInverted() const;
+  bool IsMagnified() const;
+
   const std::string session_id_;
   const std::uint32_t display_num_;
-  // host renderer is shared across sessions
-  ConfUiRenderer renderer_;
+  std::unique_ptr<ConfUiRenderer> renderer_;
   HostModeCtrl& host_mode_ctrl_;
   ScreenConnectorFrameRenderer& screen_connector_;
 
@@ -126,6 +141,9 @@ class Session {
   // the input demuxer will check the confirmation UI mode based on this
   std::atomic<MainLoopState> state_;
   MainLoopState saved_state_;  // for restore/suspend
+  using Clock = std::chrono::steady_clock;
+  using TimePoint = std::chrono::time_point<Clock>;
+  std::unique_ptr<TimePoint> start_time_;
 };
 }  // end of namespace confui
 }  // end of namespace cuttlefish
