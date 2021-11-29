@@ -17,35 +17,11 @@
 #include "host/libs/confui/server_common.h"
 namespace cuttlefish {
 namespace confui {
-std::unique_ptr<ConfUiMessage> CreateFromUserSelection(
-    const std::string& session_id, const UserResponse::type user_selection) {
-  return std::make_unique<ConfUiUserSelectionMessage>(session_id,
-                                                      user_selection);
-}
-
-static FsmInput UserEvtToFsmInput(UserResponse::type user_response) {
-  if (user_response == UserResponse::kConfirm) {
-    return FsmInput::kUserConfirm;
-  }
-  if (user_response == UserResponse::kCancel) {
-    return FsmInput::kUserCancel;
-  }
-  if (user_response == UserResponse::kUserAbort) {
-    return FsmInput::kUserAbort;
-  }
-  return FsmInput::kUserUnknown;
-}
-
 FsmInput ToFsmInput(const ConfUiMessage& msg) {
   const auto cmd = msg.GetType();
-  if (cmd == ConfUiCmd::kUserInputEvent) {
-    const auto& user_input =
-        static_cast<const ConfUiUserSelectionMessage&>(msg);
-    const auto& response = user_input.GetResponse();
-    return UserEvtToFsmInput(response);
-  }
-  const auto hal_cmd = cmd;
-  switch (hal_cmd) {
+  switch (cmd) {
+    case ConfUiCmd::kUserInputEvent:
+      return FsmInput::kUserEvent;
     case ConfUiCmd::kUnknown:
       return FsmInput::kHalUnknown;
     case ConfUiCmd::kStart:
@@ -57,7 +33,7 @@ FsmInput ToFsmInput(const ConfUiMessage& msg) {
     case ConfUiCmd::kCliAck:
     case ConfUiCmd::kCliRespond:
     default:
-      ConfUiLog(FATAL) << "The" << ToString(hal_cmd)
+      ConfUiLog(FATAL) << "The" << ToString(cmd)
                        << "is not handled by the Session FSM but "
                        << "directly calls Abort()";
   }
@@ -66,14 +42,8 @@ FsmInput ToFsmInput(const ConfUiMessage& msg) {
 
 std::string ToString(FsmInput input) {
   switch (input) {
-    case FsmInput::kUserConfirm:
-      return {"kUserConfirm"};
-    case FsmInput::kUserCancel:
-      return {"kUserCancel"};
-    case FsmInput::kUserAbort:
-      return {"kUserAbort"};
-    case FsmInput::kUserUnknown:
-      return {"kUserUnknown"};
+    case FsmInput::kUserEvent:
+      return {"kUserEvent"};
     case FsmInput::kHalStart:
       return {"kHalStart"};
     case FsmInput::kHalStop:

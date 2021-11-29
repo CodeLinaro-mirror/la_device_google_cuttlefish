@@ -16,6 +16,8 @@
 
 #include "host/libs/confui/session.h"
 
+#include <algorithm>
+
 namespace cuttlefish {
 namespace confui {
 
@@ -25,12 +27,33 @@ Session::Session(const std::string& session_name,
                  const std::string& locale)
     : session_id_{session_name},
       display_num_{display_num},
-      renderer_{display_num},
       host_mode_ctrl_{host_mode_ctrl},
       screen_connector_{screen_connector},
       locale_{locale},
       state_{MainLoopState::kInit},
       saved_state_{MainLoopState::kInit} {}
+
+/** return grace period + alpha
+ *
+ * grace period is the gap between user seeing the dialog
+ * and the UI starts to take the user inputs
+ * Grace period should be at least 1s.
+ * Session requests the Renderer to render the dialog,
+ * but it might not be immediate. So, add alpha to 1s
+ */
+static const std::chrono::milliseconds GetGracePeriod() {
+  using std::literals::chrono_literals::operator""ms;
+  return 1000ms + 100ms;
+}
+
+bool Session::IsReadyForUserInput() const {
+  using std::literals::chrono_literals::operator""ms;
+  if (!start_time_) {
+    return false;
+  }
+  const auto right_now = Clock::now();
+  return (right_now - *start_time_) >= GetGracePeriod();
+}
 
 bool Session::IsConfUiActive() const {
   if (state_ == MainLoopState::kInSession ||
@@ -40,44 +63,59 @@ bool Session::IsConfUiActive() const {
   return false;
 }
 
+template <typename C, typename T>
+static bool Contains(const C& c, T&& item) {
+  auto itr = std::find(c.begin(), c.end(), std::forward<T>(item));
+  return itr != c.end();
+}
+
+bool Session::IsInverted() const {
+  return Contains(ui_options_, teeui::UIOption::AccessibilityInverted);
+}
+
+bool Session::IsMagnified() const {
+  return Contains(ui_options_, teeui::UIOption::AccessibilityMagnified);
+}
+
 bool Session::RenderDialog() {
-  auto [teeui_frame, is_success] =
-      renderer_.RenderRawFrame(prompt_text_, locale_);
-  if (!is_success) {
+  renderer_ = ConfUiRenderer::GenerateRenderer(
+      display_num_, prompt_text_, locale_, IsInverted(), IsMagnified());
+  if (!renderer_) {
     return false;
   }
-
+  auto teeui_frame = renderer_->RenderRawFrame();
+  if (!teeui_frame) {
+    return false;
+  }
   ConfUiLog(VERBOSE) << "actually trying to render the frame"
                      << thread::GetName();
-  auto frame_width = ScreenConnectorInfo::ScreenWidth(display_num_);
-  auto frame_height = ScreenConnectorInfo::ScreenHeight(display_num_);
-  auto frame_stride_bytes =
-      ScreenConnectorInfo::ScreenStrideBytes(display_num_);
-  auto frame_bytes = reinterpret_cast<std::uint8_t*>(teeui_frame.data());
+  auto frame_width = teeui_frame->Width();
+  auto frame_height = teeui_frame->Height();
+  auto frame_stride_bytes = teeui_frame->ScreenStrideBytes();
+  auto frame_bytes = reinterpret_cast<std::uint8_t*>(teeui_frame->data());
   return screen_connector_.RenderConfirmationUi(
       display_num_, frame_width, frame_height, frame_stride_bytes, frame_bytes);
 }
 
-MainLoopState Session::Transition(const bool is_user_input, SharedFD& hal_cli,
-                                  const FsmInput fsm_input,
+MainLoopState Session::Transition(SharedFD& hal_cli, const FsmInput fsm_input,
                                   const ConfUiMessage& conf_ui_message) {
   bool should_keep_running = false;
   bool already_terminated = false;
   switch (state_) {
     case MainLoopState::kInit: {
-      should_keep_running =
-          HandleInit(is_user_input, hal_cli, fsm_input, conf_ui_message);
+      should_keep_running = HandleInit(hal_cli, fsm_input, conf_ui_message);
     } break;
     case MainLoopState::kInSession: {
-      should_keep_running = HandleInSession(is_user_input, hal_cli, fsm_input);
+      should_keep_running =
+          HandleInSession(hal_cli, fsm_input, conf_ui_message);
     } break;
     case MainLoopState::kWaitStop: {
-      if (is_user_input) {
+      if (IsUserInput(fsm_input)) {
         ConfUiLog(VERBOSE) << "User input ignored " << ToString(fsm_input)
                            << " : " << ToString(conf_ui_message)
                            << " at the state " << ToString(state_);
       }
-      should_keep_running = HandleWaitStop(is_user_input, hal_cli, fsm_input);
+      should_keep_running = HandleWaitStop(hal_cli, fsm_input);
     } break;
     case MainLoopState::kTerminated: {
       already_terminated = true;
@@ -128,10 +166,9 @@ void Session::UserAbort(SharedFD hal_cli) {
   ScheduleToTerminate();
 }
 
-bool Session::HandleInit(const bool is_user_input, SharedFD hal_cli,
-                         const FsmInput fsm_input,
+bool Session::HandleInit(SharedFD hal_cli, const FsmInput fsm_input,
                          const ConfUiMessage& conf_ui_message) {
-  if (is_user_input) {
+  if (IsUserInput(fsm_input)) {
     // ignore user input
     state_ = MainLoopState::kInit;
     return true;
@@ -180,6 +217,7 @@ bool Session::HandleInit(const bool is_user_input, SharedFD hal_cli,
     ReportErrorToHal(hal_cli, HostError::kUIError);
     return false;
   }
+  start_time_ = std::make_unique<TimePoint>(std::move(Clock::now()));
   if (!SendAck(hal_cli, session_id_, true, "started")) {
     ConfUiLog(ERROR) << "Ack to kStart failed in I/O";
     return false;
@@ -188,13 +226,25 @@ bool Session::HandleInit(const bool is_user_input, SharedFD hal_cli,
   return true;
 }
 
-bool Session::HandleInSession(const bool is_user_input, SharedFD hal_cli,
-                              const FsmInput fsm_input) {
-  if (!is_user_input || fsm_input == FsmInput::kUserUnknown ||
-      fsm_input == FsmInput::kUserAbort) {
+bool Session::HandleInSession(SharedFD hal_cli, const FsmInput fsm_input,
+                              const ConfUiMessage& conf_ui_msg) {
+  auto invalid_input_handler = [&, this]() {
     ReportErrorToHal(hal_cli, HostError::kSystemError);
     ConfUiLog(ERROR) << "cmd " << ToString(fsm_input)
                      << " should not be handled in HandleInSession";
+  };
+
+  if (!IsUserInput(fsm_input)) {
+    invalid_input_handler();
+    return false;
+  }
+
+  const auto& user_input_msg =
+      static_cast<const ConfUiUserSelectionMessage&>(conf_ui_msg);
+  const auto response = user_input_msg.GetResponse();
+  if (response == UserResponse::kUnknown ||
+      response == UserResponse::kUserAbort) {
+    invalid_input_handler();
     return false;
   }
 
@@ -202,7 +252,7 @@ bool Session::HandleInSession(const bool is_user_input, SharedFD hal_cli,
                      << " is sending the user input " << ToString(fsm_input);
 
   bool is_success = false;
-  if (fsm_input == FsmInput::kUserCancel) {
+  if (response == UserResponse::kCancel) {
     // no need to sign
     is_success =
         SendResponse(hal_cli, session_id_, UserResponse::kCancel,
@@ -228,9 +278,8 @@ bool Session::HandleInSession(const bool is_user_input, SharedFD hal_cli,
   return true;
 }
 
-bool Session::HandleWaitStop(const bool is_user_input, SharedFD hal_cli,
-                             const FsmInput fsm_input) {
-  if (is_user_input) {
+bool Session::HandleWaitStop(SharedFD hal_cli, const FsmInput fsm_input) {
+  if (IsUserInput(fsm_input)) {
     // ignore user input
     state_ = MainLoopState::kWaitStop;
     return true;
