@@ -21,11 +21,12 @@
 #include <vector>
 
 #include <gflags/gflags.h>
-#include <glog/logging.h>
+#include <android-base/logging.h>
 
 #include <common/libs/fs/shared_fd.h>
 #include <common/libs/fs/shared_select.h>
 #include <host/libs/config/cuttlefish_config.h>
+#include <host/libs/config/logging.h>
 
 DEFINE_int32(console_in_fd,
              -1,
@@ -165,7 +166,7 @@ class ConsoleForwarder {
 };
 
 int main(int argc, char** argv) {
-  ::android::base::InitLogging(argv, android::base::StderrLogger);
+  cvd::DefaultSubprocessLogging(argv);
   ::gflags::ParseCommandLineFlags(&argc, &argv, true);
 
   if (FLAGS_console_in_fd < 0 || FLAGS_console_out_fd < 0) {

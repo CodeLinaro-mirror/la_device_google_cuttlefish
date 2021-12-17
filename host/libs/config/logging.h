@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2019 The Android Open Source Project
+// Copyright (C) 2020 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,25 +13,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#pragma once
 
-cc_binary {
-    name: "vsoc_input_service",
-    srcs: [
-        "main.cpp",
-        "virtual_device_base.cpp",
-        "virtual_power_button.cpp",
-        "virtual_keyboard.cpp",
-        "virtual_touchscreen.cpp",
-        "vsoc_input_service.cpp",
-    ],
-    static_libs: [
-        "libgflags",
-    ],
-    shared_libs: [
-        "libcuttlefish_device_config",
-        "libcuttlefish_fs",
-        "libbase",
-        "liblog",
-    ],
-    defaults: ["cuttlefish_guest_only"]
-}
+namespace cvd {
+
+void DefaultSubprocessLogging(char* argv[]);
+
+} // namespace cvd
