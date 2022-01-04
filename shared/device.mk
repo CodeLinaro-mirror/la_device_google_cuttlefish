@@ -417,7 +417,7 @@ PRODUCT_PACKAGES += \
 #
 # NeuralNetworks HAL
 #
-PRODUCT_PACKAGES += \
+#PRODUCT_PACKAGES += \
     android.hardware.neuralnetworks@1.3-service-sample-all \
     android.hardware.neuralnetworks@1.3-service-sample-float-fast \
     android.hardware.neuralnetworks@1.3-service-sample-float-slow \
