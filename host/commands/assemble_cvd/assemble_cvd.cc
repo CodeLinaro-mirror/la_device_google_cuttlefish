@@ -138,6 +138,7 @@ const CuttlefishConfig* InitFilesystemAndCreateConfig(
                 << "overlay incompatible. Wiping the overlay files.";
     } else if (FLAGS_resume && !create_os_composite_disk) {
       preserving.insert("overlay.img");
+      preserving.insert("ap_overlay.img");
       preserving.insert("os_composite_disk_config.txt");
       preserving.insert("os_composite_gpt_header.img");
       preserving.insert("os_composite_gpt_footer.img");
@@ -175,6 +176,18 @@ const CuttlefishConfig* InitFilesystemAndCreateConfig(
       LOG(ERROR) << "Unable to persist assemble_cvd log at "
                   << config.AssemblyPath("assemble_cvd.log")
                   << ": " << log->StrError();
+    }
+
+    auto disk_config = GetOsCompositeDiskConfig();
+    if (auto it = std::find_if(disk_config.begin(), disk_config.end(),
+                               [](const auto& partition) {
+                                 return partition.label == "ap_rootfs";
+                               });
+        it != disk_config.end()) {
+      auto ap_image_idx = std::distance(disk_config.begin(), it) + 1;
+      std::stringstream ss;
+      ss << "/dev/vda" << ap_image_idx;
+      config.set_ap_image_dev_path(ss.str());
     }
     for (const auto& instance : config.Instances()) {
       // Create instance directory if it doesn't exist.

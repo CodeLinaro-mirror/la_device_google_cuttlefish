@@ -85,6 +85,36 @@ bool Stop() {
   return true;
 }
 
+std::pair<int,int> GetQemuVersion(const std::string& qemu_binary)
+{
+  Command qemu_version_cmd(qemu_binary);
+  qemu_version_cmd.AddParameter("-version");
+
+  std::string qemu_version_input, qemu_version_output, qemu_version_error;
+  cuttlefish::SubprocessOptions options;
+  options.Verbose(false);
+  int qemu_version_ret =
+      cuttlefish::RunWithManagedStdio(std::move(qemu_version_cmd),
+                                      &qemu_version_input,
+                                      &qemu_version_output,
+                                      &qemu_version_error, options);
+  if (qemu_version_ret != 0) {
+    LOG(FATAL) << qemu_binary << " -version returned unexpected response "
+               << qemu_version_output << ". Stderr was " << qemu_version_error;
+    return { 0, 0 };
+  }
+
+  // Snip around the extra text we don't care about
+  qemu_version_output.erase(0, std::string("QEMU emulator version ").length());
+  auto space_pos = qemu_version_output.find(" ", 0);
+  if (space_pos != std::string::npos) {
+    qemu_version_output.resize(space_pos);
+  }
+
+  auto qemu_version_bits = android::base::Split(qemu_version_output, ".");
+  return { std::stoi(qemu_version_bits[0]), std::stoi(qemu_version_bits[1]) };
+}
+
 }  // namespace
 
 QemuManager::QemuManager(Arch arch) : arch_(arch) {}
@@ -165,6 +195,8 @@ std::vector<Command> QemuManager::StartCommands(
       qemu_binary += "/qemu-system-x86_64";
       break;
   }
+
+  auto qemu_version = GetQemuVersion(qemu_binary);
   Command qemu_cmd(qemu_binary, stop);
 
   int hvc_num = 0;
@@ -174,7 +206,7 @@ std::vector<Command> QemuManager::StartCommands(
     qemu_cmd.AddParameter("null,id=hvc", hvc_num);
     qemu_cmd.AddParameter("-device");
     qemu_cmd.AddParameter(
-        "virtio-serial-pci,max_ports=1,id=virtio-serial",
+        "virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial",
         hvc_num);
     qemu_cmd.AddParameter("-device");
     qemu_cmd.AddParameter("virtconsole,bus=virtio-serial", hvc_num,
@@ -211,7 +243,7 @@ std::vector<Command> QemuManager::StartCommands(
                           ",append=on");
     qemu_cmd.AddParameter("-device");
     qemu_cmd.AddParameter(
-        "virtio-serial-pci,max_ports=1,id=virtio-serial",
+        "virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial",
         hvc_num);
     qemu_cmd.AddParameter("-device");
     qemu_cmd.AddParameter("virtconsole,bus=virtio-serial", hvc_num,
@@ -223,7 +255,7 @@ std::vector<Command> QemuManager::StartCommands(
     qemu_cmd.AddParameter("pipe,id=hvc", hvc_num, ",path=", prefix);
     qemu_cmd.AddParameter("-device");
     qemu_cmd.AddParameter(
-        "virtio-serial-pci,max_ports=1,id=virtio-serial",
+        "virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial",
         hvc_num);
     qemu_cmd.AddParameter("-device");
     qemu_cmd.AddParameter("virtconsole,bus=virtio-serial", hvc_num,
@@ -232,6 +264,7 @@ std::vector<Command> QemuManager::StartCommands(
   };
 
   bool is_arm = arch_ == Arch::Arm || arch_ == Arch::Arm64;
+  bool is_arm64 = arch_ == Arch::Arm64;
 
   auto access_kregistry_size_bytes = 0;
   if (FileExists(instance.access_kregistry_path())) {
@@ -240,8 +273,6 @@ std::vector<Command> QemuManager::StartCommands(
         << instance.access_kregistry_path() <<  " file size ("
         << access_kregistry_size_bytes << ") not a multiple of 1MB";
   }
-  // TODO(162770965) Re-enable once QEMU on GCE supports virtio pci pmem devices
-  access_kregistry_size_bytes = 0;
 
   auto pstore_size_bytes = 0;
   if (FileExists(instance.pstore_path())) {
@@ -255,8 +286,22 @@ std::vector<Command> QemuManager::StartCommands(
   qemu_cmd.AddParameter("guest=", instance.instance_name(), ",debug-threads=on");
 
   qemu_cmd.AddParameter("-machine");
-  auto machine = is_arm ? "virt,gic-version=2,mte=on"
-                        : "pc-i440fx-2.8,accel=kvm,nvdimm=on";
+  std::string machine = is_arm ? "virt" : "pc-i440fx-2.8,nvdimm=on";
+  if (IsHostCompatible(arch_)) {
+    machine += ",accel=kvm";
+    if (is_arm) {
+      machine += ",gic-version=3";
+    }
+  } else if (is_arm) {
+    // QEMU doesn't support GICv3 with TCG yet
+    machine += ",gic-version=2";
+    if (is_arm64) {
+      // Only enable MTE in TCG mode. We haven't started to run on ARMv8/ARMv9
+      // devices with KVM and MTE, so MTE will always require TCG
+      machine += ",mte=on";
+    }
+    CHECK(config.cpus() <= 8) << "CPUs must be no more than 8 with GICv2";
+  }
   qemu_cmd.AddParameter(machine, ",usb=off,dump-guest-core=off");
 
   qemu_cmd.AddParameter("-m");
@@ -298,7 +343,7 @@ std::vector<Command> QemuManager::StartCommands(
 
   qemu_cmd.AddParameter("-chardev");
   qemu_cmd.AddParameter("socket,id=charmonitor,path=", GetMonitorPath(config),
-                        ",server,nowait");
+                        ",server=on,wait=off");
 
   qemu_cmd.AddParameter("-mon");
   qemu_cmd.AddParameter("chardev=charmonitor,id=monitor,mode=control");
@@ -382,7 +427,7 @@ std::vector<Command> QemuManager::StartCommands(
     qemu_cmd.AddParameter("file=", disk, ",if=none,id=drive-virtio-disk", i,
                           ",aio=threads", format, readonly);
     qemu_cmd.AddParameter("-device");
-    qemu_cmd.AddParameter("virtio-blk-pci,scsi=off,drive=drive-virtio-disk", i,
+    qemu_cmd.AddParameter("virtio-blk-pci-non-transitional,scsi=off,drive=drive-virtio-disk", i,
                           ",id=virtio-disk", i, bootindex);
   }
 
@@ -402,7 +447,7 @@ std::vector<Command> QemuManager::StartCommands(
     // As we will pass this to ramoops, define this region first so it is always
     // located at this address. This is currently x86 only.
     qemu_cmd.AddParameter("-object");
-    qemu_cmd.AddParameter("memory-backend-file,id=objpmem0,share,mem-path=",
+    qemu_cmd.AddParameter("memory-backend-file,id=objpmem0,share=on,mem-path=",
                           instance.pstore_path(), ",size=", pstore_size_bytes);
 
     qemu_cmd.AddParameter("-device");
@@ -413,7 +458,7 @@ std::vector<Command> QemuManager::StartCommands(
   // when the device has been added
   if (!is_arm && access_kregistry_size_bytes > 0) {
     qemu_cmd.AddParameter("-object");
-    qemu_cmd.AddParameter("memory-backend-file,id=objpmem1,share,mem-path=",
+    qemu_cmd.AddParameter("memory-backend-file,id=objpmem1,share=on,mem-path=",
                           instance.access_kregistry_path(), ",size=",
                           access_kregistry_size_bytes);
 
@@ -425,7 +470,7 @@ std::vector<Command> QemuManager::StartCommands(
   qemu_cmd.AddParameter("rng-random,id=objrng0,filename=/dev/urandom");
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-rng-pci,rng=objrng0,id=rng0,",
+  qemu_cmd.AddParameter("virtio-rng-pci-non-transitional,rng=objrng0,id=rng0,",
                         "max-bytes=1024,period=2000");
 
   qemu_cmd.AddParameter("-device");
@@ -441,36 +486,38 @@ std::vector<Command> QemuManager::StartCommands(
   auto vhost_net = config.vhost_net() ? ",vhost=on" : "";
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-balloon-pci,id=balloon0");
+  qemu_cmd.AddParameter("virtio-balloon-pci-non-transitional,id=balloon0");
 
   qemu_cmd.AddParameter("-netdev");
   qemu_cmd.AddParameter("tap,id=hostnet0,ifname=", instance.mobile_tap_name(),
                         ",script=no,downscript=no", vhost_net);
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-net-pci,netdev=hostnet0,id=net0");
+  qemu_cmd.AddParameter("virtio-net-pci-non-transitional,netdev=hostnet0,id=net0");
 
   qemu_cmd.AddParameter("-netdev");
   qemu_cmd.AddParameter("tap,id=hostnet1,ifname=", instance.ethernet_tap_name(),
                         ",script=no,downscript=no", vhost_net);
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-net-pci,netdev=hostnet1,id=net1");
+  qemu_cmd.AddParameter("virtio-net-pci-non-transitional,netdev=hostnet1,id=net1");
 
   qemu_cmd.AddParameter("-netdev");
   qemu_cmd.AddParameter("tap,id=hostnet2,ifname=", instance.wifi_tap_name(),
                         ",script=no,downscript=no", vhost_net);
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-net-pci,netdev=hostnet2,id=net2");
+  qemu_cmd.AddParameter("virtio-net-pci-non-transitional,netdev=hostnet2,id=net2");
 
   auto display_configs = config.display_configs();
   CHECK_GE(display_configs.size(), 1);
   auto display_config = display_configs[0];
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-gpu-pci,id=gpu0,"
-                        "xres=", display_config.width, ",yres=", display_config.height);
+  qemu_cmd.AddParameter(qemu_version.first < 6 ?
+                            "virtio-gpu-pci" : "virtio-gpu-gl-pci", ",id=gpu0",
+                        ",xres=", display_config.width,
+                        ",yres=", display_config.height);
 
   qemu_cmd.AddParameter("-cpu");
   qemu_cmd.AddParameter(IsHostCompatible(arch_) ? "host" : "max");
@@ -479,7 +526,7 @@ std::vector<Command> QemuManager::StartCommands(
   qemu_cmd.AddParameter("timestamp=on");
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("vhost-vsock-pci,guest-cid=",
+  qemu_cmd.AddParameter("vhost-vsock-pci-non-transitional,guest-cid=",
                         instance.vsock_guest_cid());
 
   qemu_cmd.AddParameter("-device");

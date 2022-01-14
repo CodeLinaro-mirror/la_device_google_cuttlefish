@@ -40,6 +40,7 @@ using cuttlefish::HostBinaryPath;
 using cuttlefish::StringFromEnv;
 using cuttlefish::vm_manager::CrosvmManager;
 using google::FlagSettingMode::SET_FLAGS_DEFAULT;
+using google::FlagSettingMode::SET_FLAGS_VALUE;
 
 DEFINE_int32(cpus, 2, "Virtual CPU count.");
 DEFINE_string(data_policy, "use_existing", "How to handle userdata partition."
@@ -81,6 +82,10 @@ DEFINE_string(kernel_path, "",
 DEFINE_string(initramfs_path, "", "Path to the initramfs");
 DEFINE_string(extra_kernel_cmdline, "",
               "Additional flags to put on the kernel command line");
+DEFINE_string(extra_bootconfig_args, "",
+              "Space-separated list of extra bootconfig args. "
+              "Note: overwriting an existing bootconfig argument "
+              "requires ':=' instead of '='.");
 DEFINE_bool(guest_enforce_security, true,
             "Whether to run in enforcing mode (non permissive).");
 DEFINE_bool(guest_audit_security, true,
@@ -271,8 +276,12 @@ DEFINE_string(wmediumd_config, "",
               "Path to the wmediumd config file. When missing, the default "
               "configuration is used which adds MAC addresses for up to 16 "
               "cuttlefish instances including AP.");
-DEFINE_string(ap_rootfs_image, "", "rootfs image for AP instance");
-DEFINE_string(ap_kernel_image, "", "kernel image for AP instance");
+DEFINE_string(ap_rootfs_image,
+              DefaultHostArtifactsPath("etc/openwrt/images/openwrt_rootfs"),
+              "rootfs image for AP instance");
+DEFINE_string(ap_kernel_image,
+              DefaultHostArtifactsPath("etc/openwrt/images/kernel_for_openwrt"),
+              "kernel image for AP instance");
 
 DEFINE_bool(record_screen, false, "Enable screen recording. "
                                   "Requires --start_webrtc");
@@ -583,6 +592,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_guest_enforce_security(FLAGS_guest_enforce_security);
   tmp_config_obj.set_guest_audit_security(FLAGS_guest_audit_security);
   tmp_config_obj.set_extra_kernel_cmdline(FLAGS_extra_kernel_cmdline);
+  tmp_config_obj.set_extra_bootconfig_args(FLAGS_extra_bootconfig_args);
 
   if (FLAGS_console) {
     SetCommandLineOptionWithMode("enable_sandbox", "false", SET_FLAGS_DEFAULT);
@@ -801,9 +811,13 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
         FLAGS_vhost_user_mac80211_hwsim.empty() && is_first_instance;
     if (start_wmediumd) {
       // TODO(b/199020470) move this to the directory for shared resources
-      auto socket_path =
+      auto vhost_user_socket_path =
           const_instance.PerInstanceInternalPath("vhost_user_mac80211");
-      tmp_config_obj.set_vhost_user_mac80211_hwsim(socket_path);
+      auto wmediumd_api_socket_path =
+          const_instance.PerInstanceInternalPath("wmediumd_api_server");
+
+      tmp_config_obj.set_vhost_user_mac80211_hwsim(vhost_user_socket_path);
+      tmp_config_obj.set_wmediumd_api_server_socket(wmediumd_api_socket_path);
       instance.set_start_wmediumd(true);
     } else {
       instance.set_start_wmediumd(false);
@@ -830,6 +844,12 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     }
   } // end of num_instances loop
 
+  std::vector<std::string> names;
+  for (const auto& instance : tmp_config_obj.Instances()) {
+    names.emplace_back(instance.instance_name());
+  }
+  tmp_config_obj.set_instance_names(names);
+
   tmp_config_obj.set_enable_sandbox(FLAGS_enable_sandbox);
 
   // Audio is not available for Arm64
@@ -853,6 +873,8 @@ void SetDefaultFlagsForQemu(Arch target_arch) {
   std::string default_bootloader =
       DefaultHostArtifactsPath("etc/bootloader_");
   if(target_arch == Arch::Arm) {
+      // Bootloader is unstable >512MB RAM on 32-bit ARM
+      SetCommandLineOptionWithMode("memory_mb", "512", SET_FLAGS_VALUE);
       default_bootloader += "arm";
   } else if (target_arch == Arch::Arm64) {
       default_bootloader += "aarch64";
