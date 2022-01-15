@@ -35,7 +35,6 @@
 #include "host/libs/config/bootconfig_args.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/data_image.h"
-#include "host/libs/image_aggregator/image_aggregator.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
 
 // Taken from external/avb/libavb/avb_slot_verify.c; this define is not in the headers
@@ -78,6 +77,7 @@ DEFINE_int32(blank_metadata_image_mb, 16,
 DEFINE_int32(blank_sdcard_image_mb, 2048,
              "If enabled, the size of the blank sdcard image to generate, MB.");
 
+DECLARE_string(ap_rootfs_image);
 DECLARE_string(bootloader);
 DECLARE_bool(use_sdcard);
 DECLARE_string(initramfs_path);
@@ -131,8 +131,17 @@ bool ResolveInstanceFiles() {
 
   return true;
 }
-
-std::vector<ImagePartition> os_composite_disk_config() {
+void create_overlay_image(const CuttlefishConfig& config,
+                          std::string overlay_path) {
+  bool missingOverlay = !FileExists(overlay_path);
+  bool newOverlay = FileModificationTime(overlay_path) <
+                    FileModificationTime(config.os_composite_disk_path());
+  if (missingOverlay || !FLAGS_resume || newOverlay) {
+    CreateQcowOverlay(config.crosvm_binary(), config.os_composite_disk_path(),
+                      overlay_path);
+  }
+}
+std::vector<ImagePartition> GetOsCompositeDiskConfig() {
   std::vector<ImagePartition> partitions;
   partitions.push_back(ImagePartition{
       .label = "misc",
@@ -204,6 +213,13 @@ std::vector<ImagePartition> os_composite_disk_config() {
     partitions.push_back(ImagePartition{
         .label = "otheros_root",
         .image_file_path = FLAGS_otheros_root_image,
+        .read_only = true,
+    });
+  }
+  if (!FLAGS_ap_rootfs_image.empty()) {
+    partitions.push_back(ImagePartition{
+        .label = "ap_rootfs",
+        .image_file_path = FLAGS_ap_rootfs_image,
         .read_only = true,
     });
   }
@@ -292,7 +308,7 @@ bool ShouldCreateCompositeDisk(const std::string& composite_disk_path,
 
 bool ShouldCreateOsCompositeDisk(const CuttlefishConfig& config) {
   return ShouldCreateCompositeDisk(config.os_composite_disk_path(),
-                                   os_composite_disk_config());
+                                   GetOsCompositeDiskConfig());
 }
 
 static uint64_t AvailableSpaceAtPath(const std::string& path) {
@@ -340,12 +356,12 @@ bool CreateOsCompositeDisk(const CuttlefishConfig& config) {
         config.AssemblyPath("os_composite_gpt_header.img");
     std::string footer_path =
         config.AssemblyPath("os_composite_gpt_footer.img");
-    CreateCompositeDisk(os_composite_disk_config(), header_path, footer_path,
+    CreateCompositeDisk(GetOsCompositeDiskConfig(), header_path, footer_path,
                         config.os_composite_disk_path());
   } else {
     // If this doesn't fit into the disk, it will fail while aggregating. The
     // aggregator doesn't maintain any sparse attributes.
-    AggregateImage(os_composite_disk_config(), config.os_composite_disk_path());
+    AggregateImage(GetOsCompositeDiskConfig(), config.os_composite_disk_path());
   }
   return true;
 }
@@ -511,6 +527,130 @@ class InitializeMetadataImage : public Feature {
   }
 };
 
+class InitializeAccessKregistryImage : public Feature {
+ public:
+  INJECT(InitializeAccessKregistryImage(
+      const CuttlefishConfig& config,
+      const CuttlefishConfig::InstanceSpecific& instance))
+      : config_(config), instance_(instance) {}
+
+  // Feature
+  std::string Name() const override { return "InitializeAccessKregistryImage"; }
+  bool Enabled() const override { return !config_.protected_vm(); }
+
+ private:
+  std::unordered_set<Feature*> Dependencies() const override { return {}; }
+  bool Setup() {
+    if (FileExists(instance_.access_kregistry_path())) {
+      return true;
+    }
+    bool success =
+        CreateBlankImage(instance_.access_kregistry_path(), 2 /* mb */, "none");
+    if (!success) {
+      LOG(ERROR) << "Failed to create access_kregistry_path \""
+                 << instance_.access_kregistry_path() << "\"";
+      return false;
+    }
+    return true;
+  }
+
+  const CuttlefishConfig& config_;
+  const CuttlefishConfig::InstanceSpecific& instance_;
+};
+
+class InitializePstore : public Feature {
+ public:
+  INJECT(InitializePstore(const CuttlefishConfig& config,
+                          const CuttlefishConfig::InstanceSpecific& instance))
+      : config_(config), instance_(instance) {}
+
+  // Feature
+  std::string Name() const override { return "InitializePstore"; }
+  bool Enabled() const override { return !config_.protected_vm(); }
+
+ private:
+  std::unordered_set<Feature*> Dependencies() const override { return {}; }
+  bool Setup() {
+    if (FileExists(instance_.pstore_path())) {
+      return true;
+    }
+    bool success =
+        CreateBlankImage(instance_.pstore_path(), 2 /* mb */, "none");
+    if (!success) {
+      LOG(ERROR) << "Failed to create pstore_path \"" << instance_.pstore_path()
+                 << "\"";
+      return false;
+    }
+    return true;
+  }
+
+  const CuttlefishConfig& config_;
+  const CuttlefishConfig::InstanceSpecific& instance_;
+};
+
+class InitializeSdCard : public Feature {
+ public:
+  INJECT(InitializeSdCard(const CuttlefishConfig& config,
+                          const CuttlefishConfig::InstanceSpecific& instance))
+      : config_(config), instance_(instance) {}
+
+  // Feature
+  std::string Name() const override { return "InitializeSdCard"; }
+  bool Enabled() const override {
+    return FLAGS_use_sdcard && !config_.protected_vm();
+  }
+
+ private:
+  std::unordered_set<Feature*> Dependencies() const override { return {}; }
+  bool Setup() {
+    if (FileExists(instance_.sdcard_path())) {
+      return true;
+    }
+    bool success = CreateBlankImage(instance_.sdcard_path(),
+                                    FLAGS_blank_sdcard_image_mb, "sdcard");
+    if (!success) {
+      LOG(ERROR) << "Failed to create sdcard \"" << instance_.sdcard_path()
+                 << "\"";
+      return false;
+    }
+    return true;
+  }
+
+  const CuttlefishConfig& config_;
+  const CuttlefishConfig::InstanceSpecific& instance_;
+};
+
+class InitializeFactoryResetProtected : public Feature {
+ public:
+  INJECT(InitializeFactoryResetProtected(
+      const CuttlefishConfig& config,
+      const CuttlefishConfig::InstanceSpecific& instance))
+      : config_(config), instance_(instance) {}
+
+  // Feature
+  std::string Name() const override { return "InitializeSdCard"; }
+  bool Enabled() const override { return !config_.protected_vm(); }
+
+ private:
+  std::unordered_set<Feature*> Dependencies() const override { return {}; }
+  bool Setup() {
+    if (FileExists(instance_.factory_reset_protected_path())) {
+      return true;
+    }
+    bool success = CreateBlankImage(instance_.factory_reset_protected_path(),
+                                    1 /* mb */, "none");
+    if (!success) {
+      LOG(ERROR) << "Failed to create FRP \""
+                 << instance_.factory_reset_protected_path() << "\"";
+      return false;
+    }
+    return true;
+  }
+
+  const CuttlefishConfig& config_;
+  const CuttlefishConfig::InstanceSpecific& instance_;
+};
+
 static fruit::Component<> DiskChangesComponent(const FetcherConfig* fetcher,
                                                const CuttlefishConfig* config) {
   return fruit::createComponent()
@@ -522,6 +662,20 @@ static fruit::Component<> DiskChangesComponent(const FetcherConfig* fetcher,
       .install(InitializeMiscImageComponent)
       .install(FixedDataImagePathComponent, &FLAGS_data_image)
       .install(InitializeDataImageComponent);
+}
+
+static fruit::Component<> DiskChangesPerInstanceComponent(
+    const FetcherConfig* fetcher, const CuttlefishConfig* config,
+    const CuttlefishConfig::InstanceSpecific* instance) {
+  return fruit::createComponent()
+      .bindInstance(*fetcher)
+      .bindInstance(*config)
+      .bindInstance(*instance)
+      .addMultibinding<Feature, InitializeAccessKregistryImage>()
+      .addMultibinding<Feature, InitializePstore>()
+      .addMultibinding<Feature, InitializeSdCard>()
+      .addMultibinding<Feature, InitializeFactoryResetProtected>()
+      .install(InitBootloaderEnvPartitionComponent);
 }
 
 void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
@@ -540,33 +694,21 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
         << "Failed to create esp image";
   }
 
+  for (const auto& instance : config.Instances()) {
+    fruit::Injector<> instance_injector(DiskChangesPerInstanceComponent,
+                                        &fetcher_config, &config, &instance);
+    const auto& instance_features =
+        instance_injector.getMultibindings<Feature>();
+    CHECK(Feature::RunSetup(instance_features))
+        << "Failed to run instance feature setup.";
+  }
+
   // If we are booting a protected VM, for now, assume we want a super minimal
   // environment with no userdata encryption, limited debug, no FRP emulation, a
   // static env for the bootloader, no SD-Card and no resume-on-reboot HAL
   // support.
   if (!FLAGS_protected_vm) {
     for (const auto& instance : config.Instances()) {
-      if (!FileExists(instance.access_kregistry_path())) {
-        CreateBlankImage(instance.access_kregistry_path(), 2 /* mb */, "none");
-      }
-
-      if (!FileExists(instance.pstore_path())) {
-        CreateBlankImage(instance.pstore_path(), 2 /* mb */, "none");
-      }
-
-      if (FLAGS_use_sdcard && !FileExists(instance.sdcard_path())) {
-        CreateBlankImage(instance.sdcard_path(),
-                         FLAGS_blank_sdcard_image_mb, "sdcard");
-      }
-
-      CHECK(InitBootloaderEnvPartition(config, instance))
-          << "Failed to create bootloader environment partition";
-
-      const auto frp = instance.factory_reset_protected_path();
-      if (!FileExists(frp)) {
-        CreateBlankImage(frp, 1 /* mb */, "none");
-      }
-
       GeneratePersistentBootconfig(config, instance);
     }
   }
@@ -607,7 +749,7 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
   bool oldOsCompositeDisk = ShouldCreateOsCompositeDisk(config);
   bool osCompositeMatchesDiskConfig = DoesCompositeMatchCurrentDiskConfig(
       config.AssemblyPath("os_composite_disk_config.txt"),
-      os_composite_disk_config());
+      GetOsCompositeDiskConfig());
   if (!osCompositeMatchesDiskConfig || oldOsCompositeDisk || !FLAGS_resume) {
     CHECK(CreateOsCompositeDisk(config))
         << "Failed to create OS composite disk";
@@ -630,13 +772,10 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
 
   if (!FLAGS_protected_vm) {
     for (auto instance : config.Instances()) {
-      auto overlay_path = instance.PerInstancePath("overlay.img");
-      bool missingOverlay = !FileExists(overlay_path);
-      bool newOverlay = FileModificationTime(overlay_path) <
-                        FileModificationTime(config.os_composite_disk_path());
-      if (missingOverlay || !FLAGS_resume || newOverlay) {
-        CreateQcowOverlay(config.crosvm_binary(),
-                          config.os_composite_disk_path(), overlay_path);
+      create_overlay_image(config, instance.PerInstancePath("overlay.img"));
+      if (instance.start_ap()) {
+        create_overlay_image(config,
+                             instance.PerInstancePath("ap_overlay.img"));
       }
     }
   }

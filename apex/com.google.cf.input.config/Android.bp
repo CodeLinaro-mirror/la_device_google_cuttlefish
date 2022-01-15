@@ -1,4 +1,3 @@
-//
 // Copyright (C) 2021 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,25 +16,22 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-cc_binary {
-    name: "mk_cdisk",
-    srcs: [
-        "mk_cdisk.cc",
+apex {
+    name: "com.google.cf.input.config",
+    // InputDevice expects input config files in /apex/com.android.input.config/etc
+    apex_name: "com.android.input.config",
+    manifest: "apex_manifest.json",
+    key: "com.google.cf.apex.key",
+    certificate: ":com.google.cf.apex.certificate",
+    file_contexts: "file_contexts",
+    use_vndk_as_stable: true,
+    updatable: false,
+    // Install the apex in /vendor/apex
+    soc_specific: true,
+    prebuilts: [
+        "Crosvm_Virtio_Multitouch_Touchscreen_0.idc",
+        "Crosvm_Virtio_Multitouch_Touchscreen_1.idc",
+        "Crosvm_Virtio_Multitouch_Touchscreen_2.idc",
+        "Crosvm_Virtio_Multitouch_Touchscreen_3.idc",
     ],
-    shared_libs: [
-        "libcuttlefish_fs",
-        "libcuttlefish_utils",
-        "libbase",
-        "libjsoncpp",
-        "liblog",
-        "libz",
-    ],
-    static_libs: [
-        "libcdisk_spec",
-        "libext2_uuid",
-        "libimage_aggregator",
-        "libprotobuf-cpp-lite",
-        "libsparse",
-    ],
-    defaults: ["cuttlefish_host"],
 }

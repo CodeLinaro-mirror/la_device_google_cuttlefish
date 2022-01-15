@@ -17,29 +17,30 @@
 body {
   background-color:black;
   margin: 0;
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+#device-selector {
+  color: whitesmoke;
+}
+#device-selector li.device-entry {
+  cursor: pointer;
+}
+
+#refresh-list {
+  cursor: pointer;
+}
+
+#device-list .device-entry button {
+  margin-left: 10px;
 }
 
 #device-connection {
-  display: none;
+  visibility: hidden;
   max-height: 100vh;
 }
 
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-#loader {
-  border-left: 12px solid #4285F4;
-  border-top: 12px solid #34A853;
-  border-right: 12px solid #FBBC05;
-  border-bottom: 12px solid #EA4335;
-  border-radius: 50%;
-  width: 70px;
-  height: 70px;
-  animation: spin 1.2s linear infinite;
-  margin: 100px;
-}
 
 /* Top header row. */
 
@@ -48,13 +49,6 @@ body {
   /* Items inside this use a row Flexbox.*/
   display: flex;
   align-items: center;
-}
-
-#camera-control {
-  display: none !important;
-}
-#record-video-control {
-  display: none !important;
 }
 
 #app-controls {
@@ -69,24 +63,6 @@ body {
   height: 44px;
 }
 
-#error-message-div {
-  flex-grow: 1;
-}
-#error-message {
-  color: white;
-  font-family: 'Open Sans', sans-serif;
-  padding: 10px;
-  margin: 10px;
-  display: none;
-}
-#error-message.warning {
-  /* dark red */
-  background-color: #927836;
-}
-#error-message.error {
-  /* dark red */
-  background-color: #900000;
-}
 #status-div {
   flex-grow: 1;
 }

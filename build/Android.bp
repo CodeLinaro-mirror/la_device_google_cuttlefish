@@ -49,6 +49,7 @@ cvd_host_tools = [
     "cvd_internal_status",
     "cvd_internal_stop",
     "cvd_host_bugreport",
+    "cvd_server",
     "cvd_status",
     "extract-ikconfig",
     "extract-vmlinux",
@@ -88,7 +89,13 @@ cvd_host_tools = [
     "webRTC",
     "webrtc_operator",
     "wmediumd",
+    "wmediumd_control",
     "wmediumd_gen_config",
+]
+
+cvd_openwrt_images = [
+    "kernel_for_openwrt",
+    "openwrt_rootfs",
 ]
 
 cvd_bluetooth_config_files = [
@@ -185,7 +192,8 @@ cvd_host_package_customization {
             deps: cvd_host_webrtc_assets +
                 cvd_host_model_simulator_files +
                 cvd_host_qemu_bootloader +
-                cvd_bluetooth_config_files,
+                cvd_bluetooth_config_files +
+                cvd_openwrt_images,
         },
     },
 
