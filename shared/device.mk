@@ -39,6 +39,11 @@ PRODUCT_SHIPPING_API_LEVEL := 33
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
 
+# TODO(b/205788876) remove this condition when openwrt has an image for arm.
+ifndef PRODUCT_ENFORCE_MAC80211_HWSIM
+PRODUCT_ENFORCE_MAC80211_HWSIM := true
+endif
+
 PRODUCT_SET_DEBUGFS_RESTRICTIONS := true
 
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish-opengl # for vulkan
@@ -71,6 +76,8 @@ AB_OTA_PARTITIONS += \
 
 # Enable Virtual A/B
 $(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/compression_with_xor.mk)
+
+PRODUCT_VENDOR_PROPERTIES += ro.virtual_ab.userspace.snapshots.enabled=true
 
 # Enable Scoped Storage related
 $(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
@@ -505,7 +512,7 @@ PRODUCT_PACKAGES += $(LOCAL_CONFIRMATIONUI_PRODUCT_PACKAGE)
 # Dumpstate HAL
 #
 ifeq ($(LOCAL_DUMPSTATE_PRODUCT_PACKAGE),)
-    LOCAL_DUMPSTATE_PRODUCT_PACKAGE := android.hardware.dumpstate@1.1-service.example
+    LOCAL_DUMPSTATE_PRODUCT_PACKAGE += android.hardware.dumpstate-service.example
 endif
 PRODUCT_PACKAGES += $(LOCAL_DUMPSTATE_PRODUCT_PACKAGE)
 
@@ -701,6 +708,17 @@ PRODUCT_COPY_FILES += \
 #ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
 ifeq (false,true)
 PRODUCT_PACKAGES += com.google.cf.wifi
+# Demonstrate multi-installed vendor APEXes by installing another wifi HAL vendor APEX
+# which does not include the passpoint feature XML.
+#
+# The default is set in BoardConfig.mk using bootconfig.
+# This can be changed at CVD launch-time using
+#     --extra_bootconfig_args "androidboot.vendor.apex.com.android.wifi.hal:=X"
+# or post-launch, at runtime using
+#     setprop persist.vendor.apex.com.android.wifi.hal X && reboot
+# where X is the name of the APEX file to use.
+PRODUCT_PACKAGES += com.google.cf.wifi.no-passpoint
+
 $(call add_soong_config_namespace, wpa_supplicant)
 $(call add_soong_config_var_value, wpa_supplicant, platform_version, $(PLATFORM_VERSION))
 $(call add_soong_config_var_value, wpa_supplicant, nl80211_driver, CONFIG_DRIVER_NL80211_QCA)

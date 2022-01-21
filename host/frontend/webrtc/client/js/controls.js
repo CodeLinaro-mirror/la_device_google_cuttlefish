@@ -49,6 +49,152 @@ function createToggleControl(elm, iconName, onChangeCb) {
   };
 }
 
+function createButtonListener(button_id_class, func,
+  deviceConnection, listener) {
+  let buttons = [];
+  let ele = document.getElementById(button_id_class);
+  if (ele != null) {
+    buttons.push(ele);
+  } else {
+    buttons = document.getElementsByClassName(button_id_class);
+  }
+  for (var button of buttons) {
+    if (func != null) {
+      button.onclick = func;
+    }
+    button.addEventListener('mousedown', listener);
+  }
+}
+
+function createInputListener(input_id, func, listener) {
+  input = document.getElementById(input_id);
+  if (func != null) {
+    input.oninput = func;
+  }
+  input.addEventListener('input', listener);
+}
+
+function validateMacAddress(val) {
+  var regex = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
+  return (regex.test(val));
+}
+
+function validateMacWrapper() {
+  let type = document.getElementById('bluetooth-wizard-type').value;
+  let button = document.getElementById("bluetooth-wizard-device");
+  let macField = document.getElementById('bluetooth-wizard-mac');
+  if (this.id == 'bluetooth-wizard-type') {
+    if (type == "remote_loopback") {
+      button.disabled = false;
+      macField.setCustomValidity('');
+      macField.disabled = true;
+      macField.required = false;
+      macField.placeholder = 'N/A';
+      macField.value = '';
+      return;
+    }
+  }
+  macField.disabled = false;
+  macField.required = true;
+  macField.placeholder = 'Device MAC';
+  if (validateMacAddress($(macField).val())) {
+    button.disabled = false;
+    macField.setCustomValidity('');
+  } else {
+    button.disabled = true;
+    macField.setCustomValidity('MAC address invalid');
+  }
+}
+
+$('[validate-mac]').bind('input', validateMacWrapper);
+$('[validate-mac]').bind('select', validateMacWrapper);
+
+function parseDevice(device) {
+  let id, name, mac;
+  var regex = /([0-9]+):([^@ ]*)(@(([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})))?/;
+  if (regex.test(device)) {
+    let regexMatches = device.match(regex);
+    id = regexMatches[1];
+    name = regexMatches[2];
+    mac = regexMatches[4];
+  }
+  if (mac === undefined) {
+    mac = "";
+  }
+  return [id, name, mac];
+}
+
+function btUpdateAdded(devices) {
+  let deviceArr = devices.split('\r\n');
+  let [id, name, mac] = parseDevice(deviceArr[0]);
+  if (name) {
+    let div = document.getElementById('bluetooth-wizard-confirm').getElementsByClassName('bluetooth-text')[1];
+    div.innerHTML = "";
+    div.innerHTML += "<p>Name: <b>" + id + "</b></p>";
+    div.innerHTML += "<p>Type: <b>" + name + "</b></p>";
+    div.innerHTML += "<p>MAC Addr: <b>" + mac + "</b></p>";
+    return true;
+  }
+  return false;
+}
+
+function parsePhy(phy) {
+  let id = phy.substring(0, phy.indexOf(":"));
+  phy = phy.substring(phy.indexOf(":") + 1);
+  let name = phy.substring(0, phy.indexOf(":"));
+  let devices = phy.substring(phy.indexOf(":") + 1);
+  return [id, name, devices];
+}
+
+function btParsePhys(phys) {
+  if (phys.indexOf("Phys:") < 0) {
+    return null;
+  }
+  let phyDict = {};
+  phys = phys.split('Phys:')[1];
+  let phyArr = phys.split('\r\n');
+  for (var phy of phyArr.slice(1)) {
+    phy = phy.trim();
+    if (phy.length == 0 || phy.indexOf("deleted") >= 0) {
+      continue;
+    }
+    let [id, name, devices] = parsePhy(phy);
+    phyDict[name] = id;
+  }
+  return phyDict;
+}
+
+function btUpdateDeviceList(devices) {
+  let deviceArr = devices.split('\r\n');
+  if (deviceArr[0].indexOf("Devices:") >= 0) {
+    let div = document.getElementById('bluetooth-list').getElementsByClassName('bluetooth-text')[0];
+    div.innerHTML = "";
+    let count = 0;
+    for (var device of deviceArr.slice(1)) {
+      if (device.indexOf("Phys:") >= 0) {
+        break;
+      }
+      count++;
+      if (device.indexOf("deleted") >= 0) {
+        continue;
+      }
+      let [id, name, mac] = parseDevice(device);
+      let innerDiv = '<div><button title="Delete" data-device-id="'
+      innerDiv += id;
+      innerDiv += '" class="bluetooth-list-trash material-icons">delete</button>';
+      innerDiv += name;
+      if (mac) {
+        innerDiv += " | "
+        innerDiv += mac;
+      }
+      innerDiv += '</div>';
+      div.innerHTML += innerDiv;
+    }
+    return count;
+  }
+  return -1;
+}
+
 function createControlPanelButton(
     command, title, icon_name, listener,
     parent_id = 'control-panel-default-buttons') {
@@ -71,15 +217,23 @@ function createControlPanelButton(
   return button;
 }
 
-function createModalButton(button_id, modal_id, close_id) {
+function positionModal(button_id, modal_id) {
   const modalButton = document.getElementById(button_id);
   const modalDiv = document.getElementById(modal_id);
-  const modalHeader = modalDiv.querySelector('.modal-header');
-  const modalClose = document.getElementById(close_id);
 
   // Position the modal to the right of the show modal button.
   modalDiv.style.top = modalButton.offsetTop;
   modalDiv.style.left = modalButton.offsetWidth + 30;
+}
+
+function createModalButton(button_id, modal_id, close_id, hide_id) {
+  const modalButton = document.getElementById(button_id);
+  const modalDiv = document.getElementById(modal_id);
+  const modalHeader = modalDiv.querySelector('.modal-header');
+  const modalClose = document.getElementById(close_id);
+  const modalDivHide = document.getElementById(hide_id);
+
+  positionModal(button_id, modal_id);
 
   function showHideModal(show) {
     if (show) {
@@ -88,6 +242,9 @@ function createModalButton(button_id, modal_id, close_id) {
     } else {
       modalButton.classList.remove('modal-button-opened')
       modalDiv.style.display = 'none';
+    }
+    if (modalDivHide != null) {
+      modalDivHide.style.display = 'none';
     }
   }
   // Allow the show modal button to toggle the modal,
