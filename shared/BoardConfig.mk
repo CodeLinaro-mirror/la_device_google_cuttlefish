@@ -58,12 +58,12 @@ TARGET_COPY_OUT_ODM := odm
 
 # Build a separate vendor_dlkm partition
 BOARD_USES_VENDOR_DLKMIMAGE := true
-BOARD_VENDOR_DLKMIMAGE_FILE_SYSTEM_TYPE := ext4
+BOARD_VENDOR_DLKMIMAGE_FILE_SYSTEM_TYPE := $(TARGET_RO_FILE_SYSTEM_TYPE)
 TARGET_COPY_OUT_VENDOR_DLKM := vendor_dlkm
 
 # Build a separate odm_dlkm partition
 BOARD_USES_ODM_DLKMIMAGE := true
-BOARD_ODM_DLKMIMAGE_FILE_SYSTEM_TYPE := ext4
+BOARD_ODM_DLKMIMAGE_FILE_SYSTEM_TYPE := $(TARGET_RO_FILE_SYSTEM_TYPE)
 TARGET_COPY_OUT_ODM_DLKM := odm_dlkm
 
 # Enable AVB
@@ -228,6 +228,9 @@ BOARD_BOOTCONFIG += kernel.mac80211_hwsim.radios=0
 # Reduce slab size usage from virtio vsock to reduce slab fragmentation
 BOARD_BOOTCONFIG += \
     kernel.vmw_vsock_virtio_transport_common.virtio_transport_max_vsock_pkt_buf_size=16384
+
+BOARD_BOOTCONFIG += \
+    androidboot.vendor.apex.com.android.wifi.hal=com.google.cf.wifi
 
 BOARD_INCLUDE_DTB_IN_BOOTIMG := true
 BOARD_BOOT_HEADER_VERSION := 4

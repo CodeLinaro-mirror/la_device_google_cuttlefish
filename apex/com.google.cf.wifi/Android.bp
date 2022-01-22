@@ -30,8 +30,8 @@ prebuilt_etc {
     installable: false,
 }
 
-apex {
-    name: "com.google.cf.wifi",
+apex_defaults {
+    name: "com.google.cf.wifi.defaults",
     // Name expected by wpa_supplicant when it looks for config files.
     apex_name: "com.android.wifi.hal",
     manifest: "apex_manifest.json",
@@ -48,7 +48,6 @@ apex {
         "wpa_supplicant_cf",
     ],
     prebuilts: [
-        "android.hardware.wifi.passpoint.prebuilt.xml",
         "android.hardware.wifi.prebuilt.xml",
         "com.google.cf.wifi.rc",
         "wpa_supplicant.conf.cf",
@@ -58,4 +57,18 @@ apex {
     vintf_fragments: ["com.google.cf.wifi.xml"],
     // TODO(b/206847027): Re-enable building this vendor APEX.
     enabled: false,
+}
+
+apex {
+    name: "com.google.cf.wifi",
+    defaults: ["com.google.cf.wifi.defaults"],
+    prebuilts: [
+        "android.hardware.wifi.passpoint.prebuilt.xml",
+    ],
+}
+
+apex {
+    name: "com.google.cf.wifi.no-passpoint",
+    defaults: ["com.google.cf.wifi.defaults"],
+    multi_install_skip_symbol_files: true,
 }
