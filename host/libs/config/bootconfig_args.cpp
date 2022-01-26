@@ -141,11 +141,6 @@ std::vector<std::string> BootconfigArgsFromConfig(
                instance.audiocontrol_server_port()));
   }
 
-  if (instance.frames_server_port()) {
-    bootconfig_args.push_back(concat("androidboot.vsock_frames_port=",
-                                     instance.frames_server_port()));
-  }
-
   if (instance.camera_server_port()) {
     bootconfig_args.push_back(concat("androidboot.vsock_camera_port=",
                                      instance.camera_server_port()));
@@ -165,15 +160,13 @@ std::vector<std::string> BootconfigArgsFromConfig(
   bootconfig_args.push_back(
       concat("androidboot.wifi_mac_prefix=", instance.wifi_mac_prefix()));
 
-  bootconfig_args.push_back("androidboot.verifiedbootstate=orange");
-
   // Non-native architecture implies a significantly slower execution speed, so
   // set a large timeout multiplier.
   if (!IsHostCompatible(config.target_arch())) {
     bootconfig_args.push_back("androidboot.hw_timeout_multiplier=50");
   }
 
-  // TODO(b/173815685): Create an extra_bootconfig flag and add it to bootconfig
+  AppendVector(&bootconfig_args, config.extra_bootconfig_args());
 
   return bootconfig_args;
 }

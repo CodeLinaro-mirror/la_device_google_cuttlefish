@@ -40,6 +40,7 @@ using cuttlefish::HostBinaryPath;
 using cuttlefish::StringFromEnv;
 using cuttlefish::vm_manager::CrosvmManager;
 using google::FlagSettingMode::SET_FLAGS_DEFAULT;
+using google::FlagSettingMode::SET_FLAGS_VALUE;
 
 DEFINE_int32(cpus, 2, "Virtual CPU count.");
 DEFINE_string(data_policy, "use_existing", "How to handle userdata partition."
@@ -81,6 +82,10 @@ DEFINE_string(kernel_path, "",
 DEFINE_string(initramfs_path, "", "Path to the initramfs");
 DEFINE_string(extra_kernel_cmdline, "",
               "Additional flags to put on the kernel command line");
+DEFINE_string(extra_bootconfig_args, "",
+              "Space-separated list of extra bootconfig args. "
+              "Note: overwriting an existing bootconfig argument "
+              "requires ':=' instead of '='.");
 DEFINE_bool(guest_enforce_security, true,
             "Whether to run in enforcing mode (non permissive).");
 DEFINE_bool(guest_audit_security, true,
@@ -102,10 +107,6 @@ DEFINE_string(gpu_capture_binary, "",
 DEFINE_bool(deprecated_boot_completed, false, "Log boot completed message to"
             " host kernel. This is only used during transition of our clients."
             " Will be deprecated soon.");
-DEFINE_bool(start_vnc_server, false, "Whether to start the vnc server process. "
-                                     "The VNC server runs at port 6443 + i for "
-                                     "the vsoc-i user or CUTTLEFISH_INSTANCE=i, "
-                                     "starting from 1.");
 
 DEFINE_bool(use_allocd, false,
             "Acquire static resources from the resource allocator daemon.");
@@ -227,8 +228,6 @@ DEFINE_bool(daemon, false,
             "Run cuttlefish in background, the launcher exits on boot "
             "completed/failed");
 
-DEFINE_string(device_title, "", "Human readable name for the instance, "
-              "used by the vnc_server for its server title");
 DEFINE_string(setupwizard_mode, "DISABLED",
             "One of DISABLED,OPTIONAL,REQUIRED");
 
@@ -277,8 +276,12 @@ DEFINE_string(wmediumd_config, "",
               "Path to the wmediumd config file. When missing, the default "
               "configuration is used which adds MAC addresses for up to 16 "
               "cuttlefish instances including AP.");
-DEFINE_string(ap_rootfs_image, "", "rootfs image for AP instance");
-DEFINE_string(ap_kernel_image, "", "kernel image for AP instance");
+DEFINE_string(ap_rootfs_image,
+              DefaultHostArtifactsPath("etc/openwrt/images/openwrt_rootfs"),
+              "rootfs image for AP instance");
+DEFINE_string(ap_kernel_image,
+              DefaultHostArtifactsPath("etc/openwrt/images/kernel_for_openwrt"),
+              "kernel image for AP instance");
 
 DEFINE_bool(record_screen, false, "Enable screen recording. "
                                   "Requires --start_webrtc");
@@ -337,11 +340,6 @@ std::pair<uint16_t, uint16_t> ParsePortRange(const std::string& flag) {
   ss.read(&c, 1);
   ss >> port_range.second;
   return port_range;
-}
-
-int NumStreamers() {
-  auto start_flags = {FLAGS_start_vnc_server, FLAGS_start_webrtc};
-  return std::count(start_flags.begin(), start_flags.end(), true);
 }
 
 std::string StrForInstance(const std::string& prefix, int num) {
@@ -462,9 +460,6 @@ void ReadKernelConfig(KernelConfig* kernel_config) {
 CuttlefishConfig InitializeCuttlefishConfiguration(
     const std::string& instance_dir, int modem_simulator_count,
     KernelConfig kernel_config, fruit::Injector<>& injector) {
-  // At most one streamer can be started.
-  CHECK(NumStreamers() <= 1);
-
   CuttlefishConfig tmp_config_obj;
 
   for (const auto& fragment : injector.getMultibindings<ConfigFragment>()) {
@@ -597,6 +592,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_guest_enforce_security(FLAGS_guest_enforce_security);
   tmp_config_obj.set_guest_audit_security(FLAGS_guest_audit_security);
   tmp_config_obj.set_extra_kernel_cmdline(FLAGS_extra_kernel_cmdline);
+  tmp_config_obj.set_extra_bootconfig_args(FLAGS_extra_bootconfig_args);
 
   if (FLAGS_console) {
     SetCommandLineOptionWithMode("enable_sandbox", "false", SET_FLAGS_DEFAULT);
@@ -612,8 +608,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_qemu_binary_dir(FLAGS_qemu_binary_dir);
   tmp_config_obj.set_crosvm_binary(FLAGS_crosvm_binary);
   tmp_config_obj.set_tpm_device(FLAGS_tpm_device);
-
-  tmp_config_obj.set_enable_vnc_server(FLAGS_start_vnc_server);
 
   tmp_config_obj.set_seccomp_policy_dir(FLAGS_seccomp_policy_dir);
 
@@ -736,7 +730,8 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     instance.set_uuid(FLAGS_uuid);
 
     instance.set_modem_simulator_host_id(1000 + num);  // Must be 4 digits
-    instance.set_vnc_server_port(6444 + num - 1);
+    // the deprecated vnc was 6444 + num - 1, and qemu_vnc was vnc - 5900
+    instance.set_qemu_vnc_server_port(544 + num - 1);
     instance.set_adb_host_port(6520 + num - 1);
     instance.set_adb_ip_and_port("0.0.0.0:" + std::to_string(6520 + num - 1));
     instance.set_confui_host_vsock_port(7700 + num - 1);
@@ -747,7 +742,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
     if (tmp_config_obj.gpu_mode() != kGpuModeDrmVirgl &&
         tmp_config_obj.gpu_mode() != kGpuModeGfxStream) {
-        instance.set_frames_server_port(calc_vsock_port(6900));
       if (FLAGS_vm_manager == QemuManager::name()) {
         instance.set_keyboard_server_port(calc_vsock_port(7000));
         instance.set_touch_server_port(calc_vsock_port(7100));
@@ -769,7 +763,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
         FLAGS_bluetooth_default_commands_file);
 
     instance.set_camera_server_port(FLAGS_camera_server_port);
-    instance.set_device_title(FLAGS_device_title);
 
     if (FLAGS_protected_vm) {
       instance.set_virtual_disk_paths(
@@ -818,9 +811,13 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
         FLAGS_vhost_user_mac80211_hwsim.empty() && is_first_instance;
     if (start_wmediumd) {
       // TODO(b/199020470) move this to the directory for shared resources
-      auto socket_path =
+      auto vhost_user_socket_path =
           const_instance.PerInstanceInternalPath("vhost_user_mac80211");
-      tmp_config_obj.set_vhost_user_mac80211_hwsim(socket_path);
+      auto wmediumd_api_socket_path =
+          const_instance.PerInstanceInternalPath("wmediumd_api_server");
+
+      tmp_config_obj.set_vhost_user_mac80211_hwsim(vhost_user_socket_path);
+      tmp_config_obj.set_wmediumd_api_server_socket(wmediumd_api_socket_path);
       instance.set_start_wmediumd(true);
     } else {
       instance.set_start_wmediumd(false);
@@ -847,14 +844,18 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     }
   } // end of num_instances loop
 
+  std::vector<std::string> names;
+  for (const auto& instance : tmp_config_obj.Instances()) {
+    names.emplace_back(instance.instance_name());
+  }
+  tmp_config_obj.set_instance_names(names);
+
   tmp_config_obj.set_enable_sandbox(FLAGS_enable_sandbox);
 
-  // Audio is not available for VNC server
+  // Audio is not available for Arm64
   SetCommandLineOptionWithMode(
       "enable_audio",
-      (FLAGS_start_vnc_server || (cuttlefish::HostArch() == cuttlefish::Arch::Arm64))
-          ? "false"
-          : "true",
+      (cuttlefish::HostArch() == cuttlefish::Arch::Arm64) ? "false" : "true",
       SET_FLAGS_DEFAULT);
   tmp_config_obj.set_enable_audio(FLAGS_enable_audio);
 
@@ -863,7 +864,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
 void SetDefaultFlagsForQemu(Arch target_arch) {
   // for now, we don't set non-default options for QEMU
-  if (FLAGS_gpu_mode == kGpuModeGuestSwiftshader && NumStreamers() == 0) {
+  if (FLAGS_gpu_mode == kGpuModeGuestSwiftshader && !FLAGS_start_webrtc) {
     // This makes WebRTC the default streamer unless the user requests
     // another via a --star_<streamer> flag, while at the same time it's
     // possible to run without any streamer by setting --start_webrtc=false.
@@ -872,6 +873,8 @@ void SetDefaultFlagsForQemu(Arch target_arch) {
   std::string default_bootloader =
       DefaultHostArtifactsPath("etc/bootloader_");
   if(target_arch == Arch::Arm) {
+      // Bootloader is unstable >512MB RAM on 32-bit ARM
+      SetCommandLineOptionWithMode("memory_mb", "512", SET_FLAGS_VALUE);
       default_bootloader += "arm";
   } else if (target_arch == Arch::Arm64) {
       default_bootloader += "aarch64";
@@ -884,7 +887,7 @@ void SetDefaultFlagsForQemu(Arch target_arch) {
 }
 
 void SetDefaultFlagsForCrosvm() {
-  if (NumStreamers() == 0) {
+  if (!FLAGS_start_webrtc) {
     // This makes WebRTC the default streamer unless the user requests
     // another via a --star_<streamer> flag, while at the same time it's
     // possible to run without any streamer by setting --start_webrtc=false.

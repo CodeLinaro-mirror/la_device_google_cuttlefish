@@ -34,10 +34,10 @@ cvd_host_tools = [
     "android.hardware.automotive.vehicle@2.0-virtualization-grpc-server",
     "adb",
     "adb_connector",
-    "adbshell",
     "allocd",
     "allocd_client",
     "assemble_cvd",
+    "avbtool",
     "bt_connector",
     "common_crosvm",
     "config_server",
@@ -49,6 +49,7 @@ cvd_host_tools = [
     "cvd_internal_status",
     "cvd_internal_stop",
     "cvd_host_bugreport",
+    "cvd_server",
     "cvd_status",
     "extract-ikconfig",
     "extract-vmlinux",
@@ -85,11 +86,16 @@ cvd_host_tools = [
     "tombstone_receiver",
     "toybox",
     "unpack_bootimg",
-    "vnc_server",
     "webRTC",
     "webrtc_operator",
     "wmediumd",
+    "wmediumd_control",
     "wmediumd_gen_config",
+]
+
+cvd_openwrt_images = [
+    "kernel_for_openwrt",
+    "openwrt_rootfs",
 ]
 
 cvd_bluetooth_config_files = [
@@ -105,14 +111,18 @@ cvd_host_tests = [
 cvd_host_webrtc_assets = [
     "webrtc_adb.js",
     "webrtc_app.js",
+    "webrtc_index.js",
     "webrtc_controls.js",
     "webrtc_cf.js",
+    "webrtc_server_connector.js",
     "webrtc_index.html",
+    "webrtc_client.html",
     "webrtc_rootcanal.js",
     "webrtc_server.crt",
     "webrtc_server.key",
     "webrtc_server.p12",
     "webrtc_style.css",
+    "webrtc_index.css",
     "webrtc_controls.css",
     "webrtc_trusted.pem",
 ]
@@ -182,7 +192,8 @@ cvd_host_package_customization {
             deps: cvd_host_webrtc_assets +
                 cvd_host_model_simulator_files +
                 cvd_host_qemu_bootloader +
-                cvd_bluetooth_config_files,
+                cvd_bluetooth_config_files +
+                cvd_openwrt_images,
         },
     },
 

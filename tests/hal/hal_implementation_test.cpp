@@ -25,8 +25,8 @@ using namespace android;
 
 // clang-format off
 static const std::set<std::string> kKnownMissingHidl = {
-    "android.frameworks.bufferhub@1.0",
     "android.frameworks.cameraservice.device@2.1",
+    "android.frameworks.displayservice@1.0", // deprecated, see b/141930622
     "android.frameworks.schedulerservice@1.0", // deprecated, see b/37226359
     "android.frameworks.vr.composer@1.0",
     "android.frameworks.vr.composer@2.0",
@@ -48,6 +48,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.automotive.vehicle@2.0",
     "android.hardware.biometrics.fingerprint@2.3",
     "android.hardware.bluetooth.a2dp@1.0",
+    "android.hardware.bluetooth.audio@2.2",
     "android.hardware.broadcastradio@1.1",
     "android.hardware.broadcastradio@2.0",
     "android.hardware.cas.native@1.0",
@@ -60,7 +61,6 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.graphics.allocator@3.0",
     "android.hardware.graphics.bufferqueue@1.0",
     "android.hardware.graphics.bufferqueue@2.0",
-    "android.hardware.graphics.composer@2.4",
     "android.hardware.graphics.mapper@2.1",
     "android.hardware.graphics.mapper@3.0",
     "android.hardware.health.storage@1.0", // converted to AIDL, see b/177470478
@@ -110,6 +110,7 @@ struct VersionedAidlPackage {
 
 static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     // types-only packages, which never expect a default implementation
+    {"android.hardware.audio.common.", 1},
     {"android.hardware.biometrics.common.", 1},
     {"android.hardware.common.", 1},
     {"android.hardware.common.", 2},
@@ -150,6 +151,9 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     // This version needs to be implemented (b/190505425)
     {"android.system.keystore2.", 2},
 
+    // This version needs to be implemented (b/177269435)
+    {"android.hardware.health.", 1},
+
     // These versions need to be implemented (b/198331776)
     {"android.hardware.radio.", 1},
     {"android.hardware.radio.data.", 1},
@@ -164,6 +168,9 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
 
     // No implementations on cuttlefish for wifi aidl hal
     {"android.hardware.wifi.hostapd.", 1},
+
+    // types-only packages, which never expect a default implementation
+    {"android.hardware.uwb.fira_android.", 1},
 };
 
 static const std::set<VersionedAidlPackage> kComingSoonAidl = {

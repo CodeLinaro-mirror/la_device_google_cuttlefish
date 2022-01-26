@@ -81,8 +81,8 @@ std::vector<Command> LaunchCustomActionServers(
   return commands;
 }
 
-// Creates the frame and input sockets and add the relevant arguments to the vnc
-// server and webrtc commands
+// Creates the frame and input sockets and add the relevant arguments to
+// webrtc commands
 class StreamerSockets : public virtual Feature {
  public:
   INJECT(StreamerSockets(const CuttlefishConfig& config,
@@ -107,15 +107,16 @@ class StreamerSockets : public virtual Feature {
   }
 
   // Feature
+  std::string Name() const override { return "StreamerSockets"; }
   bool Enabled() const override {
     bool is_qemu = config_.vm_manager() == vm_manager::QemuManager::name();
     bool is_accelerated = config_.gpu_mode() != kGpuModeGuestSwiftshader;
     return !(is_qemu && is_accelerated);
   }
-  std::string Name() const override { return "StreamerSockets"; }
+
+ private:
   std::unordered_set<Feature*> Dependencies() const override { return {}; }
 
- protected:
   bool Setup() override {
     auto use_vsockets = config_.vm_manager() == vm_manager::QemuManager::name();
     for (int i = 0; i < config_.display_configs().size(); ++i) {
@@ -161,59 +162,12 @@ class StreamerSockets : public virtual Feature {
     return true;
   }
 
- private:
   const CuttlefishConfig& config_;
   const CuttlefishConfig::InstanceSpecific& instance_;
   std::vector<SharedFD> touch_servers_;
   SharedFD keyboard_server_;
   SharedFD frames_server_;
   SharedFD audio_server_;
-};
-
-class VncServer : public virtual CommandSource, public DiagnosticInformation {
- public:
-  INJECT(VncServer(const CuttlefishConfig& config,
-                   const CuttlefishConfig::InstanceSpecific& instance,
-                   StreamerSockets& sockets))
-      : config_(config), instance_(instance), sockets_(sockets) {}
-  // DiagnosticInformation
-  std::vector<std::string> Diagnostics() const override {
-    if (!Enabled()) {
-      return {};
-    }
-    std::ostringstream out;
-    out << "VNC server started on port "
-        << config_.ForDefaultInstance().vnc_server_port();
-    return {out.str()};
-  }
-
-  // CommandSource
-  std::vector<Command> Commands() override {
-    Command vnc_server(VncServerBinary());
-    vnc_server.AddParameter("-port=", instance_.vnc_server_port());
-    sockets_.AppendCommandArguments(vnc_server);
-
-    std::vector<Command> commands;
-    commands.emplace_back(std::move(vnc_server));
-    return commands;
-  }
-
-  // Feature
-  bool Enabled() const override {
-    return sockets_.Enabled() && config_.enable_vnc_server();
-  }
-  std::string Name() const override { return "VncServer"; }
-  std::unordered_set<Feature*> Dependencies() const override {
-    return {static_cast<Feature*>(&sockets_)};
-  }
-
- protected:
-  bool Setup() override { return true; }
-
- private:
-  const CuttlefishConfig& config_;
-  const CuttlefishConfig::InstanceSpecific& instance_;
-  StreamerSockets& sockets_;
 };
 
 class WebRtcServer : public virtual CommandSource,
@@ -280,7 +234,7 @@ class WebRtcServer : public virtual CommandSource,
     };
 
     Command webrtc(WebRtcBinary(), stopper);
-    webrtc.UnsetFromEnvironment({"http_proxy"});
+    webrtc.UnsetFromEnvironment("http_proxy");
     sockets_.AppendCommandArguments(webrtc);
     if (config_.vm_manager() == vm_manager::CrosvmManager::name()) {
       webrtc.AddParameter("-switches_fd=", switches_server_);
@@ -294,6 +248,8 @@ class WebRtcServer : public virtual CommandSource,
     // issue most of the time.
     webrtc.AddParameter("--command_fd=", client_socket_);
     webrtc.AddParameter("-kernel_log_events_fd=", kernel_log_events_pipe_);
+    webrtc.AddParameter("-client_dir=",
+                        DefaultHostArtifactsPath("usr/share/webrtc/assets"));
 
     // TODO get from launcher params
     const auto& actions = custom_action_config_.CustomActions();
@@ -309,13 +265,14 @@ class WebRtcServer : public virtual CommandSource,
   bool Enabled() const override {
     return sockets_.Enabled() && config_.enable_webrtc();
   }
+
+ private:
   std::string Name() const override { return "WebRtcServer"; }
   std::unordered_set<Feature*> Dependencies() const override {
     return {static_cast<Feature*>(&sockets_),
             static_cast<Feature*>(&log_pipe_provider_)};
   }
 
- protected:
   bool Setup() override {
     if (!SharedFD::SocketPair(AF_LOCAL, SOCK_STREAM, 0, &client_socket_,
                               &host_socket_)) {
@@ -340,7 +297,6 @@ class WebRtcServer : public virtual CommandSource,
     return true;
   }
 
- private:
   const CuttlefishConfig& config_;
   const CuttlefishConfig::InstanceSpecific& instance_;
   StreamerSockets& sockets_;
@@ -360,12 +316,9 @@ fruit::Component<fruit::Required<const CuttlefishConfig, KernelLogPipeProvider,
 launchStreamerComponent() {
   return fruit::createComponent()
       .addMultibinding<CommandSource, WebRtcServer>()
-      .addMultibinding<CommandSource, VncServer>()
       .addMultibinding<DiagnosticInformation, WebRtcServer>()
-      .addMultibinding<DiagnosticInformation, VncServer>()
       .addMultibinding<Feature, StreamerSockets>()
-      .addMultibinding<Feature, WebRtcServer>()
-      .addMultibinding<Feature, VncServer>();
+      .addMultibinding<Feature, WebRtcServer>();
 }
 
 }  // namespace cuttlefish

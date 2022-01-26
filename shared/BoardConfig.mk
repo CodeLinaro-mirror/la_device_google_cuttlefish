@@ -66,19 +66,21 @@ BOARD_USES_ODM_DLKMIMAGE := true
 BOARD_ODM_DLKMIMAGE_FILE_SYSTEM_TYPE := ext4
 TARGET_COPY_OUT_ODM_DLKM := odm_dlkm
 
-# FIXME: Remove this once we generate the vbmeta digest correctly
-BOARD_AVB_MAKE_VBMETA_IMAGE_ARGS += --flag 2
+# Enable AVB
+BOARD_AVB_ENABLE := true
+BOARD_AVB_ALGORITHM := SHA256_RSA4096
+BOARD_AVB_KEY_PATH := external/avb/test/data/testkey_rsa4096.pem
 
 # Enable chained vbmeta for system image mixing
 BOARD_AVB_VBMETA_SYSTEM := product system system_ext
-BOARD_AVB_VBMETA_SYSTEM_KEY_PATH := external/avb/test/data/testkey_rsa2048.pem
-BOARD_AVB_VBMETA_SYSTEM_ALGORITHM := SHA256_RSA2048
+BOARD_AVB_VBMETA_SYSTEM_KEY_PATH := external/avb/test/data/testkey_rsa4096.pem
+BOARD_AVB_VBMETA_SYSTEM_ALGORITHM := SHA256_RSA4096
 BOARD_AVB_VBMETA_SYSTEM_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
 BOARD_AVB_VBMETA_SYSTEM_ROLLBACK_INDEX_LOCATION := 1
 
 # Enable chained vbmeta for boot images
-BOARD_AVB_BOOT_KEY_PATH := external/avb/test/data/testkey_rsa2048.pem
-BOARD_AVB_BOOT_ALGORITHM := SHA256_RSA2048
+BOARD_AVB_BOOT_KEY_PATH := external/avb/test/data/testkey_rsa4096.pem
+BOARD_AVB_BOOT_ALGORITHM := SHA256_RSA4096
 BOARD_AVB_BOOT_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
 BOARD_AVB_BOOT_ROLLBACK_INDEX_LOCATION := 2
 
@@ -166,7 +168,7 @@ BOARD_VENDOR_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor/go
 BOARD_SEPOLICY_DIRS += system/bt/vendor_libs/linux/sepolicy
 
 # Avoid multiple includes of sepolicy already included by Pixel experience.
-ifneq ($(filter aosp_% %_auto %_go_phone trout_% gull% %_tv,$(PRODUCT_NAME)),)
+ifneq ($(filter aosp_% %_auto %_go_phone trout_% gull% %tv,$(PRODUCT_NAME)),)
 
 SYSTEM_EXT_PRIVATE_SEPOLICY_DIRS += hardware/google/pixel-sepolicy/flipendo
 
@@ -217,9 +219,6 @@ BOARD_KERNEL_CMDLINE += firmware_class.path=/vendor/etc/
 
 BOARD_KERNEL_CMDLINE += init=/init
 BOARD_BOOTCONFIG += androidboot.hardware=cutf_cvm
-
-# TODO(b/179489292): Remove once kfence is enabled everywhere
-BOARD_KERNEL_CMDLINE += kfence.sample_interval=500
 
 BOARD_KERNEL_CMDLINE += loop.max_part=7
 

@@ -138,6 +138,7 @@ const CuttlefishConfig* InitFilesystemAndCreateConfig(
                 << "overlay incompatible. Wiping the overlay files.";
     } else if (FLAGS_resume && !create_os_composite_disk) {
       preserving.insert("overlay.img");
+      preserving.insert("ap_overlay.img");
       preserving.insert("os_composite_disk_config.txt");
       preserving.insert("os_composite_gpt_header.img");
       preserving.insert("os_composite_gpt_footer.img");
@@ -165,7 +166,8 @@ const CuttlefishConfig* InitFilesystemAndCreateConfig(
         ss.str("");
       }
     }
-    CHECK(CleanPriorFiles(preserving, FLAGS_assembly_dir, FLAGS_instance_dir))
+    CHECK(
+        CleanPriorFiles(preserving, FLAGS_assembly_dir, config.instance_dirs()))
         << "Failed to clean prior files";
 
     // Create assembly directory if it doesn't exist.
@@ -174,6 +176,18 @@ const CuttlefishConfig* InitFilesystemAndCreateConfig(
       LOG(ERROR) << "Unable to persist assemble_cvd log at "
                   << config.AssemblyPath("assemble_cvd.log")
                   << ": " << log->StrError();
+    }
+
+    auto disk_config = GetOsCompositeDiskConfig();
+    if (auto it = std::find_if(disk_config.begin(), disk_config.end(),
+                               [](const auto& partition) {
+                                 return partition.label == "ap_rootfs";
+                               });
+        it != disk_config.end()) {
+      auto ap_image_idx = std::distance(disk_config.begin(), it) + 1;
+      std::stringstream ss;
+      ss << "/dev/vda" << ap_image_idx;
+      config.set_ap_image_dev_path(ss.str());
     }
     for (const auto& instance : config.Instances()) {
       // Create instance directory if it doesn't exist.
@@ -189,8 +203,13 @@ const CuttlefishConfig* InitFilesystemAndCreateConfig(
   }
 
   std::string first_instance = FLAGS_instance_dir + "." + std::to_string(GetInstance());
+  if (FileExists(FLAGS_instance_dir)) {
+    CHECK(RemoveFile(FLAGS_instance_dir))
+        << "Failed to remove instance_dir symlink " << FLAGS_instance_dir;
+  }
   CHECK_EQ(symlink(first_instance.c_str(), FLAGS_instance_dir.c_str()), 0)
-      << "Could not symlink \"" << first_instance << "\" to \"" << FLAGS_instance_dir << "\"";
+      << "Could not symlink \"" << first_instance << "\" to \""
+      << FLAGS_instance_dir << "\"";
 
   // Do this early so that the config object is ready for anything that needs it
   auto config = CuttlefishConfig::Get();

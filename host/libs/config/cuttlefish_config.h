@@ -39,6 +39,7 @@ constexpr char kLogcatVsockMode[] = "vsock";
 constexpr char kDefaultUuidPrefix[] = "699acfc4-c8c4-11e7-882b-5065f31dc1";
 constexpr char kCuttlefishConfigEnvVarName[] = "CUTTLEFISH_CONFIG_FILE";
 constexpr char kVsocUserPrefix[] = "vsoc-";
+constexpr char kCvdNamePrefix[] = "cvd-";
 constexpr char kBootStartedMessage[] ="VIRTUAL_DEVICE_BOOT_STARTED";
 constexpr char kBootCompletedMessage[] = "VIRTUAL_DEVICE_BOOT_COMPLETED";
 constexpr char kBootFailedMessage[] = "VIRTUAL_DEVICE_BOOT_FAILED";
@@ -66,6 +67,8 @@ enum class SecureHal {
 class CuttlefishConfig {
  public:
   static const CuttlefishConfig* Get();
+  static std::unique_ptr<const CuttlefishConfig> GetFromFile(
+      const std::string& path);
   static bool ConfigExists();
 
   CuttlefishConfig();
@@ -136,9 +139,6 @@ class CuttlefishConfig {
   void set_tpm_device(const std::string& tpm_device);
   std::string tpm_device() const;
 
-  void set_enable_vnc_server(bool enable_vnc_server);
-  bool enable_vnc_server() const;
-
   void set_enable_sandbox(const bool enable_sandbox);
   bool enable_sandbox() const;
 
@@ -205,8 +205,11 @@ class CuttlefishConfig {
   void set_metrics_binary(const std::string& metrics_binary);
   std::string metrics_binary() const;
 
-  void set_extra_kernel_cmdline(std::string extra_cmdline);
+  void set_extra_kernel_cmdline(const std::string& extra_cmdline);
   std::vector<std::string> extra_kernel_cmdline() const;
+
+  void set_extra_bootconfig_args(const std::string& extra_bootconfig_args);
+  std::vector<std::string> extra_bootconfig_args() const;
 
   // A directory containing the SSL certificates for the signaling server
   void set_webrtc_certs_dir(const std::string& certs_dir);
@@ -284,6 +287,9 @@ class CuttlefishConfig {
   void set_vhost_user_mac80211_hwsim(const std::string& path);
   std::string vhost_user_mac80211_hwsim() const;
 
+  void set_wmediumd_api_server_socket(const std::string& path);
+  std::string wmediumd_api_server_socket() const;
+
   void set_ap_rootfs_image(const std::string& path);
   std::string ap_rootfs_image() const;
 
@@ -314,21 +320,29 @@ class CuttlefishConfig {
   void set_userdata_format(const std::string& userdata_format);
   std::string userdata_format() const;
 
+  // The path of an AP image in composite disk
+  std::string ap_image_dev_path() const;
+  void set_ap_image_dev_path(const std::string& dev_path);
+
   class InstanceSpecific;
   class MutableInstanceSpecific;
 
   MutableInstanceSpecific ForInstance(int instance_num);
   InstanceSpecific ForInstance(int instance_num) const;
+  InstanceSpecific ForInstanceName(const std::string& name) const;
   InstanceSpecific ForDefaultInstance() const;
 
   std::vector<InstanceSpecific> Instances() const;
+  std::vector<std::string> instance_dirs() const;
+
+  void set_instance_names(const std::vector<std::string>& instance_names);
+  std::vector<std::string> instance_names() const;
 
   // A view into an existing CuttlefishConfig object for a particular instance.
   class InstanceSpecific {
     const CuttlefishConfig* config_;
     std::string id_;
     friend InstanceSpecific CuttlefishConfig::ForInstance(int num) const;
-    friend InstanceSpecific CuttlefishConfig::ForDefaultInstance() const;
     friend std::vector<InstanceSpecific> CuttlefishConfig::Instances() const;
 
     InstanceSpecific(const CuttlefishConfig* config, const std::string& id)
@@ -341,8 +355,8 @@ class CuttlefishConfig {
     // If any of the following port numbers is 0, the relevant service is not
     // running on the guest.
 
-    // Port number to connect to vnc server on the host
-    int vnc_server_port() const;
+    // Port number for qemu to run a vnc server on the host
+    int qemu_vnc_server_port() const;
     // Port number to connect to the tombstone receiver on the host
     int tombstone_receiver_port() const;
     // Port number to connect to the config server on the host
@@ -353,9 +367,6 @@ class CuttlefishConfig {
     // Port number to connect to the touch server on the host. (Only
     // operational if QEMU is the vmm.)
     int touch_server_port() const;
-    // Port number to connect to the frame server on the host. (Only
-    // operational if using swiftshader as the GPU.)
-    int frames_server_port() const;
     // Port number to connect to the vehicle HAL server on the host
     int vehicle_hal_server_port() const;
     // Port number to connect to the audiocontrol server on the guest
@@ -377,7 +388,6 @@ class CuttlefishConfig {
     std::string rootcanal_default_commands_file() const;
 
     std::string adb_device_name() const;
-    std::string device_title() const;
     std::string gnss_file_path() const;
     std::string mobile_bridge_name() const;
     std::string mobile_tap_name() const;
@@ -474,7 +484,7 @@ class CuttlefishConfig {
     Json::Value* Dictionary();
   public:
     void set_serial_number(const std::string& serial_number);
-    void set_vnc_server_port(int vnc_server_port);
+    void set_qemu_vnc_server_port(int qemu_vnc_server_port);
     void set_tombstone_receiver_port(int tombstone_receiver_port);
     void set_config_server_port(int config_server_port);
     void set_frames_server_port(int config_server_port);
@@ -495,7 +505,6 @@ class CuttlefishConfig {
     void set_rootcanal_config_file(const std::string& rootcanal_config_file);
     void set_rootcanal_default_commands_file(
         const std::string& rootcanal_default_commands_file);
-    void set_device_title(const std::string& title);
     void set_mobile_bridge_name(const std::string& mobile_bridge_name);
     void set_mobile_tap_name(const std::string& mobile_tap_name);
     void set_wifi_tap_name(const std::string& wifi_tap_name);
@@ -525,7 +534,7 @@ class CuttlefishConfig {
 
   void SetPath(const std::string& key, const std::string& path);
   bool LoadFromFile(const char* file);
-  static CuttlefishConfig* BuildConfigImpl();
+  static CuttlefishConfig* BuildConfigImpl(const std::string& path);
 
   CuttlefishConfig(const CuttlefishConfig&) = delete;
   CuttlefishConfig& operator=(const CuttlefishConfig&) = delete;

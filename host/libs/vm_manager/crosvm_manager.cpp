@@ -70,7 +70,7 @@ std::vector<std::string> CrosvmManager::ConfigureGpuMode(
         "androidboot.hardware.hwcomposer=ranchu",
         "androidboot.hardware.egl=angle",
         "androidboot.hardware.vulkan=pastel",
-    };
+        "androidboot.opengles.version=196609"};  // OpenGL ES 3.1
   }
 
   if (gpu_mode == kGpuModeDrmVirgl) {
@@ -82,14 +82,13 @@ std::vector<std::string> CrosvmManager::ConfigureGpuMode(
     };
   }
   if (gpu_mode == kGpuModeGfxStream) {
-    return {
-        "androidboot.cpuvulkan.version=0",
-        "androidboot.hardware.gralloc=minigbm",
-        "androidboot.hardware.hwcomposer=ranchu",
-        "androidboot.hardware.egl=emulation",
-        "androidboot.hardware.vulkan=ranchu",
-        "androidboot.hardware.gltransport=virtio-gpu-asg",
-    };
+    return {"androidboot.cpuvulkan.version=0",
+            "androidboot.hardware.gralloc=minigbm",
+            "androidboot.hardware.hwcomposer=ranchu",
+            "androidboot.hardware.egl=emulation",
+            "androidboot.hardware.vulkan=ranchu",
+            "androidboot.hardware.gltransport=virtio-gpu-asg",
+            "androidboot.opengles.version=196608"};  // OpenGL ES 3.0
   }
   return {};
 }
@@ -123,10 +122,12 @@ std::vector<Command> CrosvmManager::StartCommands(
     crosvm_cmd.Cmd().AddParameter("--vhost-net");
   }
 
+#ifdef ENFORCE_MAC80211_HWSIM
   if (!config.vhost_user_mac80211_hwsim().empty()) {
     crosvm_cmd.Cmd().AddParameter("--vhost-user-mac80211-hwsim=",
                                   config.vhost_user_mac80211_hwsim());
   }
+#endif
 
   if (config.protected_vm()) {
     crosvm_cmd.Cmd().AddParameter("--protected-vm");
@@ -169,7 +170,7 @@ std::vector<Command> CrosvmManager::StartCommands(
         config.protected_vm() ? "--disk=" : "--rwdisk=", disk);
   }
 
-  if (config.enable_vnc_server() || config.enable_webrtc()) {
+  if (config.enable_webrtc()) {
     auto touch_type_parameter =
         config.enable_webrtc() ? "--multi-touch=" : "--single-touch=";
 

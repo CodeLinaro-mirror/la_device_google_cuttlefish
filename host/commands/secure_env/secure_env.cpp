@@ -16,10 +16,11 @@
 #include <thread>
 
 #include <android-base/logging.h>
+#include <fruit/fruit.h>
 #include <gflags/gflags.h>
 #include <keymaster/android_keymaster.h>
-#include <keymaster/soft_keymaster_logger.h>
 #include <keymaster/contexts/pure_soft_keymaster_context.h>
+#include <keymaster/soft_keymaster_logger.h>
 #include <tss2/tss2_esys.h>
 #include <tss2/tss2_rc.h>
 
@@ -34,6 +35,7 @@
 #include "host/commands/secure_env/in_process_tpm.h"
 #include "host/commands/secure_env/insecure_fallback_storage.h"
 #include "host/commands/secure_env/keymaster_responder.h"
+#include "host/commands/secure_env/proxy_keymaster_context.h"
 #include "host/commands/secure_env/soft_gatekeeper.h"
 #include "host/commands/secure_env/tpm_gatekeeper.h"
 #include "host/commands/secure_env/tpm_keymaster_context.h"
@@ -108,6 +110,20 @@ std::thread StartKernelEventMonitor(SharedFD kernel_events_fd) {
   });
 }
 
+fruit::Component<Tpm> SecureEnvComponent() {
+  return fruit::createComponent().registerProvider(
+      []() -> Tpm* {  // fruit will take ownership
+        if (FLAGS_tpm_impl == "in_memory") {
+          return new InProcessTpm();
+        } else if (FLAGS_tpm_impl == "host_device") {
+          return new DeviceTpm("/dev/tpm0");
+        } else {
+          LOG(FATAL) << "Unknown TPM implementation: " << FLAGS_tpm_impl;
+          abort();
+        }
+      });
+}
+
 }  // namespace
 
 int SecureEnvMain(int argc, char** argv) {
@@ -115,14 +131,8 @@ int SecureEnvMain(int argc, char** argv) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   keymaster::SoftKeymasterLogger km_logger;
 
-  std::unique_ptr<Tpm> tpm;
-  if (FLAGS_tpm_impl == "in_memory") {
-    tpm.reset(new InProcessTpm());
-  } else if (FLAGS_tpm_impl == "host_device") {
-    tpm.reset(new DeviceTpm("/dev/tpm0"));
-  } else {
-    LOG(FATAL) << "Unknown TPM implementation: " << FLAGS_tpm_impl;
-  }
+  fruit::Injector<Tpm> injector(SecureEnvComponent);
+  Tpm* tpm = injector.get<Tpm*>();
 
   if (tpm->TctiContext() == nullptr) {
     LOG(FATAL) << "Unable to connect to TPM implementation.";
@@ -162,22 +172,22 @@ int SecureEnvMain(int argc, char** argv) {
         new TpmKeymasterEnforcement(*resource_manager, *tpm_gatekeeper));
   }
 
-  // keymaster::AndroidKeymaster puts the given pointer into a UniquePtr,
-  // taking ownership.
-  keymaster::KeymasterContext* keymaster_context;
+  std::unique_ptr<keymaster::KeymasterContext> keymaster_context;
   if (FLAGS_keymint_impl == "software") {
     // TODO: See if this is the right KM version.
-    keymaster_context = new keymaster::PureSoftKeymasterContext(
-        keymaster::KmVersion::KEYMINT_1, KM_SECURITY_LEVEL_SOFTWARE);
+    keymaster_context.reset(new keymaster::PureSoftKeymasterContext(
+        keymaster::KmVersion::KEYMINT_1, KM_SECURITY_LEVEL_SOFTWARE));
   } else if (FLAGS_keymint_impl == "tpm") {
-    keymaster_context =
-        new TpmKeymasterContext(*resource_manager, *keymaster_enforcement);
+    keymaster_context.reset(
+        new TpmKeymasterContext(*resource_manager, *keymaster_enforcement));
   } else {
     LOG(FATAL) << "Unknown keymaster implementation " << FLAGS_keymint_impl;
     return -1;
   }
+  // keymaster::AndroidKeymaster puts the context pointer into a UniquePtr,
+  // taking ownership.
   keymaster::AndroidKeymaster keymaster{
-      keymaster_context, kOperationTableSize,
+      new ProxyKeymasterContext(*keymaster_context), kOperationTableSize,
       keymaster::MessageVersion(keymaster::KmVersion::KEYMINT_1,
                                 0 /* km_date */)};
 

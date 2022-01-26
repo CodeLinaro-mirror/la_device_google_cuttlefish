@@ -17,6 +17,8 @@
 body {
   background-color:black;
   margin: 0;
+  touch-action: none;
+  overscroll-behavior: none;
 }
 
 #device-selector {
@@ -40,15 +42,6 @@ body {
 }
 
 
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-.spinner {
-  animation: spin 1.4s linear infinite;
-}
-
 /* Top header row. */
 
 #header {
@@ -56,13 +49,6 @@ body {
   /* Items inside this use a row Flexbox.*/
   display: flex;
   align-items: center;
-}
-
-#camera-control {
-  display: none !important;
-}
-#record-video-control {
-  display: none !important;
 }
 
 #app-controls {
@@ -77,23 +63,6 @@ body {
   height: 44px;
 }
 
-#error-message-div {
-  flex-grow: 1;
-}
-#error-message {
-  color: white;
-  font-family: 'Open Sans', sans-serif;
-  padding: 10px;
-  margin: 10px;
-}
-#error-message.warning {
-  /* dark red */
-  background-color: #927836;
-}
-#error-message.error {
-  /* dark red */
-  background-color: #900000;
-}
 #status-div {
   flex-grow: 1;
 }
@@ -214,6 +183,18 @@ body {
 .device-display {
   /* Prevents #device-displays from using this element when computing flex size. */
   position: absolute;
+}
+
+/* Container <div> to show info about the individual display. */
+.device-display-info {
+  color: white;
+  /* dark green */
+  background-color: #007000;
+  font-family: 'Open Sans', sans-serif;
+  text-indent: 0px;
+  border-radius: 10px;
+  padding: 10px;
+  margin-bottom: 10px;
 }
 
 /* The actual <video> element for each display. */
