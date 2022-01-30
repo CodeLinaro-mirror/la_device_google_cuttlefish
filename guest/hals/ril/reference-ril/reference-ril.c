@@ -1672,6 +1672,9 @@ static int parseRegistrationState(char *str, int *type, int *items, int **respon
     int skip;
     int commas;
 
+    s_lac = -1;
+    s_cid = -1;
+
     RLOGD("parseRegistrationState. Parsing: %s",str);
     err = at_tok_start(&line);
     if (err < 0) goto error;
@@ -1709,19 +1712,14 @@ static int parseRegistrationState(char *str, int *type, int *items, int **respon
         case 0: /* +CREG: <stat> */
             err = at_tok_nextint(&line, &resp[0]);
             if (err < 0) goto error;
-            resp[1] = -1;
-            resp[2] = -1;
-        break;
+            break;
 
         case 1: /* +CREG: <n>, <stat> */
             err = at_tok_nextint(&line, &skip);
             if (err < 0) goto error;
             err = at_tok_nextint(&line, &resp[0]);
             if (err < 0) goto error;
-            resp[1] = -1;
-            resp[2] = -1;
-            if (err < 0) goto error;
-        break;
+            break;
 
         case 2: /* +CREG: <stat>, <lac>, <cid> */
             err = at_tok_nextint(&line, &resp[0]);
@@ -1759,8 +1757,12 @@ static int parseRegistrationState(char *str, int *type, int *items, int **respon
         default:
             goto error;
     }
-    s_lac = resp[1];
-    s_cid = resp[2];
+
+    if (commas >= 2) {
+        s_lac = resp[1];
+        s_cid = resp[2];
+    }
+
     if (response)
         *response = resp;
     if (items)
@@ -3266,6 +3268,33 @@ static void requestGetCellInfoList(void *data __unused, size_t datalen __unused,
     RIL_onRequestComplete(t, RIL_E_SUCCESS, ci, sizeof(ci));
 }
 
+static void requestGetCellInfoList_1_6(void* data __unused, size_t datalen __unused, RIL_Token t) {
+    uint64_t curTime = ril_nano_time();
+    RIL_CellInfo_v16 ci[1] = {{    // ci[0]
+                               1,  // cellInfoType
+                               1,  // registered
+                               CELL_CONNECTION_PRIMARY_SERVING,
+                               { // union CellInfo
+                                {// RIL_CellInfoGsm gsm
+                                 {
+                                         // gsm.cellIdneityGsm
+                                         s_mcc,  // mcc
+                                         s_mnc,  // mnc
+                                         s_lac,  // lac
+                                         s_cid,  // cid
+                                         0,      // arfcn unknown
+                                         0x1,    // Base Station Identity Code set to arbitrarily 1
+                                 },
+                                 {
+                                         // gsm.signalStrengthGsm
+                                         10,  // signalStrength
+                                         0    // bitErrorRate
+                                         ,
+                                         INT_MAX  // timingAdvance invalid value
+                                 }}}}};
+
+    RIL_onRequestComplete(t, RIL_E_SUCCESS, ci, sizeof(ci));
+}
 
 static void requestSetCellInfoListRate(void *data, size_t datalen __unused, RIL_Token t)
 {
@@ -4670,6 +4699,10 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
 
         case RIL_REQUEST_GET_CELL_INFO_LIST:
             requestGetCellInfoList(data, datalen, t);
+            break;
+
+        case RIL_REQUEST_GET_CELL_INFO_LIST_1_6:
+            requestGetCellInfoList_1_6(data, datalen, t);
             break;
 
         case RIL_REQUEST_SET_UNSOL_CELL_INFO_LIST_RATE:

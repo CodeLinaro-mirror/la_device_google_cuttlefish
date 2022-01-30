@@ -57,8 +57,8 @@ bool CrosvmManager::IsSupported() {
 #endif
 }
 
-std::vector<std::string> CrosvmManager::ConfigureGpuMode(
-    const std::string& gpu_mode) {
+std::vector<std::string> CrosvmManager::ConfigureGraphics(
+    const std::string& gpu_mode, const std::string& hwcomposer) {
   // Override the default HAL search paths in all cases. We do this because
   // the HAL search path allows for fallbacks, and fallbacks in conjunction
   // with properities lead to non-deterministic behavior while loading the
@@ -67,7 +67,7 @@ std::vector<std::string> CrosvmManager::ConfigureGpuMode(
     return {
         "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_2),
         "androidboot.hardware.gralloc=minigbm",
-        "androidboot.hardware.hwcomposer=ranchu",
+        "androidboot.hardware.hwcomposer="+ hwcomposer,
         "androidboot.hardware.egl=angle",
         "androidboot.hardware.vulkan=pastel",
         "androidboot.opengles.version=196609"};  // OpenGL ES 3.1
@@ -84,7 +84,7 @@ std::vector<std::string> CrosvmManager::ConfigureGpuMode(
   if (gpu_mode == kGpuModeGfxStream) {
     return {"androidboot.cpuvulkan.version=0",
             "androidboot.hardware.gralloc=minigbm",
-            "androidboot.hardware.hwcomposer=ranchu",
+            "androidboot.hardware.hwcomposer=" + hwcomposer,
             "androidboot.hardware.egl=emulation",
             "androidboot.hardware.vulkan=ranchu",
             "androidboot.hardware.gltransport=virtio-gpu-asg",
@@ -140,12 +140,13 @@ std::vector<Command> CrosvmManager::StartCommands(
 
   auto gpu_capture_enabled = !config.gpu_capture_binary().empty();
   auto gpu_mode = config.gpu_mode();
+  auto udmabuf_string = config.enable_gpu_udmabuf() ? "true" : "false";
   if (gpu_mode == kGpuModeGuestSwiftshader) {
-    crosvm_cmd.Cmd().AddParameter("--gpu=2D");
+    crosvm_cmd.Cmd().AddParameter("--gpu=2D,udmabuf=", udmabuf_string);
   } else if (gpu_mode == kGpuModeDrmVirgl || gpu_mode == kGpuModeGfxStream) {
     crosvm_cmd.Cmd().AddParameter(
         gpu_mode == kGpuModeGfxStream ? "--gpu=gfxstream," : "--gpu=",
-        "egl=true,surfaceless=true,glx=false,gles=true");
+        "egl=true,surfaceless=true,glx=false,gles=true,udmabuf=", udmabuf_string);
   }
 
   for (const auto& display_config : config.display_configs()) {
@@ -206,7 +207,8 @@ std::vector<Command> CrosvmManager::StartCommands(
 #endif
   }
 
-  if (FileExists(instance.access_kregistry_path())) {
+  bool is_arm = HostArch() == Arch::Arm || HostArch() == Arch::Arm64;
+  if (!is_arm && FileExists(instance.access_kregistry_path())) {
     crosvm_cmd.Cmd().AddParameter("--rw-pmem-device=",
                                   instance.access_kregistry_path());
   }
@@ -327,7 +329,7 @@ std::vector<Command> CrosvmManager::StartCommands(
   }
 
   // TODO(b/162071003): virtiofs crashes without sandboxing, this should be fixed
-  if (config.enable_sandbox()) {
+  if (0 && config.enable_sandbox()) {
     // Set up directory shared with virtiofs
     crosvm_cmd.Cmd().AddParameter(
         "--shared-dir=", instance.PerInstancePath(kSharedDirName),

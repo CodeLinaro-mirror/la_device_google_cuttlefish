@@ -45,6 +45,10 @@ DECLARE_string(system_image_dir);
 DEFINE_string(boot_image, "",
               "Location of cuttlefish boot image. If empty it is assumed to be "
               "boot.img in the directory specified by -system_image_dir.");
+DEFINE_string(
+    init_boot_image, "",
+    "Location of cuttlefish init boot image. If empty it is assumed to "
+    "be init_boot.img in the directory specified by -system_image_dir.");
 DEFINE_string(data_image, "", "Location of the data partition image.");
 DEFINE_string(super_image, "", "Location of the super partition image.");
 DEFINE_string(misc_image, "",
@@ -99,6 +103,11 @@ bool ResolveInstanceFiles() {
   // be placed in --system_image_dir location.
   std::string default_boot_image = FLAGS_system_image_dir + "/boot.img";
   SetCommandLineOptionWithMode("boot_image", default_boot_image.c_str(),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  std::string default_init_boot_image =
+      FLAGS_system_image_dir + "/init_boot.img";
+  SetCommandLineOptionWithMode("init_boot_image",
+                               default_init_boot_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
   std::string default_data_image = FLAGS_system_image_dir + "/userdata.img";
   SetCommandLineOptionWithMode("data_image", default_data_image.c_str(),
@@ -156,6 +165,16 @@ std::vector<ImagePartition> GetOsCompositeDiskConfig() {
   partitions.push_back(ImagePartition{
       .label = "boot_b",
       .image_file_path = FLAGS_boot_image,
+      .read_only = true,
+  });
+  partitions.push_back(ImagePartition{
+      .label = "init_boot_a",
+      .image_file_path = FLAGS_init_boot_image,
+      .read_only = true,
+  });
+  partitions.push_back(ImagePartition{
+      .label = "init_boot_b",
+      .image_file_path = FLAGS_init_boot_image,
       .read_only = true,
   });
   partitions.push_back(ImagePartition{
@@ -410,6 +429,11 @@ class BootImageRepacker : public Feature {
       LOG(ERROR) << "File not found: " << FLAGS_boot_image;
       return false;
     }
+    // The init_boot partition is be optional for testing boot.img
+    // with the ramdisk inside.
+    if (!FileHasContent(FLAGS_init_boot_image)) {
+      LOG(WARNING) << "File not found: " << FLAGS_init_boot_image;
+    }
 
     if (!FileHasContent(FLAGS_vendor_boot_image)) {
       LOG(ERROR) << "File not found: " << FLAGS_vendor_boot_image;
@@ -467,41 +491,70 @@ class BootImageRepacker : public Feature {
   const CuttlefishConfig& config_;
 };
 
-static void GeneratePersistentBootconfig(
-    const CuttlefishConfig& config,
-    const CuttlefishConfig::InstanceSpecific& instance) {
-  const auto bootconfig_path = instance.persistent_bootconfig_path();
-  if (!FileExists(bootconfig_path)) {
-    CreateBlankImage(bootconfig_path, 1 /* mb */, "none");
+class GeneratePersistentBootconfig : public Feature {
+ public:
+  INJECT(GeneratePersistentBootconfig(
+      const CuttlefishConfig& config,
+      const CuttlefishConfig::InstanceSpecific& instance))
+      : config_(config), instance_(instance) {}
+
+  // Feature
+  std::string Name() const override { return "GeneratePersistentBootconfig"; }
+  bool Enabled() const override { return !config_.protected_vm(); }
+
+ private:
+  std::unordered_set<Feature*> Dependencies() const override { return {}; }
+  bool Setup() override {
+    const auto bootconfig_path = instance_.persistent_bootconfig_path();
+    if (!FileExists(bootconfig_path)) {
+      if (!CreateBlankImage(bootconfig_path, 1 /* mb */, "none")) {
+        LOG(ERROR) << "Failed to create image at " << bootconfig_path;
+        return false;
+      }
+    }
+
+    auto bootconfig_fd = SharedFD::Open(bootconfig_path, O_RDWR);
+    if (!bootconfig_fd->IsOpen()) {
+      LOG(ERROR) << "Unable to open bootconfig file: "
+                 << bootconfig_fd->StrError();
+      return false;
+    }
+
+    //  Cuttlefish for the time being won't be able to support OTA from a
+    //  non-bootconfig kernel to a bootconfig-kernel (or vice versa) IF the
+    //  device is stopped (via stop_cvd). This is rarely an issue since OTA
+    //  testing run on cuttlefish is done within one launch cycle of the device.
+    //  If this ever becomes an issue, this code will have to be rewritten.
+    if (!config_.bootconfig_supported()) {
+      return true;
+    }
+
+    const std::string bootconfig =
+        android::base::Join(BootconfigArgsFromConfig(config_, instance_),
+                            "\n") +
+        "\n";
+    ssize_t bytesWritten = WriteAll(bootconfig_fd, bootconfig);
+    if (bytesWritten != bootconfig.size()) {
+      LOG(ERROR) << "Failed to write contents of bootconfig to \""
+                 << bootconfig_path << "\"";
+      return false;
+    }
+    LOG(DEBUG) << "Bootconfig parameters from vendor boot image and config are "
+               << ReadFile(bootconfig_path);
+
+    const off_t bootconfig_size_bytes =
+        AlignToPowerOf2(bootconfig.size(), PARTITION_SIZE_SHIFT);
+    if (bootconfig_fd->Truncate(bootconfig_size_bytes) != 0) {
+      LOG(ERROR) << "`truncate --size=" << bootconfig_size_bytes << " bytes "
+                 << bootconfig_path << "` failed:" << bootconfig_fd->StrError();
+      return false;
+    }
+    return true;
   }
 
-  auto bootconfig_fd = SharedFD::Open(bootconfig_path, O_RDWR);
-  CHECK(bootconfig_fd->IsOpen())
-      << "Unable to open bootconfig file: " << bootconfig_fd->StrError();
-
-  //  Cuttlefish for the time being won't be able to support OTA from a
-  //  non-bootconfig kernel to a bootconfig-kernel (or vice versa) IF the device
-  //  is stopped (via stop_cvd). This is rarely an issue since OTA testing run
-  //  on cuttlefish is done within one launch cycle of the device. If this ever
-  //  becomes an issue, this code will have to be rewritten.
-  if (!config.bootconfig_supported()) {
-    return;
-  }
-
-  const std::string bootconfig =
-      android::base::Join(BootconfigArgsFromConfig(config, instance), "\n") +
-      "\n";
-  ssize_t bytesWritten = WriteAll(bootconfig_fd, bootconfig);
-  CHECK(bytesWritten == bootconfig.size());
-  LOG(DEBUG) << "Bootconfig parameters from vendor boot image and config are "
-             << ReadFile(bootconfig_path);
-
-  const off_t bootconfig_size_bytes =
-      AlignToPowerOf2(bootconfig.size(), PARTITION_SIZE_SHIFT);
-  CHECK(bootconfig_fd->Truncate(bootconfig_size_bytes) == 0)
-      << "`truncate --size=" << bootconfig_size_bytes << " bytes "
-      << bootconfig_path << "` failed:" << bootconfig_fd->StrError();
-}
+  const CuttlefishConfig& config_;
+  const CuttlefishConfig::InstanceSpecific& instance_;
+};
 
 class InitializeMetadataImage : public Feature {
  public:
@@ -661,7 +714,11 @@ static fruit::Component<> DiskChangesComponent(const FetcherConfig* fetcher,
       .install(FixedMiscImagePathComponent, &FLAGS_misc_image)
       .install(InitializeMiscImageComponent)
       .install(FixedDataImagePathComponent, &FLAGS_data_image)
-      .install(InitializeDataImageComponent);
+      .install(InitializeDataImageComponent)
+      // Create esp if necessary
+      .install(InitializeEspImageComponent, &FLAGS_otheros_esp_image,
+               &FLAGS_otheros_kernel_path, &FLAGS_otheros_initramfs_path,
+               &FLAGS_otheros_root_image);
 }
 
 static fruit::Component<> DiskChangesPerInstanceComponent(
@@ -675,6 +732,7 @@ static fruit::Component<> DiskChangesPerInstanceComponent(
       .addMultibinding<Feature, InitializePstore>()
       .addMultibinding<Feature, InitializeSdCard>()
       .addMultibinding<Feature, InitializeFactoryResetProtected>()
+      .addMultibinding<Feature, GeneratePersistentBootconfig>()
       .install(InitBootloaderEnvPartitionComponent);
 }
 
@@ -687,13 +745,6 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
   const auto& features = injector.getMultibindings<Feature>();
   CHECK(Feature::RunSetup(features)) << "Failed to run feature setup.";
 
-  // Create esp if necessary
-  if (!FLAGS_otheros_root_image.empty()) {
-    CHECK(InitializeEspImage(FLAGS_otheros_esp_image, FLAGS_otheros_kernel_path,
-                             FLAGS_otheros_initramfs_path))
-        << "Failed to create esp image";
-  }
-
   for (const auto& instance : config.Instances()) {
     fruit::Injector<> instance_injector(DiskChangesPerInstanceComponent,
                                         &fetcher_config, &config, &instance);
@@ -701,16 +752,6 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
         instance_injector.getMultibindings<Feature>();
     CHECK(Feature::RunSetup(instance_features))
         << "Failed to run instance feature setup.";
-  }
-
-  // If we are booting a protected VM, for now, assume we want a super minimal
-  // environment with no userdata encryption, limited debug, no FRP emulation, a
-  // static env for the bootloader, no SD-Card and no resume-on-reboot HAL
-  // support.
-  if (!FLAGS_protected_vm) {
-    for (const auto& instance : config.Instances()) {
-      GeneratePersistentBootconfig(config, instance);
-    }
   }
 
   for (const auto& instance : config.Instances()) {
