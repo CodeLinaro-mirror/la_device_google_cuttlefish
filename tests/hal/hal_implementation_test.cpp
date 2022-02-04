@@ -112,15 +112,22 @@ struct VersionedAidlPackage {
 };
 
 static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
+    // Cuttlefish Identity Credential HAL implementation is currently
+    // stuck at version 3 while RKP support is being added. Will be
+    // updated soon.
+    {"android.hardware.identity.", 4},
+
     // types-only packages, which never expect a default implementation
     {"android.hardware.audio.common.", 1},
     {"android.hardware.biometrics.common.", 1},
+    {"android.hardware.biometrics.common.", 2},
     {"android.hardware.common.", 1},
     {"android.hardware.common.", 2},
     {"android.hardware.common.fmq.", 1},
     {"android.hardware.graphics.common.", 1},
     {"android.hardware.graphics.common.", 2},
     {"android.hardware.graphics.common.", 3},
+    {"android.hardware.input.common.", 1},
 
     // This interface needs to be implemented (b/193240715)
     {"android.hardware.graphics.composer3.", 1},
@@ -156,9 +163,6 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.hardware.automotive.occupant_awareness.", 1},
     {"android.hardware.automotive.vehicle.", 1},
 
-    // The implementation is retrieved via android.hardware.gnss.IGnss
-    {"android.hardware.gnss.visibility_control.", 1},
-
     // These types are only used in TV.
     {"android.hardware.tv.tuner.", 1},
 
@@ -170,6 +174,9 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
 
     // These versions need to be implemented (b/203490261)
     {"android.hardware.bluetooth.audio.", 1},
+
+    // This interface needs to be implemented (b/200055138)
+    {"android.hardware.drm.", 1},
 };
 
 static const std::set<VersionedAidlPackage> kComingSoonAidl = {
