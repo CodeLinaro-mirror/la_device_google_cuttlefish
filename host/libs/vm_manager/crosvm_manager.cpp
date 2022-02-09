@@ -58,34 +58,35 @@ bool CrosvmManager::IsSupported() {
 }
 
 std::vector<std::string> CrosvmManager::ConfigureGraphics(
-    const std::string& gpu_mode, const std::string& hwcomposer) {
+    const CuttlefishConfig& config) {
   // Override the default HAL search paths in all cases. We do this because
   // the HAL search path allows for fallbacks, and fallbacks in conjunction
   // with properities lead to non-deterministic behavior while loading the
   // HALs.
-  if (gpu_mode == kGpuModeGuestSwiftshader) {
+  if (config.gpu_mode() == kGpuModeGuestSwiftshader) {
     return {
         "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_2),
         "androidboot.hardware.gralloc=minigbm",
-        "androidboot.hardware.hwcomposer="+ hwcomposer,
+        "androidboot.hardware.hwcomposer="+ config.hwcomposer(),
         "androidboot.hardware.egl=angle",
         "androidboot.hardware.vulkan=pastel",
         "androidboot.opengles.version=196609"};  // OpenGL ES 3.1
   }
 
-  if (gpu_mode == kGpuModeDrmVirgl) {
+  if (config.gpu_mode() == kGpuModeDrmVirgl) {
     return {
       "androidboot.cpuvulkan.version=0",
       "androidboot.hardware.gralloc=minigbm",
-      "androidboot.hardware.hwcomposer=drm_minigbm",
+      "androidboot.hardware.hwcomposer=drm",
       "androidboot.hardware.egl=mesa",
     };
   }
-  if (gpu_mode == kGpuModeGfxStream) {
+  if (config.gpu_mode() == kGpuModeGfxStream) {
+    std::string gles_impl = config.enable_gpu_angle() ? "angle" : "emulation";
     return {"androidboot.cpuvulkan.version=0",
             "androidboot.hardware.gralloc=minigbm",
-            "androidboot.hardware.hwcomposer=" + hwcomposer,
-            "androidboot.hardware.egl=emulation",
+            "androidboot.hardware.hwcomposer=" + config.hwcomposer(),
+            "androidboot.hardware.egl=" + gles_impl,
             "androidboot.hardware.vulkan=ranchu",
             "androidboot.hardware.gltransport=virtio-gpu-asg",
             "androidboot.opengles.version=196608"};  // OpenGL ES 3.0
@@ -141,12 +142,14 @@ std::vector<Command> CrosvmManager::StartCommands(
   auto gpu_capture_enabled = !config.gpu_capture_binary().empty();
   auto gpu_mode = config.gpu_mode();
   auto udmabuf_string = config.enable_gpu_udmabuf() ? "true" : "false";
+  auto angle_string = config.enable_gpu_angle() ? "true" : "false";
   if (gpu_mode == kGpuModeGuestSwiftshader) {
     crosvm_cmd.Cmd().AddParameter("--gpu=2D,udmabuf=", udmabuf_string);
   } else if (gpu_mode == kGpuModeDrmVirgl || gpu_mode == kGpuModeGfxStream) {
     crosvm_cmd.Cmd().AddParameter(
         gpu_mode == kGpuModeGfxStream ? "--gpu=gfxstream," : "--gpu=",
-        "egl=true,surfaceless=true,glx=false,gles=true,udmabuf=", udmabuf_string);
+        "egl=true,surfaceless=true,glx=false,gles=true,udmabuf=", udmabuf_string,
+        ",angle=", angle_string);
   }
 
   for (const auto& display_config : config.display_configs()) {
@@ -208,9 +211,15 @@ std::vector<Command> CrosvmManager::StartCommands(
   }
 
   bool is_arm = HostArch() == Arch::Arm || HostArch() == Arch::Arm64;
-  if (!is_arm && FileExists(instance.access_kregistry_path())) {
-    crosvm_cmd.Cmd().AddParameter("--rw-pmem-device=",
-                                  instance.access_kregistry_path());
+  if (!is_arm) {
+    if (FileExists(instance.access_kregistry_path())) {
+      crosvm_cmd.Cmd().AddParameter("--rw-pmem-device=",
+                                    instance.access_kregistry_path());
+    }
+    if (FileExists(instance.hwcomposer_pmem_path())) {
+      crosvm_cmd.Cmd().AddParameter("--rw-pmem-device=",
+                                    instance.hwcomposer_pmem_path());
+    }
   }
 
   if (FileExists(instance.pstore_path())) {
@@ -310,8 +319,13 @@ std::vector<Command> CrosvmManager::StartCommands(
     crosvm_cmd.AddHvcReadWrite(
         instance.PerInstanceInternalPath("gnsshvc_fifo_vm.out"),
         instance.PerInstanceInternalPath("gnsshvc_fifo_vm.in"));
+    crosvm_cmd.AddHvcReadWrite(
+        instance.PerInstanceInternalPath("locationhvc_fifo_vm.out"),
+        instance.PerInstanceInternalPath("locationhvc_fifo_vm.in"));
   } else {
-    crosvm_cmd.AddHvcSink();
+    for (auto i = 0; i < 2; i++) {
+      crosvm_cmd.AddHvcSink();
+    }
   }
 
   for (auto i = 0; i < VmManager::kMaxDisks - disk_num; i++) {

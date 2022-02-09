@@ -89,7 +89,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.tv.cec@1.1",
     "android.hardware.tv.input@1.0",
     "android.hardware.tv.tuner@1.1",
-    "android.hardware.usb@1.3",
+    "android.hardware.usb@1.3", // migrated to AIDL see b/200993386
     "android.hardware.usb.gadget@1.2",
     "android.hardware.vibrator@1.3",
     "android.hardware.vr@1.0",
@@ -124,6 +124,10 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.hardware.common.", 1},
     {"android.hardware.common.", 2},
     {"android.hardware.common.fmq.", 1},
+
+    // This interface needs to be implemented (b/215332992)
+    {"android.hardware.graphics.allocator.", 1},
+
     {"android.hardware.graphics.common.", 1},
     {"android.hardware.graphics.common.", 2},
     {"android.hardware.graphics.common.", 3},
@@ -157,9 +161,9 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.automotive.watchdog.", 2},
     {"android.automotive.watchdog.", 3},
     {"android.frameworks.automotive.powerpolicy.", 1},
-    {"android.frameworks.automotive.powerpolicy.internal.", 1},
     {"android.frameworks.automotive.telemetry.", 1},
     {"android.hardware.automotive.audiocontrol.", 1},
+    {"android.hardware.automotive.evs.", 1},
     {"android.hardware.automotive.occupant_awareness.", 1},
     {"android.hardware.automotive.vehicle.", 1},
 

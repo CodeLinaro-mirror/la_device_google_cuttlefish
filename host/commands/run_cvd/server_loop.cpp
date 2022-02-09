@@ -164,6 +164,8 @@ class ServerLoopImpl : public ServerLoop, public Feature {
         instance_.PerInstanceInternalPath("bt_fifo_vm.out"),
         instance_.PerInstanceInternalPath("gnsshvc_fifo_vm.in"),
         instance_.PerInstanceInternalPath("gnsshvc_fifo_vm.out"),
+        instance_.PerInstanceInternalPath("locationhvc_fifo_vm.in"),
+        instance_.PerInstanceInternalPath("locationhvc_fifo_vm.out"),
     };
     for (const auto& pipe : pipes) {
       unlink(pipe.c_str());
@@ -179,6 +181,10 @@ class ServerLoopImpl : public ServerLoop, public Feature {
     auto kregistry_path = instance_.access_kregistry_path();
     unlink(kregistry_path.c_str());
     CreateBlankImage(kregistry_path, 2 /* mb */, "none");
+
+    auto hwcomposer_pmem_path = instance_.hwcomposer_pmem_path();
+    unlink(hwcomposer_pmem_path.c_str());
+    CreateBlankImage(hwcomposer_pmem_path, 2 /* mb */, "none");
 
     auto pstore_path = instance_.pstore_path();
     unlink(pstore_path.c_str());
