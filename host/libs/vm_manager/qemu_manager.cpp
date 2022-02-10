@@ -124,8 +124,8 @@ bool QemuManager::IsSupported() {
 }
 
 std::vector<std::string> QemuManager::ConfigureGraphics(
-    const std::string& gpu_mode, const std::string& hwcomposer) {
-  if (gpu_mode == kGpuModeGuestSwiftshader) {
+    const CuttlefishConfig& config) {
+  if (config.gpu_mode() == kGpuModeGuestSwiftshader) {
     // Override the default HAL search paths in all cases. We do this because
     // the HAL search path allows for fallbacks, and fallbacks in conjunction
     // with properities lead to non-deterministic behavior while loading the
@@ -133,17 +133,17 @@ std::vector<std::string> QemuManager::ConfigureGraphics(
     return {
         "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_1),
         "androidboot.hardware.gralloc=minigbm",
-        "androidboot.hardware.hwcomposer=" + hwcomposer,
+        "androidboot.hardware.hwcomposer=" + config.hwcomposer(),
         "androidboot.hardware.egl=angle",
         "androidboot.hardware.vulkan=pastel",
     };
   }
 
-  if (gpu_mode == kGpuModeDrmVirgl) {
+  if (config.gpu_mode() == kGpuModeDrmVirgl) {
     return {
       "androidboot.cpuvulkan.version=0",
       "androidboot.hardware.gralloc=minigbm",
-      "androidboot.hardware.hwcomposer=drm_minigbm",
+      "androidboot.hardware.hwcomposer=drm",
       "androidboot.hardware.egl=mesa",
     };
   }
@@ -274,6 +274,14 @@ std::vector<Command> QemuManager::StartCommands(
         << access_kregistry_size_bytes << ") not a multiple of 1MB";
   }
 
+  auto hwcomposer_pmem_size_bytes = 0;
+  if (FileExists(instance.hwcomposer_pmem_path())) {
+    hwcomposer_pmem_size_bytes = FileSize(instance.hwcomposer_pmem_path());
+    CHECK((hwcomposer_pmem_size_bytes & (1024 * 1024 - 1)) == 0)
+        << instance.hwcomposer_pmem_path() << " file size ("
+        << hwcomposer_pmem_size_bytes << ") not a multiple of 1MB";
+  }
+
   auto pstore_size_bytes = 0;
   if (FileExists(instance.pstore_path())) {
     pstore_size_bytes = FileSize(instance.pstore_path());
@@ -306,7 +314,8 @@ std::vector<Command> QemuManager::StartCommands(
 
   qemu_cmd.AddParameter("-m");
   auto maxmem = config.memory_mb() +
-                access_kregistry_size_bytes / 1024 / 1024 +
+                (access_kregistry_size_bytes / 1024 / 1024) +
+                (hwcomposer_pmem_size_bytes / 1024 / 1024) +
                 (is_arm ? 0 : pstore_size_bytes / 1024 / 1024);
   auto slots = is_arm ? "" : ",slots=2";
   qemu_cmd.AddParameter("size=", config.memory_mb(), "M",
@@ -400,8 +409,11 @@ std::vector<Command> QemuManager::StartCommands(
 
   if (config.enable_gnss_grpc_proxy()) {
     add_hvc(instance.PerInstanceInternalPath("gnsshvc_fifo_vm"));
+    add_hvc(instance.PerInstanceInternalPath("locationhvc_fifo_vm"));
   } else {
-    add_hvc_sink();
+    for (auto i = 0; i < 2; i++) {
+      add_hvc_sink();
+    }
   }
 
   auto disk_num = instance.virtual_disk_paths().size();
@@ -456,14 +468,29 @@ std::vector<Command> QemuManager::StartCommands(
 
   // QEMU does not implement virtio-pmem-pci for ARM64 yet; restore this
   // when the device has been added
-  if (!is_arm && access_kregistry_size_bytes > 0) {
-    qemu_cmd.AddParameter("-object");
-    qemu_cmd.AddParameter("memory-backend-file,id=objpmem1,share=on,mem-path=",
-                          instance.access_kregistry_path(), ",size=",
-                          access_kregistry_size_bytes);
+  if (!is_arm) {
+    if (access_kregistry_size_bytes > 0) {
+      qemu_cmd.AddParameter("-object");
+      qemu_cmd.AddParameter(
+          "memory-backend-file,id=objpmem1,share=on,mem-path=",
+          instance.access_kregistry_path(),
+          ",size=", access_kregistry_size_bytes);
 
-    qemu_cmd.AddParameter("-device");
-    qemu_cmd.AddParameter("virtio-pmem-pci,disable-legacy=on,memdev=objpmem1,id=pmem0");
+      qemu_cmd.AddParameter("-device");
+      qemu_cmd.AddParameter(
+          "virtio-pmem-pci,disable-legacy=on,memdev=objpmem1,id=pmem0");
+    }
+    if (hwcomposer_pmem_size_bytes > 0) {
+      qemu_cmd.AddParameter("-object");
+      qemu_cmd.AddParameter(
+          "memory-backend-file,id=objpmem2,share=on,mem-path=",
+          instance.hwcomposer_pmem_path(),
+          ",size=", hwcomposer_pmem_size_bytes);
+
+      qemu_cmd.AddParameter("-device");
+      qemu_cmd.AddParameter(
+          "virtio-pmem-pci,disable-legacy=on,memdev=objpmem2,id=pmem1");
+    }
   }
 
   qemu_cmd.AddParameter("-object");
