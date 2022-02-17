@@ -27,7 +27,7 @@ TARGET_BOOTLOADER_BOARD_NAME := cutf
 
 BOARD_SYSTEMIMAGE_FILE_SYSTEM_TYPE := $(TARGET_RO_FILE_SYSTEM_TYPE)
 
-# Boot partition size: 32M
+# Boot partition size: 64M
 # This is only used for OTA update packages. The image size on disk
 # will not change (as is it not a filesystem.)
 BOARD_BOOTIMAGE_PARTITION_SIZE := 67108864
@@ -35,6 +35,8 @@ ifdef TARGET_DEDICATED_RECOVERY
 BOARD_RECOVERYIMAGE_PARTITION_SIZE := 67108864
 endif
 BOARD_VENDOR_BOOTIMAGE_PARTITION_SIZE := 67108864
+
+BOARD_INIT_BOOT_IMAGE_PARTITION_SIZE := 8388608
 
 # Build a separate vendor.img partition
 BOARD_USES_VENDORIMAGE := true
@@ -58,12 +60,12 @@ TARGET_COPY_OUT_ODM := odm
 
 # Build a separate vendor_dlkm partition
 BOARD_USES_VENDOR_DLKMIMAGE := true
-BOARD_VENDOR_DLKMIMAGE_FILE_SYSTEM_TYPE := ext4
+BOARD_VENDOR_DLKMIMAGE_FILE_SYSTEM_TYPE := $(TARGET_RO_FILE_SYSTEM_TYPE)
 TARGET_COPY_OUT_VENDOR_DLKM := vendor_dlkm
 
 # Build a separate odm_dlkm partition
 BOARD_USES_ODM_DLKMIMAGE := true
-BOARD_ODM_DLKMIMAGE_FILE_SYSTEM_TYPE := ext4
+BOARD_ODM_DLKMIMAGE_FILE_SYSTEM_TYPE := $(TARGET_RO_FILE_SYSTEM_TYPE)
 TARGET_COPY_OUT_ODM_DLKM := odm_dlkm
 
 # Enable AVB
@@ -83,6 +85,12 @@ BOARD_AVB_BOOT_KEY_PATH := external/avb/test/data/testkey_rsa4096.pem
 BOARD_AVB_BOOT_ALGORITHM := SHA256_RSA4096
 BOARD_AVB_BOOT_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
 BOARD_AVB_BOOT_ROLLBACK_INDEX_LOCATION := 2
+
+# Enable chained vbmeta for init_boot images
+BOARD_AVB_INIT_BOOT_KEY_PATH := external/avb/test/data/testkey_rsa4096.pem
+BOARD_AVB_INIT_BOOT_ALGORITHM := SHA256_RSA4096
+BOARD_AVB_INIT_BOOT_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
+BOARD_AVB_INIT_BOOT_ROLLBACK_INDEX_LOCATION := 3
 
 # Using sha256 for dm-verity partitions. b/178983355
 # system, system_other, product.
@@ -229,9 +237,16 @@ BOARD_BOOTCONFIG += kernel.mac80211_hwsim.radios=0
 BOARD_BOOTCONFIG += \
     kernel.vmw_vsock_virtio_transport_common.virtio_transport_max_vsock_pkt_buf_size=16384
 
+BOARD_BOOTCONFIG += \
+    androidboot.vendor.apex.com.android.wifi.hal=com.google.cf.wifi_hwsim
+
 BOARD_INCLUDE_DTB_IN_BOOTIMG := true
+ifndef BOARD_BOOT_HEADER_VERSION
 BOARD_BOOT_HEADER_VERSION := 4
+endif
 BOARD_MKBOOTIMG_ARGS += --header_version $(BOARD_BOOT_HEADER_VERSION)
+BOARD_INIT_BOOT_HEADER_VERSION := 4
+BOARD_MKBOOTIMG_INIT_ARGS += --header_version $(BOARD_INIT_BOOT_HEADER_VERSION)
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/dtb.img:dtb.img \
     device/google/cuttlefish/required_images:required_images \

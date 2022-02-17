@@ -64,13 +64,8 @@ constexpr auto kCustomControlPanelButtonsField = "custom_control_panel_buttons";
 
 constexpr int kRegistrationRetries = 3;
 constexpr int kRetryFirstIntervalMs = 1000;
-
-void SendJson(WsConnection* ws_conn, const Json::Value& data) {
-  Json::StreamWriterBuilder factory;
-  auto data_str = Json::writeString(factory, data);
-  ws_conn->Send(reinterpret_cast<const uint8_t*>(data_str.c_str()),
-                data_str.size());
-}
+constexpr int kReconnectRetries = 100;
+constexpr int kReconnectIntervalMs = 1000;
 
 bool ParseMessage(const uint8_t* data, size_t length, Json::Value* msg_out) {
   auto str = reinterpret_cast<const char*>(data);
@@ -139,9 +134,13 @@ class AudioDeviceModuleWrapper : public AudioSource {
 
 }  // namespace
 
-class Streamer::Impl : public WsConnectionObserver {
+
+class Streamer::Impl : public ServerConnectionObserver,
+                       public std::enable_shared_from_this<ServerConnectionObserver> {
  public:
   std::shared_ptr<ClientHandler> CreateClientHandler(int client_id);
+
+  void Register(std::weak_ptr<OperatorObserver> observer);
 
   void SendMessageToClient(int client_id, const Json::Value& msg);
   void DestroyClientHandler(int client_id);
@@ -160,7 +159,7 @@ class Streamer::Impl : public WsConnectionObserver {
   // no need for extra synchronization mechanisms (mutex)
   StreamerConfig config_;
   OperatorServerConfig operator_config_;
-  std::shared_ptr<WsConnection> server_connection_;
+  std::unique_ptr<ServerConnection> server_connection_;
   std::shared_ptr<ConnectionObserverFactory> connection_observer_factory_;
   rtc::scoped_refptr<webrtc::PeerConnectionFactoryInterface>
       peer_connection_factory_;
@@ -312,22 +311,7 @@ void Streamer::Register(std::weak_ptr<OperatorObserver> observer) {
   // No need to block the calling thread on this, the observer will be notified
   // when the connection is established.
   impl_->signal_thread_->PostTask(RTC_FROM_HERE, [this, observer]() {
-    impl_->operator_observer_ = observer;
-    // This can be a local variable since the connection object will keep a
-    // reference to it.
-    auto ws_context = WsConnectionContext::Create();
-    CHECK(ws_context) << "Failed to create websocket context";
-    impl_->server_connection_ = ws_context->CreateConnection(
-        impl_->config_.operator_server.port,
-        impl_->config_.operator_server.addr,
-        impl_->config_.operator_server.path,
-        impl_->config_.operator_server.security, impl_,
-        impl_->config_.operator_server.http_headers);
-
-    CHECK(impl_->server_connection_)
-        << "Unable to create websocket connection object";
-
-    impl_->server_connection_->Connect();
+    impl_->Register(observer);
   });
 }
 
@@ -347,6 +331,21 @@ void Streamer::RecordDisplays(LocalRecorder& recorder) {
     std::shared_ptr<webrtc::VideoTrackSourceInterface> source_shared(
         source.release(), deleter);
     recorder.AddDisplay(display.width, display.height, source_shared);
+  }
+}
+
+void Streamer::Impl::Register(std::weak_ptr<OperatorObserver> observer) {
+  operator_observer_ = observer;
+  // When the connection is established the OnOpen function will be called where
+  // the registration will take place
+  if (!server_connection_) {
+    server_connection_ =
+        ServerConnection::Connect(config_.operator_server, weak_from_this());
+  } else {
+    // in case connection attempt is retried, just call Reconnect().
+    // Recreating server_connection_ object will destroy existing WSConnection
+    // object and task re-scheduling will fail
+    server_connection_->Reconnect();
   }
 }
 
@@ -417,7 +416,7 @@ void Streamer::Impl::OnOpen() {
     }
     device_info[kCustomControlPanelButtonsField] = custom_control_panel_buttons;
     register_obj[cuttlefish::webrtc_signaling::kDeviceInfoField] = device_info;
-    SendJson(server_connection_.get(), register_obj);
+    server_connection_->Send(register_obj);
     // Do this last as OnRegistered() is user code and may take some time to
     // complete (although it shouldn't...)
     auto observer = operator_observer_.lock();
@@ -438,16 +437,27 @@ void Streamer::Impl::OnClose() {
       observer->OnClose();
     }
   });
+  LOG(INFO) << "Trying to re-connect to operator..";
+  registration_retries_left_ = kReconnectRetries;
+  retry_interval_ms_ = kReconnectIntervalMs;
+  signal_thread_->PostDelayedTask(
+      RTC_FROM_HERE, [this]() { Register(operator_observer_); },
+      retry_interval_ms_);
 }
 
 void Streamer::Impl::OnError(const std::string& error) {
   // Called from websocket thread.
   if (registration_retries_left_) {
     LOG(WARNING) << "Connection to operator failed (" << error << "), "
-                 << registration_retries_left_ << " retries left";
+                 << registration_retries_left_ << " retries left"
+                 << " (will retry in " << retry_interval_ms_ / 1000 << "s)";
     --registration_retries_left_;
     signal_thread_->PostDelayedTask(
-        RTC_FROM_HERE, [this]() { server_connection_->Connect(); },
+        RTC_FROM_HERE,
+        [this]() {
+          // Need to reconnect and register again with operator
+          Register(operator_observer_);
+        },
         retry_interval_ms_);
     retry_interval_ms_ *= 2;
   } else {
@@ -653,8 +663,8 @@ void Streamer::Impl::SendMessageToClient(int client_id,
       cuttlefish::webrtc_signaling::kForwardType;
   wrapper[cuttlefish::webrtc_signaling::kClientIdField] = client_id;
   // This is safe to call from the webrtc threads because
-  // WsConnection is thread safe
-  SendJson(server_connection_.get(), wrapper);
+  // ServerConnection(s) are thread safe
+  server_connection_->Send(wrapper);
 }
 
 void Streamer::Impl::DestroyClientHandler(int client_id) {

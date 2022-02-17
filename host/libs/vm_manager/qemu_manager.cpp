@@ -123,8 +123,8 @@ bool QemuManager::IsSupported() {
   return HostSupportsQemuCli();
 }
 
-std::vector<std::string> QemuManager::ConfigureGpuMode(
-    const std::string& gpu_mode) {
+std::vector<std::string> QemuManager::ConfigureGraphics(
+    const std::string& gpu_mode, const std::string& hwcomposer) {
   if (gpu_mode == kGpuModeGuestSwiftshader) {
     // Override the default HAL search paths in all cases. We do this because
     // the HAL search path allows for fallbacks, and fallbacks in conjunction
@@ -133,7 +133,7 @@ std::vector<std::string> QemuManager::ConfigureGpuMode(
     return {
         "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_1),
         "androidboot.hardware.gralloc=minigbm",
-        "androidboot.hardware.hwcomposer=ranchu",
+        "androidboot.hardware.hwcomposer=" + hwcomposer,
         "androidboot.hardware.egl=angle",
         "androidboot.hardware.vulkan=pastel",
     };
@@ -501,13 +501,13 @@ std::vector<Command> QemuManager::StartCommands(
 
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("virtio-net-pci-non-transitional,netdev=hostnet1,id=net1");
-
+#ifndef ENFORCE_MAC80211_HWSIM
   qemu_cmd.AddParameter("-netdev");
   qemu_cmd.AddParameter("tap,id=hostnet2,ifname=", instance.wifi_tap_name(),
                         ",script=no,downscript=no", vhost_net);
-
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("virtio-net-pci-non-transitional,netdev=hostnet2,id=net2");
+#endif
 
   auto display_configs = config.display_configs();
   CHECK_GE(display_configs.size(), 1);

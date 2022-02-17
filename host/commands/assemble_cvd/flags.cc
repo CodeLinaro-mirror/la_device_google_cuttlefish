@@ -100,9 +100,14 @@ DEFINE_string(vm_manager, "",
 DEFINE_string(gpu_mode, cuttlefish::kGpuModeAuto,
               "What gpu configuration to use, one of {auto, drm_virgl, "
               "gfxstream, guest_swiftshader}");
+DEFINE_string(hwcomposer, cuttlefish::kHwComposerAuto,
+              "What hardware composer to use, one of {auto, drm, ranchu} ");
 DEFINE_string(gpu_capture_binary, "",
               "Path to the GPU capture binary to use when capturing GPU traces"
               "(ngfx, renderdoc, etc)");
+DEFINE_bool(enable_gpu_udmabuf,
+            false,
+            "Use the udmabuf driver for zero-copy virtio-gpu");
 
 DEFINE_bool(deprecated_boot_completed, false, "Log boot completed message to"
             " host kernel. This is only used during transition of our clients."
@@ -174,13 +179,17 @@ DEFINE_bool(
         false,
         "[Experimental] If enabled, exposes local adb service through a websocket.");
 
+static constexpr auto HOST_OPERATOR_SOCKET_PATH = "/run/cuttlefish/operator";
+
 DEFINE_bool(
-    start_webrtc_sig_server, false,
+    // The actual default for this flag is set with SetCommandLineOption() in
+    // GetKernelConfigsAndSetDefaults() at the end of this file.
+    start_webrtc_sig_server, true,
     "Whether to start the webrtc signaling server. This option only applies to "
     "the first instance, if multiple instances are launched they'll share the "
     "same signaling server, which is owned by the first one.");
 
-DEFINE_string(webrtc_sig_server_addr, "0.0.0.0",
+DEFINE_string(webrtc_sig_server_addr, "",
               "The address of the webrtc signaling server.");
 
 DEFINE_int32(
@@ -458,7 +467,7 @@ void ReadKernelConfig(KernelConfig* kernel_config) {
 } // namespace
 
 CuttlefishConfig InitializeCuttlefishConfiguration(
-    const std::string& instance_dir, int modem_simulator_count,
+    const std::string& root_dir, int modem_simulator_count,
     KernelConfig kernel_config, fruit::Injector<>& injector) {
   CuttlefishConfig tmp_config_obj;
 
@@ -467,7 +476,8 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
         << "Failed to save fragment " << fragment->Name();
   }
 
-  tmp_config_obj.set_assembly_dir(FLAGS_assembly_dir);
+  tmp_config_obj.set_root_dir(root_dir);
+
   tmp_config_obj.set_target_arch(kernel_config.target_arch);
   tmp_config_obj.set_bootconfig_supported(kernel_config.bootconfig_supported);
   auto vmm = GetVmManager(FLAGS_vm_manager, kernel_config.target_arch);
@@ -563,15 +573,35 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
         << "GPU capture only supported with --norestart_subprocesses";
   }
 
+  tmp_config_obj.set_hwcomposer(FLAGS_hwcomposer);
+  if (!tmp_config_obj.hwcomposer().empty()) {
+    if (tmp_config_obj.hwcomposer() == kHwComposerRanchu) {
+      CHECK(tmp_config_obj.gpu_mode() != kGpuModeDrmVirgl)
+        << "ranchu hwcomposer not supported with --gpu_mode=drm_virgl";
+    }
+  }
+
+  if (tmp_config_obj.hwcomposer() == kHwComposerAuto) {
+      if (tmp_config_obj.gpu_mode() == kGpuModeDrmVirgl) {
+        tmp_config_obj.set_hwcomposer(kHwComposerDrmMinigbm);
+      } else {
+        tmp_config_obj.set_hwcomposer(kHwComposerRanchu);
+      }
+  }
+
+  tmp_config_obj.set_enable_gpu_udmabuf(FLAGS_enable_gpu_udmabuf);
+
   // Sepolicy rules need to be updated to support gpu mode. Temporarily disable
   // auto-enabling sandbox when gpu is enabled (b/152323505).
   if (tmp_config_obj.gpu_mode() != kGpuModeGuestSwiftshader) {
     SetCommandLineOptionWithMode("enable_sandbox", "false", SET_FLAGS_DEFAULT);
   }
 
-  if (vmm->ConfigureGpuMode(tmp_config_obj.gpu_mode()).empty()) {
-    LOG(FATAL) << "Invalid gpu_mode=" << FLAGS_gpu_mode <<
-               " does not work with vm_manager=" << FLAGS_vm_manager;
+  if (vmm->ConfigureGraphics(tmp_config_obj.gpu_mode(),
+         tmp_config_obj.hwcomposer()).empty()) {
+    LOG(FATAL) << "Invalid (gpu_mode=," << FLAGS_gpu_mode <<
+               " hwcomposer= " << FLAGS_hwcomposer <<
+               ") does not work with vm_manager=" << FLAGS_vm_manager;
   }
 
   CHECK(!FLAGS_smt || FLAGS_cpus % 2 == 0)
@@ -702,10 +732,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
     auto instance = tmp_config_obj.ForInstance(num);
     auto const_instance =
-        const_cast<const CuttlefishConfig&>(tmp_config_obj)
-            .ForInstance(num);
-    // Set this first so that calls to PerInstancePath below are correct
-    instance.set_instance_dir(instance_dir + "." + std::to_string(num));
+        const_cast<const CuttlefishConfig&>(tmp_config_obj).ForInstance(num);
     instance.set_use_allocd(FLAGS_use_allocd);
     if (FLAGS_use_random_serial) {
       instance.set_serial_number(
@@ -796,13 +823,20 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
       }
       instance.set_webrtc_device_id(device_id);
     }
-    if (FLAGS_start_webrtc_sig_server && is_first_instance) {
+    if (!is_first_instance || !FLAGS_start_webrtc) {
+      // Only the first instance starts the signaling server or proxy
+      instance.set_start_webrtc_signaling_server(false);
+      instance.set_start_webrtc_sig_server_proxy(false);
+    } else {
       auto port = 8443 + num - 1;
       // Change the signaling server port for all instances
       tmp_config_obj.set_sig_server_port(port);
-      instance.set_start_webrtc_signaling_server(true);
-    } else {
-      instance.set_start_webrtc_signaling_server(false);
+      // Either the signaling server or the proxy is started, never both
+      instance.set_start_webrtc_signaling_server(FLAGS_start_webrtc_sig_server);
+      // The proxy is only started if the host operator is available
+      instance.set_start_webrtc_sig_server_proxy(
+          cuttlefish::FileIsSocket(HOST_OPERATOR_SOCKET_PATH) &&
+          !FLAGS_start_webrtc_sig_server);
     }
 
     // Start wmediumd process for the first instance if
@@ -933,11 +967,18 @@ bool GetKernelConfigAndSetDefaults(KernelConfig* kernel_config) {
               << std::endl;
     invalid_manager = true;
   }
-  // The default for starting signaling server is whether or not webrt is to be
-  // started.
-  SetCommandLineOptionWithMode("start_webrtc_sig_server",
-                               FLAGS_start_webrtc ? "true" : "false",
-                               SET_FLAGS_DEFAULT);
+  auto host_operator_present =
+      cuttlefish::FileIsSocket(HOST_OPERATOR_SOCKET_PATH);
+  // The default for starting signaling server depends on whether or not webrtc
+  // is to be started and the presence of the host orchestrator.
+  SetCommandLineOptionWithMode(
+      "start_webrtc_sig_server",
+      FLAGS_start_webrtc && !host_operator_present ? "true" : "false",
+      SET_FLAGS_DEFAULT);
+  SetCommandLineOptionWithMode(
+      "webrtc_sig_server_addr",
+      host_operator_present ? HOST_OPERATOR_SOCKET_PATH : "0.0.0.0",
+      SET_FLAGS_DEFAULT);
   if (invalid_manager) {
     return false;
   }

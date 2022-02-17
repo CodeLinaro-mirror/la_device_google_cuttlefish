@@ -46,9 +46,9 @@ std::string GetPath(struct lws* wsi) {
 }
 
 const std::vector<std::pair<std::string, std::string>> kCORSHeaders = {
-    {"Access-Control-Allow-Origin", "*"},
-    {"Access-Control-Allow-Methods", "POST, GET, OPTIONS"},
-    {"Access-Control-Allow-Headers",
+    {"Access-Control-Allow-Origin:", "*"},
+    {"Access-Control-Allow-Methods:", "POST, GET, OPTIONS"},
+    {"Access-Control-Allow-Headers:",
      "Content-Type, Access-Control-Allow-Headers, Authorization, "
      "X-Requested-With, Accept"}};
 
@@ -204,7 +204,6 @@ void WebSocketServer::InitializeLwsObjects() {
   info.mounts = &static_mount_;
   info.protocols = protocols;
   info.vhost_name = "localhost";
-  info.ws_ping_pong_interval = 10;
   info.headers = &headers_;
   info.retry_and_idle_policy = &retry_;
 

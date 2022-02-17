@@ -79,6 +79,13 @@ body {
   font-family: 'Open Sans', sans-serif;
   padding: 10px;
   margin: 10px;
+  border-radius: 10px;
+}
+#error-message .close-btn {
+  float: right;
+  cursor: pointer;
+}
+#error-message.hidden {
   display: none;
 }
 #error-message.warning {
@@ -150,6 +157,38 @@ body {
   outline: none;
   background-color: transparent;
 }
+.modal-button, .modal-button-highlight {
+  background:    #e8eaed; /* Google grey 200 */
+  border-radius: 10px;
+  box-shadow:    1px 1px #444444;
+  padding:       10px 20px;
+  color:         #000000;
+  display:       inline-block;
+  font:          normal bold 14px/1 "Open Sans", sans-serif;
+  text-align:    center;
+}
+#bluetooth-wizard-mac:valid {
+  border: 2px solid black;
+}
+#bluetooth-wizard-mac:invalid {
+  border: 2px solid red;
+}
+#bluetooth-wizard-mac:invalid + span::before {
+  font-weight: bold;
+  content: 'X';
+  color: red;
+}
+#bluetooth-wizard-mac:valid + span::before {
+  font-weight: bold;
+  content: 'OK';
+  color: green;
+}
+.modal-button {
+  background:    #e8eaed; /* Google grey 200 */
+}
+.modal-button-highlight {
+  background:    #f4cccc;
+}
 #device-details-modal span {
   white-space: pre;
 }
@@ -158,6 +197,38 @@ body {
 }
 #bluetooth-console-cmd-label {
   color: white;
+}
+.bluetooth-text, .bluetooth-text-bold, .bluetooth-text-field input {
+  font: normal 18px/1 "Open Sans", sans-serif;
+}
+.bluetooth-text, .bluetooth-text-bold {
+  color: white;
+}
+.bluetooth-text-bold {
+  font: bold;
+}
+.bluetooth-button {
+  text-align: center;
+}
+.bluetooth-drop-down select {
+  font: normal 18px/1 "Open Sans", sans-serif;
+  color: black;
+  width: 500px;
+  margin: 5px;
+  rows: 10;
+  columns: 60;
+}
+.bluetooth-text-field input {
+  color: black;
+  width: 500px;
+  margin: 5px;
+  rows: 10;
+  columns: 60;
+}
+.bluetooth-list-trash {
+  background:    #00000000;
+  border:        0px;
+  color:         #ffffff;
 }
 
 .control-panel-column {

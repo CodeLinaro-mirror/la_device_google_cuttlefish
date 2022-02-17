@@ -32,6 +32,7 @@
 #include "host/libs/config/inject.h"
 #include "host/libs/config/known_paths.h"
 #include "host/libs/vm_manager/crosvm_builder.h"
+#include "host/libs/vm_manager/crosvm_manager.h"
 #include "host/libs/vm_manager/vm_manager.h"
 
 namespace cuttlefish {
@@ -134,11 +135,40 @@ class KernelLogMonitor : public CommandSource,
   std::vector<SharedFD> event_pipe_read_ends_;
 };
 
+class LogTeeCreator {
+ public:
+  INJECT(LogTeeCreator(const CuttlefishConfig::InstanceSpecific& instance))
+      : instance_(instance) {}
+
+  Command CreateLogTee(Command& cmd, const std::string& process_name) {
+    auto name_with_ext = process_name + "_logs.fifo";
+    auto logs_path = instance_.PerInstanceInternalPath(name_with_ext.c_str());
+    auto logs = SharedFD::Fifo(logs_path, 0666);
+    if (!logs->IsOpen()) {
+      LOG(FATAL) << "Failed to create fifo for " << process_name
+                 << " output: " << logs->StrError();
+    }
+
+    cmd.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, logs);
+    cmd.RedirectStdIO(Subprocess::StdIOChannel::kStdErr, logs);
+
+    Command log_tee_cmd(HostBinaryPath("log_tee"));
+    log_tee_cmd.AddParameter("--process_name=", process_name);
+    log_tee_cmd.AddParameter("--log_fd_in=", logs);
+
+    return log_tee_cmd;
+  }
+
+ private:
+  const CuttlefishConfig::InstanceSpecific& instance_;
+};
+
 class RootCanal : public CommandSource {
  public:
   INJECT(RootCanal(const CuttlefishConfig& config,
-                   const CuttlefishConfig::InstanceSpecific& instance))
-      : config_(config), instance_(instance) {}
+                   const CuttlefishConfig::InstanceSpecific& instance,
+                   LogTeeCreator& log_tee))
+      : config_(config), instance_(instance), log_tee_(log_tee) {}
 
   // CommandSource
   std::vector<Command> Commands() override {
@@ -160,7 +190,10 @@ class RootCanal : public CommandSource {
     command.AddParameter("--default_commands_file=",
                          instance_.rootcanal_default_commands_file());
 
-    return single_element_emplace(std::move(command));
+    std::vector<Command> commands;
+    commands.emplace_back(log_tee_.CreateLogTee(command, "rootcanal"));
+    commands.emplace_back(std::move(command));
+    return commands;
   }
 
   // Feature
@@ -173,6 +206,7 @@ class RootCanal : public CommandSource {
 
   const CuttlefishConfig& config_;
   const CuttlefishConfig::InstanceSpecific& instance_;
+  LogTeeCreator& log_tee_;
 };
 
 class LogcatReceiver : public CommandSource, public DiagnosticInformation {
@@ -396,7 +430,7 @@ class BluetoothConnector : public CommandSource {
 
   // CommandSource
   std::vector<Command> Commands() override {
-    Command command(HostBinaryPath("bt_connector"));
+    Command command(DefaultHostArtifactsPath("bin/bt_connector"));
     command.AddParameter("-bt_out=", fifos_[0]);
     command.AddParameter("-bt_in=", fifos_[1]);
     command.AddParameter("-hci_port=", instance_.rootcanal_hci_port());
@@ -628,8 +662,9 @@ class ConsoleForwarder : public CommandSource, public DiagnosticInformation {
 class WmediumdServer : public CommandSource {
  public:
   INJECT(WmediumdServer(const CuttlefishConfig& config,
-                        const CuttlefishConfig::InstanceSpecific& instance))
-      : config_(config), instance_(instance) {}
+                        const CuttlefishConfig::InstanceSpecific& instance,
+                        LogTeeCreator& log_tee))
+      : config_(config), instance_(instance), log_tee_(log_tee) {}
 
   // CommandSource
   std::vector<Command> Commands() override {
@@ -637,7 +672,11 @@ class WmediumdServer : public CommandSource {
     cmd.AddParameter("-u", config_.vhost_user_mac80211_hwsim());
     cmd.AddParameter("-a", config_.wmediumd_api_server_socket());
     cmd.AddParameter("-c", config_path_);
-    return single_element_emplace(std::move(cmd));
+
+    std::vector<Command> commands;
+    commands.emplace_back(log_tee_.CreateLogTee(cmd, "wmediumd"));
+    commands.emplace_back(std::move(cmd));
+    return commands;
   }
 
   // Feature
@@ -676,6 +715,7 @@ class WmediumdServer : public CommandSource {
 
   const CuttlefishConfig& config_;
   const CuttlefishConfig::InstanceSpecific& instance_;
+  LogTeeCreator& log_tee_;
   std::string config_path_;
 };
 
@@ -704,12 +744,13 @@ class VmmCommands : public CommandSource {
 class OpenWrt : public CommandSource {
  public:
   INJECT(OpenWrt(const CuttlefishConfig& config,
-                 const CuttlefishConfig::InstanceSpecific& instance))
-      : config_(config), instance_(instance) {}
+                 const CuttlefishConfig::InstanceSpecific& instance,
+                 LogTeeCreator& log_tee))
+      : config_(config), instance_(instance), log_tee_(log_tee) {}
 
   // CommandSource
   std::vector<Command> Commands() override {
-    constexpr auto crosvm_for_ap_socket = "crosvm_for_ap_control.sock";
+    constexpr auto crosvm_for_ap_socket = "ap_control.sock";
 
     CrosvmBuilder ap_cmd;
     ap_cmd.SetBinary(config_.crosvm_binary());
@@ -752,9 +793,15 @@ class OpenWrt : public CommandSource {
     ap_cmd.Cmd().AddParameter("--params=\"root=" + config_.ap_image_dev_path() +
                               "\"");
 
+    auto kernel_logs_path = instance_.PerInstanceLogPath("crosvm_openwrt.log");
+    ap_cmd.AddSerialConsoleReadOnly(kernel_logs_path);
+
     ap_cmd.Cmd().AddParameter(config_.ap_kernel_image());
 
-    return single_element_emplace(std::move(ap_cmd.Cmd()));
+    std::vector<Command> commands;
+    commands.emplace_back(log_tee_.CreateLogTee(ap_cmd.Cmd(), "openwrt"));
+    commands.emplace_back(std::move(ap_cmd.Cmd()));
+    return commands;
   }
 
   // Feature
@@ -763,7 +810,8 @@ class OpenWrt : public CommandSource {
 #ifndef ENFORCE_MAC80211_HWSIM
     return false;
 #else
-    return instance_.start_ap();
+    return instance_.start_ap() &&
+           config_.vm_manager() == vm_manager::CrosvmManager::name();
 #endif
   }
 
@@ -773,6 +821,7 @@ class OpenWrt : public CommandSource {
 
   const CuttlefishConfig& config_;
   const CuttlefishConfig::InstanceSpecific& instance_;
+  LogTeeCreator& log_tee_;
 };
 
 using PublicDeps = fruit::Required<const CuttlefishConfig, VmManager,
