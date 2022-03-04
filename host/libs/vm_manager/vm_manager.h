@@ -37,7 +37,7 @@ class VmManager {
   // need to consume host resources, except for the PCI ID. Use this trick to
   // keep the number of PCI IDs assigned constant for all flags/vm manager
   // combinations
-  static const int kDefaultNumHvcs = 7;
+  static const int kDefaultNumHvcs = 8;
 
   // This is the number of virtual disks (block devices) that should be
   // configured by the VmManager. Related to the description above regarding
@@ -58,8 +58,8 @@ class VmManager {
   virtual ~VmManager() = default;
 
   virtual bool IsSupported() = 0;
-  virtual std::vector<std::string> ConfigureGraphics(const std::string&,
-      const std::string&) = 0;
+  virtual std::vector<std::string> ConfigureGraphics(
+      const CuttlefishConfig& config) = 0;
   virtual std::string ConfigureBootDevices(int num_disks) = 0;
 
   // Starts the VMM. It will usually build a command and pass it to the
