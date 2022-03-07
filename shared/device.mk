@@ -70,6 +70,7 @@ AB_OTA_PARTITIONS += \
     odm_dlkm \
     product \
     system \
+    system_dlkm \
     system_ext \
     vbmeta \
     vbmeta_system \
@@ -94,6 +95,14 @@ PRODUCT_PRODUCT_PROPERTIES += \
     ro.com.google.locationfeatures=1 \
     persist.sys.fuse.passthrough.enable=true \
     persist.sys.fuse.bpf.enable=true \
+
+# Until we support adb keys on user builds, and fix logcat over serial,
+# spawn adbd by default without authorization for "adb logcat"
+ifeq ($(TARGET_BUILD_VARIANT),user)
+PRODUCT_PRODUCT_PROPERTIES += \
+    ro.adb.secure=0 \
+    ro.debuggable=1
+endif
 
 # Explanation of specific properties:
 #   debug.hwui.swap_with_damage avoids boot failure on M http://b/25152138
@@ -183,9 +192,8 @@ PRODUCT_PACKAGES += \
     tombstone_producer \
     suspend_blocker \
     vsoc_input_service \
-    vtpm_manager \
 
-$(call soong_config_append, cvd, launch_configs, cvd_config_auto.json cvd_config_phone.json cvd_config_tablet.json cvd_config_tv.json)
+$(call soong_config_append, cvd, launch_configs, cvd_config_auto.json cvd_config_foldable.json cvd_config_go.json cvd_config_phone.json cvd_config_tablet.json cvd_config_tv.json cvd_config_wear.json)
 $(call soong_config_append, cvd, grub_config, grub.cfg)
 
 #
@@ -298,12 +306,12 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.wifi.passpoint.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.wifi.passpoint.xml \
     frameworks/native/data/etc/android.software.ipsec_tunnels.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.ipsec_tunnels.xml \
     frameworks/native/data/etc/android.software.sip.voip.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.sip.voip.xml \
-    frameworks/native/data/etc/android.software.verified_boot.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.verified_boot.xml
-endif
-PRODUCT_COPY_FILES += \
+    frameworks/native/data/etc/android.software.verified_boot.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.verified_boot.xml \
     hardware/google/camera/devices/EmulatedCamera/hwl/configs/emu_camera_back.json:$(TARGET_COPY_OUT_VENDOR)/etc/config/emu_camera_back.json \
     hardware/google/camera/devices/EmulatedCamera/hwl/configs/emu_camera_front.json:$(TARGET_COPY_OUT_VENDOR)/etc/config/emu_camera_front.json \
-    hardware/google/camera/devices/EmulatedCamera/hwl/configs/emu_camera_depth.json:$(TARGET_COPY_OUT_VENDOR)/etc/config/emu_camera_depth.json \
+    hardware/google/camera/devices/EmulatedCamera/hwl/configs/emu_camera_depth.json:$(TARGET_COPY_OUT_VENDOR)/etc/config/emu_camera_depth.json
+endif
+PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.consumerir.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.consumerir.xml \
     device/google/cuttlefish/shared/config/init.vendor.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.cutf_cvm.rc \
     device/google/cuttlefish/shared/config/init.product.rc:$(TARGET_COPY_OUT_PRODUCT)/etc/init/init.rc \
@@ -392,8 +400,6 @@ PRODUCT_PACKAGES += \
 #
 PRODUCT_PACKAGES += \
     hwcomposer.drm \
-    hwcomposer.cutf \
-    hwcomposer-stats \
     android.hardware.graphics.composer@2.4-service
 
 #
@@ -443,7 +449,7 @@ endif
 #
 LOCAL_AUDIO_PRODUCT_PACKAGE ?= \
     android.hardware.audio.service \
-    android.hardware.audio@7.0-impl.ranchu \
+    android.hardware.audio@7.1-impl.ranchu \
     android.hardware.audio.effect@7.0-impl \
 
 LOCAL_AUDIO_PRODUCT_COPY_FILES ?= \
@@ -523,6 +529,9 @@ PRODUCT_PACKAGES += \
 DEVICE_MANIFEST_FILE += \
     device/google/cuttlefish/guest/hals/camera/manifest.xml
 else
+ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
+PRODUCT_PACKAGES += com.google.emulated.camera.provider.hal
+endif
 PRODUCT_PACKAGES += \
     android.hardware.camera.provider@2.7-service-google \
     libgooglecamerahwl_impl \
@@ -561,9 +570,8 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     android.hardware.identity-service.remote
 
-# Input Classifier HAL
 PRODUCT_PACKAGES += \
-    android.hardware.input.classifier@1.0-service.default
+    android.hardware.input.processor-service.example
 
 # Netlink Interceptor HAL
 PRODUCT_PACKAGES += \
@@ -585,8 +593,11 @@ PRODUCT_PACKAGES += \
 #
 # Thermal (mock)
 #
-PRODUCT_PACKAGES += \
-    android.hardware.thermal@2.0-service.mock
+ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
+PRODUCT_PACKAGES += com.android.hardware.thermal.mock
+else
+PRODUCT_PACKAGES += android.hardware.thermal@2.0-service.mock
+endif
 
 #
 # Lights
@@ -629,15 +640,9 @@ endif
 #
 PRODUCT_PACKAGES += \
     android.hardware.neuralnetworks@1.3-service-sample-all \
-    android.hardware.neuralnetworks@1.3-service-sample-float-fast \
-    android.hardware.neuralnetworks@1.3-service-sample-float-slow \
-    android.hardware.neuralnetworks@1.3-service-sample-minimal \
-    android.hardware.neuralnetworks@1.3-service-sample-quant \
+    android.hardware.neuralnetworks@1.3-service-sample-limited \
     android.hardware.neuralnetworks-service-sample-all \
-    android.hardware.neuralnetworks-service-sample-float-fast \
-    android.hardware.neuralnetworks-service-sample-float-slow \
-    android.hardware.neuralnetworks-service-sample-minimal \
-    android.hardware.neuralnetworks-service-sample-quant \
+    android.hardware.neuralnetworks-service-sample-limited \
     android.hardware.neuralnetworks-shim-service-sample
 
 #
@@ -760,11 +765,6 @@ PRODUCT_VENDOR_PROPERTIES += ro.vendor.wifi_impl=mac8011_hwsim_virtio
 
 $(call soong_config_append,cvdhost,enforce_mac80211_hwsim,true)
 
-# Wifi Runtime Resource Overlay
-PRODUCT_PACKAGES += \
-    CuttlefishTetheringOverlay \
-    CuttlefishWifiOverlay
-
 else
 PRODUCT_PACKAGES += setup_wifi
 PRODUCT_VENDOR_PROPERTIES += ro.vendor.wifi_impl=virt_wifi
@@ -775,6 +775,13 @@ endif
 # UWB HAL
 PRODUCT_PACKAGES += \
     android.hardware.uwb-service
+
+ifeq ($(PRODUCT_ENFORCE_MAC80211_HWSIM),true)
+# Wifi Runtime Resource Overlay
+PRODUCT_PACKAGES += \
+    CuttlefishTetheringOverlay \
+    CuttlefishWifiOverlay
+endif
 
 # Host packages to install
 PRODUCT_HOST_PACKAGES += socket_vsock_proxy
