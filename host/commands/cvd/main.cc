@@ -34,6 +34,7 @@
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/flag_parser.h"
+#include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
 #include "common/libs/utils/unix_sockets.h"
 #include "host/commands/cvd/server_constants.h"
@@ -41,6 +42,21 @@
 
 namespace cuttlefish {
 namespace {
+
+Result<SharedFD> ConnectToServer() {
+  auto connection =
+      SharedFD::SocketLocalClient(cvd::kServerSocketPath,
+                                  /*is_abstract=*/true, SOCK_SEQPACKET);
+  if (!connection->IsOpen()) {
+    auto connection =
+        SharedFD::SocketLocalClient(cvd::kServerSocketPath,
+                                    /*is_abstract=*/true, SOCK_STREAM);
+  }
+  if (!connection->IsOpen()) {
+    return CF_ERR("Failed to connect to server");
+  }
+  return connection;
+}
 
 class CvdClient {
  public:
@@ -62,7 +78,7 @@ class CvdClient {
 
     auto server_version = response->version_response().version();
     if (server_version.major() != cvd::kVersionMajor) {
-      std::cout << "Major version difference: cvd(" << cvd::kVersionMajor << "."
+      std::cerr << "Major version difference: cvd(" << cvd::kVersionMajor << "."
                 << cvd::kVersionMinor << ") != cvd_server("
                 << server_version.major() << "." << server_version.minor()
                 << "). Try `cvd kill-server` or `pkill cvd_server`."
@@ -70,21 +86,21 @@ class CvdClient {
       return false;
     }
     if (server_version.minor() < cvd::kVersionMinor) {
-      std::cout << "Minor version of cvd_server is older than latest. "
+      std::cerr << "Minor version of cvd_server is older than latest. "
                 << "Attempting to restart..." << std::endl;
       StopCvdServer(/*clear=*/false);
       StartCvdServer(host_tool_directory);
       if (num_retries > 0) {
         return EnsureCvdServerRunning(host_tool_directory, num_retries - 1);
       } else {
-        std::cout << "Unable to start the cvd_server with version "
+        std::cerr << "Unable to start the cvd_server with version "
                   << cvd::kVersionMajor << "." << cvd::kVersionMinor
                   << std::endl;
         return false;
       }
     }
     if (server_version.build() != android::build::GetBuildNumber()) {
-      std::cout << "WARNING: cvd_server client version ("
+      std::cerr << "WARNING: cvd_server client version ("
                 << android::build::GetBuildNumber()
                 << ") does not match  server version ("
                 << server_version.build() << std::endl;
@@ -94,7 +110,13 @@ class CvdClient {
 
   void StopCvdServer(bool clear) {
     if (!server_) {
-      return;
+      // server_ may not represent a valid connection even while the server is
+      // running, if we haven't tried to connect. This establishes first whether
+      // the server is running.
+      auto connection_attempt = ConnectToServer();
+      if (!connection_attempt.ok()) {
+        return;
+      }
     }
 
     cvd::Request request;
@@ -153,6 +175,7 @@ class CvdClient {
     }
     std::unique_ptr<char, void(*)(void*)> cwd(getcwd(nullptr, 0), &free);
     command_request->set_working_directory(cwd.get());
+    command_request->set_wait_behavior(cvd::WAIT_BEHAVIOR_COMPLETE);
 
     auto response = SendRequest(request);
     CHECK(response.ok()) << response.error().message();
@@ -175,18 +198,7 @@ class CvdClient {
   android::base::Result<cvd::Response> SendRequest(
       const cvd::Request& request, std::optional<SharedFD> extra_fd = {}) {
     if (!server_) {
-      auto connection =
-          SharedFD::SocketLocalClient(cvd::kServerSocketPath,
-                                      /*is_abstract=*/true, SOCK_SEQPACKET);
-      if (!connection->IsOpen()) {
-        auto connection =
-            SharedFD::SocketLocalClient(cvd::kServerSocketPath,
-                                        /*is_abstract=*/true, SOCK_STREAM);
-      }
-      if (!connection->IsOpen()) {
-        return android::base::Error() << "Failed to connect to server";
-      }
-      SetServer(connection);
+      SetServer(CF_EXPECT(ConnectToServer()));
     }
     // Serialize and send the request.
     std::string serialized;
