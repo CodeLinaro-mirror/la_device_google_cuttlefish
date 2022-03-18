@@ -95,7 +95,7 @@ PRODUCT_PRODUCT_PROPERTIES += \
     persist.adb.tcp.port=5555 \
     ro.com.google.locationfeatures=1 \
     persist.sys.fuse.passthrough.enable=true \
-    persist.sys.fuse.bpf.enable=true \
+    persist.sys.fuse.bpf.enable=false \
 
 # Until we support adb keys on user builds, and fix logcat over serial,
 # spawn adbd by default without authorization for "adb logcat"
@@ -194,7 +194,7 @@ PRODUCT_PACKAGES += \
     suspend_blocker \
     vsoc_input_service \
 
-$(call soong_config_append, cvd, launch_configs, cvd_config_auto.json cvd_config_foldable.json cvd_config_go.json cvd_config_phone.json cvd_config_tablet.json cvd_config_tv.json cvd_config_wear.json)
+$(call soong_config_append, cvd, launch_configs, cvd_config_auto.json cvd_config_foldable.json cvd_config_go.json cvd_config_phone.json cvd_config_slim.json cvd_config_tablet.json cvd_config_tv.json cvd_config_wear.json)
 $(call soong_config_append, cvd, grub_config, grub.cfg)
 
 #
@@ -402,6 +402,9 @@ PRODUCT_PACKAGES += \
 # services running at the same time so make the user manually enables
 # in order to run with --gpu_mode=drm.
 ifeq ($(TARGET_ENABLE_DRMHWCOMPOSER),true)
+DEVICE_MANIFEST_FILE += \
+    device/google/cuttlefish/shared/config/manifest_android.hardware.graphics.composer@2.4-service.xml
+
 PRODUCT_PACKAGES += \
     android.hardware.graphics.composer@2.4-service \
     hwcomposer.drm
@@ -508,7 +511,7 @@ PRODUCT_PACKAGES += \
 # Drm HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.drm@1.4-service.clearkey \
+    android.hardware.drm@latest-service.clearkey \
     android.hardware.drm@latest-service.widevine
 
 #
@@ -539,6 +542,7 @@ DEVICE_MANIFEST_FILE += \
 else
 ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
 PRODUCT_PACKAGES += com.google.emulated.camera.provider.hal
+PRODUCT_PACKAGES += com.google.emulated.camera.provider.hal.fastscenecycle
 endif
 PRODUCT_PACKAGES += \
     android.hardware.camera.provider@2.7-service-google \
