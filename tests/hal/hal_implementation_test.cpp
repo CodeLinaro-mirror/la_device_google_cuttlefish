@@ -66,6 +66,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.graphics.mapper@3.0",
     "android.hardware.health.storage@1.0", // converted to AIDL, see b/177470478
     "android.hardware.health@2.1", // converted to AIDL, see b/177269435
+    "android.hardware.input.classifier@1.0", // converted to AIDL, see b/205761620
     "android.hardware.ir@1.0", // converted to AIDL, see b/205000342
     "android.hardware.keymaster@3.0",
     "android.hardware.keymaster@4.1", // Replaced by KeyMint
@@ -77,6 +78,8 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.oemlock@1.0",
     "android.hardware.power@1.3",
     "android.hardware.power.stats@1.0",
+    "android.hardware.radio@1.6", // converted to AIDL
+    "android.hardware.radio.config@1.3", // converted to AIDL
     "android.hardware.radio.deprecated@1.0",
     "android.hardware.renderscript@1.0",
     "android.hardware.soundtrigger@2.3",
@@ -133,6 +136,12 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.hardware.graphics.common.", 3},
     {"android.hardware.input.common.", 1},
 
+    // This interface needs to be implemented (TODO:b/196432585)
+    {"android.hardware.camera.common.", 1},
+    {"android.hardware.camera.device.", 1},
+    {"android.hardware.camera.metadata.", 1},
+    {"android.hardware.camera.provider.", 1},
+
     // This interface needs to be implemented (b/193240715)
     {"android.hardware.graphics.composer3.", 1},
 
@@ -160,6 +169,7 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.automotive.computepipe.runner.", 1},
     {"android.automotive.watchdog.", 2},
     {"android.automotive.watchdog.", 3},
+    {"android.frameworks.automotive.display.", 1},
     {"android.frameworks.automotive.powerpolicy.", 1},
     {"android.frameworks.automotive.telemetry.", 1},
     {"android.hardware.automotive.audiocontrol.", 1},
