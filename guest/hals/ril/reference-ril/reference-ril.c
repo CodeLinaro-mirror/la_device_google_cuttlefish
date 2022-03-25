@@ -962,6 +962,19 @@ static void requestOrSendDataCallList(int cid, RIL_Token *t)
         }
     }
 
+    // If cid = -1, return the data call list without processing CGCONTRDP (setupDataCall)
+    if (cid == -1) {
+        if (t != NULL)
+            RIL_onRequestComplete(*t, RIL_E_SUCCESS, &responses[0],
+                                  sizeof(RIL_Data_Call_Response_v11));
+        else
+            RIL_onUnsolicitedResponse(RIL_UNSOL_DATA_CALL_LIST_CHANGED, responses,
+                                      n * sizeof(RIL_Data_Call_Response_v11));
+        at_response_free(p_response);
+        p_response = NULL;
+        return;
+    }
+
     at_response_free(p_response);
     p_response = NULL;
 
@@ -2861,6 +2874,7 @@ static void requestDeactivateDataCall(void *data, RIL_Token t)
     rilErrno = setInterfaceState(radioInterfaceName, kInterfaceDown);
     RIL_onRequestComplete(t, rilErrno, NULL, 0);
     putPDP(cid);
+    requestOrSendDataCallList(-1, NULL);
 }
 
 static void requestSMSAcknowledge(void *data, size_t datalen __unused, RIL_Token t)
