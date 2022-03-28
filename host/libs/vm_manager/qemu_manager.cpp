@@ -374,8 +374,11 @@ std::vector<Command> QemuManager::StartCommands(
   auto display_config = display_configs[0];
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter(qemu_version.first < 6 ?
-                            "virtio-gpu-pci" : "virtio-gpu-gl-pci", ",id=gpu0",
+
+  bool use_gpu_gl = qemu_version.first >= 6 &&
+                    config.gpu_mode() != kGpuModeGuestSwiftshader;
+  qemu_cmd.AddParameter(use_gpu_gl ?
+                            "virtio-gpu-gl-pci" : "virtio-gpu-pci", ",id=gpu0",
                         ",xres=", display_config.width,
                         ",yres=", display_config.height);
 
@@ -383,7 +386,7 @@ std::vector<Command> QemuManager::StartCommands(
   // dmesg will go there instead of the kernel.log. On QEMU, we do this
   // bit of logic up before the hvc console is set up, so the command line
   // flags appear in the right order and "append=on" does the right thing
-  if (!(config.console() && (config.kgdb() || config.use_bootloader()))) {
+  if (!config.console() && (config.kgdb() || config.use_bootloader())) {
     add_serial_console_ro(instance.kernel_log_pipe_name());
   }
 

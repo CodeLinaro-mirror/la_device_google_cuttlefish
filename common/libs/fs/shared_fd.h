@@ -68,6 +68,7 @@
 namespace cuttlefish {
 
 struct PollSharedFd;
+class Epoll;
 class FileInstance;
 
 /**
@@ -233,6 +234,7 @@ class ScopedMMap {
 class FileInstance {
   // Give SharedFD access to the aliasing constructor.
   friend class SharedFD;
+  friend class Epoll;
 
  public:
   virtual ~FileInstance() { Close(); }
@@ -259,6 +261,8 @@ class FileInstance {
   int UNMANAGED_Dup();
   int UNMANAGED_Dup2(int newfd);
   int Fcntl(int command, int value);
+
+  int Flock(int operation);
 
   int GetErrno() const { return errno_; }
   int GetSockName(struct sockaddr* addr, socklen_t* addrlen);
