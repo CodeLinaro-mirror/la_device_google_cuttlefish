@@ -64,7 +64,7 @@ TpmKeymasterContext::TpmKeymasterContext(
       enforcement_(enforcement),
       key_blob_maker_(new TpmKeyBlobMaker(resource_manager_)),
       random_source_(new TpmRandomSource(resource_manager_.Esys())),
-      attestation_context_(new TpmAttestationRecordContext()),
+      attestation_context_(new TpmAttestationRecordContext),
       remote_provisioning_context_(
           new TpmRemoteProvisioningContext(resource_manager_)) {
   key_factories_.emplace(
@@ -91,6 +91,7 @@ keymaster_error_t TpmKeymasterContext::SetSystemVersion(
   os_version_ = os_version;
   os_patchlevel_ = os_patchlevel;
   key_blob_maker_->SetSystemVersion(os_version, os_patchlevel);
+  remote_provisioning_context_->SetSystemVersion(os_version_, os_patchlevel_);
   return KM_ERROR_OK;
 }
 
@@ -356,14 +357,63 @@ TpmKeymasterContext::GetRemoteProvisioningContext() const {
   return remote_provisioning_context_.get();
 }
 
+std::string ToHexString(const std::vector<uint8_t>& binary) {
+  std::string hex;
+  hex.reserve(binary.size() * 2);
+  for (uint8_t byte : binary) {
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%02x", byte);
+    hex.append(buf);
+  }
+  return hex;
+}
+
+keymaster_error_t TpmKeymasterContext::SetVerifiedBootInfo(
+    std::string_view verified_boot_state, std::string_view bootloader_state,
+    const std::vector<uint8_t>& vbmeta_digest) {
+  if (verified_boot_state_ && verified_boot_state != *verified_boot_state_) {
+    LOG(ERROR) << "Invalid set verified boot state attempt. "
+               << "Old verified boot state: \"" << *verified_boot_state_
+               << "\","
+               << "new verified boot state: \"" << verified_boot_state << "\"";
+    return KM_ERROR_INVALID_ARGUMENT;
+  }
+  if (bootloader_state_ && bootloader_state != *bootloader_state_) {
+    LOG(ERROR) << "Invalid set bootloader state attempt. "
+               << "Old bootloader state: \"" << *bootloader_state_ << "\","
+               << "new bootloader state: \"" << bootloader_state << "\"";
+    return KM_ERROR_INVALID_ARGUMENT;
+  }
+  if (vbmeta_digest_ && vbmeta_digest != *vbmeta_digest_) {
+    LOG(ERROR) << "Invalid set vbmeta digest state attempt. "
+               << "Old vbmeta digest state: \"" << ToHexString(*vbmeta_digest_)
+               << "\","
+               << "new vbmeta digest state: \"" << ToHexString(vbmeta_digest)
+               << "\"";
+    return KM_ERROR_INVALID_ARGUMENT;
+  }
+  verified_boot_state_ = verified_boot_state;
+  bootloader_state_ = bootloader_state;
+  vbmeta_digest_ = vbmeta_digest;
+  attestation_context_->SetVerifiedBootInfo(verified_boot_state,
+                                            bootloader_state, vbmeta_digest);
+  remote_provisioning_context_->SetVerifiedBootInfo(
+      verified_boot_state, bootloader_state, vbmeta_digest);
+  return KM_ERROR_OK;
+}
+
 keymaster_error_t TpmKeymasterContext::SetVendorPatchlevel(
     uint32_t vendor_patchlevel) {
   if (vendor_patchlevel_.has_value() &&
       vendor_patchlevel != vendor_patchlevel_.value()) {
     // Can't set patchlevel to a different value.
+    LOG(ERROR) << "Invalid set vendor patchlevel attempt. Old patchlevel: \""
+               << *vendor_patchlevel_ << "\", new patchlevel: \""
+               << vendor_patchlevel << "\"";
     return KM_ERROR_INVALID_ARGUMENT;
   }
   vendor_patchlevel_ = vendor_patchlevel;
+  remote_provisioning_context_->SetVendorPatchlevel(vendor_patchlevel);
   return key_blob_maker_->SetVendorPatchlevel(*vendor_patchlevel_);
 }
 
@@ -372,9 +422,13 @@ keymaster_error_t TpmKeymasterContext::SetBootPatchlevel(
   if (boot_patchlevel_.has_value() &&
       boot_patchlevel != boot_patchlevel_.value()) {
     // Can't set patchlevel to a different value.
+    LOG(ERROR) << "Invalid set boot patchlevel attempt. Old patchlevel: \""
+               << *boot_patchlevel_ << "\", new patchlevel: \""
+               << boot_patchlevel << "\"";
     return KM_ERROR_INVALID_ARGUMENT;
   }
   boot_patchlevel_ = boot_patchlevel;
+  remote_provisioning_context_->SetBootPatchlevel(boot_patchlevel);
   return key_blob_maker_->SetBootPatchlevel(*boot_patchlevel_);
 }
 

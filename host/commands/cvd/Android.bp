@@ -53,11 +53,16 @@ cc_binary_host {
     name: "cvd_server",
     srcs: [
         "server.cc",
+        "server_client.cpp",
+        "server_command.cpp",
+        "server_shutdown.cpp",
+        "server_version.cpp",
     ],
     shared_libs: [
         "libbase",
         "libcuttlefish_fs",
         "libcuttlefish_utils",
+        "libfruit",
         "libjsoncpp",
         "libprotobuf-cpp-lite",
     ],

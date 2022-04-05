@@ -156,91 +156,91 @@ std::vector<ImagePartition> GetOsCompositeDiskConfig() {
   std::vector<ImagePartition> partitions;
   partitions.push_back(ImagePartition{
       .label = "misc",
-      .image_file_path = FLAGS_misc_image,
+      .image_file_path = AbsolutePath(FLAGS_misc_image),
       .read_only = true,
   });
   partitions.push_back(ImagePartition{
       .label = "boot_a",
-      .image_file_path = FLAGS_boot_image,
+      .image_file_path = AbsolutePath(FLAGS_boot_image),
       .read_only = true,
   });
   partitions.push_back(ImagePartition{
       .label = "boot_b",
-      .image_file_path = FLAGS_boot_image,
+      .image_file_path = AbsolutePath(FLAGS_boot_image),
       .read_only = true,
   });
   partitions.push_back(ImagePartition{
       .label = "init_boot_a",
-      .image_file_path = FLAGS_init_boot_image,
+      .image_file_path = AbsolutePath(FLAGS_init_boot_image),
       .read_only = true,
   });
   partitions.push_back(ImagePartition{
       .label = "init_boot_b",
-      .image_file_path = FLAGS_init_boot_image,
+      .image_file_path = AbsolutePath(FLAGS_init_boot_image),
       .read_only = true,
   });
   partitions.push_back(ImagePartition{
       .label = "vendor_boot_a",
-      .image_file_path = FLAGS_vendor_boot_image,
+      .image_file_path = AbsolutePath(FLAGS_vendor_boot_image),
       .read_only = true,
   });
   partitions.push_back(ImagePartition{
       .label = "vendor_boot_b",
-      .image_file_path = FLAGS_vendor_boot_image,
+      .image_file_path = AbsolutePath(FLAGS_vendor_boot_image),
       .read_only = true,
   });
   partitions.push_back(ImagePartition{
       .label = "vbmeta_a",
-      .image_file_path = FLAGS_vbmeta_image,
+      .image_file_path = AbsolutePath(FLAGS_vbmeta_image),
       .read_only = true,
   });
   partitions.push_back(ImagePartition{
       .label = "vbmeta_b",
-      .image_file_path = FLAGS_vbmeta_image,
+      .image_file_path = AbsolutePath(FLAGS_vbmeta_image),
       .read_only = true,
   });
   partitions.push_back(ImagePartition{
       .label = "vbmeta_system_a",
-      .image_file_path = FLAGS_vbmeta_system_image,
+      .image_file_path = AbsolutePath(FLAGS_vbmeta_system_image),
       .read_only = true,
   });
   partitions.push_back(ImagePartition{
       .label = "vbmeta_system_b",
-      .image_file_path = FLAGS_vbmeta_system_image,
+      .image_file_path = AbsolutePath(FLAGS_vbmeta_system_image),
       .read_only = true,
   });
   partitions.push_back(ImagePartition{
       .label = "super",
-      .image_file_path = FLAGS_super_image,
+      .image_file_path = AbsolutePath(FLAGS_super_image),
       .read_only = true,
   });
   partitions.push_back(ImagePartition{
       .label = "userdata",
-      .image_file_path = FLAGS_data_image,
+      .image_file_path = AbsolutePath(FLAGS_data_image),
       .read_only = true,
   });
   partitions.push_back(ImagePartition{
       .label = "metadata",
-      .image_file_path = FLAGS_metadata_image,
+      .image_file_path = AbsolutePath(FLAGS_metadata_image),
       .read_only = true,
   });
   if (!FLAGS_otheros_root_image.empty()) {
     partitions.push_back(ImagePartition{
         .label = "otheros_esp",
-        .image_file_path = FLAGS_otheros_esp_image,
+        .image_file_path = AbsolutePath(FLAGS_otheros_esp_image),
         .type = kEfiSystemPartition,
         .read_only = true,
     });
     partitions.push_back(ImagePartition{
         .label = "otheros_root",
-        .image_file_path = FLAGS_otheros_root_image,
+        .image_file_path = AbsolutePath(FLAGS_otheros_root_image),
         .read_only = true,
     });
   }
   if (!FLAGS_ap_rootfs_image.empty()) {
     partitions.push_back(ImagePartition{
         .label = "ap_rootfs",
-        .image_file_path = FLAGS_ap_rootfs_image,
+        .image_file_path = AbsolutePath(FLAGS_ap_rootfs_image),
         .read_only = true,
     });
   }
@@ -257,22 +257,23 @@ std::vector<ImagePartition> persistent_composite_disk_config(
   // cuttlefish.fragment in external/u-boot).
   partitions.push_back(ImagePartition{
       .label = "uboot_env",
-      .image_file_path = instance.uboot_env_image_path(),
+      .image_file_path = AbsolutePath(instance.uboot_env_image_path()),
   });
   partitions.push_back(ImagePartition{
       .label = "vbmeta",
-      .image_file_path = instance.vbmeta_path(),
+      .image_file_path = AbsolutePath(instance.vbmeta_path()),
   });
   if (!FLAGS_protected_vm) {
     partitions.push_back(ImagePartition{
         .label = "frp",
-        .image_file_path = instance.factory_reset_protected_path(),
+        .image_file_path =
+            AbsolutePath(instance.factory_reset_protected_path()),
     });
   }
   if (config.bootconfig_supported()) {
     partitions.push_back(ImagePartition{
         .label = "bootconfig",
-        .image_file_path = instance.persistent_bootconfig_path(),
+        .image_file_path = AbsolutePath(instance.persistent_bootconfig_path()),
     });
   }
   return partitions;
@@ -351,28 +352,25 @@ static uint64_t AvailableSpaceAtPath(const std::string& path) {
   return static_cast<uint64_t>(vfs.f_frsize) * vfs.f_bavail;
 }
 
-bool CreateOsCompositeDisk(const CuttlefishConfig& config) {
-  if (!SharedFD::Open(config.os_composite_disk_path().c_str(),
-                      O_WRONLY | O_CREAT, 0644)
-           ->IsOpen()) {
-    LOG(ERROR) << "Could not ensure " << config.os_composite_disk_path()
-               << " exists";
-    return false;
-  }
+Result<void> CreateOsCompositeDisk(const CuttlefishConfig& config) {
+  CF_EXPECT(
+      SharedFD::Open(config.os_composite_disk_path().c_str(),
+                     O_WRONLY | O_CREAT, 0644)
+          ->IsOpen(),
+      "Could not ensure \"" << config.os_composite_disk_path() << "\" exists");
   if (config.vm_manager() == CrosvmManager::name()) {
     // Check if filling in the sparse image would run out of disk space.
     auto existing_sizes = SparseFileSizes(FLAGS_data_image);
-    if (existing_sizes.sparse_size == 0 && existing_sizes.disk_size == 0) {
-      LOG(ERROR) << "Unable to determine size of \"" << FLAGS_data_image
-                 << "\". Does this file exist?";
-    }
+    CF_EXPECT(existing_sizes.sparse_size > 0 || existing_sizes.disk_size > 0,
+              "Unable to determine size of \"" << FLAGS_data_image
+                                               << "\". Does this file exist?");
     auto available_space = AvailableSpaceAtPath(FLAGS_data_image);
     if (available_space < existing_sizes.sparse_size - existing_sizes.disk_size) {
       // TODO(schuffelen): Duplicate this check in run_cvd when it can run on a separate machine
-      LOG(ERROR) << "Not enough space remaining in fs containing " << FLAGS_data_image;
-      LOG(ERROR) << "Wanted " << (existing_sizes.sparse_size - existing_sizes.disk_size);
-      LOG(ERROR) << "Got " << available_space;
-      return false;
+      return CF_ERR("Not enough space remaining in fs containing \""
+                    << FLAGS_data_image << "\", wanted "
+                    << (existing_sizes.sparse_size - existing_sizes.disk_size)
+                    << ", got " << available_space);
     } else {
       LOG(DEBUG) << "Available space: " << available_space;
       LOG(DEBUG) << "Sparse size of \"" << FLAGS_data_image << "\": "
@@ -384,14 +382,15 @@ bool CreateOsCompositeDisk(const CuttlefishConfig& config) {
         config.AssemblyPath("os_composite_gpt_header.img");
     std::string footer_path =
         config.AssemblyPath("os_composite_gpt_footer.img");
-    CreateCompositeDisk(GetOsCompositeDiskConfig(), header_path, footer_path,
-                        config.os_composite_disk_path());
+    CreateCompositeDisk(GetOsCompositeDiskConfig(), AbsolutePath(header_path),
+                        AbsolutePath(footer_path),
+                        AbsolutePath(config.os_composite_disk_path()));
   } else {
     // If this doesn't fit into the disk, it will fail while aggregating. The
     // aggregator doesn't maintain any sparse attributes.
     AggregateImage(GetOsCompositeDiskConfig(), config.os_composite_disk_path());
   }
-  return true;
+  return {};
 }
 
 bool CreatePersistentCompositeDisk(
@@ -409,9 +408,10 @@ bool CreatePersistentCompositeDisk(
         instance.PerInstancePath("persistent_composite_gpt_header.img");
     std::string footer_path =
         instance.PerInstancePath("persistent_composite_gpt_footer.img");
-    CreateCompositeDisk(persistent_composite_disk_config(config, instance),
-                        header_path, footer_path,
-                        instance.persistent_composite_disk_path());
+    CreateCompositeDisk(
+        persistent_composite_disk_config(config, instance),
+        AbsolutePath(header_path), AbsolutePath(footer_path),
+        AbsolutePath(instance.persistent_composite_disk_path()));
   } else {
     AggregateImage(persistent_composite_disk_config(config, instance),
                    instance.persistent_composite_disk_path());
@@ -673,28 +673,30 @@ class GeneratePersistentBootconfig : public Feature {
     }
     bootconfig_fd->Close();
 
-    const off_t bootconfig_size_bytes = AlignToPowerOf2(
-        MAX_AVB_METADATA_SIZE + bytesWritten, PARTITION_SIZE_SHIFT);
+    if (config_.vm_manager() != Gem5Manager::name()) {
+      const off_t bootconfig_size_bytes = AlignToPowerOf2(
+          MAX_AVB_METADATA_SIZE + bytesWritten, PARTITION_SIZE_SHIFT);
 
-    auto avbtool_path = HostBinaryPath("avbtool");
-    Command bootconfig_hash_footer_cmd(avbtool_path);
-    bootconfig_hash_footer_cmd.AddParameter("add_hash_footer");
-    bootconfig_hash_footer_cmd.AddParameter("--image");
-    bootconfig_hash_footer_cmd.AddParameter(bootconfig_path);
-    bootconfig_hash_footer_cmd.AddParameter("--partition_size");
-    bootconfig_hash_footer_cmd.AddParameter(bootconfig_size_bytes);
-    bootconfig_hash_footer_cmd.AddParameter("--partition_name");
-    bootconfig_hash_footer_cmd.AddParameter("bootconfig");
-    bootconfig_hash_footer_cmd.AddParameter("--key");
-    bootconfig_hash_footer_cmd.AddParameter(
-        DefaultHostArtifactsPath("etc/cvd_avb_testkey.pem"));
-    bootconfig_hash_footer_cmd.AddParameter("--algorithm");
-    bootconfig_hash_footer_cmd.AddParameter("SHA256_RSA4096");
-    int success = bootconfig_hash_footer_cmd.Start().Wait();
-    if (success != 0) {
-      LOG(ERROR) << "Unable to run append hash footer. Exited with status "
-                 << success;
-      return false;
+      auto avbtool_path = HostBinaryPath("avbtool");
+      Command bootconfig_hash_footer_cmd(avbtool_path);
+      bootconfig_hash_footer_cmd.AddParameter("add_hash_footer");
+      bootconfig_hash_footer_cmd.AddParameter("--image");
+      bootconfig_hash_footer_cmd.AddParameter(bootconfig_path);
+      bootconfig_hash_footer_cmd.AddParameter("--partition_size");
+      bootconfig_hash_footer_cmd.AddParameter(bootconfig_size_bytes);
+      bootconfig_hash_footer_cmd.AddParameter("--partition_name");
+      bootconfig_hash_footer_cmd.AddParameter("bootconfig");
+      bootconfig_hash_footer_cmd.AddParameter("--key");
+      bootconfig_hash_footer_cmd.AddParameter(
+          DefaultHostArtifactsPath("etc/cvd_avb_testkey.pem"));
+      bootconfig_hash_footer_cmd.AddParameter("--algorithm");
+      bootconfig_hash_footer_cmd.AddParameter("SHA256_RSA4096");
+      int success = bootconfig_hash_footer_cmd.Start().Wait();
+      if (success != 0) {
+        LOG(ERROR) << "Unable to run append hash footer. Exited with status "
+                   << success;
+        return false;
+      }
     }
     return true;
   }
@@ -1075,7 +1077,7 @@ static fruit::Component<> DiskChangesComponent(const FetcherConfig* fetcher,
       // Create esp if necessary
       .install(InitializeEspImageComponent, &FLAGS_otheros_esp_image,
                &FLAGS_otheros_kernel_path, &FLAGS_otheros_initramfs_path,
-               &FLAGS_otheros_root_image)
+               &FLAGS_otheros_root_image, config)
       .install(SuperImageRebuilderComponent, &FLAGS_super_image);
 }
 
@@ -1097,22 +1099,22 @@ static fruit::Component<> DiskChangesPerInstanceComponent(
       .install(InitBootloaderEnvPartitionComponent);
 }
 
-void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
-                            const CuttlefishConfig& config) {
+Result<void> CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
+                                    const CuttlefishConfig& config) {
   // TODO(schuffelen): Unify this with the other injector created in
   // assemble_cvd.cpp
   fruit::Injector<> injector(DiskChangesComponent, &fetcher_config, &config);
 
   const auto& features = injector.getMultibindings<Feature>();
-  CHECK(Feature::RunSetup(features)) << "Failed to run feature setup.";
+  CF_EXPECT(Feature::RunSetup(features));
 
   for (const auto& instance : config.Instances()) {
     fruit::Injector<> instance_injector(DiskChangesPerInstanceComponent,
                                         &fetcher_config, &config, &instance);
     const auto& instance_features =
         instance_injector.getMultibindings<Feature>();
-    CHECK(Feature::RunSetup(instance_features))
-        << "Failed to run instance feature setup.";
+    CF_EXPECT(Feature::RunSetup(instance_features),
+              "instance = \"" << instance.instance_name() << "\"");
   }
 
   bool oldOsCompositeDisk = ShouldCreateOsCompositeDisk(config);
@@ -1120,8 +1122,7 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
       config.AssemblyPath("os_composite_disk_config.txt"),
       GetOsCompositeDiskConfig());
   if (!osCompositeMatchesDiskConfig || oldOsCompositeDisk || !FLAGS_resume) {
-    CHECK(CreateOsCompositeDisk(config))
-        << "Failed to create OS composite disk";
+    CF_EXPECT(CreateOsCompositeDisk(config));
 
     for (auto instance : config.Instances()) {
       if (FLAGS_resume) {
@@ -1131,13 +1132,18 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
                   << instance.serial_number();
       }
       if (FileExists(instance.access_kregistry_path())) {
-        CreateBlankImage(instance.access_kregistry_path(), 2 /* mb */, "none");
+        CF_EXPECT(CreateBlankImage(instance.access_kregistry_path(), 2 /* mb */,
+                                   "none"),
+                  "Failed for \"" << instance.access_kregistry_path() << "\"");
       }
       if (FileExists(instance.hwcomposer_pmem_path())) {
-        CreateBlankImage(instance.hwcomposer_pmem_path(), 2 /* mb */, "none");
+        CF_EXPECT(CreateBlankImage(instance.hwcomposer_pmem_path(), 2 /* mb */,
+                                   "none"),
+                  "Failed for \"" << instance.hwcomposer_pmem_path() << "\"");
       }
       if (FileExists(instance.pstore_path())) {
-        CreateBlankImage(instance.pstore_path(), 2 /* mb */, "none");
+        CF_EXPECT(CreateBlankImage(instance.pstore_path(), 2 /* mb */, "none"),
+                  "Failed for\"" << instance.pstore_path() << "\"");
       }
     }
   }
@@ -1156,7 +1162,7 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
     // Check that the files exist
     for (const auto& file : instance.virtual_disk_paths()) {
       if (!file.empty()) {
-        CHECK(FileHasContent(file)) << "File not found: " << file;
+        CF_EXPECT(FileHasContent(file), "File not found: \"" << file << "\"");
       }
     }
     // Gem5 Simulate per-instance what the bootloader would usually do
@@ -1168,6 +1174,8 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
           config.assembly_dir());
     }
   }
+
+  return {};
 }
 
 } // namespace cuttlefish

@@ -13,6 +13,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
 java_test_host {
     name: "CuttlefishIntegrationTest",
 
@@ -36,4 +40,5 @@ java_test_host {
     ],
 
     plugins: ["auto_value_plugin", "auto_annotation_plugin"],
+    test_suites: ["general-tests"],
 }

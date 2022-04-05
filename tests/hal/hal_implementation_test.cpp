@@ -48,20 +48,24 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.automotive.vehicle@2.0",
     "android.hardware.biometrics.fingerprint@2.3",
     "android.hardware.bluetooth.a2dp@1.0",
-    "android.hardware.bluetooth.audio@2.2",
+    "android.hardware.bluetooth.audio@2.1", // converted to AIDL, see b/203490261
     "android.hardware.broadcastradio@1.1",
     "android.hardware.broadcastradio@2.0",
+    "android.hardware.camera.provider@2.7", // Camera converted to AIDL, b/196432585
     "android.hardware.cas.native@1.0",
     "android.hardware.configstore@1.1", // deprecated, see b/149050985, b/149050733
     "android.hardware.contexthub@1.2",
     "android.hardware.fastboot@1.1",
     "android.hardware.dumpstate@1.1", // deprecated, see b/205760700
+    "android.hardware.gnss@1.1", // GNSS converted to AIDL, b/206670536
+    "android.hardware.gnss@2.1", // GNSS converted to AIDL, b/206670536
     "android.hardware.gnss.measurement_corrections@1.1", // is sub-interface of gnss
     "android.hardware.gnss.visibility_control@1.0",
     "android.hardware.graphics.allocator@2.0",
     "android.hardware.graphics.allocator@3.0",
     "android.hardware.graphics.bufferqueue@1.0",
     "android.hardware.graphics.bufferqueue@2.0",
+    "android.hardware.graphics.composer@2.4", // converted to AIDL, see b/193240715
     "android.hardware.graphics.mapper@2.1",
     "android.hardware.graphics.mapper@3.0",
     "android.hardware.health.storage@1.0", // converted to AIDL, see b/177470478
@@ -136,14 +140,14 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.hardware.graphics.common.", 3},
     {"android.hardware.input.common.", 1},
 
-    // This interface needs to be implemented (TODO:b/196432585)
+    // android.hardware.camera.device is an interface returned by
+    // android.hardware.camera.provider.
+    // android.hardware.camera.common and android.hardware.camera.metadata are
+    // types used by android.hardware.camera.provider and
+    // android.hardware.camera.device.
     {"android.hardware.camera.common.", 1},
     {"android.hardware.camera.device.", 1},
     {"android.hardware.camera.metadata.", 1},
-    {"android.hardware.camera.provider.", 1},
-
-    // This interface needs to be implemented (b/193240715)
-    {"android.hardware.graphics.composer3.", 1},
 
     // No implementations on cuttlefish for omapi aidl hal
     {"android.se.omapi.", 1},
@@ -173,6 +177,7 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.frameworks.automotive.powerpolicy.", 1},
     {"android.frameworks.automotive.telemetry.", 1},
     {"android.hardware.automotive.audiocontrol.", 1},
+    {"android.hardware.automotive.audiocontrol.", 2},
     {"android.hardware.automotive.evs.", 1},
     {"android.hardware.automotive.occupant_awareness.", 1},
     {"android.hardware.automotive.vehicle.", 1},
@@ -188,9 +193,6 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
 
     // These versions need to be implemented (b/203490261)
     {"android.hardware.bluetooth.audio.", 1},
-
-    // This interface needs to be implemented (b/200055138)
-    {"android.hardware.drm.", 1},
 };
 
 static const std::set<VersionedAidlPackage> kComingSoonAidl = {

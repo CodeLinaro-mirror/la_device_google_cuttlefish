@@ -98,7 +98,8 @@ std::string CrosvmManager::ConfigureBootDevices(int num_disks) {
   // TODO There is no way to control this assignment with crosvm (yet)
   if (HostArch() == Arch::X86_64) {
     // crosvm has an additional PCI device for an ISA bridge
-    return ConfigureMultipleBootDevices("pci0000:00/0000:00:", 1, num_disks);
+    // virtio_gpu and virtio_wl precedes the first console or disk
+    return ConfigureMultipleBootDevices("pci0000:00/0000:00:", 3, num_disks);
   } else {
     // On ARM64 crosvm, block devices are on their own bridge, so we don't
     // need to calculate it, and the path is always the same
@@ -142,14 +143,14 @@ std::vector<Command> CrosvmManager::StartCommands(
   auto gpu_capture_enabled = !config.gpu_capture_binary().empty();
   auto gpu_mode = config.gpu_mode();
   auto udmabuf_string = config.enable_gpu_udmabuf() ? "true" : "false";
-  auto angle_string = config.enable_gpu_angle() ? "true" : "false";
+  auto angle_string = config.enable_gpu_angle() ? ",angle=true" : "";
   if (gpu_mode == kGpuModeGuestSwiftshader) {
     crosvm_cmd.Cmd().AddParameter("--gpu=2D,udmabuf=", udmabuf_string);
   } else if (gpu_mode == kGpuModeDrmVirgl || gpu_mode == kGpuModeGfxStream) {
     crosvm_cmd.Cmd().AddParameter(
         gpu_mode == kGpuModeGfxStream ? "--gpu=gfxstream," : "--gpu=",
         "egl=true,surfaceless=true,glx=false,gles=true,udmabuf=", udmabuf_string,
-        ",angle=", angle_string);
+        angle_string);
   }
 
   for (const auto& display_config : config.display_configs()) {
