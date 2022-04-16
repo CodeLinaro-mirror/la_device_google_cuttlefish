@@ -79,7 +79,7 @@ DEFINE_string(otheros_initramfs_path, "",
 DEFINE_string(otheros_root_image, "",
               "Location of cuttlefish otheros root filesystem image.");
 
-DEFINE_int32(blank_metadata_image_mb, 16,
+DEFINE_int32(blank_metadata_image_mb, 64,
              "The size of the blank metadata image to generate, MB.");
 DEFINE_int32(blank_sdcard_image_mb, 2048,
              "If enabled, the size of the blank sdcard image to generate, MB.");
@@ -671,9 +671,9 @@ class GeneratePersistentBootconfig : public Feature {
                  << bootconfig_path << "` failed:" << bootconfig_fd->StrError();
       return false;
     }
-    bootconfig_fd->Close();
 
     if (config_.vm_manager() != Gem5Manager::name()) {
+      bootconfig_fd->Close();
       const off_t bootconfig_size_bytes = AlignToPowerOf2(
           MAX_AVB_METADATA_SIZE + bytesWritten, PARTITION_SIZE_SHIFT);
 
@@ -697,6 +697,11 @@ class GeneratePersistentBootconfig : public Feature {
                    << success;
         return false;
       }
+    } else {
+      const off_t bootconfig_size_bytes_gem5 = AlignToPowerOf2(
+          bytesWritten, PARTITION_SIZE_SHIFT);
+      bootconfig_fd->Truncate(bootconfig_size_bytes_gem5);
+      bootconfig_fd->Close();
     }
     return true;
   }

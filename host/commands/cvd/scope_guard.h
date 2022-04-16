@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 The Android Open Source Project
+ * Copyright (C) 2022 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,18 +13,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 #pragma once
 
-#include <cstddef>
-#include <cstdint>
-#include <string>
-#include <vector>
+#include <functional>
 
 namespace cuttlefish {
 
-bool EncodeBase64(const void* _data, std::size_t size, std::string* out);
+class ScopeGuard {
+ public:
+  ScopeGuard();
+  explicit ScopeGuard(std::function<void()> fn);
+  ScopeGuard(ScopeGuard&&);
+  ~ScopeGuard();
+  ScopeGuard& operator=(ScopeGuard&&);
 
-bool DecodeBase64(const std::string& data, std::vector<std::uint8_t>* buffer);
+  void Cancel();
+
+ private:
+  std::function<void()> fn_;
+};
 
 }  // namespace cuttlefish

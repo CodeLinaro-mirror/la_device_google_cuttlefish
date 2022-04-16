@@ -80,10 +80,8 @@ AB_OTA_PARTITIONS += \
     vendor_dlkm \
 
 # Enable Virtual A/B
-$(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/compression_with_xor.mk)
-
-PRODUCT_VENDOR_PROPERTIES += ro.virtual_ab.userspace.snapshots.enabled=true
-PRODUCT_VENDOR_PROPERTIES += ro.virtual_ab.io_uring.enabled=true
+$(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/android_t_baseline.mk)
+PRODUCT_VIRTUAL_AB_COMPRESSION_METHOD := gz
 
 # Enable Scoped Storage related
 $(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
@@ -416,7 +414,10 @@ endif
 #
 # Gralloc HAL
 #
+# Note: having both HIDL 4.0 and AIDL V1 is intentional as the framework
+# is not ready to fully switch over to AIDL only.
 PRODUCT_PACKAGES += \
+    android.hardware.graphics.allocator-V1-service.minigbm \
     android.hardware.graphics.allocator@4.0-service.minigbm \
     android.hardware.graphics.mapper@4.0-impl.minigbm
 
@@ -636,6 +637,12 @@ ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.software.device_id_attestation.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.device_id_attestation.xml
 endif
+
+#
+# Dice HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.security.dice-service.non-secure-software.vendor
 
 #
 # Power and PowerStats HALs

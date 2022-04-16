@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 The Android Open Source Project
+ * Copyright (C) 2022 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,18 +13,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "host/commands/cvd/scope_guard.h"
 
-#pragma once
-
-#include <cstddef>
-#include <cstdint>
-#include <string>
-#include <vector>
+#include <functional>
 
 namespace cuttlefish {
 
-bool EncodeBase64(const void* _data, std::size_t size, std::string* out);
+ScopeGuard::ScopeGuard() = default;
 
-bool DecodeBase64(const std::string& data, std::vector<std::uint8_t>* buffer);
+ScopeGuard::ScopeGuard(std::function<void()> fn) : fn_(fn) {}
+
+ScopeGuard::ScopeGuard(ScopeGuard&&) = default;
+
+ScopeGuard& ScopeGuard::operator=(ScopeGuard&&) = default;
+
+ScopeGuard::~ScopeGuard() {
+  if (fn_) {
+    fn_();
+  }
+}
+
+void ScopeGuard::Cancel() { fn_ = nullptr; }
 
 }  // namespace cuttlefish
