@@ -15,21 +15,27 @@
 
 #pragma once
 
-#include <string>
+#include <vector>
+
+#include <fruit/fruit.h>
 
 #include "common/libs/fs/shared_fd.h"
+#include "host/commands/cvd/server.h"
+#include "host/commands/cvd/server_client.h"
 
 namespace cuttlefish {
 
-class SmsSender {
+class CommandSequenceExecutor {
  public:
-  SmsSender(SharedFD modem_simulator_client_fd);
+  INJECT(CommandSequenceExecutor(CvdCommandHandler& inner_handler));
 
-  // Returns true if SMS was successfully sent, returns false otherwise.
-  bool Send(const std::string& sms_body, const std::string& sender_number,
-            uint32_t modem_id = 0);
+  Result<void> Interrupt();
+  Result<void> Execute(const std::vector<RequestWithStdio>&, SharedFD report);
 
  private:
-  SharedFD modem_simulator_client_fd_;
+  std::mutex interrupt_mutex_;
+  bool interrupted_ = false;
+  CvdCommandHandler& inner_handler_;
 };
+
 }  // namespace cuttlefish

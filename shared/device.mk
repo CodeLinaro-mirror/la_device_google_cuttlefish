@@ -104,12 +104,10 @@ PRODUCT_PRODUCT_PROPERTIES += \
 endif
 
 # Explanation of specific properties:
-#   debug.hwui.swap_with_damage avoids boot failure on M http://b/25152138
 #   ro.hardware.keystore_desede=true needed for CtsKeystoreTestCases
 PRODUCT_VENDOR_PROPERTIES += \
     tombstoned.max_tombstone_count=500 \
     vendor.bt.rootcanal_test_console=off \
-    debug.hwui.swap_with_damage=0 \
     ro.carrier=unknown \
     ro.com.android.dataroaming?=false \
     ro.hardware.virtual_device=1 \
@@ -668,13 +666,14 @@ PRODUCT_PACKAGES += \
 
 #
 # USB
-ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
-PRODUCT_PACKAGES += \
-    com.android.hardware.usb
-else
+# TODO(b/227791019): Convert USB AIDL HAL to APEX
+# ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
+# PRODUCT_PACKAGES += \
+#    com.android.hardware.usb
+#else
 PRODUCT_PACKAGES += \
     android.hardware.usb-service.example
-endif
+#endif
 
 # Vibrator HAL
 ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
