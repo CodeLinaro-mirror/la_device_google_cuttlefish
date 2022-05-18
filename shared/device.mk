@@ -60,9 +60,6 @@ TARGET_VULKAN_SUPPORT ?= true
 TARGET_ENABLE_HOST_BLUETOOTH_EMULATION ?= true
 TARGET_USE_BTLINUX_HAL_IMPL ?= true
 
-# TODO(b/65201432): Swiftshader needs to create executable memory.
-PRODUCT_REQUIRES_INSECURE_EXECMEM_FOR_SWIFTSHADER := true
-
 AB_OTA_UPDATER := true
 AB_OTA_PARTITIONS += \
     boot \
@@ -190,7 +187,7 @@ PRODUCT_PACKAGES += \
     suspend_blocker \
     vsoc_input_service \
 
-$(call soong_config_append,cvd,launch_configs,cvd_config_auto.json cvd_config_foldable.json cvd_config_go.json cvd_config_phone.json cvd_config_slim.json cvd_config_tablet.json cvd_config_tv.json cvd_config_wear.json)
+$(call soong_config_append,cvd,launch_configs,cvd_config_auto.json cvd_config_foldable.json cvd_config_go.json cvd_config_lily.json cvd_config_phone.json cvd_config_slim.json cvd_config_tablet.json cvd_config_tv.json cvd_config_wear.json)
 $(call soong_config_append,cvd,grub_config,grub.cfg)
 
 #
@@ -223,8 +220,7 @@ PRODUCT_PACKAGES += \
 ifeq ($(TARGET_VULKAN_SUPPORT),true)
 PRODUCT_PACKAGES += \
     vulkan.ranchu \
-    libvulkan_enc \
-    vulkan.pastel
+    libvulkan_enc
 endif
 
 # GL/Vk implementation for gfxstream
@@ -455,6 +451,12 @@ PRODUCT_PACKAGES += com.google.cf.bt android.hardware.bluetooth.audio@2.1-impl
 endif
 
 #
+# Bluetooth Audio AIDL HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.bluetooth.audio-impl \
+
+#
 # Audio HAL
 #
 ifndef LOCAL_AUDIO_PRODUCT_PACKAGE
@@ -596,12 +598,11 @@ PRODUCT_PACKAGES += \
 # Sensors
 #
 ifeq ($(LOCAL_SENSOR_PRODUCT_PACKAGE),)
-# TODO(b/210883464): Convert the sensors APEX to use the new AIDL impl.
-#ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
-#       LOCAL_SENSOR_PRODUCT_PACKAGE := com.android.hardware.sensors
-#else
+ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
+       LOCAL_SENSOR_PRODUCT_PACKAGE := com.android.hardware.sensors
+else
        LOCAL_SENSOR_PRODUCT_PACKAGE := android.hardware.sensors-service.example
-#endif
+endif
 endif
 PRODUCT_PACKAGES += \
     $(LOCAL_SENSOR_PRODUCT_PACKAGE)
