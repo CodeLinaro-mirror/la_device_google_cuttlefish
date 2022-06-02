@@ -23,6 +23,7 @@
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/files.h"
+#include "common/libs/utils/result.h"
 #include "host/commands/run_cvd/reporting.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/known_paths.h"
@@ -83,7 +84,7 @@ std::vector<Command> LaunchCustomActionServers(
 
 // Creates the frame and input sockets and add the relevant arguments to
 // webrtc commands
-class StreamerSockets : public virtual Feature {
+class StreamerSockets : public virtual SetupFeature {
  public:
   INJECT(StreamerSockets(const CuttlefishConfig& config,
                          const CuttlefishConfig::InstanceSpecific& instance))
@@ -106,7 +107,7 @@ class StreamerSockets : public virtual Feature {
     }
   }
 
-  // Feature
+  // SetupFeature
   std::string Name() const override { return "StreamerSockets"; }
   bool Enabled() const override {
     bool is_qemu = config_.vm_manager() == vm_manager::QemuManager::name();
@@ -115,51 +116,34 @@ class StreamerSockets : public virtual Feature {
   }
 
  private:
-  std::unordered_set<Feature*> Dependencies() const override { return {}; }
+  std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
 
-  bool Setup() override {
+  Result<void> ResultSetup() override {
     auto use_vsockets = config_.vm_manager() == vm_manager::QemuManager::name();
     for (int i = 0; i < config_.display_configs().size(); ++i) {
-      touch_servers_.push_back(
+      SharedFD touch_socket =
           use_vsockets ? SharedFD::VsockServer(instance_.touch_server_port(),
                                                SOCK_STREAM)
-                       : CreateUnixInputServer(instance_.touch_socket_path(i)));
-      if (!touch_servers_.back()->IsOpen()) {
-        LOG(ERROR) << "Could not open touch server: "
-                   << touch_servers_.back()->StrError();
-        return false;
-      }
+                       : CreateUnixInputServer(instance_.touch_socket_path(i));
+      CF_EXPECT(touch_socket->IsOpen(), touch_socket->StrError());
+      touch_servers_.emplace_back(std::move(touch_socket));
     }
-    if (use_vsockets) {
-      keyboard_server_ =
-          SharedFD::VsockServer(instance_.keyboard_server_port(), SOCK_STREAM);
-    } else {
-      keyboard_server_ =
-          CreateUnixInputServer(instance_.keyboard_socket_path());
-    }
-    if (!keyboard_server_->IsOpen()) {
-      LOG(ERROR) << "Failed to open keyboard server"
-                 << keyboard_server_->StrError();
-      return false;
-    }
+    keyboard_server_ =
+        use_vsockets ? SharedFD::VsockServer(instance_.keyboard_server_port(),
+                                             SOCK_STREAM)
+                     : CreateUnixInputServer(instance_.keyboard_socket_path());
+    CF_EXPECT(keyboard_server_->IsOpen(), keyboard_server_->StrError());
+
     frames_server_ = CreateUnixInputServer(instance_.frames_socket_path());
-    if (!frames_server_->IsOpen()) {
-      LOG(ERROR) << "Could not open frames server: "
-                 << frames_server_->StrError();
-      return false;
-    }
+    CF_EXPECT(frames_server_->IsOpen(), frames_server_->StrError());
     // TODO(schuffelen): Make this a separate optional feature?
     if (config_.enable_audio()) {
       auto path = config_.ForDefaultInstance().audio_server_path();
       audio_server_ =
           SharedFD::SocketLocalServer(path, false, SOCK_SEQPACKET, 0666);
-      if (!audio_server_->IsOpen()) {
-        LOG(ERROR) << "Could not create audio server: "
-                   << audio_server_->StrError();
-        return false;
-      }
+      CF_EXPECT(audio_server_->IsOpen(), audio_server_->StrError());
     }
-    return true;
+    return {};
   }
 
   const CuttlefishConfig& config_;
@@ -267,40 +251,31 @@ class WebRtcServer : public virtual CommandSource,
     return commands;
   }
 
-  // Feature
+  // SetupFeature
   bool Enabled() const override {
     return sockets_.Enabled() && config_.enable_webrtc();
   }
 
  private:
   std::string Name() const override { return "WebRtcServer"; }
-  std::unordered_set<Feature*> Dependencies() const override {
-    return {static_cast<Feature*>(&sockets_),
-            static_cast<Feature*>(&log_pipe_provider_)};
+  std::unordered_set<SetupFeature*> Dependencies() const override {
+    return {static_cast<SetupFeature*>(&sockets_),
+            static_cast<SetupFeature*>(&log_pipe_provider_)};
   }
 
-  bool Setup() override {
-    if (!SharedFD::SocketPair(AF_LOCAL, SOCK_STREAM, 0, &client_socket_,
-                              &host_socket_)) {
-      LOG(ERROR) << "Could not open command socket for webRTC";
-      return false;
-    }
+  Result<void> ResultSetup() override {
+    CF_EXPECT(SharedFD::SocketPair(AF_LOCAL, SOCK_STREAM, 0, &client_socket_,
+                                   &host_socket_),
+              client_socket_->StrError());
     if (config_.vm_manager() == vm_manager::CrosvmManager::name()) {
       switches_server_ =
           CreateUnixInputServer(instance_.switches_socket_path());
-      if (!switches_server_->IsOpen()) {
-        LOG(ERROR) << "Could not open switches server: "
-                   << switches_server_->StrError();
-        return false;
-      }
+      CF_EXPECT(switches_server_->IsOpen(), switches_server_->StrError());
     }
     kernel_log_events_pipe_ = log_pipe_provider_.KernelLogPipe();
-    if (!kernel_log_events_pipe_->IsOpen()) {
-      LOG(ERROR) << "Failed to get a kernel log events pipe: "
-                 << kernel_log_events_pipe_->StrError();
-      return false;
-    }
-    return true;
+    CF_EXPECT(kernel_log_events_pipe_->IsOpen(),
+              kernel_log_events_pipe_->StrError());
+    return {};
   }
 
   const CuttlefishConfig& config_;
@@ -323,8 +298,8 @@ launchStreamerComponent() {
   return fruit::createComponent()
       .addMultibinding<CommandSource, WebRtcServer>()
       .addMultibinding<DiagnosticInformation, WebRtcServer>()
-      .addMultibinding<Feature, StreamerSockets>()
-      .addMultibinding<Feature, WebRtcServer>();
+      .addMultibinding<SetupFeature, StreamerSockets>()
+      .addMultibinding<SetupFeature, WebRtcServer>();
 }
 
 }  // namespace cuttlefish

@@ -82,6 +82,18 @@ bool DirectoryExists(const std::string& path, bool follow_symlinks) {
   return true;
 }
 
+Result<void> EnsureDirectoryExists(const std::string& directory_path) {
+  if (!DirectoryExists(directory_path)) {
+    LOG(DEBUG) << "Setting up " << directory_path;
+    if (mkdir(directory_path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) <
+            0 &&
+        errno != EEXIST) {
+      return CF_ERRNO("Failed to create dir: \"" << directory_path);
+    }
+  }
+  return {};
+}
+
 bool IsDirectoryEmpty(const std::string& path) {
   auto direc = ::opendir(path.c_str());
   if (!direc) {
@@ -200,6 +212,10 @@ std::string ReadFile(const std::string& file) {
   std::string contents;
   std::ifstream in(file, std::ios::in | std::ios::binary);
   in.seekg(0, std::ios::end);
+  if (in.fail()) {
+    // TODO(schuffelen): Return a failing Result instead
+    return "";
+  }
   contents.resize(in.tellg());
   in.seekg(0, std::ios::beg);
   in.read(&contents[0], contents.size());
@@ -209,6 +225,10 @@ std::string ReadFile(const std::string& file) {
 
 std::string CurrentDirectory() {
   char* path = getcwd(nullptr, 0);
+  if (path == nullptr) {
+    PLOG(ERROR) << "`getcwd(nullptr, 0)` failed";
+    return "";
+  }
   std::string ret(path);
   free(path);
   return ret;

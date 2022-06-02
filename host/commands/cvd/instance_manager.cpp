@@ -39,13 +39,12 @@
 
 namespace cuttlefish {
 
-std::optional<std::string> GetCuttlefishConfigPath(
-    const std::string& assembly_dir) {
-  std::string assembly_dir_realpath;
-  if (DirectoryExists(assembly_dir)) {
-    CHECK(android::base::Realpath(assembly_dir, &assembly_dir_realpath));
-    std::string config_path =
-        AbsolutePath(assembly_dir_realpath + "/" + "cuttlefish_config.json");
+std::optional<std::string> GetCuttlefishConfigPath(const std::string& home) {
+  std::string home_realpath;
+  if (DirectoryExists(home)) {
+    CHECK(android::base::Realpath(home, &home_realpath));
+    static const char kSuffix[] = "/cuttlefish_assembly/cuttlefish_config.json";
+    std::string config_path = AbsolutePath(home_realpath + kSuffix);
     if (FileExists(config_path)) {
       return config_path;
     }
@@ -53,23 +52,33 @@ std::optional<std::string> GetCuttlefishConfigPath(
   return {};
 }
 
-bool InstanceManager::HasAssemblies() const {
-  std::lock_guard assemblies_lock(assemblies_mutex_);
-  return !assemblies_.empty();
+InstanceManager::InstanceManager(InstanceLockFileManager& lock_manager)
+    : lock_manager_(lock_manager) {}
+
+bool InstanceManager::HasInstanceGroups() const {
+  std::lock_guard lock(instance_groups_mutex_);
+  return !instance_groups_.empty();
 }
 
-void InstanceManager::SetAssembly(const InstanceManager::AssemblyDir& dir,
-                                  const InstanceManager::AssemblyInfo& info) {
-  std::lock_guard assemblies_lock(assemblies_mutex_);
-  assemblies_[dir] = info;
+void InstanceManager::SetInstanceGroup(
+    const InstanceManager::InstanceGroupDir& dir,
+    const InstanceManager::InstanceGroupInfo& info) {
+  std::lock_guard assemblies_lock(instance_groups_mutex_);
+  instance_groups_[dir] = info;
 }
 
-Result<InstanceManager::AssemblyInfo> InstanceManager::GetAssembly(
-    const InstanceManager::AssemblyDir& dir) const {
-  std::lock_guard assemblies_lock(assemblies_mutex_);
-  auto info_it = assemblies_.find(dir);
-  if (info_it == assemblies_.end()) {
-    return CF_ERR("No assembly dir \"" << dir << "\"");
+void InstanceManager::RemoveInstanceGroup(
+    const InstanceManager::InstanceGroupDir& dir) {
+  std::lock_guard assemblies_lock(instance_groups_mutex_);
+  instance_groups_.erase(dir);
+}
+
+Result<InstanceManager::InstanceGroupInfo> InstanceManager::GetInstanceGroup(
+    const InstanceManager::InstanceGroupDir& dir) const {
+  std::lock_guard assemblies_lock(instance_groups_mutex_);
+  auto info_it = instance_groups_.find(dir);
+  if (info_it == instance_groups_.end()) {
+    return CF_ERR("No group dir \"" << dir << "\"");
   } else {
     return info_it->second;
   }
@@ -77,11 +86,13 @@ Result<InstanceManager::AssemblyInfo> InstanceManager::GetAssembly(
 
 cvd::Status InstanceManager::CvdFleet(const SharedFD& out,
                                       const std::string& env_config) const {
-  std::lock_guard assemblies_lock(assemblies_mutex_);
-  for (const auto& it : assemblies_) {
-    const AssemblyDir& assembly_dir = it.first;
-    const AssemblyInfo& assembly_info = it.second;
-    auto config_path = GetCuttlefishConfigPath(assembly_dir);
+  std::lock_guard assemblies_lock(instance_groups_mutex_);
+  const char _GroupDeviceInfoStart[] = "[\n";
+  const char _GroupDeviceInfoSeparate[] = ",\n";
+  const char _GroupDeviceInfoEnd[] = "]\n";
+  WriteAll(out, _GroupDeviceInfoStart);
+  for (const auto& [group_dir, group_info] : instance_groups_) {
+    auto config_path = GetCuttlefishConfigPath(group_dir);
     if (FileExists(env_config)) {
       config_path = env_config;
     }
@@ -91,20 +102,22 @@ cvd::Status InstanceManager::CvdFleet(const SharedFD& out,
       // version).
       auto config = CuttlefishConfig::GetFromFile(*config_path);
       if (config) {
-        for (const std::string& instance_name : config->instance_names()) {
-          Command command(assembly_info.host_binaries_dir + kStatusBin);
-          command.AddParameter("--print");
-          command.AddParameter("--instance_name=", instance_name);
-          command.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, out);
-          command.AddEnvironmentVariable(kCuttlefishConfigEnvVarName,
-                                         *config_path);
-          if (int wait_result = command.Start().Wait(); wait_result != 0) {
-            WriteAll(out, "      (unknown instance status error)");
-          }
+        Command command(group_info.host_binaries_dir + kStatusBin);
+        command.AddParameter("--print");
+        command.AddParameter("--all_instances");
+        command.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, out);
+        command.AddEnvironmentVariable(kCuttlefishConfigEnvVarName,
+                                       *config_path);
+        if (int wait_result = command.Start().Wait(); wait_result != 0) {
+          WriteAll(out, "      (unknown instance status error)");
         }
       }
     }
+    if (group_dir != instance_groups_.rbegin()->first) {
+      WriteAll(out, _GroupDeviceInfoSeparate);
+    }
   }
+  WriteAll(out, _GroupDeviceInfoEnd);
   cvd::Status status;
   status.set_code(cvd::Status::OK);
   return status;
@@ -112,44 +125,37 @@ cvd::Status InstanceManager::CvdFleet(const SharedFD& out,
 
 cvd::Status InstanceManager::CvdClear(const SharedFD& out,
                                       const SharedFD& err) {
-  std::lock_guard assemblies_lock(assemblies_mutex_);
+  std::lock_guard lock(instance_groups_mutex_);
   cvd::Status status;
-  for (const auto& it : assemblies_) {
-    const AssemblyDir& assembly_dir = it.first;
-    const AssemblyInfo& assembly_info = it.second;
-    auto config_path = GetCuttlefishConfigPath(assembly_dir);
+  for (const auto& [group_dir, group_info] : instance_groups_) {
+    auto config_path = GetCuttlefishConfigPath(group_dir);
     if (config_path) {
-      // Stop all instances that are using this assembly dir.
-      Command command(assembly_info.host_binaries_dir + kStopBin);
+      // Stop all instances that are using this group dir.
+      Command command(group_info.host_binaries_dir + kStopBin);
       // Delete the instance dirs.
       command.AddParameter("--clear_instance_dirs");
       command.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, out);
       command.RedirectStdIO(Subprocess::StdIOChannel::kStdErr, err);
       command.AddEnvironmentVariable(kCuttlefishConfigEnvVarName, *config_path);
       if (int wait_result = command.Start().Wait(); wait_result != 0) {
-        WriteAll(out,
-                 "Warning: error stopping instances for assembly dir " +
-                     assembly_dir +
-                     ".\nThis can happen if instances are already stopped.\n");
+        WriteAll(
+            out,
+            "Warning: error stopping instances for dir \"" + group_dir +
+                "\".\nThis can happen if instances are already stopped.\n");
       }
-
-      // Delete the assembly dir.
-      WriteAll(out, "Deleting " + assembly_dir + "\n");
-      if (DirectoryExists(assembly_dir) &&
-          !RecursivelyRemoveDirectory(assembly_dir)) {
-        status.set_code(cvd::Status::FAILED_PRECONDITION);
-        status.set_message("Unable to rmdir " + assembly_dir);
-        return status;
+      for (const auto& instance : group_info.instances) {
+        auto lock = lock_manager_.TryAcquireLock(instance);
+        if (lock.ok() && (*lock)) {
+          (*lock)->Status(InUseState::kNotInUse);
+        }
       }
     }
   }
   RemoveFile(StringFromEnv("HOME", ".") + "/cuttlefish_runtime");
   RemoveFile(GetGlobalConfigFileLink());
-  WriteAll(out,
-           "Stopped all known instances and deleted all "
-           "known assembly and instance dirs.\n");
+  WriteAll(out, "Stopped all known instances\n");
 
-  assemblies_.clear();
+  instance_groups_.clear();
   status.set_code(cvd::Status::OK);
   return status;
 }

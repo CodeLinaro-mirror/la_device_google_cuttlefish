@@ -69,11 +69,13 @@ PRODUCT_COPY_FILES += \
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/auto/preinstalled-packages-product-car-cuttlefish.xml:$(TARGET_COPY_OUT_PRODUCT)/etc/sysconfig/preinstalled-packages-product-car-cuttlefish.xml
 
-LOCAL_AUDIO_PRODUCT_COPY_FILES ?= \
+ifndef LOCAL_AUDIO_PRODUCT_COPY_FILES
+LOCAL_AUDIO_PRODUCT_COPY_FILES := \
     device/google/cuttlefish/shared/auto/car_audio_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/car_audio_configuration.xml \
     device/google/cuttlefish/shared/auto/audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy_configuration.xml \
     frameworks/av/services/audiopolicy/config/a2dp_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/a2dp_audio_policy_configuration.xml \
-    frameworks/av/services/audiopolicy/config/usb_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/usb_audio_policy_configuration.xml \
+    frameworks/av/services/audiopolicy/config/usb_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/usb_audio_policy_configuration.xml
+endif
 
 # Include display settings for an auto device.
 PRODUCT_COPY_FILES += \
@@ -102,20 +104,31 @@ PRODUCT_PACKAGES_DEBUG += canhalctrl \
     canhalsend
 
 # EVS
-# By default, we enable EvsManager and a mock EVS HAL implementation.  If you want to use your own
-# EVS HAL implementation, please set ENABLE_MOCK_EVSHAL as false and add your HAL implementation to
-# the product.  Please also check init.auto.rc and see how you can configure EvsManager to use your
-# EVS HAL.
+# By default, we enable EvsManager, a sample EVS app, and a mock EVS HAL implementation.
+# If you want to use your own EVS HAL implementation, please set ENABLE_MOCK_EVSHAL as false
+# and add your HAL implementation to the product.  Please also check init.evs.rc and see how
+# you can configure EvsManager to use your EVS HAL implementation.  Similarly, please set
+# ENABLE_SAMPLE_EVS_APP as false if you want to use your own EVS app configuration or own EVS
+# app implementation.
 ENABLE_EVS_SERVICE ?= true
 ENABLE_MOCK_EVSHAL ?= true
 ENABLE_CAREVSSERVICE_SAMPLE ?= true
+ENABLE_SAMPLE_EVS_APP ?= true
+
 ifeq ($(ENABLE_MOCK_EVSHAL), true)
-    PRODUCT_PACKAGES += android.hardware.automotive.evs@1.1-service \
-                        evs_app \
-                        android.frameworks.automotive.display@1.0-service
-    PRODUCT_COPY_FILES += \
-        device/google/cuttlefish/shared/auto/init.auto.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.auto.rc
-    BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy/evs
+CUSTOMIZE_EVS_SERVICE_PARAMETER := true
+PRODUCT_PACKAGES += android.hardware.automotive.evs@1.1-service \
+    android.frameworks.automotive.display@1.0-service
+PRODUCT_COPY_FILES += \
+    device/google/cuttlefish/shared/auto/evs/init.evs.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.evs.rc
+BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy/evs
+endif
+
+ifeq ($(ENABLE_SAMPLE_EVS_APP), true)
+PRODUCT_PACKAGES += evs_app
+PRODUCT_COPY_FILES += \
+    device/google/cuttlefish/shared/auto/evs/evs_app_config.json:$(TARGET_COPY_OUT_SYSTEM)/etc/automotive/evs/config_override.json
+BOARD_SEPOLICY_DIRS += packages/services/Car/cpp/evs/apps/sepolicy/private
 endif
 
 BOARD_IS_AUTOMOTIVE := true
@@ -123,8 +136,6 @@ BOARD_IS_AUTOMOTIVE := true
 DEVICE_PACKAGE_OVERLAYS += device/google/cuttlefish/shared/auto/overlay
 
 PRODUCT_PACKAGES += CarServiceOverlayCuttleFish
-ifeq (true, $(USE_GOOGLE_CAR_APEX))
-PRODUCT_PACKAGES += CarServiceOverlayCuttleFishGoogle
-endif # USE_GOOGLE_CAR_APEX
+GOOGLE_CAR_SERVICE_OVERLAY += CarServiceOverlayCuttleFishGoogle
 
 TARGET_BOARD_INFO_FILE ?= device/google/cuttlefish/shared/auto/android-info.txt

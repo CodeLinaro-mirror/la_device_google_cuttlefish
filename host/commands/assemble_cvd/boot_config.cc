@@ -88,12 +88,12 @@ class InitBootloaderEnvPartitionImpl : public InitBootloaderEnvPartition {
       const CuttlefishConfig::InstanceSpecific& instance))
       : config_(config), instance_(instance) {}
 
-  // Feature
+  // SetupFeature
   std::string Name() const override { return "InitBootloaderEnvPartitionImpl"; }
   bool Enabled() const override { return !config_.protected_vm(); }
 
  private:
-  std::unordered_set<Feature*> Dependencies() const override { return {}; }
+  std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
   bool Setup() override {
     auto boot_env_image_path = instance_.uboot_env_image_path();
     auto tmp_boot_env_image_path = boot_env_image_path + ".tmp";
@@ -126,28 +126,17 @@ class InitBootloaderEnvPartitionImpl : public InitBootloaderEnvPartition {
       return false;
     }
 
-    auto mkimage_path = HostBinaryPath("mkenvimage");
+    auto mkimage_path = HostBinaryPath("mkenvimage_slim");
     Command cmd(mkimage_path);
-    cmd.AddParameter("-s");
-    cmd.AddParameter("4096");
-    cmd.AddParameter("-o");
+    cmd.AddParameter("-output_path");
     cmd.AddParameter(tmp_boot_env_image_path);
+    cmd.AddParameter("-input_path");
     cmd.AddParameter(uboot_env_path);
     int success = cmd.Start().Wait();
     if (success != 0) {
-      LOG(ERROR) << "Unable to run mkenvimage. Exited with status " << success;
+      LOG(ERROR) << "Unable to run mkenvimage_slim. Exited with status "
+                 << success;
       return false;
-    }
-
-    if (!FileExists(boot_env_image_path) ||
-        ReadFile(boot_env_image_path) != ReadFile(tmp_boot_env_image_path)) {
-      if (!RenameFile(tmp_boot_env_image_path, boot_env_image_path)) {
-        LOG(ERROR) << "Unable to delete the old env image.";
-        return false;
-      }
-      LOG(DEBUG) << "Updated bootloader environment image.";
-    } else {
-      RemoveFile(tmp_boot_env_image_path);
     }
 
     const off_t boot_env_size_bytes = AlignToPowerOf2(
@@ -157,7 +146,7 @@ class InitBootloaderEnvPartitionImpl : public InitBootloaderEnvPartition {
     Command boot_env_hash_footer_cmd(avbtool_path);
     boot_env_hash_footer_cmd.AddParameter("add_hash_footer");
     boot_env_hash_footer_cmd.AddParameter("--image");
-    boot_env_hash_footer_cmd.AddParameter(boot_env_image_path);
+    boot_env_hash_footer_cmd.AddParameter(tmp_boot_env_image_path);
     boot_env_hash_footer_cmd.AddParameter("--partition_size");
     boot_env_hash_footer_cmd.AddParameter(boot_env_size_bytes);
     boot_env_hash_footer_cmd.AddParameter("--partition_name");
@@ -173,6 +162,18 @@ class InitBootloaderEnvPartitionImpl : public InitBootloaderEnvPartition {
                  << success;
       return false;
     }
+
+    if (!FileExists(boot_env_image_path) ||
+        ReadFile(boot_env_image_path) != ReadFile(tmp_boot_env_image_path)) {
+      if (!RenameFile(tmp_boot_env_image_path, boot_env_image_path)) {
+        LOG(ERROR) << "Unable to delete the old env image.";
+        return false;
+      }
+      LOG(DEBUG) << "Updated bootloader environment image.";
+    } else {
+      RemoveFile(tmp_boot_env_image_path);
+    }
+
     return true;
   }
 
@@ -186,7 +187,7 @@ fruit::Component<fruit::Required<const CuttlefishConfig,
 InitBootloaderEnvPartitionComponent() {
   return fruit::createComponent()
       .bind<InitBootloaderEnvPartition, InitBootloaderEnvPartitionImpl>()
-      .addMultibinding<Feature, InitBootloaderEnvPartition>();
+      .addMultibinding<SetupFeature, InitBootloaderEnvPartition>();
 }
 
 } // namespace cuttlefish
