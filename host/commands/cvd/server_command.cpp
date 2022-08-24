@@ -35,6 +35,7 @@
 #include "common/libs/utils/subprocess.h"
 #include "host/commands/cvd/instance_manager.h"
 #include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/config/instance_nums.h"
 
 namespace cuttlefish {
 namespace {
@@ -59,6 +60,7 @@ Commands:
   clear               Stop all running devices and delete all instance and assembly directories.
   fleet               View the current fleet status.
   kill-server         Kill the cvd_server background process.
+  restart-server      Restart the cvd_server background process.
   status              Check and print the state of a running instance.
   host_bugreport      Capture a host bugreport, including configs, logs, and tombstones.
 
@@ -81,7 +83,8 @@ const std::map<std::string, std::string> CommandToBinaryMap = {
     {"fetch", kFetchBin},
     {"fetch_cvd", kFetchBin},
     {"mkdir", kMkdirBin},
-    {"fleet", kFleetBin}};
+    {"fleet", kFleetBin},
+};
 
 }  // namespace
 
@@ -168,34 +171,28 @@ Result<cvd::Response> CvdCommandHandler::Handle(
         instance_manager_.CvdFleet(request.Out(), config_path);
     return response;
   } else if (bin == kStartBin) {
-    auto first_instance = 1;
+    InstanceNumsCalculator calculator;
     auto instance_env =
         request.Message().command_request().env().find("CUTTLEFISH_INSTANCE");
     if (instance_env != request.Message().command_request().env().end()) {
-      first_instance = std::stoi(instance_env->second);
+      calculator.BaseInstanceNum(std::stoi(instance_env->second));
     }
-    auto ins_flag = GflagsCompatFlag("base_instance_num", first_instance);
-    auto num_instances = 1;
-    auto num_instances_flag = GflagsCompatFlag("num_instances", num_instances);
-    CF_EXPECT(ParseFlags({ins_flag, num_instances_flag}, args));
 
     // Track this assembly_dir in the fleet.
     InstanceManager::InstanceGroupInfo info;
     info.host_binaries_dir = host_artifacts_path->second + "/bin/";
-    for (int i = first_instance; i < first_instance + num_instances; i++) {
-      info.instances.insert(i);
-    }
+    info.instances = CF_EXPECT(calculator.Calculate());
     instance_manager_.SetInstanceGroup(home, info);
   }
 
   Command command("(replaced)");
   if (bin == kFetchBin) {
-    command.SetExecutable(HostBinaryPath("fetch_cvd"));
+    command.SetExecutable("/proc/self/exe").SetName("fetch_cvd");
   } else if (bin == kMkdirBin) {
-    command.SetExecutable(kMkdirBin);
+    command.SetExecutableAndName(kMkdirBin);
   } else {
     auto assembly_info = CF_EXPECT(instance_manager_.GetInstanceGroup(home));
-    command.SetExecutable(assembly_info.host_binaries_dir + bin);
+    command.SetExecutableAndName(assembly_info.host_binaries_dir + bin);
   }
   for (const std::string& arg : args_copy) {
     command.AddParameter(arg);
