@@ -33,6 +33,7 @@
 #include "host/libs/config/config_flag.h"
 #include "host/libs/config/custom_actions.h"
 #include "host/libs/config/fetcher_config.h"
+#include "host/libs/config/inject.h"
 
 using cuttlefish::StringFromEnv;
 
@@ -96,10 +97,13 @@ Result<void> SaveConfig(const CuttlefishConfig& tmp_config_obj) {
 
 Result<void> CreateLegacySymlinks(
     const CuttlefishConfig::InstanceSpecific& instance) {
-  std::string log_files[] = {
-      "kernel.log",  "launcher.log",        "logcat",
-      "metrics.log", "modem_simulator.log", "crosvm_openwrt.log",
-  };
+  std::string log_files[] = {"kernel.log",
+                             "launcher.log",
+                             "logcat",
+                             "metrics.log",
+                             "modem_simulator.log",
+                             "crosvm_openwrt.log",
+                             "crosvm_openwrt_boot.log"};
   for (const auto& log_file : log_files) {
     auto symlink_location = instance.PerInstancePath(log_file.c_str());
     auto log_target = "logs/" + log_file;  // Relative path
@@ -348,6 +352,11 @@ Result<int> AssembleCvdMain(int argc, char** argv) {
   }
 
   fruit::Injector<> injector(FlagsComponent);
+
+  for (auto& late_injected : injector.getMultibindings<LateInjected>()) {
+    CF_EXPECT(late_injected->LateInject(injector));
+  }
+
   auto flag_features = injector.getMultibindings<FlagFeature>();
   CF_EXPECT(FlagFeature::ProcessFlags(flag_features, args),
             "Failed to parse flags.");

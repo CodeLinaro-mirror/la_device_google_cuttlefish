@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "host/commands/run_cvd/launch.h"
+#include "host/commands/run_cvd/launch/launch.h"
 
 #include <android-base/logging.h>
 
@@ -53,7 +53,8 @@ std::vector<T> single_element_emplace(T&& element) {
 
 class KernelLogMonitor : public CommandSource,
                          public KernelLogPipeProvider,
-                         public DiagnosticInformation {
+                         public DiagnosticInformation,
+                         public LateInjected {
  public:
   INJECT(KernelLogMonitor(const CuttlefishConfig::InstanceSpecific& instance))
       : instance_(instance) {}
@@ -61,6 +62,12 @@ class KernelLogMonitor : public CommandSource,
   // DiagnosticInformation
   std::vector<std::string> Diagnostics() const override {
     return {"Kernel log: " + instance_.PerInstancePath("kernel.log")};
+  }
+
+  Result<void> LateInject(fruit::Injector<>& injector) override {
+    number_of_event_pipes_ =
+        injector.getMultibindings<KernelLogPipeConsumer>().size();
+    return {};
   }
 
   // CommandSource
@@ -110,20 +117,17 @@ class KernelLogMonitor : public CommandSource,
     CF_EXPECT(fifo_->IsOpen(),
               "Unable to open \"" << log_name << "\": " << fifo_->StrError());
 
-    // TODO(schuffelen): Find a way to calculate this dynamically.
-    int number_of_event_pipes = 4;
-    if (number_of_event_pipes > 0) {
-      for (unsigned int i = 0; i < number_of_event_pipes; ++i) {
-        SharedFD event_pipe_write_end, event_pipe_read_end;
-        CF_EXPECT(SharedFD::Pipe(&event_pipe_read_end, &event_pipe_write_end),
-                  "Failed creating kernel log pipe: " << strerror(errno));
-        event_pipe_write_ends_.push_back(event_pipe_write_end);
-        event_pipe_read_ends_.push_back(event_pipe_read_end);
-      }
+    for (unsigned int i = 0; i < number_of_event_pipes_; ++i) {
+      SharedFD event_pipe_write_end, event_pipe_read_end;
+      CF_EXPECT(SharedFD::Pipe(&event_pipe_read_end, &event_pipe_write_end),
+                "Failed creating kernel log pipe: " << strerror(errno));
+      event_pipe_write_ends_.push_back(event_pipe_write_end);
+      event_pipe_read_ends_.push_back(event_pipe_read_end);
     }
     return {};
   }
 
+  int number_of_event_pipes_ = 0;
   const CuttlefishConfig::InstanceSpecific& instance_;
   SharedFD fifo_;
   std::vector<SharedFD> event_pipe_write_ends_;
@@ -446,7 +450,7 @@ class BluetoothConnector : public CommandSource {
   std::vector<SharedFD> fifos_;
 };
 
-class SecureEnvironment : public CommandSource {
+class SecureEnvironment : public CommandSource, public KernelLogPipeConsumer {
  public:
   INJECT(SecureEnvironment(const CuttlefishConfig& config,
                            const CuttlefishConfig::InstanceSpecific& instance,
@@ -759,8 +763,11 @@ class OpenWrt : public CommandSource {
     ap_cmd.Cmd().AddParameter("--params=\"root=" + config_.ap_image_dev_path() +
                               "\"");
 
-    auto kernel_logs_path = instance_.PerInstanceLogPath("crosvm_openwrt.log");
-    ap_cmd.AddSerialConsoleReadOnly(kernel_logs_path);
+    auto boot_logs_path =
+        instance_.PerInstanceLogPath("crosvm_openwrt_boot.log");
+    auto logs_path = instance_.PerInstanceLogPath("crosvm_openwrt.log");
+    ap_cmd.AddSerialConsoleReadOnly(boot_logs_path);
+    ap_cmd.AddHvcReadOnly(logs_path);
 
     ap_cmd.Cmd().AddParameter(config_.ap_kernel_image());
 
@@ -797,8 +804,8 @@ fruit::Component<PublicDeps, KernelLogPipeProvider> launchComponent() {
                                        const CuttlefishConfig::InstanceSpecific,
                                        KernelLogPipeProvider>;
   using Multi = Multibindings<InternalDeps>;
-  using Bases =
-      Multi::Bases<CommandSource, DiagnosticInformation, SetupFeature>;
+  using Bases = Multi::Bases<CommandSource, DiagnosticInformation, SetupFeature,
+                             LateInjected, KernelLogPipeConsumer>;
   return fruit::createComponent()
       .bind<KernelLogPipeProvider, KernelLogMonitor>()
       .install(Bases::Impls<BluetoothConnector>)

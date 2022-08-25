@@ -13,22 +13,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#pragma once
-
-#include <fruit/fruit.h>
-#include <vector>
-
-#include "common/libs/fs/shared_fd.h"
+#include "common/libs/utils/result.h"
 
 namespace cuttlefish {
 
-class KernelLogPipeProvider : public virtual SetupFeature {
- public:
-  virtual ~KernelLogPipeProvider() = default;
-  virtual SharedFD KernelLogPipe() = 0;
-};
-
-/** Parent class tag for classes that inject KernelLogPipe. */
-class KernelLogPipeConsumer {};
-
-}  // namespace cuttlefish
+Result<void> FetchCvdMain(int argc, char** argv);
+}

@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "host/commands/run_cvd/launch.h"
+#include "host/commands/run_cvd/launch/launch.h"
 
 #include <android-base/logging.h>
 #include <sstream>
@@ -155,7 +155,8 @@ class StreamerSockets : public virtual SetupFeature {
 };
 
 class WebRtcServer : public virtual CommandSource,
-                     public DiagnosticInformation {
+                     public DiagnosticInformation,
+                     public KernelLogPipeConsumer {
  public:
   INJECT(WebRtcServer(const CuttlefishConfig& config,
                       const CuttlefishConfig::InstanceSpecific& instance,
@@ -187,9 +188,8 @@ class WebRtcServer : public virtual CommandSource,
     if (instance_.start_webrtc_sig_server()) {
       Command sig_server(WebRtcSigServerBinary());
       sig_server.AddParameter("-assets_dir=", config_.webrtc_assets_dir());
-      sig_server.AddParameter(
-          "-use_secure_http=",
-          config_.sig_server_secure() ? "true" : "false");
+      sig_server.AddParameter("-use_secure_http=",
+                              config_.sig_server_secure() ? "true" : "false");
       if (!config_.webrtc_certs_dir().empty()) {
         sig_server.AddParameter("-certs_dir=", config_.webrtc_certs_dir());
       }
@@ -298,6 +298,7 @@ launchStreamerComponent() {
   return fruit::createComponent()
       .addMultibinding<CommandSource, WebRtcServer>()
       .addMultibinding<DiagnosticInformation, WebRtcServer>()
+      .addMultibinding<KernelLogPipeConsumer, WebRtcServer>()
       .addMultibinding<SetupFeature, StreamerSockets>()
       .addMultibinding<SetupFeature, WebRtcServer>();
 }
