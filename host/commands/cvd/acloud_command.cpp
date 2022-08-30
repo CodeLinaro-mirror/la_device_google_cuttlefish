@@ -13,7 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "host/commands/cvd/server.h"
+
+#include "host/commands/cvd/acloud_command.h"
 
 #include <optional>
 #include <vector>
@@ -29,6 +30,7 @@
 #include "common/libs/utils/subprocess.h"
 #include "host/commands/cvd/command_sequence.h"
 #include "host/commands/cvd/instance_lock.h"
+#include "host/commands/cvd/server.h"
 #include "host/commands/cvd/server_client.h"
 
 namespace cuttlefish {
@@ -52,11 +54,13 @@ Result<std::vector<std::string>> BashTokenize(const std::string& str) {
   Command command("bash");
   command.AddParameter("-c");
   command.AddParameter("printf '%s\n' ", str);
-  std::string stdout;
-  std::string stderr;
-  auto ret = RunWithManagedStdio(std::move(command), nullptr, &stdout, &stderr);
-  CF_EXPECT(ret == 0, "printf fail \"" << stdout << "\", \"" << stderr << "\"");
-  return android::base::Split(stdout, "\n");
+  std::string stdout_str;
+  std::string stderr_str;
+  auto ret = RunWithManagedStdio(std::move(command), nullptr, &stdout_str,
+                                 &stderr_str);
+  CF_EXPECT(ret == 0,
+            "printf fail \"" << stdout_str << "\", \"" << stderr_str << "\"");
+  return android::base::Split(stdout_str, "\n");
 }
 
 class ConvertAcloudCreateCommand {
@@ -400,7 +404,8 @@ class AcloudCreateCommand : public CvdServerHandler {
 
 }  // namespace
 
-fruit::Component<fruit::Required<CvdCommandHandler>> AcloudCommandComponent() {
+fruit::Component<fruit::Required<CommandSequenceExecutor>>
+AcloudCommandComponent() {
   return fruit::createComponent()
       .addMultibinding<CvdServerHandler, AcloudCreateCommand>()
       .addMultibinding<CvdServerHandler, TryAcloudCreateCommand>();

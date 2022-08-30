@@ -75,7 +75,8 @@ class ServerLoopImpl : public ServerLoop,
 
     for (auto& command_source : command_sources_) {
       if (command_source->Enabled()) {
-        process_monitor_properties.AddCommands(command_source->Commands());
+        auto commands = CF_EXPECT(command_source->Commands());
+        process_monitor_properties.AddCommands(std::move(commands));
       }
     }
 
@@ -197,6 +198,8 @@ class ServerLoopImpl : public ServerLoop,
         instance_.PerInstanceInternalPath("gnsshvc_fifo_vm.out"),
         instance_.PerInstanceInternalPath("locationhvc_fifo_vm.in"),
         instance_.PerInstanceInternalPath("locationhvc_fifo_vm.out"),
+        instance_.PerInstanceInternalPath("confui_fifo_vm.in"),
+        instance_.PerInstanceInternalPath("confui_fifo_vm.out"),
     };
     for (const auto& pipe : pipes) {
       unlink(pipe.c_str());
