@@ -85,49 +85,55 @@ class BuildApi {
   BuildApi(CurlWrapper&, CredentialSource*, std::string api_key);
   ~BuildApi() = default;
 
-  std::string LatestBuildId(const std::string& branch,
-                            const std::string& target);
+  Result<std::string> LatestBuildId(const std::string& branch,
+                                    const std::string& target);
 
-  std::string BuildStatus(const DeviceBuild&);
+  Result<std::string> BuildStatus(const DeviceBuild&);
 
-  std::string ProductName(const DeviceBuild&);
+  Result<std::string> ProductName(const DeviceBuild&);
 
-  std::vector<Artifact> Artifacts(const DeviceBuild&);
+  Result<std::vector<Artifact>> Artifacts(const DeviceBuild&);
 
-  bool ArtifactToCallback(const DeviceBuild& build, const std::string& artifact,
-                          CurlWrapper::DataCallback callback);
+  Result<void> ArtifactToCallback(const DeviceBuild& build,
+                                  const std::string& artifact,
+                                  CurlWrapper::DataCallback callback);
 
-  bool ArtifactToFile(const DeviceBuild& build, const std::string& artifact,
-                      const std::string& path);
+  Result<void> ArtifactToFile(const DeviceBuild& build,
+                              const std::string& artifact,
+                              const std::string& path);
 
-  std::vector<Artifact> Artifacts(const DirectoryBuild&);
+  Result<std::vector<Artifact>> Artifacts(const DirectoryBuild&);
 
-  bool ArtifactToFile(const DirectoryBuild& build, const std::string& artifact,
-                      const std::string& path);
+  Result<void> ArtifactToFile(const DirectoryBuild& build,
+                              const std::string& artifact,
+                              const std::string& path);
 
-  std::vector<Artifact> Artifacts(const Build& build) {
-    return std::visit([this](auto&& arg) { return Artifacts(arg); }, build);
+  Result<std::vector<Artifact>> Artifacts(const Build& build) {
+    auto res = std::visit([this](auto&& arg) { return Artifacts(arg); }, build);
+    return CF_EXPECT(std::move(res));
   }
 
-  bool ArtifactToFile(const Build& build, const std::string& artifact,
-                      const std::string& path) {
-    return std::visit(
+  Result<void> ArtifactToFile(const Build& build, const std::string& artifact,
+                              const std::string& path) {
+    auto res = std::visit(
         [this, &artifact, &path](auto&& arg) {
           return ArtifactToFile(arg, artifact, path);
         },
         build);
+    CF_EXPECT(std::move(res));
+    return {};
   }
 
  private:
-  std::vector<std::string> Headers();
+  Result<std::vector<std::string>> Headers();
 
   CurlWrapper& curl;
   CredentialSource* credential_source;
   std::string api_key_;
 };
 
-Build ArgumentToBuild(BuildApi* api, const std::string& arg,
-                      const std::string& default_build_target,
-                      const std::chrono::seconds& retry_period);
+Result<Build> ArgumentToBuild(BuildApi& api, const std::string& arg,
+                              const std::string& default_build_target,
+                              const std::chrono::seconds& retry_period);
 
 }  // namespace cuttlefish

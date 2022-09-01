@@ -121,6 +121,8 @@ struct VersionedAidlPackage {
 };
 
 static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
+    // TODO(227536004) Implement bootctrl AIDL
+    {"android.hardware.boot.", 1},
     // Cuttlefish Identity Credential HAL implementation is currently
     // stuck at version 3 while RKP support is being added. Will be
     // updated soon.
@@ -179,7 +181,7 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.hardware.automotive.audiocontrol.", 2},
     {"android.hardware.automotive.evs.", 1},
     {"android.hardware.automotive.occupant_awareness.", 1},
-    {"android.hardware.automotive.vehicle.", 1},
+    {"android.hardware.automotive.vehicle.", 2},
 
     // These types are only used in TV.
     {"android.hardware.tv.tuner.", 1},
