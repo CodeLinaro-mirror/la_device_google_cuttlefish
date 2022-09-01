@@ -113,7 +113,9 @@ class HostServer : public HostVirtualInput {
   void HalCmdFetcherLoop();
 
   SharedFD EstablishHalConnection();
-
+  bool IsVirtioConsoleOpen() const;
+  // If !IsVirtioConsoleOpen(), LOG(FATAL) and return false
+  bool CheckVirtioConsole();
   std::shared_ptr<Session> CreateSession(const std::string& session_name);
   void SendUserSelection(std::unique_ptr<ConfUiMessage>& input);
 
@@ -136,7 +138,6 @@ class HostServer : public HostVirtualInput {
   HostModeCtrl& host_mode_ctrl_;
   ScreenConnectorFrameRenderer& screen_connector_;
 
-  std::string input_socket_path_;
   int hal_vsock_port_;
 
   std::shared_ptr<Session> curr_session_;
@@ -164,10 +165,6 @@ class HostServer : public HostVirtualInput {
 
   std::thread main_loop_thread_;
   std::thread hal_input_fetcher_thread_;
-
-  std::mutex socket_flag_mtx_;
-  std::condition_variable socket_flag_cv_;
-  bool is_socket_ok_;
 };
 
 }  // end of namespace confui

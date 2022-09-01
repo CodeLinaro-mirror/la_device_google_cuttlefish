@@ -95,6 +95,16 @@ HostServer::HostServer(
       HostServer::Multiplexer::CreateQueue(max_elements, ignore_new));
 }
 
+bool HostServer::IsVirtioConsoleOpen() const {
+  return from_guest_fifo_fd_->IsOpen() && to_guest_fifo_fd_->IsOpen();
+}
+
+bool HostServer::CheckVirtioConsole() {
+  if (IsVirtioConsoleOpen()) return true;
+  ConfUiLog(FATAL) << "Virtio console is not open";
+  return false;
+}
+
 void HostServer::Start() {
   guest_hal_socket_ =
       cuttlefish::SharedFD::VsockServer(hal_vsock_port_, SOCK_STREAM);
@@ -116,16 +126,13 @@ void HostServer::HalCmdFetcherLoop() {
   while (true) {
     if (!hal_cli_socket_->IsOpen()) {
       ConfUiLog(DEBUG) << "client is disconnected";
-      std::unique_lock<std::mutex> lk(socket_flag_mtx_);
       hal_cli_socket_ = EstablishHalConnection();
-      is_socket_ok_ = true;
       continue;
     }
     auto msg = RecvConfUiMsg(hal_cli_socket_);
     if (!msg) {
       ConfUiLog(ERROR) << "Error in RecvConfUiMsg from HAL";
       hal_cli_socket_->Close();
-      is_socket_ok_ = false;
       continue;
     }
     /*
