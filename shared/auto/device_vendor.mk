@@ -117,6 +117,7 @@ ENABLE_EVS_SERVICE ?= true
 ENABLE_MOCK_EVSHAL ?= true
 ENABLE_CAREVSSERVICE_SAMPLE ?= true
 ENABLE_SAMPLE_EVS_APP ?= true
+ENABLE_CARTELEMETRY_SERVICE ?= true
 
 ifeq ($(ENABLE_MOCK_EVSHAL), true)
 CUSTOMIZE_EVS_SERVICE_PARAMETER := true
@@ -131,7 +132,7 @@ ifeq ($(ENABLE_SAMPLE_EVS_APP), true)
 PRODUCT_PACKAGES += evs_app
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/auto/evs/evs_app_config.json:$(TARGET_COPY_OUT_SYSTEM)/etc/automotive/evs/config_override.json
-BOARD_SEPOLICY_DIRS += packages/services/Car/cpp/evs/apps/sepolicy/private
+include packages/services/Car/cpp/evs/apps/sepolicy/evsapp.mk
 endif
 
 BOARD_IS_AUTOMOTIVE := true

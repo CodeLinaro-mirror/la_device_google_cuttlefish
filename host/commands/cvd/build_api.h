@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2022 The Android Open Source Project
+ * Copyright (C) 2022 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,19 +16,12 @@
 
 #pragma once
 
-#include "GpsFix.h"
+#include <fruit/fruit.h>
 
-class GpxParser {
- public:
-  /* Parses a given .gpx file at |filePath| and extracts all contained GPS
-   * fixes into |*fixes|.
-   *
-   * Returns true on success, false otherwise. If false is returned, |*error|
-   * is set to a string describing the error.
-   */
-  static bool parseFile(const char *filePath, GpsFixArray *fixes,
-                        std::string *error);
+#include "host/libs/web/build_api.h"
 
-  static bool parseString(const char *str, int len, GpsFixArray *fixes,
-                          std::string *error);
-};
+namespace cuttlefish {
+
+fruit::Component<BuildApi> BuildApiModule();
+
+}

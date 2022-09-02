@@ -80,6 +80,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.media.bufferpool@1.0",
     "android.hardware.media.bufferpool@2.0",
     "android.hardware.memtrack@1.0",
+    "android.hardware.neuralnetworks@1.3", // converted to AIDL, see b/161428342
     "android.hardware.nfc@1.2",
     "android.hardware.oemlock@1.0",
     "android.hardware.power@1.3",
@@ -108,6 +109,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.wifi.offload@1.0",
     "android.hidl.base@1.0",
     "android.hidl.memory.token@1.0",
+    "android.system.net.netd@1.1", // Converted to AIDL (see b/205764585)
     "android.system.suspend@1.0", // Converted to AIDL (see b/170260236)
 };
 // clang-format on
@@ -193,7 +195,7 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.hardware.radio.network.", 2},
 
     // types-only packages, which never expect a default implementation
-    {"android.hardware.uwb.fira_android.", 1},
+    {"android.hardware.uwb.fira_android.", 2},
 };
 
 static const std::set<VersionedAidlPackage> kComingSoonAidl = {

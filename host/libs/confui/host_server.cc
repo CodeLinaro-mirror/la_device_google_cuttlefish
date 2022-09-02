@@ -64,18 +64,23 @@ static std::unique_ptr<ConfUiMessage> WrapWithSecureFlag(
 
 HostServer& HostServer::Get(
     HostModeCtrl& host_mode_ctrl,
-    cuttlefish::ScreenConnectorFrameRenderer& screen_connector) {
-  static HostServer host_server{host_mode_ctrl, screen_connector};
+    cuttlefish::ScreenConnectorFrameRenderer& screen_connector,
+    SharedFD from_guest_fd, SharedFD to_guest_fd) {
+  static HostServer host_server{host_mode_ctrl, screen_connector, from_guest_fd,
+                                to_guest_fd};
   return host_server;
 }
 
 HostServer::HostServer(
     cuttlefish::HostModeCtrl& host_mode_ctrl,
-    cuttlefish::ScreenConnectorFrameRenderer& screen_connector)
+    cuttlefish::ScreenConnectorFrameRenderer& screen_connector,
+    SharedFD from_guest_fd, SharedFD to_guest_fd)
     : display_num_(0),
       host_mode_ctrl_(host_mode_ctrl),
       screen_connector_{screen_connector},
-      hal_vsock_port_(HalHostVsockPort()) {
+      hal_vsock_port_(HalHostVsockPort()),
+      from_guest_fifo_fd_(from_guest_fd),
+      to_guest_fifo_fd_(to_guest_fd) {
   ConfUiLog(DEBUG) << "Confirmation UI Host session is listening on: "
                    << hal_vsock_port_;
   const size_t max_elements = 20;
@@ -88,6 +93,16 @@ HostServer::HostServer(
       HostServer::Multiplexer::CreateQueue(max_elements, ignore_new));
   user_input_evt_q_id_ = input_multiplexer_.RegisterQueue(
       HostServer::Multiplexer::CreateQueue(max_elements, ignore_new));
+}
+
+bool HostServer::IsVirtioConsoleOpen() const {
+  return from_guest_fifo_fd_->IsOpen() && to_guest_fifo_fd_->IsOpen();
+}
+
+bool HostServer::CheckVirtioConsole() {
+  if (IsVirtioConsoleOpen()) return true;
+  ConfUiLog(FATAL) << "Virtio console is not open";
+  return false;
 }
 
 void HostServer::Start() {
@@ -111,16 +126,13 @@ void HostServer::HalCmdFetcherLoop() {
   while (true) {
     if (!hal_cli_socket_->IsOpen()) {
       ConfUiLog(DEBUG) << "client is disconnected";
-      std::unique_lock<std::mutex> lk(socket_flag_mtx_);
       hal_cli_socket_ = EstablishHalConnection();
-      is_socket_ok_ = true;
       continue;
     }
     auto msg = RecvConfUiMsg(hal_cli_socket_);
     if (!msg) {
       ConfUiLog(ERROR) << "Error in RecvConfUiMsg from HAL";
       hal_cli_socket_->Close();
-      is_socket_ok_ = false;
       continue;
     }
     /*
