@@ -213,6 +213,11 @@ PRODUCT_PACKAGES += \
     libGLESv1_CM_angle \
     libGLESv2_angle
 
+# Enable the ANGLE feature to prefer linear filtering for YUV AHBs
+# to pass android.media.decoder.cts.DecodeAccuracyTest.
+PRODUCT_VENDOR_PROPERTIES += \
+    debug.angle.feature_overrides_enabled=preferLinearFilterForYUV
+
 # GL implementation for virgl
 PRODUCT_PACKAGES += \
     libGLES_mesa \
@@ -689,9 +694,7 @@ endif
 
 # BootControl HAL
 PRODUCT_PACKAGES += \
-    android.hardware.boot@1.2-impl \
-    android.hardware.boot@1.2-impl.recovery \
-    android.hardware.boot@1.2-service
+    android.hardware.boot-service.default
 
 # RebootEscrow HAL
 PRODUCT_PACKAGES += \
@@ -828,7 +831,7 @@ PRODUCT_VENDOR_PROPERTIES += \
 
 # Enable GPU-intensive background blur support on Cuttlefish when requested by apps
 PRODUCT_VENDOR_PROPERTIES += \
-    ro.surface_flinger.supports_background_blur?=1
+    ro.surface_flinger.supports_background_blur=1
 
 # Set support one-handed mode
 PRODUCT_PRODUCT_PROPERTIES += \

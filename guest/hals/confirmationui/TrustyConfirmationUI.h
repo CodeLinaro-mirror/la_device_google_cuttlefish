@@ -104,8 +104,7 @@ class TrustyConfirmationUI : public IConfirmationUI {
     std::condition_variable listener_state_condv_;
     ResponseCode prompt_result_;
 
-    // client socket to the host
-    int host_vsock_port_;
+    // client virtio-console fd to the host
     cuttlefish::SharedFD host_fd_;
 
     // ack, response, command from the host, and the abort command from the guest
@@ -113,11 +112,13 @@ class TrustyConfirmationUI : public IConfirmationUI {
     std::mutex current_session_lock_;
     std::unique_ptr<GuestSession> current_session_;
     std::thread host_cmd_fetcher_thread_;
+    bool is_supported_vm_;
 
     cuttlefish::SharedFD ConnectToHost();
     void HostMessageFetcherLoop();
     void RunSession(sp<IConfirmationResultCallback> resultCB, hidl_string promptText,
                     hidl_vec<uint8_t> extraData, hidl_string locale, hidl_vec<UIOption> uiOptions);
+    static const char* GetVirtioConsoleDevicePath();
 };
 
 }  // namespace implementation

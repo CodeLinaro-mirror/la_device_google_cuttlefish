@@ -129,12 +129,12 @@ std::vector<std::string> QemuManager::ConfigureGraphics(
     // with properities lead to non-deterministic behavior while loading the
     // HALs.
     return {
-        "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_1),
+        "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_2),
         "androidboot.hardware.gralloc=minigbm",
         "androidboot.hardware.hwcomposer=" + config.hwcomposer(),
         "androidboot.hardware.egl=angle",
         "androidboot.hardware.vulkan=pastel",
-    };
+        "androidboot.opengles.version=196609"};  // OpenGL ES 3.1
   }
 
   if (config.gpu_mode() == kGpuModeDrmVirgl) {
@@ -144,7 +144,8 @@ std::vector<std::string> QemuManager::ConfigureGraphics(
       "androidboot.hardware.hwcomposer=drm",
       "androidboot.hardware.hwcomposer.mode=client",
       "androidboot.hardware.egl=mesa",
-    };
+      // No "hardware" Vulkan support, yet
+      "androidboot.opengles.version=196608"};  // OpenGL ES 3.0
   }
 
   return {};
