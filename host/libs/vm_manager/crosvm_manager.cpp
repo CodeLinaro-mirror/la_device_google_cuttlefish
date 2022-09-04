@@ -79,7 +79,8 @@ std::vector<std::string> CrosvmManager::ConfigureGraphics(
       "androidboot.hardware.gralloc=minigbm",
       "androidboot.hardware.hwcomposer=drm",
       "androidboot.hardware.egl=mesa",
-    };
+      // No "hardware" Vulkan support, yet
+      "androidboot.opengles.version=196608"};  // OpenGL ES 3.0
   }
   if (config.gpu_mode() == kGpuModeGfxStream) {
     std::string gles_impl = config.enable_gpu_angle() ? "angle" : "emulation";
@@ -140,17 +141,28 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
     crosvm_cmd.Cmd().AddParameter("--gdb=", config.gdb_port());
   }
 
-  auto gpu_capture_enabled = !config.gpu_capture_binary().empty();
-  auto gpu_mode = config.gpu_mode();
-  auto udmabuf_string = config.enable_gpu_udmabuf() ? "true" : "false";
-  auto angle_string = config.enable_gpu_angle() ? ",angle=true" : "";
+  const auto gpu_capture_enabled = !config.gpu_capture_binary().empty();
+  const auto gpu_mode = config.gpu_mode();
+
+  const std::string gpu_angle_string =
+      config.enable_gpu_angle() ? ",angle=true" : "";
+  // 256MB so it is small enough for a 32-bit kernel.
+  const std::string gpu_pci_bar_size = ",pci-bar-size=268435456";
+  const std::string gpu_udmabuf_string =
+      config.enable_gpu_udmabuf() ? ",udmabuf=true" : "";
+
+  const std::string gpu_common_string = gpu_udmabuf_string + gpu_pci_bar_size;
+  const std::string gpu_common_3d_string =
+      gpu_common_string + ",egl=true,surfaceless=true,glx=false,gles=true";
+
   if (gpu_mode == kGpuModeGuestSwiftshader) {
-    crosvm_cmd.Cmd().AddParameter("--gpu=2D,udmabuf=", udmabuf_string);
-  } else if (gpu_mode == kGpuModeDrmVirgl || gpu_mode == kGpuModeGfxStream) {
-    crosvm_cmd.Cmd().AddParameter(
-        gpu_mode == kGpuModeGfxStream ? "--gpu=gfxstream," : "--gpu=",
-        "egl=true,surfaceless=true,glx=false,gles=true,udmabuf=", udmabuf_string,
-        angle_string);
+    crosvm_cmd.Cmd().AddParameter("--gpu=backend=2D", gpu_common_string);
+  } else if (gpu_mode == kGpuModeDrmVirgl) {
+    crosvm_cmd.Cmd().AddParameter("--gpu=backend=virglrenderer",
+                                  gpu_common_3d_string);
+  } else if (gpu_mode == kGpuModeGfxStream) {
+    crosvm_cmd.Cmd().AddParameter("--gpu=backend=gfxstream",
+                                  gpu_common_3d_string, gpu_angle_string);
   }
 
   for (const auto& display_config : config.display_configs()) {

@@ -1,4 +1,3 @@
-//
 // Copyright (C) 2022 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,43 +16,39 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-cc_defaults {
-    name: "cvd_update_location_defaults",
-    shared_libs: [
-        "libext2_blkid",
-        "libbase",
-        "libcuttlefish_fs",
-        "liblog",
-        "libicuuc",
-        "libprotobuf-cpp-full",
-        "libgrpc++_unsecure",
+java_test_host {
+    name: "CuttlefishWmediumdControlTest",
+    srcs: [
+        "src/**/*.java",
     ],
-    defaults: ["cuttlefish_buildhost_only"],
-}
-
-cc_binary {
-    name: "cvd_update_location",
-    shared_libs: [
+    data_native_bins: [
+        "wmediumd_control",
+    ],
+    test_suites: [
+        "device-tests",
+    ],
+    libs: [
+        "auto_value_annotations",
+        "junit",
+        "tradefed",
+    ],
+    static_libs: [
+        "platform-test-annotations",
+    ],
+    jni_libs: [
         "libext2_blkid",
+        "libfruit",
         "libbase",
         "libcuttlefish_fs",
         "libcuttlefish_utils",
+        "libcurl",
+        "libcrypto",
+        "libext2_uuid",
+        "liblog",
+        "libssl",
+        "libz",
         "libjsoncpp",
         "libprotobuf-cpp-full",
-        "libgrpc++_unsecure",
     ],
-    static_libs: [
-        "libcuttlefish_host_config",
-        "libgflags",
-        "libcvd_gnss_grpc_proxy",
-        "liblocation",
-    ],
-    srcs: [
-        "main.cc",
-    ],
-    cflags: [
-        "-Wno-unused-parameter",
-        "-D_XOPEN_SOURCE",
-    ],
-    defaults: ["cvd_update_location_defaults"],
+    plugins: ["auto_value_plugin", "auto_annotation_plugin"],
 }

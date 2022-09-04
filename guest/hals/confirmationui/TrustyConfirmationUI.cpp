@@ -57,28 +57,25 @@ inline MsgVector<teeui::UIOption> hidl2MsgVector(const hidl_vec<UIOption>& v) {
 }
 }  // namespace
 
-cuttlefish::SharedFD TrustyConfirmationUI::ConnectToHost() {
-    using namespace std::chrono_literals;
-    while (true) {
-        auto host_fd = cuttlefish::SharedFD::VsockClient(2, host_vsock_port_, SOCK_STREAM);
-        if (host_fd->IsOpen()) {
-            ConfUiLog(INFO) << "Client connection is established";
-            return host_fd;
-        }
-        ConfUiLog(INFO) << "host service is not on. Sleep for 500 ms";
-        std::this_thread::sleep_for(500ms);
-    }
+const char* TrustyConfirmationUI::GetVirtioConsoleDevicePath() {
+    static char device_path[] = "/dev/hvc8";
+    return device_path;
 }
 
 TrustyConfirmationUI::TrustyConfirmationUI()
     : listener_state_(ListenerState::None),
-      prompt_result_(ResponseCode::Ignored), host_vsock_port_{static_cast<int>(property_get_int64(
-                                                 "ro.boot.vsock_confirmationui_port", 7700))},
-      current_session_id_{10} {
-    ConfUiLog(INFO) << "Connecting to Confirmation UI host listening on port " << host_vsock_port_;
-    host_fd_ = ConnectToHost();
-    auto fetching_cmd = [this]() { HostMessageFetcherLoop(); };
+      prompt_result_(ResponseCode::Ignored), current_session_id_{10} {
+    host_fd_ = cuttlefish::SharedFD::Open(GetVirtioConsoleDevicePath(), O_RDWR);
+    CHECK(host_fd_->IsOpen()) << "ConfUI: " << GetVirtioConsoleDevicePath() << " is not open.";
+    CHECK(host_fd_->SetTerminalRaw() >= 0)
+        << "ConfUI: " << GetVirtioConsoleDevicePath() << " fail in SetTerminalRaw()";
+
+    constexpr static const auto enable_confirmationui_property = "ro.boot.enable_confirmationui";
+    const auto arg = property_get_int32(enable_confirmationui_property, -1);
+    is_supported_vm_ = (arg == 1);
+
     if (host_fd_->IsOpen()) {
+        auto fetching_cmd = [this]() { HostMessageFetcherLoop(); };
         host_cmd_fetcher_thread_ = std::thread(fetching_cmd);
     }
 }
@@ -103,9 +100,12 @@ void TrustyConfirmationUI::HostMessageFetcherLoop() {
             ConfUiLog(ERROR) << "host_fd_ is not open";
             return;
         }
+        ConfUiLog(INFO) << "Trying to fetch command";
         auto msg = cuttlefish::confui::RecvConfUiMsg(host_fd_);
+        ConfUiLog(INFO) << "RecvConfUiMsg() returned";
         if (!msg) {
-            // socket is broken for now
+            // virtio-console is broken for now
+            ConfUiLog(ERROR) << "received message was null";
             return;
         }
         {
@@ -167,7 +167,9 @@ Return<ResponseCode> TrustyConfirmationUI::promptUserConfirmation(
     const hidl_vec<UIOption>& uiOptions) {
     std::unique_lock<std::mutex> stateLock(listener_state_lock_, std::defer_lock);
     ConfUiLog(INFO) << "promptUserConfirmation is called";
-
+    if (!is_supported_vm_) {
+        resultCB->result(ResponseCode::Unimplemented, {}, {});
+    }
     if (!stateLock.try_lock()) {
         return ResponseCode::OperationPending;
     }
@@ -187,8 +189,7 @@ Return<ResponseCode> TrustyConfirmationUI::promptUserConfirmation(
     }
     assert(listener_state_ == ListenerState::None);
     listener_state_ = ListenerState::Starting;
-    ConfUiLog(INFO) << "Per promptUserConfirmation, "
-                    << "an active TEE UI session starts";
+
     current_session_id_++;
     auto worker = [this](const sp<IConfirmationResultCallback>& resultCB,
                          const hidl_string& promptText, const hidl_vec<uint8_t>& extraData,
@@ -218,6 +219,9 @@ Return<ResponseCode>
 TrustyConfirmationUI::deliverSecureInputEvent(const HardwareAuthToken& auth_token) {
     ConfUiLog(INFO) << "deliverSecureInputEvent is called";
     ResponseCode rc = ResponseCode::Ignored;
+    if (!is_supported_vm_) {
+        return ResponseCode::Unimplemented;
+    }
     {
         std::unique_lock<std::mutex> lock(current_session_lock_);
         if (!current_session_) {
@@ -228,13 +232,12 @@ TrustyConfirmationUI::deliverSecureInputEvent(const HardwareAuthToken& auth_toke
 }
 
 Return<void> TrustyConfirmationUI::abort() {
-    {
-        std::unique_lock<std::mutex> lock(current_session_lock_);
-        if (!current_session_) {
-            return Void();
-        }
-        return current_session_->Abort();
+    if (!is_supported_vm_) return {};
+    std::unique_lock<std::mutex> lock(current_session_lock_);
+    if (!current_session_) {
+        return Void();
     }
+    return current_session_->Abort();
 }
 
 android::sp<IConfirmationUI> createTrustyConfirmationUI() {
