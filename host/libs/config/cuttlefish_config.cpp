@@ -183,10 +183,6 @@ bool CuttlefishConfig::enable_gpu_angle() const {
   return (*dictionary_)[kEnableGpuAngle].asBool();
 }
 
-static constexpr char kCpus[] = "cpus";
-int CuttlefishConfig::cpus() const { return (*dictionary_)[kCpus].asInt(); }
-void CuttlefishConfig::set_cpus(int cpus) { (*dictionary_)[kCpus] = cpus; }
-
 static constexpr char kMemoryMb[] = "memory_mb";
 int CuttlefishConfig::memory_mb() const {
   return (*dictionary_)[kMemoryMb].asInt();
@@ -195,54 +191,11 @@ void CuttlefishConfig::set_memory_mb(int memory_mb) {
   (*dictionary_)[kMemoryMb] = memory_mb;
 }
 
-static constexpr char kDisplayConfigs[] = "display_configs";
-static constexpr char kXRes[] = "x_res";
-static constexpr char kYRes[] = "y_res";
-static constexpr char kDpi[] = "dpi";
-static constexpr char kRefreshRateHz[] = "refresh_rate_hz";
-std::vector<CuttlefishConfig::DisplayConfig>
-CuttlefishConfig::display_configs() const {
-  std::vector<DisplayConfig> display_configs;
-  for (auto& display_config_json : (*dictionary_)[kDisplayConfigs]) {
-    DisplayConfig display_config = {};
-    display_config.width = display_config_json[kXRes].asInt();
-    display_config.height = display_config_json[kYRes].asInt();
-    display_config.dpi = display_config_json[kDpi].asInt();
-    display_config.refresh_rate_hz =
-        display_config_json[kRefreshRateHz].asInt();
-    display_configs.emplace_back(std::move(display_config));
-  }
-  return display_configs;
-}
-void CuttlefishConfig::set_display_configs(
-    const std::vector<DisplayConfig>& display_configs) {
-  Json::Value display_configs_json(Json::arrayValue);
-
-  for (const DisplayConfig& display_configs : display_configs) {
-    Json::Value display_config_json(Json::objectValue);
-    display_config_json[kXRes] = display_configs.width;
-    display_config_json[kYRes] = display_configs.height;
-    display_config_json[kDpi] = display_configs.dpi;
-    display_config_json[kRefreshRateHz] = display_configs.refresh_rate_hz;
-    display_configs_json.append(display_config_json);
-  }
-
-  (*dictionary_)[kDisplayConfigs] = display_configs_json;
-}
-
 void CuttlefishConfig::SetPath(const std::string& key,
                                const std::string& path) {
   if (!path.empty()) {
     (*dictionary_)[key] = AbsolutePath(path);
   }
-}
-
-static constexpr char kGdbPort[] = "gdb_port";
-int CuttlefishConfig::gdb_port() const {
-  return (*dictionary_)[kGdbPort].asInt();
-}
-void CuttlefishConfig::set_gdb_port(int port) {
-  (*dictionary_)[kGdbPort] = port;
 }
 
 static constexpr char kDeprecatedBootCompleted[] = "deprecated_boot_completed";
@@ -321,20 +274,19 @@ void CuttlefishConfig::set_crosvm_binary(const std::string& crosvm_binary) {
   (*dictionary_)[kCrosvmBinary] = crosvm_binary;
 }
 
-static constexpr char kGem5BinaryDir[] = "gem5_binary_dir";
-std::string CuttlefishConfig::gem5_binary_dir() const {
-  return (*dictionary_)[kGem5BinaryDir].asString();
+static constexpr char kGem5DebugFile[] = "gem5_debug_file";
+std::string CuttlefishConfig::gem5_debug_file() const {
+  return (*dictionary_)[kGem5DebugFile].asString();
 }
-void CuttlefishConfig::set_gem5_binary_dir(const std::string& gem5_binary_dir) {
-  (*dictionary_)[kGem5BinaryDir] = gem5_binary_dir;
+void CuttlefishConfig::set_gem5_debug_file(const std::string& gem5_debug_file) {
+  (*dictionary_)[kGem5DebugFile] = gem5_debug_file;
 }
-
-static constexpr char kGem5CheckpointDir[] = "gem5_checkpoint_dir";
-std::string CuttlefishConfig::gem5_checkpoint_dir() const {
-  return (*dictionary_)[kGem5CheckpointDir].asString();
+static constexpr char kGem5DebugFlags[] = "gem5_debug_flags";
+std::string CuttlefishConfig::gem5_debug_flags() const {
+  return (*dictionary_)[kGem5DebugFlags].asString();
 }
-void CuttlefishConfig::set_gem5_checkpoint_dir(const std::string& gem5_checkpoint_dir) {
-  (*dictionary_)[kGem5CheckpointDir] = gem5_checkpoint_dir;
+void CuttlefishConfig::set_gem5_debug_flags(const std::string& gem5_debug_flags) {
+  (*dictionary_)[kGem5DebugFlags] = gem5_debug_flags;
 }
 
 static constexpr char kEnableGnssGrpcProxy[] = "enable_gnss_grpc_proxy";
@@ -597,6 +549,29 @@ bool CuttlefishConfig::enable_host_bluetooth() const {
   return (*dictionary_)[kenableHostBluetooth].asBool();
 }
 
+static constexpr char kenableHostBluetoothConnector[] = "enable_host_bluetooth_connector";
+void CuttlefishConfig::set_enable_host_bluetooth_connector(bool enable_host_bluetooth) {
+  (*dictionary_)[kenableHostBluetoothConnector] = enable_host_bluetooth;
+}
+bool CuttlefishConfig::enable_host_bluetooth_connector() const {
+  return (*dictionary_)[kenableHostBluetoothConnector].asBool();
+}
+
+static constexpr char kNetsimRadios[] = "netsim_radios";
+
+void CuttlefishConfig::netsim_radio_enable(NetsimRadio flag) {
+  if (dictionary_->isMember(kNetsimRadios)) {
+    // OR the radio to current set of radios
+    (*dictionary_)[kNetsimRadios] = (*dictionary_)[kNetsimRadios].asInt() | flag;
+  } else {
+    (*dictionary_)[kNetsimRadios] = flag;
+  }
+}
+
+bool CuttlefishConfig::netsim_radio_enabled(NetsimRadio flag) const {
+  return (*dictionary_)[kNetsimRadios].asInt() & flag;
+}
+
 static constexpr char kEnableMetrics[] = "enable_metrics";
 void CuttlefishConfig::set_enable_metrics(std::string enable_metrics) {
   (*dictionary_)[kEnableMetrics] = kUnknown;
@@ -667,49 +642,12 @@ std::string CuttlefishConfig::ril_dns() const {
   return (*dictionary_)[kRilDns].asString();
 }
 
-static constexpr char kKgdb[] = "kgdb";
-void CuttlefishConfig::set_kgdb(bool kgdb) {
-  (*dictionary_)[kKgdb] = kgdb;
-}
-bool CuttlefishConfig::kgdb() const {
-  return (*dictionary_)[kKgdb].asBool();
-}
-
 static constexpr char kEnableMinimalMode[] = "enable_minimal_mode";
 bool CuttlefishConfig::enable_minimal_mode() const {
   return (*dictionary_)[kEnableMinimalMode].asBool();
 }
 void CuttlefishConfig::set_enable_minimal_mode(bool enable_minimal_mode) {
   (*dictionary_)[kEnableMinimalMode] = enable_minimal_mode;
-}
-
-static constexpr char kConsole[] = "console";
-void CuttlefishConfig::set_console(bool console) {
-  (*dictionary_)[kConsole] = console;
-}
-bool CuttlefishConfig::console() const {
-  return (*dictionary_)[kConsole].asBool();
-}
-std::string CuttlefishConfig::console_dev() const {
-  auto can_use_virtio_console = !kgdb() && !use_bootloader();
-  std::string console_dev;
-  if (can_use_virtio_console ||
-      vm_manager() == vm_manager::Gem5Manager::name()) {
-    // If kgdb and the bootloader are disabled, the Android serial console
-    // spawns on a virtio-console port. If the bootloader is enabled, virtio
-    // console can't be used since uboot doesn't support it.
-    console_dev = "hvc1";
-  } else {
-    // crosvm ARM does not support ttyAMA. ttyAMA is a part of ARM arch.
-    Arch target = target_arch();
-    if ((target == Arch::Arm64 || target == Arch::Arm) &&
-        vm_manager() != vm_manager::CrosvmManager::name()) {
-      console_dev = "ttyAMA0";
-    } else {
-      console_dev = "ttyS0";
-    }
-  }
-  return console_dev;
 }
 
 static constexpr char kEnableKernelLog[] = "enable_kernel_log";
@@ -845,14 +783,6 @@ bool CuttlefishConfig::protected_vm() const {
   return (*dictionary_)[kProtectedVm].asBool();
 }
 
-static constexpr char kTargetArch[] = "target_arch";
-void CuttlefishConfig::set_target_arch(Arch target_arch) {
-  (*dictionary_)[kTargetArch] = static_cast<int>(target_arch);
-}
-Arch CuttlefishConfig::target_arch() const {
-  return static_cast<Arch>((*dictionary_)[kTargetArch].asInt());
-}
-
 static constexpr char kBootconfigSupported[] = "bootconfig_supported";
 bool CuttlefishConfig::bootconfig_supported() const {
   return (*dictionary_)[kBootconfigSupported].asBool();
@@ -964,10 +894,6 @@ std::string CuttlefishConfig::assembly_dir() const {
 std::string CuttlefishConfig::AssemblyPath(
     const std::string& file_name) const {
   return AbsolutePath(assembly_dir() + "/" + file_name);
-}
-
-std::string CuttlefishConfig::os_composite_disk_path() const {
-  return AssemblyPath("os_composite.img");
 }
 
 CuttlefishConfig::MutableInstanceSpecific CuttlefishConfig::ForInstance(int num) {

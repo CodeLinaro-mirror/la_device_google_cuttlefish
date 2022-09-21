@@ -311,7 +311,7 @@ Result<std::vector<Command>> QemuManager::StartCommands(
       // devices with KVM and MTE, so MTE will always require TCG
       machine += ",mte=on";
     }
-    CF_EXPECT(config.cpus() <= 8, "CPUs must be no more than 8 with GICv2");
+    CF_EXPECT(instance.cpus() <= 8, "CPUs must be no more than 8 with GICv2");
   }
   qemu_cmd.AddParameter(machine, ",usb=off,dump-guest-core=off");
 
@@ -331,13 +331,13 @@ Result<std::vector<Command>> QemuManager::StartCommands(
   // today is configured, and the way crosvm does it
   qemu_cmd.AddParameter("-smp");
   if (config.smt()) {
-    CF_EXPECT(config.cpus() % 2 == 0,
+    CF_EXPECT(instance.cpus() % 2 == 0,
               "CPUs must be a multiple of 2 in SMT mode");
-    qemu_cmd.AddParameter(config.cpus(), ",cores=",
-                          config.cpus() / 2, ",threads=2");
+    qemu_cmd.AddParameter(instance.cpus(), ",cores=",
+                          instance.cpus() / 2, ",threads=2");
   } else {
-    qemu_cmd.AddParameter(config.cpus(), ",cores=",
-                          config.cpus(), ",threads=1");
+    qemu_cmd.AddParameter(instance.cpus(), ",cores=",
+                          instance.cpus(), ",threads=1");
   }
 
   qemu_cmd.AddParameter("-uuid");
@@ -371,7 +371,7 @@ Result<std::vector<Command>> QemuManager::StartCommands(
     qemu_cmd.AddParameter("none");
   }
 
-  auto display_configs = config.display_configs();
+  auto display_configs = instance.display_configs();
   CF_EXPECT(display_configs.size() >= 1);
   auto display_config = display_configs[0];
 
@@ -384,13 +384,13 @@ Result<std::vector<Command>> QemuManager::StartCommands(
                         ",xres=", display_config.width,
                         ",yres=", display_config.height);
 
-  if (!config.console()) {
+  if (!instance.console()) {
     // In kgdb mode, earlycon is an interactive console, and so early
     // dmesg will go there instead of the kernel.log. On QEMU, we do this
     // bit of logic up before the hvc console is set up, so the command line
     // flags appear in the right order and "append=on" does the right thing
     if (config.enable_kernel_log() &&
-        (config.kgdb() || config.use_bootloader())) {
+        (instance.kgdb() || instance.use_bootloader())) {
       add_serial_console_ro(instance.kernel_log_pipe_name());
     }
   }
@@ -407,8 +407,8 @@ Result<std::vector<Command>> QemuManager::StartCommands(
   //  actually managed by the kernel as a console is handled elsewhere.)
   add_hvc_ro(instance.kernel_log_pipe_name());
 
-  if (config.console()) {
-    if (config.kgdb() || config.use_bootloader()) {
+  if (instance.console()) {
+    if (instance.kgdb() || instance.use_bootloader()) {
       add_serial_console(instance.console_pipe_prefix());
 
       // In kgdb mode, we have the interactive console on ttyS0 (both Android's
@@ -422,7 +422,7 @@ Result<std::vector<Command>> QemuManager::StartCommands(
       add_hvc(instance.console_pipe_prefix());
     }
   } else {
-    if (config.kgdb() || config.use_bootloader()) {
+    if (instance.kgdb() || instance.use_bootloader()) {
       // The add_serial_console_ro() call above was applied by the time we reach
       // this code, so we don't need another add_serial_*() call
     }
@@ -596,10 +596,10 @@ Result<std::vector<Command>> QemuManager::StartCommands(
   qemu_cmd.AddParameter("-bios");
   qemu_cmd.AddParameter(config.bootloader());
 
-  if (config.gdb_port() > 0) {
+  if (instance.gdb_port() > 0) {
     qemu_cmd.AddParameter("-S");
     qemu_cmd.AddParameter("-gdb");
-    qemu_cmd.AddParameter("tcp::", config.gdb_port());
+    qemu_cmd.AddParameter("tcp::", instance.gdb_port());
   }
 
   LogAndSetEnv("QEMU_AUDIO_DRV", "none");
@@ -610,5 +610,4 @@ Result<std::vector<Command>> QemuManager::StartCommands(
 }
 
 } // namespace vm_manager
-} // namespace cuttlefish
-
+}  // namespace cuttlefish

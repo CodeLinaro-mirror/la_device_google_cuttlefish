@@ -177,8 +177,8 @@ class ControlChannelHandler : public webrtc::DataChannelObserver {
   void OnStateChange() override;
   void OnMessage(const webrtc::DataBuffer &msg) override;
 
-  void Send(const Json::Value &message);
-  void Send(const uint8_t *msg, size_t size, bool binary);
+  bool Send(const Json::Value &message);
+  bool Send(const uint8_t *msg, size_t size, bool binary);
 
  private:
   rtc::scoped_refptr<webrtc::DataChannelInterface> control_channel_;
@@ -343,8 +343,7 @@ void AdbChannelHandler::OnMessage(const webrtc::DataBuffer &msg) {
       // messages are buffered up to 16MB, when the buffer is full the channel
       // is abruptly closed. Keep track of the buffered data to avoid losing the
       // adb data channel.
-      adb_channel_->Send(buffer);
-      return true;
+      return adb_channel_->Send(buffer);
     });
     channel_open_reported_ = true;
   }
@@ -356,10 +355,6 @@ ControlChannelHandler::ControlChannelHandler(
     std::shared_ptr<ConnectionObserver> observer)
     : control_channel_(control_channel), observer_(observer) {
   control_channel->RegisterObserver(this);
-  observer_->OnControlChannelOpen([this](const Json::Value& message) {
-    this->Send(message);
-    return true;
-  });
 }
 
 ControlChannelHandler::~ControlChannelHandler() {
@@ -367,25 +362,85 @@ ControlChannelHandler::~ControlChannelHandler() {
 }
 
 void ControlChannelHandler::OnStateChange() {
+  auto state = control_channel_->state();
   LOG(VERBOSE) << "Control channel state changed to "
-               << webrtc::DataChannelInterface::DataStateString(
-                      control_channel_->state());
+               << webrtc::DataChannelInterface::DataStateString(state);
+  if (state == webrtc::DataChannelInterface::kOpen) {
+    observer_->OnControlChannelOpen(
+        [this](const Json::Value &message) { return this->Send(message); });
+  }
 }
 
 void ControlChannelHandler::OnMessage(const webrtc::DataBuffer &msg) {
-  observer_->OnControlMessage(msg.data.cdata(), msg.size());
+  auto msg_str = msg.data.cdata<char>();
+  auto size = msg.size();
+  Json::Value evt;
+  Json::CharReaderBuilder builder;
+  std::unique_ptr<Json::CharReader> json_reader(builder.newCharReader());
+  std::string errorMessage;
+  if (!json_reader->parse(msg_str, msg_str + size, &evt, &errorMessage)) {
+    LOG(ERROR) << "Received invalid JSON object over control channel: "
+               << errorMessage;
+    return;
+  }
+
+  auto result = ValidationResult::ValidateJsonObject(
+      evt, "command",
+      /*required_fields=*/{{"command", Json::ValueType::stringValue}},
+      /*optional_fields=*/
+      {
+          {"button_state", Json::ValueType::stringValue},
+          {"lid_switch_open", Json::ValueType::booleanValue},
+          {"hinge_angle_value", Json::ValueType::intValue},
+      });
+  if (!result.ok()) {
+    LOG(ERROR) << result.error();
+    return;
+  }
+  auto command = evt["command"].asString();
+
+  if (command == "device_state") {
+    if (evt.isMember("lid_switch_open")) {
+      observer_->OnLidStateChange(evt["lid_switch_open"].asBool());
+    }
+    if (evt.isMember("hinge_angle_value")) {
+      observer_->OnHingeAngleChange(evt["hinge_angle_value"].asInt());
+    }
+    return;
+  } else if (command.rfind("camera_", 0) == 0) {
+    observer_->OnCameraControlMsg(evt);
+    return;
+  }
+
+  auto button_state = evt["button_state"].asString();
+  LOG(VERBOSE) << "Control command: " << command << " (" << button_state << ")";
+  if (command == "power") {
+    observer_->OnPowerButton(button_state == "down");
+  } else if (command == "back") {
+    observer_->OnBackButton(button_state == "down");
+  } else if (command == "home") {
+    observer_->OnHomeButton(button_state == "down");
+  } else if (command == "menu") {
+    observer_->OnMenuButton(button_state == "down");
+  } else if (command == "volumedown") {
+    observer_->OnVolumeDownButton(button_state == "down");
+  } else if (command == "volumeup") {
+    observer_->OnVolumeUpButton(button_state == "down");
+  } else {
+    observer_->OnCustomActionButton(command, button_state);
+  }
 }
 
-void ControlChannelHandler::Send(const Json::Value& message) {
+bool ControlChannelHandler::Send(const Json::Value& message) {
   Json::StreamWriterBuilder factory;
   std::string message_string = Json::writeString(factory, message);
-  Send(reinterpret_cast<const uint8_t*>(message_string.c_str()),
+  return Send(reinterpret_cast<const uint8_t*>(message_string.c_str()),
        message_string.size(), /*binary=*/false);
 }
 
-void ControlChannelHandler::Send(const uint8_t *msg, size_t size, bool binary) {
+bool ControlChannelHandler::Send(const uint8_t *msg, size_t size, bool binary) {
   webrtc::DataBuffer buffer(rtc::CopyOnWriteBuffer(msg, size), binary);
-  control_channel_->Send(buffer);
+  return control_channel_->Send(buffer);
 }
 
 BluetoothChannelHandler::BluetoothChannelHandler(
@@ -418,8 +473,7 @@ void BluetoothChannelHandler::OnMessage(const webrtc::DataBuffer &msg) {
       // messages are buffered up to 16MB, when the buffer is full the channel
       // is abruptly closed. Keep track of the buffered data to avoid losing the
       // adb data channel.
-      bluetooth_channel_->Send(buffer);
-      return true;
+      return bluetooth_channel_->Send(buffer);
     });
   }
 

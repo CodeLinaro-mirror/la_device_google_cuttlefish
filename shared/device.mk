@@ -116,8 +116,7 @@ PRODUCT_VENDOR_PROPERTIES += \
     ro.rebootescrow.device=/dev/block/pmem0 \
     ro.vendor.hwcomposer.pmem=/dev/block/pmem1 \
     ro.incremental.enable=1 \
-    debug.c2.use_dmabufheaps=1 \
-    ro.camerax.extensions.enabled=true \
+    debug.c2.use_dmabufheaps=1
 
 LOCAL_BT_PROPERTIES ?= \
  vendor.ser.bt-uart?=/dev/hvc5 \
@@ -160,17 +159,11 @@ AB_OTA_POSTINSTALL_CONFIG += \
 PRODUCT_PACKAGES += \
     checkpoint_gc
 
-# Enable CameraX extension sample
-PRODUCT_PACKAGES += androidx.camera.extensions.impl sample_camera_extensions.xml
-
 # DRM service opt-in
 PRODUCT_VENDOR_PROPERTIES += drm.service.enabled=true
 
 # Call deleteAllKeys if vold detects a factory reset
 PRODUCT_VENDOR_PROPERTIES += ro.crypto.metadata_init_delete_all_keys.enabled=true
-
-PRODUCT_SOONG_NAMESPACES += hardware/google/camera
-PRODUCT_SOONG_NAMESPACES += hardware/google/camera/devices/EmulatedCamera
 
 #
 # Packages for various GCE-specific utilities
@@ -183,6 +176,7 @@ PRODUCT_PACKAGES += \
     tombstone_producer \
     suspend_blocker \
     vsoc_input_service \
+    metrics_helper \
 
 $(call soong_config_append,cvd,launch_configs,cvd_config_auto.json cvd_config_foldable.json cvd_config_go.json cvd_config_lily.json cvd_config_phone.json cvd_config_slim.json cvd_config_tablet.json cvd_config_tv.json cvd_config_wear.json)
 $(call soong_config_append,cvd,grub_config,grub.cfg)
@@ -213,10 +207,18 @@ PRODUCT_PACKAGES += \
     libGLESv1_CM_angle \
     libGLESv2_angle
 
-# Enable the ANGLE feature to prefer linear filtering for YUV AHBs
-# to pass android.media.decoder.cts.DecodeAccuracyTest.
+# ANGLE options:
+#
+# * preferLinearFilterForYUV
+#     Prefer linear filtering for YUV AHBs to pass
+#     android.media.decoder.cts.DecodeAccuracyTest.
+#
+# * mapUnspecifiedColorSpaceToPassThrough
+#     Map unspecified color spaces to PASS_THROUGH to pass
+#     android.media.codec.cts.DecodeEditEncodeTest and
+#     android.media.codec.cts.EncodeDecodeTest.
 PRODUCT_VENDOR_PROPERTIES += \
-    debug.angle.feature_overrides_enabled=preferLinearFilterForYUV
+    debug.angle.feature_overrides_enabled=preferLinearFilterForYUV:mapUnspecifiedColorSpaceToPassThrough
 
 # GL implementation for virgl
 PRODUCT_PACKAGES += \
@@ -292,11 +294,6 @@ ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/permissions/cuttlefish_excluded_hardware.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/cuttlefish_excluded_hardware.xml \
     frameworks/native/data/etc/android.hardware.audio.low_latency.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.audio.low_latency.xml \
-    frameworks/native/data/etc/android.hardware.camera.concurrent.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.concurrent.xml \
-    frameworks/native/data/etc/android.hardware.camera.flash-autofocus.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.flash-autofocus.xml \
-    frameworks/native/data/etc/android.hardware.camera.front.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.front.xml \
-    frameworks/native/data/etc/android.hardware.camera.full.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.full.xml \
-    frameworks/native/data/etc/android.hardware.camera.raw.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.raw.xml \
     frameworks/native/data/etc/android.hardware.ethernet.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.ethernet.xml \
     frameworks/native/data/etc/android.hardware.location.gps.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.location.gps.xml \
     frameworks/native/data/etc/android.hardware.reboot_escrow.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.reboot_escrow.xml \
@@ -307,10 +304,8 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.wifi.passpoint.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.wifi.passpoint.xml \
     frameworks/native/data/etc/android.software.ipsec_tunnels.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.ipsec_tunnels.xml \
     frameworks/native/data/etc/android.software.sip.voip.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.sip.voip.xml \
-    frameworks/native/data/etc/android.software.verified_boot.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.verified_boot.xml \
-    hardware/google/camera/devices/EmulatedCamera/hwl/configs/emu_camera_back.json:$(TARGET_COPY_OUT_VENDOR)/etc/config/emu_camera_back.json \
-    hardware/google/camera/devices/EmulatedCamera/hwl/configs/emu_camera_front.json:$(TARGET_COPY_OUT_VENDOR)/etc/config/emu_camera_front.json \
-    hardware/google/camera/devices/EmulatedCamera/hwl/configs/emu_camera_depth.json:$(TARGET_COPY_OUT_VENDOR)/etc/config/emu_camera_depth.json
+    frameworks/native/data/etc/android.software.verified_boot.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.verified_boot.xml
+
 endif
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.consumerir.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.consumerir.xml \
@@ -471,7 +466,10 @@ ifndef LOCAL_AUDIO_PRODUCT_PACKAGE
 LOCAL_AUDIO_PRODUCT_PACKAGE := \
     android.hardware.audio.service \
     android.hardware.audio@7.1-impl.ranchu \
-    android.hardware.audio.effect@7.0-impl
+    android.hardware.audio.effect@7.0-impl \
+    android.hardware.audio.effect.service-aidl.example
+DEVICE_MANIFEST_FILE += \
+    device/google/cuttlefish/guest/hals/audio/effects/manifest.xml
 endif
 
 ifndef LOCAL_AUDIO_PRODUCT_COPY_FILES
@@ -487,18 +485,6 @@ endif
 PRODUCT_PACKAGES += $(LOCAL_AUDIO_PRODUCT_PACKAGE)
 PRODUCT_COPY_FILES += $(LOCAL_AUDIO_PRODUCT_COPY_FILES)
 DEVICE_PACKAGE_OVERLAYS += $(LOCAL_AUDIO_DEVICE_PACKAGE_OVERLAYS)
-
-#
-# BiometricsFace HAL (HIDL)
-#
-PRODUCT_PACKAGES += \
-    android.hardware.biometrics.face@1.0-service.example
-
-#
-# BiometricsFingerprint HAL (HIDL)
-#
-PRODUCT_PACKAGES += \
-    android.hardware.biometrics.fingerprint@2.2-service.example
 
 #
 # BiometricsFace HAL (AIDL)
@@ -541,26 +527,6 @@ ifeq ($(LOCAL_DUMPSTATE_PRODUCT_PACKAGE),)
 endif
 PRODUCT_PACKAGES += $(LOCAL_DUMPSTATE_PRODUCT_PACKAGE)
 
-#
-# Camera
-#
-ifeq ($(TARGET_USE_VSOCK_CAMERA_HAL_IMPL),true)
-PRODUCT_PACKAGES += \
-    android.hardware.camera.provider@2.7-external-vsock-service \
-    android.hardware.camera.provider@2.7-impl-cuttlefish
-DEVICE_MANIFEST_FILE += \
-    device/google/cuttlefish/guest/hals/camera/manifest.xml
-else
-ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
-PRODUCT_PACKAGES += com.google.emulated.camera.provider.hal
-PRODUCT_PACKAGES += com.google.emulated.camera.provider.hal.fastscenecycle
-endif
-PRODUCT_PACKAGES += \
-    android.hardware.camera.provider@2.7-service-google \
-    libgooglecamerahwl_impl \
-    android.hardware.camera.provider@2.7-impl-google \
-
-endif
 #
 # Gatekeeper
 #
