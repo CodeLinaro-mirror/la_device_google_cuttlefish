@@ -21,6 +21,7 @@ $(call inherit-product, device/google/atv/products/atv_vendor.mk)
 
 $(call inherit-product, frameworks/native/build/phone-xhdpi-2048-dalvik-heap.mk)
 $(call inherit-product, device/google/cuttlefish/shared/swiftshader/device_vendor.mk)
+$(call inherit-product, device/google/cuttlefish/shared/camera/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/device.mk)
 
 # Extend cuttlefish common sepolicy with tv-specific functionality
@@ -42,8 +43,12 @@ PRODUCT_PACKAGES += android.hardware.tv.cec@1.1-service
 # Setup HDMI CEC as Playback Device
 PRODUCT_PROPERTY_OVERRIDES += ro.hdmi.device_type=4
 
-# Tuner HAL
-PRODUCT_PACKAGES += android.hardware.tv.tuner-service.example
+# Tuner lazy HAL
+PRODUCT_PACKAGES += android.hardware.tv.tuner-service.example-lazy
+PRODUCT_VENDOR_PROPERTIES += ro.tuner.lazyhal=true
+
+# TV Input HAL
+PRODUCT_PACKAGES += android.hardware.tv.input-service.example
 
 # Sample Tuner Input for testing
 #PRODUCT_PACKAGES += LiveTv sampletunertvinput

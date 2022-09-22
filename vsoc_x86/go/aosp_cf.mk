@@ -26,6 +26,7 @@ PRODUCT_ENFORCE_ARTIFACT_PATH_REQUIREMENTS := relaxed
 PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
     system/apex/com.android.tethering.inprocess.capex \
     system/app/PlatformCaptivePortalLogin/PlatformCaptivePortalLogin.apk \
+    system/etc/permissions/platform_privapp_allowlist_com.android.cellbroadcastservice.xml \
     system/priv-app/CellBroadcastServiceModulePlatform/CellBroadcastServiceModulePlatform.apk \
     system/priv-app/InProcessNetworkStack/InProcessNetworkStack.apk \
 
@@ -44,6 +45,7 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/aosp_product.mk)
 # All components inherited here go to vendor image
 #
 $(call inherit-product, device/google/cuttlefish/shared/go/device_vendor.mk)
+$(call inherit-product, device/google/cuttlefish/shared/camera/device_vendor.mk)
 
 #
 # Special settings for the target
