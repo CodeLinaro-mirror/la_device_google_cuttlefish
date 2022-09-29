@@ -29,7 +29,7 @@ CrosvmBuilder::CrosvmBuilder() : command_("crosvm") {
 }
 
 void CrosvmBuilder::SetBinary(const std::string& binary) {
-  command_.SetExecutable(binary);
+  command_.SetExecutableAndName(binary);
 }
 
 void CrosvmBuilder::AddControlSocket(const std::string& control_socket) {
@@ -63,6 +63,14 @@ void CrosvmBuilder::AddHvcReadWrite(const std::string& output,
                                     const std::string& input) {
   command_.AddParameter("--serial=hardware=virtio-console,num=", ++hvc_num_,
                         ",type=file,path=", output, ",input=", input);
+}
+
+void CrosvmBuilder::AddReadOnlyDisk(const std::string& path) {
+  command_.AddParameter("--disk=", path);
+}
+
+void CrosvmBuilder::AddReadWriteDisk(const std::string& path) {
+  command_.AddParameter("--rwdisk=", path);
 }
 
 void CrosvmBuilder::AddSerialSink() {

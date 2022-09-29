@@ -44,9 +44,9 @@ namespace cuttlefish {
 namespace confui {
 class HostServer : public HostVirtualInput {
  public:
-  static HostServer& Get(
-      HostModeCtrl& host_mode_ctrl,
-      cuttlefish::ScreenConnectorFrameRenderer& screen_connector);
+  static HostServer& Get(HostModeCtrl& host_mode_ctrl,
+                         ScreenConnectorFrameRenderer& screen_connector,
+                         SharedFD from_guest_fd, SharedFD to_guest_fd);
 
   void Start();  // start this server itself
   virtual ~HostServer() {}
@@ -57,9 +57,9 @@ class HostServer : public HostVirtualInput {
   bool IsConfUiActive() override;
 
  private:
-  explicit HostServer(
-      cuttlefish::HostModeCtrl& host_mode_ctrl,
-      cuttlefish::ScreenConnectorFrameRenderer& screen_connector);
+  explicit HostServer(HostModeCtrl& host_mode_ctrl,
+                      ScreenConnectorFrameRenderer& screen_connector,
+                      SharedFD from_guest_fd, SharedFD to_guest_fd);
   HostServer() = delete;
 
   /**
@@ -112,8 +112,9 @@ class HostServer : public HostVirtualInput {
   [[noreturn]] void MainLoop();
   void HalCmdFetcherLoop();
 
-  SharedFD EstablishHalConnection();
-
+  bool IsVirtioConsoleOpen() const;
+  // If !IsVirtioConsoleOpen(), LOG(FATAL) and return false
+  bool CheckVirtioConsole();
   std::shared_ptr<Session> CreateSession(const std::string& session_name);
   void SendUserSelection(std::unique_ptr<ConfUiMessage>& input);
 
@@ -136,14 +137,10 @@ class HostServer : public HostVirtualInput {
   HostModeCtrl& host_mode_ctrl_;
   ScreenConnectorFrameRenderer& screen_connector_;
 
-  std::string input_socket_path_;
-  int hal_vsock_port_;
-
   std::shared_ptr<Session> curr_session_;
 
-  SharedFD guest_hal_socket_;
-  // ACCEPTED fd on guest_hal_socket_
-  SharedFD hal_cli_socket_;
+  SharedFD from_guest_fifo_fd_;
+  SharedFD to_guest_fifo_fd_;
 
   using Multiplexer =
       Multiplexer<std::unique_ptr<ConfUiMessage>,
@@ -162,10 +159,6 @@ class HostServer : public HostVirtualInput {
 
   std::thread main_loop_thread_;
   std::thread hal_input_fetcher_thread_;
-
-  std::mutex socket_flag_mtx_;
-  std::condition_variable socket_flag_cv_;
-  bool is_socket_ok_;
 };
 
 }  // end of namespace confui

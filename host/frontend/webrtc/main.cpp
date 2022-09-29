@@ -53,6 +53,10 @@ DEFINE_int32(frame_server_fd, -1, "An fd to listen on for frame updates");
 DEFINE_int32(kernel_log_events_fd, -1,
              "An fd to listen on for kernel log events.");
 DEFINE_int32(command_fd, -1, "An fd to listen to for control messages");
+DEFINE_int32(confui_in_fd, -1,
+             "Confirmation UI virtio-console from host to guest");
+DEFINE_int32(confui_out_fd, -1,
+             "Confirmation UI virtio-console from guest to host");
 DEFINE_string(action_servers, "",
               "A comma-separated list of server_name:fd pairs, "
               "where each entry corresponds to one custom action server.");
@@ -212,8 +216,14 @@ int main(int argc, char** argv) {
   // create confirmation UI service, giving host_mode_ctrl and
   // screen_connector
   // keep this singleton object alive until the webRTC process ends
-  static auto& host_confui_server =
-      cuttlefish::confui::HostServer::Get(host_mode_ctrl, screen_connector);
+  auto confui_to_guest_fd = cuttlefish::SharedFD::Dup(FLAGS_confui_in_fd);
+  close(FLAGS_confui_in_fd);
+  auto confui_from_guest_fd = cuttlefish::SharedFD::Dup(FLAGS_confui_out_fd);
+  close(FLAGS_confui_out_fd);
+
+  auto& host_confui_server = cuttlefish::confui::HostServer::Get(
+      host_mode_ctrl, screen_connector, confui_from_guest_fd,
+      confui_to_guest_fd);
 
   StreamerConfig streamer_config;
 

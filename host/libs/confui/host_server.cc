@@ -16,7 +16,6 @@
 
 #include "host/libs/confui/host_server.h"
 
-#include <chrono>
 #include <functional>
 #include <optional>
 #include <tuple>
@@ -29,16 +28,6 @@
 
 namespace cuttlefish {
 namespace confui {
-static auto CuttlefishConfigDefaultInstance() {
-  auto config = cuttlefish::CuttlefishConfig::Get();
-  CHECK(config) << "Config must not be null";
-  return config->ForDefaultInstance();
-}
-
-static int HalHostVsockPort() {
-  return CuttlefishConfigDefaultInstance().confui_host_vsock_port();
-}
-
 /**
  * null if not user/touch, or wrap it and ConfUiSecure{Selection,Touch}Message
  *
@@ -64,20 +53,22 @@ static std::unique_ptr<ConfUiMessage> WrapWithSecureFlag(
 
 HostServer& HostServer::Get(
     HostModeCtrl& host_mode_ctrl,
-    cuttlefish::ScreenConnectorFrameRenderer& screen_connector) {
-  static HostServer host_server{host_mode_ctrl, screen_connector};
+    cuttlefish::ScreenConnectorFrameRenderer& screen_connector,
+    SharedFD from_guest_fd, SharedFD to_guest_fd) {
+  static HostServer host_server{host_mode_ctrl, screen_connector, from_guest_fd,
+                                to_guest_fd};
   return host_server;
 }
 
 HostServer::HostServer(
     cuttlefish::HostModeCtrl& host_mode_ctrl,
-    cuttlefish::ScreenConnectorFrameRenderer& screen_connector)
+    cuttlefish::ScreenConnectorFrameRenderer& screen_connector,
+    SharedFD from_guest_fd, SharedFD to_guest_fd)
     : display_num_(0),
       host_mode_ctrl_(host_mode_ctrl),
       screen_connector_{screen_connector},
-      hal_vsock_port_(HalHostVsockPort()) {
-  ConfUiLog(DEBUG) << "Confirmation UI Host session is listening on: "
-                   << hal_vsock_port_;
+      from_guest_fifo_fd_(from_guest_fd),
+      to_guest_fifo_fd_(to_guest_fd) {
   const size_t max_elements = 20;
   auto ignore_new =
       [](ThreadSafeQueue<std::unique_ptr<ConfUiMessage>>::QueueImpl*) {
@@ -90,12 +81,18 @@ HostServer::HostServer(
       HostServer::Multiplexer::CreateQueue(max_elements, ignore_new));
 }
 
+bool HostServer::IsVirtioConsoleOpen() const {
+  return from_guest_fifo_fd_->IsOpen() && to_guest_fifo_fd_->IsOpen();
+}
+
+bool HostServer::CheckVirtioConsole() {
+  if (IsVirtioConsoleOpen()) return true;
+  ConfUiLog(FATAL) << "Virtio console is not open";
+  return false;
+}
+
 void HostServer::Start() {
-  guest_hal_socket_ =
-      cuttlefish::SharedFD::VsockServer(hal_vsock_port_, SOCK_STREAM);
-  if (!guest_hal_socket_->IsOpen()) {
-    ConfUiLog(FATAL) << "Confirmation UI host service mandates a server socket"
-                     << "to which the guest HAL to connect.";
+  if (!CheckVirtioConsole()) {
     return;
   }
   auto hal_cmd_fetching = [this]() { this->HalCmdFetcherLoop(); };
@@ -103,24 +100,20 @@ void HostServer::Start() {
   hal_input_fetcher_thread_ =
       thread::RunThread("HalInputLoop", hal_cmd_fetching);
   main_loop_thread_ = thread::RunThread("MainLoop", main);
-  ConfUiLog(DEBUG) << "configured internal vsock based input.";
+  ConfUiLog(DEBUG) << "host service started.";
   return;
 }
 
 void HostServer::HalCmdFetcherLoop() {
   while (true) {
-    if (!hal_cli_socket_->IsOpen()) {
-      ConfUiLog(DEBUG) << "client is disconnected";
-      std::unique_lock<std::mutex> lk(socket_flag_mtx_);
-      hal_cli_socket_ = EstablishHalConnection();
-      is_socket_ok_ = true;
-      continue;
+    if (!CheckVirtioConsole()) {
+      return;
     }
-    auto msg = RecvConfUiMsg(hal_cli_socket_);
+    auto msg = RecvConfUiMsg(from_guest_fifo_fd_);
     if (!msg) {
       ConfUiLog(ERROR) << "Error in RecvConfUiMsg from HAL";
-      hal_cli_socket_->Close();
-      is_socket_ok_ = false;
+      // TODO(kwstephenkim): error handling
+      // either file is not open, or ill-formatted message
       continue;
     }
     /*
@@ -178,19 +171,6 @@ bool HostServer::IsConfUiActive() {
     return false;
   }
   return curr_session_->IsConfUiActive();
-}
-
-SharedFD HostServer::EstablishHalConnection() {
-  using namespace std::chrono_literals;
-  while (true) {
-    ConfUiLog(VERBOSE) << "Waiting hal accepting";
-    auto new_cli = SharedFD::Accept(*guest_hal_socket_);
-    ConfUiLog(VERBOSE) << "hal client accepted";
-    if (new_cli->IsOpen()) {
-      return new_cli;
-    }
-    std::this_thread::sleep_for(500ms);
-  }
 }
 
 // read the comments in the header file
@@ -270,7 +250,7 @@ void HostServer::Transition(std::unique_ptr<ConfUiMessage>& input_ptr) {
   FsmInput fsm_input = ToFsmInput(input);
   ConfUiLog(VERBOSE) << "Handling " << ToString(cmd);
   if (IsUserAbort(input)) {
-    curr_session_->UserAbort(hal_cli_socket_);
+    curr_session_->UserAbort(to_guest_fifo_fd_);
     return;
   }
 
@@ -278,7 +258,7 @@ void HostServer::Transition(std::unique_ptr<ConfUiMessage>& input_ptr) {
     curr_session_->Abort();
     return;
   }
-  curr_session_->Transition(hal_cli_socket_, fsm_input, input);
+  curr_session_->Transition(to_guest_fifo_fd_, fsm_input, input);
 }
 
 }  // end of namespace confui

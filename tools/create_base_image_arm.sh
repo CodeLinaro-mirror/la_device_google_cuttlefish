@@ -159,6 +159,7 @@ if [ ${FLAGS_p5} -eq ${FLAGS_TRUE} ]; then
 	cd -
 
 	dist_dir=$(echo ${KERNEL_REPO}/out/android*/dist)
+	dist_dir=$(realpath -e ${dist_dir})
 	${ANDROID_BUILD_TOP}/kernel/tests/net/test/build_rootfs.sh \
 		-a arm64 -s bullseye-rockpi -n ${IMAGE} -r ${IMAGE}.initrd -e \
 		-k ${dist_dir}/Image -i ${dist_dir}/initramfs.img \
@@ -169,7 +170,7 @@ if [ ${FLAGS_p5} -eq ${FLAGS_TRUE} ]; then
 	fi
 	rm -f ${IMAGE}.initrd
 	truncate -s +3G ${IMAGE}
-	e2fsck -f ${IMAGE}
+	e2fsck -fy ${IMAGE}
 	resize2fs ${IMAGE}
 
 	# Turn on journaling
@@ -250,17 +251,21 @@ else
 	fi
 fi
 if [ ${FLAGS_p1} -eq ${FLAGS_TRUE} ]; then
-	# sudo dd if=${UBOOT_REPO}/out/u-boot-mainline/dist/idbloader.img of=${devicep}1 conv=fsync
 	# loader1
-	sudo dd if=${ANDROID_BUILD_TOP}/device/google/cuttlefish_prebuilts/uboot_bin/idbloader.img of=${devicep}1 conv=fsync
+	sudo dd if=${UBOOT_REPO}/out/u-boot-mainline/dist/idbloader.img of=${devicep}1 conv=fsync
+
+	# prebuilt
+	# sudo dd if=${ANDROID_BUILD_TOP}/device/google/cuttlefish_prebuilts/uboot_bin/idbloader.img of=${devicep}1 conv=fsync
 fi
 if [ ${FLAGS_p2} -eq ${FLAGS_TRUE} ]; then
 	sudo dd if=${bootenv} of=${devicep}2 conv=fsync
 fi
 if [ ${FLAGS_p3} -eq ${FLAGS_TRUE} ]; then
-	# sudo dd if=${UBOOT_REPO}/out/u-boot-mainline/dist/u-boot.itb of=${devicep}3 conv=fsync
 	# loader2
-	sudo dd if=${ANDROID_BUILD_TOP}/device/google/cuttlefish_prebuilts/uboot_bin/u-boot.itb of=${devicep}3 conv=fsync
+	sudo dd if=${UBOOT_REPO}/out/u-boot-mainline/dist/u-boot.itb of=${devicep}3 conv=fsync
+
+	# prebuilt
+	# sudo dd if=${ANDROID_BUILD_TOP}/device/google/cuttlefish_prebuilts/uboot_bin/u-boot.itb of=${devicep}3 conv=fsync
 fi
 if [ ${USE_IMAGE} -eq 1 ]; then
 	sudo partx -v --delete ${device}

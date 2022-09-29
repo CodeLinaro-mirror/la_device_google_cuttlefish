@@ -34,7 +34,7 @@
 #include "common/libs/utils/subprocess.h"
 #include "common/libs/utils/tee_logging.h"
 #include "host/commands/run_cvd/boot_state_machine.h"
-#include "host/commands/run_cvd/launch.h"
+#include "host/commands/run_cvd/launch/launch.h"
 #include "host/commands/run_cvd/process_monitor.h"
 #include "host/commands/run_cvd/reporting.h"
 #include "host/commands/run_cvd/runner_defs.h"
@@ -45,6 +45,7 @@
 #include "host/libs/config/config_fragment.h"
 #include "host/libs/config/custom_actions.h"
 #include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/config/inject.h"
 #include "host/libs/vm_manager/vm_manager.h"
 
 namespace cuttlefish {
@@ -100,12 +101,50 @@ class CuttlefishEnvironment : public SetupFeature,
   const CuttlefishConfig::InstanceSpecific& instance_;
 };
 
-fruit::Component<ServerLoop> runCvdComponent(
+class InstanceLifecycle : public LateInjected {
+ public:
+  INJECT(InstanceLifecycle(const CuttlefishConfig& config,
+                           ServerLoop& server_loop))
+      : config_(config), server_loop_(server_loop) {}
+
+  Result<void> LateInject(fruit::Injector<>& injector) override {
+    config_fragments_ = injector.getMultibindings<ConfigFragment>();
+    setup_features_ = injector.getMultibindings<SetupFeature>();
+    diagnostics_ = injector.getMultibindings<DiagnosticInformation>();
+    return {};
+  }
+
+  Result<void> Run() {
+    for (auto& fragment : config_fragments_) {
+      CF_EXPECT(config_.LoadFragment(*fragment));
+    }
+
+    // One of the setup features can consume most output, so print this early.
+    DiagnosticInformation::PrintAll(diagnostics_);
+
+    CF_EXPECT(SetupFeature::RunSetup(setup_features_));
+
+    CF_EXPECT(server_loop_.Run());
+
+    return {};
+  }
+
+ private:
+  const CuttlefishConfig& config_;
+  ServerLoop& server_loop_;
+  std::vector<ConfigFragment*> config_fragments_;
+  std::vector<SetupFeature*> setup_features_;
+  std::vector<DiagnosticInformation*> diagnostics_;
+};
+
+fruit::Component<> runCvdComponent(
     const CuttlefishConfig* config,
     const CuttlefishConfig::InstanceSpecific* instance) {
   return fruit::createComponent()
       .addMultibinding<DiagnosticInformation, CuttlefishEnvironment>()
       .addMultibinding<SetupFeature, CuttlefishEnvironment>()
+      .addMultibinding<InstanceLifecycle, InstanceLifecycle>()
+      .addMultibinding<LateInjected, InstanceLifecycle>()
       .bindInstance(*config)
       .bindInstance(*instance)
       .install(AdbConfigComponent)
@@ -114,7 +153,19 @@ fruit::Component<ServerLoop> runCvdComponent(
       .install(ConfigFlagPlaceholder)
       .install(CustomActionsComponent)
       .install(LaunchAdbComponent)
-      .install(launchComponent)
+      .install(BluetoothConnectorComponent)
+      .install(ConfigServerComponent)
+      .install(ConsoleForwarderComponent)
+      .install(GnssGrpcProxyServerComponent)
+      .install(LogcatReceiverComponent)
+      .install(KernelLogMonitorComponent)
+      .install(MetricsServiceComponent)
+      .install(OpenWrtComponent)
+      .install(RootCanalComponent)
+      .install(SecureEnvComponent)
+      .install(TombstoneReceiverComponent)
+      .install(VehicleHalServerComponent)
+      .install(WmediumdServerComponent)
       .install(launchModemComponent)
       .install(launchStreamerComponent)
       .install(serverLoopComponent)
@@ -194,35 +245,15 @@ Result<void> RunCvdMain(int argc, char** argv) {
   ConfigureLogs(*config, instance);
   CF_EXPECT(ChdirIntoRuntimeDir(instance));
 
-  fruit::Injector<ServerLoop> injector(runCvdComponent, config, &instance);
+  fruit::Injector<> injector(runCvdComponent, config, &instance);
 
-  for (auto& fragment : injector.getMultibindings<ConfigFragment>()) {
-    CF_EXPECT(config->LoadFragment(*fragment));
+  for (auto& late_injected : injector.getMultibindings<LateInjected>()) {
+    CF_EXPECT(late_injected->LateInject(injector));
   }
 
-  // One of the setup features can consume most output, so print this early.
-  DiagnosticInformation::PrintAll(
-      injector.getMultibindings<DiagnosticInformation>());
-
-  const auto& features = injector.getMultibindings<SetupFeature>();
-  CF_EXPECT(SetupFeature::RunSetup(features));
-
-  // Monitor and restart host processes supporting the CVD
-  ProcessMonitor::Properties process_monitor_properties;
-  process_monitor_properties.RestartSubprocesses(
-      config->restart_subprocesses());
-
-  for (auto& command_source : injector.getMultibindings<CommandSource>()) {
-    if (command_source->Enabled()) {
-      process_monitor_properties.AddCommands(command_source->Commands());
-    }
-  }
-
-  ProcessMonitor process_monitor(std::move(process_monitor_properties));
-
-  CF_EXPECT(process_monitor.StartAndMonitorProcesses());
-
-  injector.get<ServerLoop&>().Run(process_monitor);  // Should not return
+  auto instance_bindings = injector.getMultibindings<InstanceLifecycle>();
+  CF_EXPECT(instance_bindings.size() == 1);
+  CF_EXPECT(instance_bindings[0]->Run());  // Should not return
 
   return CF_ERR("The server loop returned, it should never happen!!");
 }

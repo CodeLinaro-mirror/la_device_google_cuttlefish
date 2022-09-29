@@ -23,7 +23,7 @@
 #include <json/json.h>
 
 #include "host/libs/web/credential_source.h"
-#include "host/libs/web/curl_wrapper.h"
+#include "host/libs/web/http_client.h"
 
 namespace cuttlefish {
 
@@ -119,7 +119,7 @@ class GceApi {
     friend class GceApi;
   };
 
-  GceApi(CurlWrapper&, CredentialSource& credentials,
+  GceApi(HttpClient&, CredentialSource& credentials,
          const std::string& project);
 
   std::future<android::base::Result<GceInstanceInfo>> Get(
@@ -137,9 +137,9 @@ class GceApi {
   Operation Delete(const GceInstanceInfo&);
 
  private:
-  std::vector<std::string> Headers();
+  Result<std::vector<std::string>> Headers();
 
-  CurlWrapper& curl_;
+  HttpClient& http_client_;
   CredentialSource& credentials_;
   std::string project_;
 };

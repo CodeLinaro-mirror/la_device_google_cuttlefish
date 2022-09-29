@@ -68,7 +68,7 @@ class AdbConnector : public CommandSource {
   INJECT(AdbConnector(const AdbHelper& helper)) : helper_(helper) {}
 
   // CommandSource
-  std::vector<Command> Commands() override {
+  Result<std::vector<Command>> Commands() override {
     Command console_forwarder_cmd(ConsoleForwarderBinary());
     Command adb_connector(AdbConnectorBinary());
     std::set<std::string> addresses;
@@ -107,7 +107,7 @@ class AdbConnector : public CommandSource {
   const AdbHelper& helper_;
 };
 
-class SocketVsockProxy : public CommandSource {
+class SocketVsockProxy : public CommandSource, public KernelLogPipeConsumer {
  public:
   INJECT(SocketVsockProxy(const AdbHelper& helper,
                           const CuttlefishConfig::InstanceSpecific& instance,
@@ -117,7 +117,7 @@ class SocketVsockProxy : public CommandSource {
         log_pipe_provider_(log_pipe_provider) {}
 
   // CommandSource
-  std::vector<Command> Commands() override {
+  Result<std::vector<Command>> Commands() override {
     std::vector<Command> commands;
     if (helper_.VsockTunnelEnabled()) {
       Command adb_tunnel(SocketVsockProxyBinary());
@@ -202,6 +202,7 @@ LaunchAdbComponent() {
       .addMultibinding<CommandSource, AdbConnector>()
       .addMultibinding<CommandSource, SocketVsockProxy>()
       .addMultibinding<SetupFeature, AdbConnector>()
+      .addMultibinding<KernelLogPipeConsumer, SocketVsockProxy>()
       .addMultibinding<SetupFeature, SocketVsockProxy>();
 }
 

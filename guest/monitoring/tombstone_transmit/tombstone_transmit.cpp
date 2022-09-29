@@ -96,6 +96,8 @@ DEFINE_uint32(port,
                   property_get_int64("ro.boot.vsock_tombstone_port", 0)),
               "VSOCK port to send tombstones to");
 DEFINE_uint32(cid, 2, "VSOCK CID to send logcat output to");
+DEFINE_bool(remove_tombstones_after_transmitting, false,
+            "Whether to remove the tombstone from VM after transmitting it");
 #define TOMBSTONE_BUFFER_SIZE (1024)
 
 static void tombstone_send_to_host(const std::string& ts_path) {
@@ -124,7 +126,9 @@ static void tombstone_send_to_host(const std::string& ts_path) {
               << TOMBSTONE_BUFFER_SIZE << " byte sized transfers";
   }
 
-  remove(ts_path.c_str());
+  if (FLAGS_remove_tombstones_after_transmitting) {
+    remove(ts_path.c_str());
+  }
 }
 
 int main(int argc, char** argv) {

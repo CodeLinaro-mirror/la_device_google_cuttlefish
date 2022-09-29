@@ -97,6 +97,10 @@ class ProxyKeymasterContext : public keymaster::KeymasterContext {
     return wrapped_.enforcement_policy();
   }
 
+  keymaster::AttestationContext* attestation_context() override {
+    return wrapped_.attestation_context();
+  }
+
   keymaster::CertificateChain GenerateAttestation(
       const keymaster::Key& key,
       const keymaster::AuthorizationSet& attest_params,
@@ -125,6 +129,14 @@ class ProxyKeymasterContext : public keymaster::KeymasterContext {
     return wrapped_.UnwrapKey(
         wrapped_key_blob, wrapping_key_blob, wrapping_key_params, masking_key,
         wrapped_key_params, wrapped_key_format, wrapped_key_material);
+  }
+
+  keymaster_error_t CheckConfirmationToken(
+      const std::uint8_t* input_data, size_t input_data_size,
+      const uint8_t confirmation_token[keymaster::kConfirmationTokenSize])
+      const {
+    return wrapped_.CheckConfirmationToken(input_data, input_data_size,
+                                           confirmation_token);
   }
 
   keymaster::RemoteProvisioningContext* GetRemoteProvisioningContext()

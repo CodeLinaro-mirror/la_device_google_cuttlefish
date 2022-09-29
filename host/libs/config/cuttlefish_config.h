@@ -145,6 +145,9 @@ class CuttlefishConfig {
   void set_setupwizard_mode(const std::string& title);
   std::string setupwizard_mode() const;
 
+  void set_enable_bootanimation(const bool enable_bootanimation);
+  bool enable_bootanimation() const;
+
   void set_qemu_binary_dir(const std::string& qemu_binary_dir);
   std::string qemu_binary_dir() const;
 
@@ -153,6 +156,9 @@ class CuttlefishConfig {
 
   void set_gem5_binary_dir(const std::string& gem5_binary_dir);
   std::string gem5_binary_dir() const;
+
+  void set_gem5_checkpoint_dir(const std::string& gem5_checkpoint_dir);
+  std::string gem5_checkpoint_dir() const;
 
   void set_enable_sandbox(const bool enable_sandbox);
   bool enable_sandbox() const;
@@ -415,6 +421,7 @@ class CuttlefishConfig {
 
     std::string adb_device_name() const;
     std::string gnss_file_path() const;
+    std::string fixed_location_file_path() const;
     std::string mobile_bridge_name() const;
     std::string mobile_tap_name() const;
     std::string wifi_tap_name() const;
@@ -440,8 +447,6 @@ class CuttlefishConfig {
     std::string keyboard_socket_path() const;
     std::string switches_socket_path() const;
     std::string frames_socket_path() const;
-
-    int confui_host_vsock_port() const;
 
     std::string access_kregistry_path() const;
 
@@ -536,7 +541,6 @@ class CuttlefishConfig {
     void set_adb_host_port(int adb_host_port);
     void set_modem_simulator_host_id(int modem_simulator_id);
     void set_adb_ip_and_port(const std::string& ip_port);
-    void set_confui_host_vsock_port(int confui_host_port);
     void set_camera_server_port(int camera_server_port);
     void set_mobile_bridge_name(const std::string& mobile_bridge_name);
     void set_mobile_tap_name(const std::string& mobile_tap_name);
@@ -561,6 +565,8 @@ class CuttlefishConfig {
     void set_gnss_grpc_proxy_server_port(int gnss_grpc_proxy_server_port);
     // Gnss grpc proxy local file path
     void set_gnss_file_path(const std::string &gnss_file_path);
+    void set_fixed_location_file_path(
+        const std::string& fixed_location_file_path);
   };
 
  private:
