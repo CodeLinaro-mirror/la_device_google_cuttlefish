@@ -76,6 +76,7 @@ var username string
 // as `--ssh_flag` repeated flag. Why? because --ssh_flag is not parsed as expected when
 // containing quotes and spaces.
 var ssh_flags arrayFlags
+var host_orchestration_flag bool
 
 func init() {
 	user, err := user.Current()
@@ -137,6 +138,8 @@ func init() {
 	flag.BoolVar(&verbose, "verbose", true, "print commands and output (default: true)")
 	flag.Var(&ssh_flags, "ssh_flag",
 		"Values for --ssh-flag and --scp_flag for gcloud compute ssh/scp respectively. This flag may be repeated")
+	flag.BoolVar(&host_orchestration_flag, "host_orchestration", false,
+		"assembles image with host orchestration capabilities")
 	flag.Parse()
 }
 
@@ -201,15 +204,16 @@ func waitForInstance(PZ string) {
 	}
 }
 
-func packageSource(url string, branch string, version string, subdir string) {
+func packageSource(url string, branch string, subdir string) {
 	repository_dir := url[strings.LastIndex(url, "/")+1:]
-	debian_dir := mustShell(`basename "` + repository_dir + `" .git`)
+	repository_dir = mustShell(`basename "` + repository_dir + `" .git`)
+	debian_dir := repository_dir
 	if subdir != "" {
 		debian_dir = repository_dir + "/" + subdir
 	}
 	mustShell("git clone " + url + " -b " + branch)
 	mustShell("dpkg-source -b " + debian_dir)
-	mustShell("rm -rf " + debian_dir)
+	mustShell("rm -rf " + repository_dir)
 	mustShell("ls -l")
 	mustShell("pwd")
 }
@@ -305,11 +309,13 @@ func main() {
 		log.Fatal(err)
 	}
 	os.Chdir(scratch_dir)
-	packageSource(repository_url, repository_branch, "cuttlefish-common_"+version, "")
+	packageSource(repository_url, repository_branch, "base")
+	packageSource(repository_url, repository_branch, "frontend")
 	os.Chdir(oldDir)
 
 	abt := os.Getenv("ANDROID_BUILD_TOP")
 	source_files := `"` + abt + `/device/google/cuttlefish/tools/create_base_image_gce.sh"`
+	source_files += " " + `"` + abt + `/device/google/cuttlefish/tools/install_nvidia.sh"`
 	source_files += " " + `"` + abt + `/device/google/cuttlefish/tools/update_gce_kernel.sh"`
 	source_files += " " + `"` + abt + `/device/google/cuttlefish/tools/remove_old_gce_kernel.sh"`
 	source_files += " " + scratch_dir + "/*"
@@ -361,8 +367,12 @@ func main() {
 	gce(ExitOnFail, `compute ssh `+internal_ip_flag+` `+PZ+` "`+build_instance+
 		`"`+` -- `+ssh_flags.AsArgs()+` ./remove_old_gce_kernel.sh`)
 
+	ho_arg := ""
+	if host_orchestration_flag {
+		ho_arg = "-o"
+	}
 	gce(ExitOnFail, `compute ssh `+internal_ip_flag+` `+PZ+` "`+build_instance+
-		`"`+` -- `+ssh_flags.AsArgs()+` ./create_base_image_gce.sh`)
+		`"`+` -- `+ssh_flags.AsArgs()+` ./create_base_image_gce.sh `+ho_arg)
 	gce(ExitOnFail, `compute instances delete -q `+PZ+` "`+build_instance+`"`)
 	gce(ExitOnFail, `compute images create --project="`+build_project+
 		`" --source-disk="`+dest_image+`" --source-disk-zone="`+build_zone+

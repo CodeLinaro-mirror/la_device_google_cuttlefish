@@ -250,7 +250,7 @@ class CvdCommandHandler : public CvdServerHandler {
     if (request.Message().command_request().env().count(
             kCuttlefishConfigEnvVarName) == 0) {
       auto config_path = GetCuttlefishConfigPath(home);
-      if (config_path) {
+      if (config_path.ok()) {
         command.AddEnvironmentVariable(kCuttlefishConfigEnvVarName,
                                        *config_path);
       }
@@ -330,6 +330,7 @@ class CvdFetchHandler : public CvdServerHandler {
 
     Command command("/proc/self/exe");
     command.SetName("fetch_cvd");
+    command.SetExecutable("/proc/self/exe");
 
     for (const auto& argument : ParseInvocation(request.Message()).arguments) {
       command.AddParameter(argument);

@@ -4,6 +4,15 @@ set -x
 set -o errexit
 shopt -s extglob
 
+# If "true" install host orchestration capabilities.
+host_orchestration_flag="false"
+
+while getopts ":o" flag; do
+    case "${flag}" in
+        o) host_orchestration_flag="true";;
+    esac
+done
+
 sudo apt-get update
 
 # Stuff we need to get build support
@@ -32,7 +41,12 @@ for dsc in *.dsc; do
 done
 
 # Now gather all of the relevant .deb files to copy them into the image
-debs=(!(cuttlefish-orchestration*).deb)
+debs=()
+if [[ "${host_orchestration_flag}" == "true" ]]; then
+  debs=(!(cuttlefish-@(common|user)*).deb)
+else
+  debs=(!(cuttlefish-orchestration*).deb)
+fi
 
 tmp_debs=()
 for i in "${debs[@]}"; do
@@ -67,22 +81,9 @@ sudo chroot /mnt/image /usr/bin/apt install -y --only-upgrade qemu-system-x86 -t
 sudo chroot /mnt/image /usr/bin/apt install -y --only-upgrade qemu-system-arm -t bullseye-backports
 
 # Install GPU driver dependencies
-sudo chroot /mnt/image /usr/bin/apt install -y gcc
-sudo chroot /mnt/image /usr/bin/apt install -y linux-source
-sudo chroot /mnt/image /usr/bin/apt install -y linux-headers-`uname -r`
-sudo chroot /mnt/image /usr/bin/apt install -y make
-sudo chroot /mnt/image /usr/bin/apt install -y software-properties-common
-sudo chroot /mnt/image /usr/bin/add-apt-repository non-free
-sudo chroot /mnt/image /usr/bin/add-apt-repository contrib
-# TODO rammuthiah rootcause why this line is needed
-# For reasons unknown the above two lines don't add non-free and
-# contrib to the bullseye backports.
-sudo chroot /mnt/image /usr/bin/add-apt-repository 'deb http://deb.debian.org/debian bullseye-backports main non-free contrib'
-sudo chroot /mnt/image /usr/bin/apt update
-
-sudo chroot /mnt/image /bin/bash -c 'DEBIAN_FRONTEND=noninteractive /usr/bin/apt install -y nvidia-driver -t bullseye-backports'
-sudo chroot /mnt/image /usr/bin/apt install -y firmware-misc-nonfree -t bullseye-backports
-sudo chroot /mnt/image /usr/bin/apt install -y libglvnd-dev -t bullseye-backports
+sudo cp install_nvidia.sh /mnt/image/
+sudo chroot /mnt/image /usr/bin/bash install_nvidia.sh
+sudo rm /mnt/image/install_nvidia.sh
 
 # Verify
 query_nvidia() {
