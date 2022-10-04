@@ -85,6 +85,8 @@ cc_library_host_static {
 cc_library_host_static {
     name: "libcvd_instance_db",
     srcs: [
+        "instance_database.cpp",
+        "instance_database_impl.cpp",
         "instance_database_utils.cpp",
         "instance_group_record.cpp",
         "instance_record.cpp",
@@ -107,6 +109,11 @@ cc_library_host_static {
         "server.cc",
         "server_client.cpp",
         "server_command.cpp",
+        "server_command_generic_impl.cpp",
+        "server_command_fetch_impl.cpp",
+        "server_command_impl.cpp",
+        "server_command_start_impl.cpp",
+        "server_command_subprocess_waiter.cpp",
         "server_restart.cpp",
         "server_shutdown.cpp",
         "server_version.cpp",

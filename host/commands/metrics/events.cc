@@ -51,7 +51,6 @@ std::unique_ptr<cuttlefish::CuttlefishLogEvent> buildCFLogEvent(
   // "cfEvent" is the top level CuttlefishLogEvent
   auto cfEvent = std::make_unique<cuttlefish::CuttlefishLogEvent>();
   cfEvent->set_device_type(device_type);
-  cfEvent->set_device_id(metrics::hostId());
   cfEvent->set_session_id(metrics::sessionId(now_ms));
   if (metrics::cfVersion() != "") {
     cfEvent->set_cuttlefish_version(metrics::cfVersion());
@@ -108,7 +107,7 @@ std::unique_ptr<LogRequest> buildLogRequest(
 
 int Clearcut::SendEvent(cuttlefish::CuttlefishLogEvent::DeviceType device_type,
                         cuttlefish::MetricsEvent::EventType event_type) {
-  uint64_t now_ms = metrics::epochTime();
+  uint64_t now_ms = metrics::epochTimeMs();
 
   auto cfEvent = buildCFLogEvent(now_ms, device_type);
   buildCFMetricsEvent(now_ms, cfEvent.get(), event_type);
@@ -123,8 +122,7 @@ int Clearcut::SendEvent(cuttlefish::CuttlefishLogEvent::DeviceType device_type,
     LOG(ERROR) << "SerializeToString failed for log_request";
     return kMetricsError;
   }
-  // TODO: send message to ClearCut
-  return metrics::postReq(logRequestStr, metrics::kLocal);
+  return metrics::postReq(logRequestStr, metrics::kProd);
 }
 
 int Clearcut::SendVMStart(cuttlefish::CuttlefishLogEvent::DeviceType device) {
