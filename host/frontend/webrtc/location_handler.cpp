@@ -32,9 +32,9 @@ LocationHandler::LocationHandler(
 
 LocationHandler::~LocationHandler() {}
 
-void LocationHandler::handleSetLocMessage(const std::string &longitude,
-                                          const std::string &latitude,
-                                          const std::string &elevation) {
+void LocationHandler::HandleMessage(const float longitude,
+                                          const float latitude,
+                                          const float elevation) {
   auto config = CuttlefishConfig::Get();
   if (!config) {
     LOG(ERROR) << "Failed to obtain config object";
@@ -46,9 +46,15 @@ void LocationHandler::handleSetLocMessage(const std::string &longitude,
       std::string("localhost:") + std::to_string(server_port);
   GnssClient gpsclient(
       grpc::CreateChannel(socket_name, grpc::InsecureChannelCredentials()));
-  std::string formatted_location =
-      gpsclient.FormatGps(latitude, longitude, elevation);
-  auto reply = gpsclient.SendSingleGpsLoc(formatted_location);
+
+  GpsFixArray coordinates;
+  GpsFix location;
+  location.longitude=longitude;
+  location.latitude=latitude;
+  location.elevation=elevation;
+  coordinates.push_back(location);
+
+  auto reply = gpsclient.SendGpsLocations(1000,coordinates);
   LOG(INFO) << "Server port: " << server_port << " socket: " << socket_name
             << std::endl;
 }
