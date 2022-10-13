@@ -26,9 +26,18 @@
 namespace cuttlefish {
 namespace instance_db {
 
+Result<std::string> GetCuttlefishConfigPath(const std::string& home);
+
 std::string GenInternalGroupName();
 std::string LocalDeviceNameRule(const std::string& group_name,
                                 const std::string& instance_name);
+
+bool IsValidInstanceName(const std::string& token);
+/**
+ * Runs simple tests to see if it could potentially be a host binaries dir
+ *
+ */
+bool PotentiallyHostBinariesDir(const std::string& host_binaries_dir);
 
 /**
  * simply returns:
@@ -54,25 +63,43 @@ Set<T> CollectToSet(Container&& container,
  *  b. As not all Container candidate supports iterator over
  *    the elements, collect is responsible for gathering all
  *    elements in each container.
+ *  c. Not all elements has to be collected
  *
  */
 template <typename Element, typename Container, typename Containers>
-Set<Element> CollectAllElements(
-    std::function<Set<Element>(const Container&)> collector,
+Result<Set<Element>> CollectAllElements(
+    std::function<Result<Set<Element>>(const Container&)> collector,
     const Containers& inputs) {
   Set<Element> output;
   for (const auto& container : inputs) {
-    auto subset = collector(container);
+    auto subset = CF_EXPECT(collector(container));
     output.insert(subset.cbegin(), subset.cend());
   }
-  return output;
+  return {output};
 }
 
 template <typename S>
 Result<typename std::remove_reference<S>::type> AtMostOne(
     S&& s, const std::string& err_msg) {
-  CF_EXPECT(AtMostN(s, 1), err_msg);
+  CF_EXPECT(AtMostN(std::forward<S>(s), 1), err_msg);
   return {std::forward<S>(s)};
+}
+
+template <typename RetSet, typename AnyContainer>
+RetSet Intersection(const RetSet& u, AnyContainer&& v) {
+  RetSet result;
+  for (auto const& e : v) {
+    if (u.find(e) != u.end()) {
+      result.insert(e);
+    }
+  }
+  return result;
+}
+
+template <typename RetSet, typename AnyContainer, typename... Containers>
+RetSet Intersection(const RetSet& u, AnyContainer&& v, Containers&&... s) {
+  RetSet first = Intersection(u, std::forward<AnyContainer>(v));
+  return Intersection(first, std::forward<Containers>(s)...);
 }
 
 }  // namespace instance_db

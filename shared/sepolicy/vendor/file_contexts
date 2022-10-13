@@ -69,7 +69,6 @@
 /vendor/bin/rename_netiface  u:object_r:rename_netiface_exec:s0
 /vendor/bin/suspend_blocker  u:object_r:suspend_blocker_exec:s0
 /vendor/bin/metrics_helper   u:object_r:metrics_helper_exec:s0
-/vendor/bin/hw/libcuttlefish-rild  u:object_r:libcuttlefish_rild_exec:s0
 /vendor/bin/hw/android\.hardware\.camera\.provider@2\.7-external-vsock-service u:object_r:hal_camera_default_exec:s0
 /vendor/bin/hw/android\.hardware\.camera\.provider@2\.7-service-google u:object_r:hal_camera_default_exec:s0
 /vendor/bin/hw/android\.hardware\.camera\.provider@2\.7-service-google-lazy u:object_r:hal_camera_default_exec:s0
@@ -105,7 +104,7 @@
 /vendor/bin/hw/android\.hardware\.identity-service\.remote  u:object_r:hal_identity_remote_exec:s0
 /vendor/bin/hw/android\.hardware\.security\.keymint-service\.remote  u:object_r:hal_keymint_remote_exec:s0
 /vendor/bin/hw/android\.hardware\.keymaster@4\.1-service.remote  u:object_r:hal_keymaster_remote_exec:s0
-/vendor/bin/hw/android\.hardware\.gatekeeper@1\.0-service.remote  u:object_r:hal_gatekeeper_remote_exec:s0
+/vendor/bin/hw/android\.hardware\.gatekeeper-service.remote  u:object_r:hal_gatekeeper_remote_exec:s0
 /vendor/bin/hw/android\.hardware\.confirmationui@1\.0-service.cuttlefish  u:object_r:hal_confirmationui_cuttlefish_exec:s0
 /vendor/bin/hw/android\.hardware\.oemlock-service.example u:object_r:hal_oemlock_default_exec:s0
 /vendor/bin/hw/android\.hardware\.weaver-service.example u:object_r:hal_weaver_default_exec:s0

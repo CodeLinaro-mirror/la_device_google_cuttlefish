@@ -15,8 +15,10 @@
 
 #include <iostream>
 
-#include <android-base/strings.h>
 #include <android-base/logging.h>
+#include <android-base/parsebool.h>
+#include <android-base/parseint.h>
+#include <android-base/strings.h>
 #include <gflags/gflags.h>
 
 #include "common/libs/fs/shared_buf.h"
@@ -29,6 +31,7 @@
 #include "host/commands/assemble_cvd/disk_flags.h"
 #include "host/commands/assemble_cvd/flag_feature.h"
 #include "host/commands/assemble_cvd/flags.h"
+#include "host/commands/assemble_cvd/flags_defaults.h"
 #include "host/libs/config/adb/adb.h"
 #include "host/libs/config/config_flag.h"
 #include "host/libs/config/custom_actions.h"
@@ -37,17 +40,18 @@
 
 using cuttlefish::StringFromEnv;
 
-DEFINE_string(assembly_dir, StringFromEnv("HOME", ".") + "/cuttlefish_assembly",
+DEFINE_string(assembly_dir, CF_DEFAULTS_ASSEMBLY_DIR,
               "A directory to put generated files common between instances");
-DEFINE_string(instance_dir, StringFromEnv("HOME", ".") + "/cuttlefish",
+DEFINE_string(instance_dir, CF_DEFAULTS_INSTANCE_DIR,
               "This is a directory that will hold the cuttlefish generated"
               "files, including both instance-specific and common files");
-DEFINE_bool(resume, true, "Resume using the disk from the last session, if "
-                          "possible. i.e., if --noresume is passed, the disk "
-                          "will be reset to the state it was initially launched "
-                          "in. This flag is ignored if the underlying partition "
-                          "images have been updated since the first launch.");
-DEFINE_int32(modem_simulator_count, 1,
+DEFINE_bool(resume, CF_DEFAULTS_RESUME,
+            "Resume using the disk from the last session, if "
+            "possible. i.e., if --noresume is passed, the disk "
+            "will be reset to the state it was initially launched "
+            "in. This flag is ignored if the underlying partition "
+            "images have been updated since the first launch.");
+DEFINE_int32(modem_simulator_count, CF_DEFAULTS_MODEM_SIMULATOR_COUNT,
              "Modem simulator count corresponding to maximum sim number");
 
 DECLARE_bool(use_overlay);
@@ -164,9 +168,9 @@ Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
     // SaveConfig line below. Don't launch cuttlefish subprocesses between these
     // two operations, as those will assume they can read the config object from
     // disk.
-    auto config = InitializeCuttlefishConfiguration(FLAGS_instance_dir,
-                                                    FLAGS_modem_simulator_count,
-                                                    kernel_config, injector);
+    auto config = InitializeCuttlefishConfiguration(
+        FLAGS_instance_dir, FLAGS_modem_simulator_count,
+        kernel_config, injector, fetcher_config);
     std::set<std::string> preserving;
     bool creating_os_disk = false;
     // if any device needs to rebuild its composite disk,
@@ -229,7 +233,8 @@ Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
                   << ": " << log->StrError();
     }
 
-    auto disk_config = GetOsCompositeDiskConfig();
+    // use 1st instance to setup ap image dev
+    auto disk_config = GetOsCompositeDiskConfig(config.Instances()[0]);
     if (auto it = std::find_if(disk_config.begin(), disk_config.end(),
                                [](const auto& partition) {
                                  return partition.label == "ap_rootfs";
@@ -256,7 +261,8 @@ Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
     CF_EXPECT(SaveConfig(config), "Failed to initialize configuration");
   }
 
-  // Do this early so that the config object is ready for anything that needs it
+  // Do this early so that the config object is ready for anything that needs
+  // it
   auto config = CuttlefishConfig::Get();
   CF_EXPECT(config != nullptr, "Failed to obtain config singleton");
 
@@ -267,7 +273,8 @@ Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
     CF_EXPECT(RemoveFile(FLAGS_assembly_dir),
               "Failed to remove file" << FLAGS_assembly_dir);
   }
-  if (symlink(config->assembly_dir().c_str(), FLAGS_assembly_dir.c_str())) {
+  if (symlink(config->assembly_dir().c_str(),
+              FLAGS_assembly_dir.c_str())) {
     return CF_ERRNO("symlink(\"" << config->assembly_dir() << "\", \""
                                  << FLAGS_assembly_dir << "\") failed");
   }
@@ -280,7 +287,8 @@ Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
   }
   if (symlink(first_instance.c_str(), double_legacy_instance_dir.c_str())) {
     return CF_ERRNO("symlink(\"" << first_instance << "\", \""
-                                 << double_legacy_instance_dir << "\") failed");
+                                 << double_legacy_instance_dir
+                                 << "\") failed");
   }
 
   CF_EXPECT(CreateDynamicDiskFiles(fetcher_config, *config));

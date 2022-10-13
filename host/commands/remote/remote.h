@@ -30,6 +30,9 @@ class CloudOrchestratorApi {
 
   Result<std::vector<std::string>> ListHosts();
 
+  Result<std::vector<std::string>> ListCVDWebRTCStreams(
+      const std::string& host);
+
  private:
   const std::string& service_url_;
   const std::string& zone_;

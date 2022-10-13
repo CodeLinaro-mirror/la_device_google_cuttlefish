@@ -13,24 +13,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#pragma once
+#include "common/libs/utils/scope_guard.h"
 
 #include <functional>
 
 namespace cuttlefish {
 
-class ScopeGuard {
- public:
-  ScopeGuard();
-  explicit ScopeGuard(std::function<void()> fn);
-  ScopeGuard(ScopeGuard&&);
-  ~ScopeGuard();
-  ScopeGuard& operator=(ScopeGuard&&);
+ScopeGuard::ScopeGuard() = default;
 
-  void Cancel();
+ScopeGuard::ScopeGuard(std::function<void()> fn) : fn_(std::move(fn)) {}
 
- private:
-  std::function<void()> fn_;
-};
+ScopeGuard::ScopeGuard(ScopeGuard&&) noexcept = default;
+
+ScopeGuard& ScopeGuard::operator=(ScopeGuard&&) noexcept = default;
+
+ScopeGuard::~ScopeGuard() {
+  if (fn_) {
+    fn_();
+  }
+}
+
+void ScopeGuard::Cancel() { fn_ = nullptr; }
 
 }  // namespace cuttlefish
