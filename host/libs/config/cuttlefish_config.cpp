@@ -60,17 +60,14 @@ int InstanceFromString(std::string instance_str) {
 }
 
 int InstanceFromEnvironment() {
-  static constexpr char kInstanceEnvironmentVariable[] = "CUTTLEFISH_INSTANCE";
-
-  // CUTTLEFISH_INSTANCE environment variable
-  std::string instance_str = StringFromEnv(kInstanceEnvironmentVariable, "");
+  std::string instance_str = StringFromEnv(kCuttlefishInstanceEnvVarName, "");
   if (instance_str.empty()) {
     // Try to get it from the user instead
     instance_str = StringFromEnv("USER", "");
 
     if (instance_str.empty()) {
-      LOG(DEBUG) << "CUTTLEFISH_INSTANCE and USER unset, using instance id "
-                 << kDefaultInstance;
+      LOG(DEBUG) << kCuttlefishInstanceEnvVarName
+                 << " and USER unset, using instance id " << kDefaultInstance;
       return kDefaultInstance;
     }
     if (!android::base::StartsWith(instance_str, kVsocUserPrefix)) {
@@ -189,6 +186,14 @@ int CuttlefishConfig::memory_mb() const {
 }
 void CuttlefishConfig::set_memory_mb(int memory_mb) {
   (*dictionary_)[kMemoryMb] = memory_mb;
+}
+
+static constexpr char kDdrMemMb[] = "ddr_mem_mb";
+int CuttlefishConfig::ddr_mem_mb() const {
+  return (*dictionary_)[kDdrMemMb].asInt();
+}
+void CuttlefishConfig::set_ddr_mem_mb(int ddr_mem_mb) {
+  (*dictionary_)[kDdrMemMb] = ddr_mem_mb;
 }
 
 void CuttlefishConfig::SetPath(const std::string& key,
@@ -364,22 +369,6 @@ bool CuttlefishConfig::run_as_daemon() const {
 }
 void CuttlefishConfig::set_run_as_daemon(bool run_as_daemon) {
   (*dictionary_)[kRunAsDaemon] = run_as_daemon;
-}
-
-static constexpr char kDataPolicy[] = "data_policy";
-std::string CuttlefishConfig::data_policy() const {
-  return (*dictionary_)[kDataPolicy].asString();
-}
-void CuttlefishConfig::set_data_policy(const std::string& data_policy) {
-  (*dictionary_)[kDataPolicy] = data_policy;
-}
-
-static constexpr char kBlankDataImageMb[] = "blank_data_image_mb";
-int CuttlefishConfig::blank_data_image_mb() const {
-  return (*dictionary_)[kBlankDataImageMb].asInt();
-}
-void CuttlefishConfig::set_blank_data_image_mb(int blank_data_image_mb) {
-  (*dictionary_)[kBlankDataImageMb] = blank_data_image_mb;
 }
 
 static constexpr char kBootloader[] = "bootloader";
