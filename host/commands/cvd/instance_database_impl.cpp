@@ -17,32 +17,55 @@
 #include "host/commands/cvd/instance_database.h"
 
 #include <algorithm>
+#include <sstream>
 
 #include <android-base/parseint.h>
 
 #include "common/libs/utils/files.h"
 #include "host/commands/cvd/instance_database_utils.h"
-#include "host/commands/cvd/selector_constants.h"
+#include "host/commands/cvd/selector/selector_constants.h"
 
 namespace cuttlefish {
 namespace instance_db {
 
+std::vector<std::unique_ptr<LocalInstanceGroup>>::iterator
+InstanceDatabase::FindIterator(const LocalInstanceGroup& group) {
+  for (auto itr = local_instance_groups_.begin();
+       itr != local_instance_groups_.end(); itr++) {
+    if (itr->get() == std::addressof(group)) {
+      return itr;
+    }
+  }
+  // must not reach here
+  return local_instance_groups_.end();
+}
+
 void InstanceDatabase::Clear() { local_instance_groups_.clear(); }
 
 Result<void> InstanceDatabase::AddInstanceGroup(
-    const std::string& home_dir, const std::string& host_binaries_dir) {
+    const std::string& group_name, const std::string& home_dir,
+    const std::string& host_binaries_dir) {
+  CF_EXPECT(IsValidGroupName(group_name),
+            "GroupName " << group_name << " is ill-formed.");
   CF_EXPECT(EnsureDirectoryExists(home_dir),
             "HOME dir, " << home_dir << " does not exist");
   CF_EXPECT(PotentiallyHostBinariesDir(host_binaries_dir),
             "ANDROID_HOST_OUT, " << host_binaries_dir << " is not a tool dir");
-
-  Query query = {selector::kHomeField, home_dir};
-  auto instance_groups =
-      CF_EXPECT(Find<LocalInstanceGroup>(query, group_handlers_));
-  if (!instance_groups.empty()) {
-    return CF_ERR(home_dir << " is already taken");
+  std::vector<Query> queries = {{selector::kHomeField, home_dir},
+                                {selector::kGroupNameField, group_name}};
+  for (const auto& query : queries) {
+    auto instance_groups =
+        CF_EXPECT(Find<LocalInstanceGroup>(query, group_handlers_));
+    std::stringstream err_msg;
+    err_msg << query.field_name_ << " : " << query.field_value_
+            << " is already taken.";
+    CF_EXPECT(instance_groups.empty(), err_msg.str());
   }
-  local_instance_groups_.emplace_back(home_dir, host_binaries_dir);
+  auto new_group =
+      new LocalInstanceGroup(group_name, home_dir, host_binaries_dir);
+  CF_EXPECT(new_group != nullptr);
+  local_instance_groups_.emplace_back(
+      std::unique_ptr<LocalInstanceGroup>(new_group));
   return {};
 }
 
@@ -51,10 +74,9 @@ Result<void> InstanceDatabase::AddInstance(const LocalInstanceGroup& group,
                                            const std::string& instance_name) {
   CF_EXPECT(IsValidInstanceName(instance_name),
             "instance_name " << instance_name << " is invalid.");
-  auto itr = std::find(local_instance_groups_.begin(),
-                       local_instance_groups_.end(), group);
+  auto itr = FindIterator(group);
   CF_EXPECT(
-      itr != local_instance_groups_.end(),
+      itr != local_instance_groups_.end() && *itr != nullptr,
       "Adding instances to non-existing group " + group.InternalGroupName());
 
   auto instances = CF_EXPECT(
@@ -63,58 +85,75 @@ Result<void> InstanceDatabase::AddInstance(const LocalInstanceGroup& group,
     return CF_ERR("instance id " << id << " is taken");
   }
 
-  auto instances_by_name = CF_EXPECT(group.FindByInstanceName(instance_name));
+  auto instances_by_name = CF_EXPECT((*itr)->FindByInstanceName(instance_name));
   if (!instances_by_name.empty()) {
     return CF_ERR("instance name " << instance_name << " is taken");
   }
-  return itr->AddInstance(id, instance_name);
+  return (*itr)->AddInstance(id, instance_name);
 }
 
 bool InstanceDatabase::RemoveInstanceGroup(const LocalInstanceGroup& group) {
-  auto itr = std::find(local_instance_groups_.begin(),
-                       local_instance_groups_.end(), group);
-  if (itr == local_instance_groups_.end()) {
+  auto itr = FindIterator(group);
+  // *itr is the reference to the unique pointer object
+  if (itr == local_instance_groups_.end() || !(*itr)) {
     return false;
   }
   local_instance_groups_.erase(itr);
   return true;
 }
 
-Result<Set<LocalInstanceGroup>> InstanceDatabase::FindGroupsByHome(
+Result<Set<ConstRef<LocalInstanceGroup>>> InstanceDatabase::FindGroupsByHome(
     const std::string& home) const {
   auto subset = CollectToSet<LocalInstanceGroup>(
-      local_instance_groups_, [&home](const LocalInstanceGroup& group) {
-        return group.HomeDir() == home;
+      local_instance_groups_,
+      [&home](const std::unique_ptr<LocalInstanceGroup>& group) {
+        return (group && (group->HomeDir() == home));
       });
-  return AtMostOne(subset, TooManyInstancesFound(1, selector::kHomeField));
+  return AtMostOne(subset,
+                   GenerateTooManyInstancesErrorMsg(1, selector::kHomeField));
 }
 
-Result<Set<LocalInstance>> InstanceDatabase::FindInstancesById(
+Result<Set<ConstRef<LocalInstanceGroup>>>
+InstanceDatabase::FindGroupsByGroupName(const std::string& group_name) const {
+  auto subset = CollectToSet<LocalInstanceGroup>(
+      local_instance_groups_,
+      [&group_name](const std::unique_ptr<LocalInstanceGroup>& group) {
+        return (group && group->GroupName() == group_name);
+      });
+  return AtMostOne(
+      subset, GenerateTooManyInstancesErrorMsg(1, selector::kGroupNameField));
+}
+
+Result<Set<ConstRef<LocalInstance>>> InstanceDatabase::FindInstancesById(
     const std::string& id) const {
   int parsed_int = 0;
   if (!android::base::ParseInt(id, &parsed_int)) {
     return CF_ERR(id << " cannot be converted to an integer");
   }
+  auto collector =
+      [parsed_int](const std::unique_ptr<LocalInstanceGroup>& group)
+      -> Result<Set<ConstRef<LocalInstance>>> {
+    CF_EXPECT(group != nullptr);
+    return group->FindById(parsed_int);
+  };
   auto subset = CollectAllElements<LocalInstance, LocalInstanceGroup>(
-      [parsed_int](const LocalInstanceGroup& group) {
-        return group.FindById(parsed_int);
-      },
-      local_instance_groups_);
+      collector, local_instance_groups_);
   CF_EXPECT(subset.ok());
-  return AtMostOne(*subset,
-                   TooManyInstancesFound(1, selector::kInstanceIdField));
+  return AtMostOne(
+      *subset, GenerateTooManyInstancesErrorMsg(1, selector::kInstanceIdField));
 }
 
-Result<Set<LocalInstance>> InstanceDatabase::FindInstancesByInstanceName(
+Result<Set<ConstRef<LocalInstance>>>
+InstanceDatabase::FindInstancesByInstanceName(
     const Value& instance_specific_name) const {
-  auto subset = CollectAllElements<LocalInstance, LocalInstanceGroup>(
-      [&instance_specific_name](const LocalInstanceGroup& group) {
-        return group.FindByInstanceName(instance_specific_name);
-      },
-      local_instance_groups_);
-  CF_EXPECT(subset.ok());
-  return AtMostOne(*subset,
-                   TooManyInstancesFound(1, selector::kInstanceNameField));
+  auto collector = [&instance_specific_name](
+                       const std::unique_ptr<LocalInstanceGroup>& group)
+      -> Result<Set<ConstRef<LocalInstance>>> {
+    CF_EXPECT(group != nullptr);
+    return (group->FindByInstanceName(instance_specific_name));
+  };
+  return CollectAllElements<LocalInstance, LocalInstanceGroup>(
+      collector, local_instance_groups_);
 }
 
 }  // namespace instance_db

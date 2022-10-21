@@ -38,6 +38,19 @@ cc_library_static {
     name: "libcvdremote",
     srcs: [
         "remote.cc",
+        "actions.cc",
+    ],
+    defaults: ["cvdremote_defaults"],
+}
+
+cc_binary {
+    name: "cvdremote_create_host",
+    srcs: [
+        "cvdremote_create_host.cc"
+    ],
+    static_libs: [
+        "libgflags",
+        "libcvdremote",
     ],
     defaults: ["cvdremote_defaults"],
 }
@@ -46,6 +59,18 @@ cc_binary {
     name: "cvdremote_list_hosts",
     srcs: [
         "cvdremote_list_hosts.cc"
+    ],
+    static_libs: [
+        "libgflags",
+        "libcvdremote",
+    ],
+    defaults: ["cvdremote_defaults"],
+}
+
+cc_binary {
+    name: "cvdremote_create_cvd",
+    srcs: [
+        "cvdremote_create_cvd.cc"
     ],
     static_libs: [
         "libgflags",

@@ -207,7 +207,7 @@ DHCPCD_USE_SCRIPT := yes
 
 TARGET_RECOVERY_PIXEL_FORMAT := ABGR_8888
 TARGET_RECOVERY_UI_LIB := librecovery_ui_cuttlefish
-TARGET_RECOVERY_FSTAB ?= device/google/cuttlefish/shared/config/fstab.f2fs
+TARGET_RECOVERY_FSTAB_GENRULE := gen_fstab_cf_f2fs
 
 BOARD_SUPER_PARTITION_SIZE := 7516192768  # 7GiB
 BOARD_SUPER_PARTITION_GROUPS := google_system_dynamic_partitions google_vendor_dynamic_partitions
@@ -279,8 +279,6 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/dtb.img:dtb.img \
     device/google/cuttlefish/required_images:required_images \
 
-BOARD_BUILD_SYSTEM_ROOT_IMAGE := false
-
 # Cuttlefish doesn't support ramdump feature yet, exclude the ramdump debug tool.
 EXCLUDE_BUILD_RAMDUMP_UPLOADER_DEBUG_TOOL := true
 
@@ -296,3 +294,6 @@ BOARD_MOVE_GSI_AVB_KEYS_TO_VENDOR_BOOT := true
 BOARD_GENERIC_RAMDISK_KERNEL_MODULES_LOAD := dm-user.ko
 
 BOARD_HAVE_BLUETOOTH := true
+
+# Enable the new fingerprint format on cuttlefish
+BOARD_USE_VBMETA_DIGTEST_IN_FINGERPRINT := true

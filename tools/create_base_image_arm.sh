@@ -113,6 +113,7 @@ mmc_boot=if mmc dev ${devnum}; then ; run scan_for_boot_part; fi
 scan_for_boot_part=part list mmc ${devnum} -bootable devplist; env exists devplist || setenv devplist 1; for distro_bootpart in ${devplist}; do if fstype mmc ${devnum}:${distro_bootpart} bootfstype; then run find_script; fi; done; setenv devplist;
 find_script=if test -e mmc ${devnum}:${distro_bootpart} /boot/boot.scr; then echo Found U-Boot script /boot/boot.scr; run run_scr; fi
 run_scr=load mmc ${devnum}:${distro_bootpart} ${scriptaddr} /boot/boot.scr; source ${scriptaddr}
+fastboot_raw_partition_raw1=0x0 0x2000000
 EOF
 echo "Sha=`${script_dir}/gen_sha.sh --uboot ${UBOOT_REPO} --kernel ${KERNEL_REPO}`" >> ${bootenv_src}
 ${ANDROID_BUILD_TOP}/device/google/cuttlefish_prebuilts/uboot_tools/mkenvimage -s 32768 -o ${bootenv} - < ${bootenv_src}
@@ -175,7 +176,7 @@ else
 	block_count=`sudo tune2fs -l ${devicep}7 | grep "Block count:" | sed 's/.*: *//'`
 	block_size=`sudo tune2fs -l ${devicep}7 | grep "Block size:" | sed 's/.*: *//'`
 	sector_size=512
-	start_sector=296960
+	start_sector=`partx -g -o START -s -n 7 "${IMAGE}" | xargs`
 	fs_size=$(( block_count*block_size ))
 	fs_sectors=$(( fs_size/sector_size ))
 	part_sectors=$(( ((fs_sectors-1)/2048+1)*2048 ))  # 1MB-aligned

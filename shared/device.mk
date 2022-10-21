@@ -38,7 +38,7 @@ PRODUCT_VENDOR_PROPERTIES += \
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish-opengl # for vulkan
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish # for audio and wifi
 
-PRODUCT_SHIPPING_API_LEVEL := 33
+PRODUCT_SHIPPING_API_LEVEL := 34
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
 
@@ -338,13 +338,11 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Multitouch_Touchscreen_3.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Multitouch_Touchscreen_3.idc
 endif
 
-PRODUCT_COPY_FILES += \
-    device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/first_stage_ramdisk/fstab.f2fs \
-    device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.f2fs \
-    device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.f2fs \
-    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/first_stage_ramdisk/fstab.ext4 \
-    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.ext4 \
-    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.ext4
+PRODUCT_PACKAGES += \
+    fstab.cf.f2fs \
+    fstab.cf.f2fs.vendor_ramdisk \
+    fstab.cf.ext4 \
+    fstab.cf.ext4.vendor_ramdisk \
 
 ifeq ($(TARGET_VULKAN_SUPPORT),true)
 ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
@@ -514,7 +512,7 @@ PRODUCT_PACKAGES += \
 # Confirmation UI HAL
 #
 ifeq ($(LOCAL_CONFIRMATIONUI_PRODUCT_PACKAGE),)
-    LOCAL_CONFIRMATIONUI_PRODUCT_PACKAGE := android.hardware.confirmationui@1.0-service.cuttlefish
+    LOCAL_CONFIRMATIONUI_PRODUCT_PACKAGE := android.hardware.confirmationui-service.cuttlefish
 endif
 PRODUCT_PACKAGES += $(LOCAL_CONFIRMATIONUI_PRODUCT_PACKAGE)
 
@@ -579,14 +577,6 @@ endif
 endif
 PRODUCT_PACKAGES += \
     $(LOCAL_SENSOR_PRODUCT_PACKAGE)
-#
-# Thermal (mock)
-#
-ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
-PRODUCT_PACKAGES += com.android.hardware.thermal.mock
-else
-PRODUCT_PACKAGES += android.hardware.thermal@2.0-service.mock
-endif
 
 #
 # Lights
@@ -624,6 +614,12 @@ PRODUCT_PACKAGES += \
     android.hardware.power.stats-service.example \
 
 endif
+
+#
+# Thermal HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.thermal-service.example
 
 #
 # NeuralNetworks HAL

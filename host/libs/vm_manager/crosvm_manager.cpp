@@ -179,9 +179,9 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
   }
 
   for (const auto& display_config : instance.display_configs()) {
-    crosvm_cmd.Cmd().AddParameter(
-        "--gpu-display=", "width=", display_config.width, ",",
-        "height=", display_config.height);
+    crosvm_cmd.Cmd().AddParameter("--gpu-display=", "mode=windowed[",
+                                  display_config.width, ",",
+                                  display_config.height, "]");
   }
 
   crosvm_cmd.Cmd().AddParameter("--wayland-sock=",
@@ -386,7 +386,7 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
   }
 
   // This needs to be the last parameter
-  crosvm_cmd.Cmd().AddParameter("--bios=", config.bootloader());
+  crosvm_cmd.Cmd().AddParameter("--bios=", instance.bootloader());
 
   // TODO(b/199103204): remove this as well when PRODUCT_ENFORCE_MAC80211_HWSIM
   // is removed

@@ -113,41 +113,77 @@ Result<void> ResolveInstanceFiles() {
   CF_EXPECT(!FLAGS_system_image_dir.empty(),
             "--system_image_dir must be specified.");
 
-  // If user did not specify location of either of these files, expect them to
-  // be placed in --system_image_dir location.
-  std::string default_boot_image = FLAGS_system_image_dir + "/boot.img";
+  std::vector<std::string> system_image_dir =
+      android::base::Split(FLAGS_system_image_dir, ",");
+  std::string default_boot_image = "";
+  std::string default_init_boot_image = "";
+  std::string default_data_image = "";
+  std::string default_metadata_image = "";
+  std::string default_super_image = "";
+  std::string default_misc_image = "";
+  std::string default_esp_image = "";
+  std::string default_vendor_boot_image = "";
+  std::string default_vbmeta_image = "";
+  std::string default_vbmeta_system_image = "";
+
+  std::string cur_system_image_dir;
+  std::string comma_str = "";
+  auto instance_nums =
+      CF_EXPECT(InstanceNumsCalculator().FromGlobalGflags().Calculate());
+  for (int instance_index = 0; instance_index < instance_nums.size(); instance_index++) {
+    if (instance_index < system_image_dir.size()) {
+      cur_system_image_dir = system_image_dir[instance_index];
+    } else {
+      // legacy variable or out of boundary. Vectorize by copy [0] to all instances
+      cur_system_image_dir = system_image_dir[0];
+    }
+    if (instance_index > 0) {
+      comma_str = ",";
+    }
+
+    // If user did not specify location of either of these files, expect them to
+    // be placed in --system_image_dir location.
+    default_boot_image = default_boot_image + comma_str
+        + cur_system_image_dir + "/boot.img";
+    default_init_boot_image = default_init_boot_image + comma_str
+        + cur_system_image_dir + "/init_boot.img";
+    default_data_image = default_data_image + comma_str
+        + cur_system_image_dir + "/userdata.img";
+    default_metadata_image = default_metadata_image + comma_str
+        + cur_system_image_dir + "/metadata.img";
+    default_super_image = default_super_image + comma_str
+        + cur_system_image_dir + "/super.img";
+    default_misc_image = default_misc_image + comma_str
+        + cur_system_image_dir + "/misc.img";
+    default_esp_image = default_esp_image + comma_str
+        + cur_system_image_dir + "/esp.img";
+    default_vendor_boot_image = default_vendor_boot_image + comma_str
+        + cur_system_image_dir + "/vendor_boot.img";
+    default_vbmeta_image = default_vbmeta_image + comma_str
+        + cur_system_image_dir + "/vbmeta.img";
+    default_vbmeta_system_image = default_vbmeta_system_image + comma_str
+        + cur_system_image_dir + "/vbmeta_system.img";
+  }
   SetCommandLineOptionWithMode("boot_image", default_boot_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  std::string default_init_boot_image =
-      FLAGS_system_image_dir + "/init_boot.img";
   SetCommandLineOptionWithMode("init_boot_image",
                                default_init_boot_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  std::string default_data_image = FLAGS_system_image_dir + "/userdata.img";
   SetCommandLineOptionWithMode("data_image", default_data_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  std::string default_metadata_image = FLAGS_system_image_dir + "/metadata.img";
   SetCommandLineOptionWithMode("metadata_image", default_metadata_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  std::string default_super_image = FLAGS_system_image_dir + "/super.img";
   SetCommandLineOptionWithMode("super_image", default_super_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  std::string default_misc_image = FLAGS_system_image_dir + "/misc.img";
   SetCommandLineOptionWithMode("misc_image", default_misc_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  std::string default_esp_image = FLAGS_system_image_dir + "/esp.img";
   SetCommandLineOptionWithMode("otheros_esp_image", default_esp_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  std::string default_vendor_boot_image = FLAGS_system_image_dir
-                                        + "/vendor_boot.img";
   SetCommandLineOptionWithMode("vendor_boot_image",
                                default_vendor_boot_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  std::string default_vbmeta_image = FLAGS_system_image_dir + "/vbmeta.img";
   SetCommandLineOptionWithMode("vbmeta_image", default_vbmeta_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  std::string default_vbmeta_system_image = FLAGS_system_image_dir
-                                          + "/vbmeta_system.img";
   SetCommandLineOptionWithMode("vbmeta_system_image",
                                default_vbmeta_system_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
@@ -160,7 +196,7 @@ std::vector<ImagePartition> GetOsCompositeDiskConfig(
   std::vector<ImagePartition> partitions;
   partitions.push_back(ImagePartition{
       .label = "misc",
-      .image_file_path = AbsolutePath(instance.misc_image()),
+      .image_file_path = AbsolutePath(instance.new_misc_image()),
       .read_only = FLAGS_use_overlay,
   });
   partitions.push_back(ImagePartition{
@@ -225,7 +261,7 @@ std::vector<ImagePartition> GetOsCompositeDiskConfig(
   });
   partitions.push_back(ImagePartition{
       .label = "metadata",
-      .image_file_path = AbsolutePath(instance.metadata_image()),
+      .image_file_path = AbsolutePath(instance.new_metadata_image()),
       .read_only = FLAGS_use_overlay,
   });
   if (!instance.otheros_root_image().empty()) {
@@ -685,9 +721,9 @@ class InitializeMetadataImage : public SetupFeature {
       return {};
     }
 
-    CF_EXPECT(CreateBlankImage(instance_.metadata_image(),
+    CF_EXPECT(CreateBlankImage(instance_.new_metadata_image(),
                                instance_.blank_metadata_image_mb(), "none"),
-              "Failed to create \"" << instance_.metadata_image()
+              "Failed to create \"" << instance_.new_metadata_image()
                                     << "\" with size "
                                     << instance_.blank_metadata_image_mb());
     return {};
@@ -1010,6 +1046,9 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
   std::string cur_initramfs_path;
   std::string cur_boot_image;
   std::string cur_vendor_boot_image;
+  std::string cur_metadata_image;
+  std::string cur_misc_image;
+  int cur_blank_metadata_image_mb;
   int value;
   int instance_index = 0;
   auto instance_nums =
@@ -1018,10 +1057,11 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
     auto instance = config.ForInstance(num);
     if (instance_index >= misc_image.size()) {
       // legacy variable. Vectorize by copy [0] to all instances
-      instance.set_misc_image(misc_image[0]);
+      cur_misc_image = misc_image[0];
     } else {
-      instance.set_misc_image(misc_image[instance_index]);
+      cur_misc_image = misc_image[instance_index];
     }
+    instance.set_misc_image(cur_misc_image);
     if (instance_index >= boot_image.size()) {
       cur_boot_image = boot_image[0];
     } else {
@@ -1064,10 +1104,11 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
       instance.set_data_image(data_image[instance_index]);
     }
     if (instance_index >= metadata_image.size()) {
-      instance.set_metadata_image(metadata_image[0]);
+      cur_metadata_image = metadata_image[0];
     } else {
-      instance.set_metadata_image(metadata_image[instance_index]);
+      cur_metadata_image = metadata_image[instance_index];
     }
+    instance.set_metadata_image(cur_metadata_image);
     if (instance_index >= otheros_root_image.size()) {
       instance.set_otheros_root_image(otheros_root_image[0]);
     } else {
@@ -1119,6 +1160,7 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
           << blank_metadata_image_mb[instance_index];
     }
     instance.set_blank_metadata_image_mb(value);
+    cur_blank_metadata_image_mb = value;
 
     if (instance_index >= blank_sdcard_image_mb.size()) {
       CHECK(android::base::ParseInt(blank_sdcard_image_mb[0],
@@ -1158,6 +1200,23 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
       const std::string new_super_image_path =
           const_instance.PerInstancePath("super.img");
       instance.set_super_image(new_super_image_path);
+    }
+
+    if (FileExists(cur_metadata_image) &&
+        FileSize(cur_metadata_image) == cur_blank_metadata_image_mb << 20) {
+      instance.set_new_metadata_image(cur_metadata_image);
+    } else {
+      const std::string new_metadata_image_path =
+          const_instance.PerInstancePath("metadata.img");
+      instance.set_new_metadata_image(new_metadata_image_path);
+    }
+
+    if (FileHasContent(cur_misc_image)) {
+      instance.set_new_misc_image(cur_misc_image);
+    } else {
+      const std::string new_misc_image_path =
+          const_instance.PerInstancePath("misc.img");
+      instance.set_new_misc_image(new_misc_image_path);
     }
     instance_index++;
   }

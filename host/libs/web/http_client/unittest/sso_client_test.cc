@@ -68,6 +68,10 @@ TEST(SsoClientTest, GetToStringSucceedsEmptyBody) {
   EXPECT_EQ(result->http_code, 222);
 }
 
+constexpr char kBashScriptPrefix[] =
+    "#!/bin/bash\n\n/usr/bin/sso_client \\\n--request_timeout=120 "
+    "\\\n--dump_header ";
+
 TEST(SsoClientTest, GetToStringVerifyCommandArgs) {
   std::string cmd_as_bash_script;
   auto exec = [&](Command&& cmd, const std::string*, std::string*, std::string*,
@@ -80,8 +84,39 @@ TEST(SsoClientTest, GetToStringVerifyCommandArgs) {
   client.GetToString("https://some.url");
 
   EXPECT_EQ(cmd_as_bash_script,
-            "#!/bin/bash\n\n/usr/bin/sso_client \\\n--dump_header "
-            "\\\n--url=https://some.url");
+            std::string(kBashScriptPrefix) + "\\\n--url=https://some.url");
+}
+
+TEST(SsoClientTest, PostToStringVerifyCommandArgs) {
+  std::string cmd_as_bash_script;
+  auto exec = [&](Command&& cmd, const std::string*, std::string*, std::string*,
+                  SubprocessOptions) {
+    cmd_as_bash_script = cmd.AsBashScript();
+    return 0;
+  };
+  SsoClient client(exec);
+
+  client.PostToString("https://some.url", "foo");
+
+  EXPECT_EQ(cmd_as_bash_script,
+            std::string(kBashScriptPrefix) +
+                "\\\n--url=https://some.url \\\n--method=POST \\\n--data=foo");
+}
+
+TEST(SsoClientTest, PostToStringEmptyDataVerifyCommandArgs) {
+  std::string cmd_as_bash_script;
+  auto exec = [&](Command&& cmd, const std::string*, std::string*, std::string*,
+                  SubprocessOptions) {
+    cmd_as_bash_script = cmd.AsBashScript();
+    return 0;
+  };
+  SsoClient client(exec);
+
+  client.PostToString("https://some.url", "");
+
+  EXPECT_EQ(cmd_as_bash_script,
+            std::string(kBashScriptPrefix) +
+                "\\\n--url=https://some.url \\\n--method=POST");
 }
 
 TEST(SsoClientTest, GetToStringFailsInvalidResponseFormat) {
@@ -122,8 +157,8 @@ TEST(SsoClientTest, GetToStringFailsExecutionFails) {
   auto result = client.GetToString("https://some.url");
 
   EXPECT_FALSE(result.ok());
-  EXPECT_TRUE(result.error().message().find(stdout_) != std::string::npos);
-  EXPECT_TRUE(result.error().message().find(stderr_) != std::string::npos);
+  EXPECT_TRUE(result.error().Message().find(stdout_) != std::string::npos);
+  EXPECT_TRUE(result.error().Message().find(stderr_) != std::string::npos);
 }
 
 }  // namespace http_client
