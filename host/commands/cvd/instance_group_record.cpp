@@ -17,24 +17,21 @@
 #include "host/commands/cvd/instance_group_record.h"
 
 #include "host/commands/cvd/instance_database_utils.h"
-#include "host/commands/cvd/selector_constants.h"
+#include "host/commands/cvd/selector/selector_constants.h"
 
 namespace cuttlefish {
 namespace instance_db {
 
-LocalInstanceGroup::LocalInstanceGroup(const std::string& home_dir,
+LocalInstanceGroup::LocalInstanceGroup(const std::string& group_name,
+                                       const std::string& home_dir,
                                        const std::string& host_binaries_dir)
     : home_dir_{home_dir},
       host_binaries_dir_{host_binaries_dir},
-      internal_group_name_(GenInternalGroupName()) {}
+      internal_group_name_(GenInternalGroupName()),
+      group_name_(group_name) {}
 
 Result<std::string> LocalInstanceGroup::GetCuttlefishConfigPath() const {
   return cuttlefish::instance_db::GetCuttlefishConfigPath(HomeDir());
-}
-
-std::size_t LocalInstanceGroup::HashCode() const noexcept {
-  auto hash_function = std::hash<decltype(home_dir_)>();
-  return hash_function(home_dir_);
 }
 
 Result<void> LocalInstanceGroup::AddInstance(const unsigned instance_id,
@@ -42,35 +39,42 @@ Result<void> LocalInstanceGroup::AddInstance(const unsigned instance_id,
   if (HasInstance(instance_id)) {
     return CF_ERR("Instance Id " << instance_id << " is taken");
   }
-  instances_.emplace(instance_id, internal_group_name_, internal_group_name_,
-                     instance_name);
+  LocalInstance* instance =
+      new LocalInstance(*this, instance_id, instance_name);
+  instances_.emplace(std::unique_ptr<LocalInstance>(instance));
   return {};
 }
 
-Result<Set<LocalInstance>> LocalInstanceGroup::FindById(const int id) const {
+Result<Set<ConstRef<LocalInstance>>> LocalInstanceGroup::FindById(
+    const unsigned id) const {
   auto subset = CollectToSet<LocalInstance>(
-      instances_, [id](const LocalInstance& instance) {
-        return instance.InstanceId() == id;
+      instances_, [&id](const std::unique_ptr<LocalInstance>& instance) {
+        return instance && (instance->InstanceId() == id);
       });
-  return AtMostOne(subset,
-                   TooManyInstancesFound(1, selector::kInstanceIdField));
+  return AtMostOne(
+      subset, GenerateTooManyInstancesErrorMsg(1, selector::kInstanceIdField));
 }
 
-Result<Set<LocalInstance>> LocalInstanceGroup::FindByInstanceName(
+Result<Set<ConstRef<LocalInstance>>> LocalInstanceGroup::FindByInstanceName(
     const std::string& instance_name) const {
   auto subset = CollectToSet<LocalInstance>(
-      instances_, [&instance_name](const LocalInstance& instance) {
-        return instance.PerInstanceName() == instance_name;
+      instances_,
+      [&instance_name](const std::unique_ptr<LocalInstance>& instance) {
+        return instance && (instance->PerInstanceName() == instance_name);
       });
+
   // note that inside a group, the instance name is unique. However,
   // across groups, they can be multiple
-  return AtMostOne(subset,
-                   TooManyInstancesFound(1, selector::kInstanceNameField));
+  return AtMostOne(subset, GenerateTooManyInstancesErrorMsg(
+                               1, selector::kInstanceNameField));
 }
 
 bool LocalInstanceGroup::HasInstance(const unsigned instance_id) const {
   for (const auto& instance : instances_) {
-    if (instance_id == instance.InstanceId()) {
+    if (!instance) {
+      continue;
+    }
+    if (instance_id == instance->InstanceId()) {
       return true;
     }
   }

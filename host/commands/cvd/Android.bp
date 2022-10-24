@@ -62,6 +62,12 @@ cc_defaults {
         "libcuttlefish_web",
         "libgflags",
     ],
+    header_libs: [
+        "libgtest_prod_headers",
+    ],
+    export_header_lib_headers: [
+        "libgtest_prod_headers",
+    ],
     required: [
         "cvd_internal_host_bugreport",
         "cvd_internal_start",
@@ -105,6 +111,7 @@ cc_library_host_static {
         "instance_lock.cpp",
         "instance_manager.cpp",
         "help_command.cpp",
+        "logger.cpp",
         "server.cc",
         "server_client.cpp",
         "server_command.cpp",
@@ -133,6 +140,7 @@ cc_defaults {
     static_libs: [
         "libcvd_client",
         "libcvd_instance_db",
+        "libcvd_selector_frontend",
         "libcvd_server",
         "libfetch_cvd",
     ],

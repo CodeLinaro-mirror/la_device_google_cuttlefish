@@ -56,6 +56,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.camera.provider@2.7", // Camera converted to AIDL, b/196432585
     "android.hardware.cas.native@1.0",
     "android.hardware.configstore@1.1", // deprecated, see b/149050985, b/149050733
+    "android.hardware.confirmationui@1.0", // converted to AIDL, see b/205760172
     "android.hardware.contexthub@1.2",
     "android.hardware.drm@1.4", // converted to AIDL, b/200055138
     "android.hardware.fastboot@1.1",
@@ -99,6 +100,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.tetheroffload.config@1.0",
     "android.hardware.tetheroffload.control@1.1", // see b/170699770
     "android.hardware.thermal@1.1",
+    "android.hardware.thermal@2.0", // Converted to AIDL (see b/205762943)
     "android.hardware.tv.cec@1.1",
     "android.hardware.tv.input@1.0",
     "android.hardware.tv.tuner@1.1",
@@ -189,6 +191,9 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.hardware.soundtrigger3.", 1},
     {"android.media.soundtrigger.", 1},
 
+    // No implementation on cuttlefish for fastboot AIDL hal
+    {"android.hardware.fastboot.", 1},
+
     // These types are only used in Automotive.
     {"android.automotive.computepipe.registry.", 1},
     {"android.automotive.computepipe.runner.", 1},
@@ -208,7 +213,7 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.hardware.automotive.vehicle.", 2},
 
     // These types are only used in TV.
-    {"android.hardware.tv.tuner.", 1},
+    {"android.hardware.tv.tuner.", 2},
     {"android.hardware.tv.input.", 1},
 };
 

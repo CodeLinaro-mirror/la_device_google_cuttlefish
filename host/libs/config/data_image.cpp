@@ -235,12 +235,17 @@ class InitializeDataImageImpl : public InitializeDataImage {
     auto action = ChooseAction();
     if (!action.ok()) {
       LOG(ERROR) << "Failed to select a userdata processing action: "
-                 << action.error();
+                 << action.error().Message();
+      LOG(DEBUG) << "Failed to select a userdata processing action: "
+                 << action.error().Trace();
       return false;
     }
     auto result = EvaluateAction(*action);
     if (!result.ok()) {
-      LOG(ERROR) << "Failed to evaluate userdata action: " << result.error();
+      LOG(ERROR) << "Failed to evaluate userdata action: "
+                 << result.error().Message();
+      LOG(DEBUG) << "Failed to evaluate userdata action: "
+                 << result.error().Trace();
       return false;
     }
     return true;
@@ -349,7 +354,7 @@ class InitializeMiscImageImpl : public InitializeMiscImage {
 
     LOG(DEBUG) << "misc partition image: creating empty at \""
                << instance_.misc_image() << "\"";
-    if (!CreateBlankImage(instance_.misc_image(), 1 /* mb */, "none")) {
+    if (!CreateBlankImage(instance_.new_misc_image(), 1 /* mb */, "none")) {
       LOG(ERROR) << "Failed to create misc image";
       return false;
     }

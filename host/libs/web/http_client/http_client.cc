@@ -24,8 +24,11 @@
 #include <thread>
 
 #include <android-base/logging.h>
+#include <android-base/strings.h>
 #include <curl/curl.h>
 #include <json/json.h>
+
+#include "common/libs/utils/subprocess.h"
 
 namespace cuttlefish {
 namespace {
@@ -44,25 +47,33 @@ size_t file_write_callback(char* ptr, size_t, size_t nmemb, void* userdata) {
   return nmemb;
 }
 
-curl_slist* build_slist(const std::vector<std::string>& strings) {
-  curl_slist* curl_headers = nullptr;
+Result<std::string> CurlUrlGet(CURLU* url, CURLUPart what, unsigned int flags) {
+  char* str_ptr = nullptr;
+  CF_EXPECT(curl_url_get(url, what, &str_ptr, flags) == CURLUE_OK);
+  std::string str(str_ptr);
+  curl_free(str_ptr);
+  return str;
+}
+
+using ManagedCurlSlist =
+    std::unique_ptr<curl_slist, decltype(&curl_slist_free_all)>;
+
+Result<ManagedCurlSlist> SlistFromStrings(
+    const std::vector<std::string>& strings) {
+  ManagedCurlSlist curl_headers(nullptr, curl_slist_free_all);
   for (const auto& str : strings) {
-    curl_slist* temp = curl_slist_append(curl_headers, str.c_str());
-    if (temp == nullptr) {
-      LOG(ERROR) << "curl_slist_append failed to add " << str;
-      if (curl_headers) {
-        curl_slist_free_all(curl_headers);
-        return nullptr;
-      }
-    }
-    curl_headers = temp;
+    curl_slist* temp = curl_slist_append(curl_headers.get(), str.c_str());
+    CF_EXPECT(temp != nullptr,
+              "curl_slist_append failed to add \"" << str << "\"");
+    (void)curl_headers.release();  // Memory is now owned by `temp`
+    curl_headers.reset(temp);
   }
   return curl_headers;
 }
 
 class CurlClient : public HttpClient {
  public:
-  CurlClient() {
+  CurlClient(NameResolver resolver) : resolver_(std::move(resolver)) {
     curl_ = curl_easy_init();
     if (!curl_) {
       LOG(ERROR) << "failed to initialize curl";
@@ -83,21 +94,23 @@ class CurlClient : public HttpClient {
       stream.write(data, size);
       return true;
     };
-    long http_code = CF_EXPECT(DownloadToCallback(callback, url, headers));
-    return HttpResponse<std::string>{stream.str(), http_code};
+    auto http_response = CF_EXPECT(DownloadToCallback(callback, url, headers));
+    return HttpResponse<std::string>{stream.str(), http_response.http_code};
   }
 
   Result<HttpResponse<std::string>> PostToString(
       const std::string& url, const std::string& data_to_write,
       const std::vector<std::string>& headers) override {
     std::lock_guard<std::mutex> lock(mutex_);
+    auto extra_cache_entries = CF_EXPECT(ManuallyResolveUrl(url));
+    curl_easy_setopt(curl_, CURLOPT_RESOLVE, extra_cache_entries.get());
     LOG(INFO) << "Attempting to download \"" << url << "\"";
     CF_EXPECT(curl_ != nullptr, "curl was not initialized");
-    curl_slist* curl_headers = build_slist(headers);
+    auto curl_headers = CF_EXPECT(SlistFromStrings(headers));
     curl_easy_reset(curl_);
     curl_easy_setopt(curl_, CURLOPT_CAINFO,
                      "/etc/ssl/certs/ca-certificates.crt");
-    curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, curl_headers);
+    curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, curl_headers.get());
     curl_easy_setopt(curl_, CURLOPT_URL, url.c_str());
     curl_easy_setopt(curl_, CURLOPT_POSTFIELDSIZE, data_to_write.size());
     curl_easy_setopt(curl_, CURLOPT_POSTFIELDS, data_to_write.c_str());
@@ -108,9 +121,6 @@ class CurlClient : public HttpClient {
     curl_easy_setopt(curl_, CURLOPT_ERRORBUFFER, error_buf);
     curl_easy_setopt(curl_, CURLOPT_VERBOSE, 1L);
     CURLcode res = curl_easy_perform(curl_);
-    if (curl_headers) {
-      curl_slist_free_all(curl_headers);
-    }
     CF_EXPECT(res == CURLE_OK,
               "curl_easy_perform() failed. "
                   << "Code was \"" << res << "\". "
@@ -147,18 +157,21 @@ class CurlClient : public HttpClient {
     return PostToJson(url, json_str.str(), headers);
   }
 
-  Result<long> DownloadToCallback(DataCallback callback, const std::string& url,
-                                  const std::vector<std::string>& headers) {
+  Result<HttpResponse<void>> DownloadToCallback(
+      DataCallback callback, const std::string& url,
+      const std::vector<std::string>& headers) {
     std::lock_guard<std::mutex> lock(mutex_);
+    auto extra_cache_entries = CF_EXPECT(ManuallyResolveUrl(url));
+    curl_easy_setopt(curl_, CURLOPT_RESOLVE, extra_cache_entries.get());
     LOG(INFO) << "Attempting to download \"" << url << "\"";
     CF_EXPECT(curl_ != nullptr, "curl was not initialized");
     CF_EXPECT(callback(nullptr, 0) /* Signal start of data */,
               "callback failure");
-    curl_slist* curl_headers = build_slist(headers);
+    auto curl_headers = CF_EXPECT(SlistFromStrings(headers));
     curl_easy_reset(curl_);
     curl_easy_setopt(curl_, CURLOPT_CAINFO,
                      "/etc/ssl/certs/ca-certificates.crt");
-    curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, curl_headers);
+    curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, curl_headers.get());
     curl_easy_setopt(curl_, CURLOPT_URL, url.c_str());
     curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION, curl_to_function_cb);
     curl_easy_setopt(curl_, CURLOPT_WRITEDATA, &callback);
@@ -166,9 +179,6 @@ class CurlClient : public HttpClient {
     curl_easy_setopt(curl_, CURLOPT_ERRORBUFFER, error_buf);
     curl_easy_setopt(curl_, CURLOPT_VERBOSE, 1L);
     CURLcode res = curl_easy_perform(curl_);
-    if (curl_headers) {
-      curl_slist_free_all(curl_headers);
-    }
     CF_EXPECT(res == CURLE_OK,
               "curl_easy_perform() failed. "
                   << "Code was \"" << res << "\". "
@@ -176,7 +186,7 @@ class CurlClient : public HttpClient {
                   << "Error buffer was \"" << error_buf << "\".");
     long http_code = 0;
     curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE, &http_code);
-    return http_code;
+    return HttpResponse<void>{{}, http_code};
   }
 
   Result<HttpResponse<std::string>> DownloadToFile(
@@ -192,8 +202,8 @@ class CurlClient : public HttpClient {
       stream.write(data, size);
       return !stream.fail();
     };
-    long http_code = CF_EXPECT(DownloadToCallback(callback, url, headers));
-    return HttpResponse<std::string>{path, http_code};
+    auto http_response = CF_EXPECT(DownloadToCallback(callback, url, headers));
+    return HttpResponse<std::string>{path, http_response.http_code};
   }
 
   Result<HttpResponse<Json::Value>> DownloadToJson(
@@ -217,14 +227,16 @@ class CurlClient : public HttpClient {
       const std::string& url,
       const std::vector<std::string>& headers) override {
     std::lock_guard<std::mutex> lock(mutex_);
+    auto extra_cache_entries = CF_EXPECT(ManuallyResolveUrl(url));
+    curl_easy_setopt(curl_, CURLOPT_RESOLVE, extra_cache_entries.get());
     LOG(INFO) << "Attempting to download \"" << url << "\"";
     CF_EXPECT(curl_ != nullptr, "curl was not initialized");
-    curl_slist* curl_headers = build_slist(headers);
+    auto curl_headers = CF_EXPECT(SlistFromStrings(headers));
     curl_easy_reset(curl_);
     curl_easy_setopt(curl_, CURLOPT_CUSTOMREQUEST, "DELETE");
     curl_easy_setopt(curl_, CURLOPT_CAINFO,
                      "/etc/ssl/certs/ca-certificates.crt");
-    curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, curl_headers);
+    curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, curl_headers.get());
     curl_easy_setopt(curl_, CURLOPT_URL, url.c_str());
     std::stringstream data_to_read;
     curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION, file_write_callback);
@@ -233,9 +245,6 @@ class CurlClient : public HttpClient {
     curl_easy_setopt(curl_, CURLOPT_ERRORBUFFER, error_buf);
     curl_easy_setopt(curl_, CURLOPT_VERBOSE, 1L);
     CURLcode res = curl_easy_perform(curl_);
-    if (curl_headers) {
-      curl_slist_free_all(curl_headers);
-    }
     CF_EXPECT(res == CURLE_OK,
               "curl_easy_perform() failed. "
                   << "Code was \"" << res << "\". "
@@ -266,7 +275,28 @@ class CurlClient : public HttpClient {
   }
 
  private:
+  Result<ManagedCurlSlist> ManuallyResolveUrl(const std::string& url_str) {
+    if (!resolver_) {
+      return ManagedCurlSlist(nullptr, curl_slist_free_all);
+    }
+    LOG(INFO) << "Manually resolving \"" << url_str << "\"";
+    std::stringstream resolve_line;
+    std::unique_ptr<CURLU, decltype(&curl_url_cleanup)> url(curl_url(),
+                                                            curl_url_cleanup);
+    CF_EXPECT(curl_url_set(url.get(), CURLUPART_URL, url_str.c_str(), 0) ==
+              CURLUE_OK);
+    auto hostname = CF_EXPECT(CurlUrlGet(url.get(), CURLUPART_HOST, 0));
+    resolve_line << "+" << hostname;
+    auto port =
+        CF_EXPECT(CurlUrlGet(url.get(), CURLUPART_PORT, CURLU_DEFAULT_PORT));
+    resolve_line << ":" << port << ":";
+    resolve_line << android::base::Join(CF_EXPECT(resolver_(hostname)), ",");
+    auto slist = CF_EXPECT(SlistFromStrings({resolve_line.str()}));
+    return slist;
+  }
+
   CURL* curl_;
+  NameResolver resolver_;
   std::mutex mutex_;
 };
 
@@ -328,12 +358,13 @@ class ServerErrorRetryClient : public HttpClient {
     return CF_EXPECT(RetryImpl<Json::Value>(fn));
   }
 
-  Result<long> DownloadToCallback(
+  Result<HttpResponse<void>> DownloadToCallback(
       DataCallback cb, const std::string& url,
       const std::vector<std::string>& hdrs) override {
-    auto fn = [&, this]() { return DownloadToCallbackHelper(cb, url, hdrs); };
-    auto response = CF_EXPECT(RetryImpl<bool>(fn));
-    return response.http_code;
+    auto fn = [&, this]() {
+      return inner_client_.DownloadToCallback(cb, url, hdrs);
+    };
+    return CF_EXPECT(RetryImpl<void>(fn));
   }
 
   Result<HttpResponse<Json::Value>> DeleteToJson(
@@ -364,15 +395,6 @@ class ServerErrorRetryClient : public HttpClient {
     return response;
   }
 
-  // Wraps the http_code into an HttpResponse<bool> instance in order to be
-  // reused in the RetryImpl function.
-  Result<HttpResponse<bool>> DownloadToCallbackHelper(
-      DataCallback cb, const std::string& url,
-      const std::vector<std::string>& hdrs) {
-    long http_code = CF_EXPECT(inner_client_.DownloadToCallback(cb, url, hdrs));
-    return HttpResponse<bool>{false /* irrelevant */, http_code};
-  }
-
  private:
   HttpClient& inner_client_;
   int retry_attempts_;
@@ -381,8 +403,29 @@ class ServerErrorRetryClient : public HttpClient {
 
 }  // namespace
 
-/* static */ std::unique_ptr<HttpClient> HttpClient::CurlClient() {
-  return std::unique_ptr<HttpClient>(new class CurlClient());
+Result<std::vector<std::string>> GetEntDnsResolve(const std::string& host) {
+  Command command("/bin/getent");
+  command.AddParameter("hosts");
+  command.AddParameter(host);
+
+  std::string out;
+  std::string err;
+  CF_EXPECT(RunWithManagedStdio(std::move(command), nullptr, &out, &err) == 0,
+            "`getent hosts " << host << "` failed: out = \"" << out
+                             << "\", err = \"" << err << "\"");
+  auto lines = android::base::Tokenize(out, "\n");
+  for (auto& line : lines) {
+    auto line_split = android::base::Tokenize(line, " \t");
+    CF_EXPECT(line_split.size() == 2,
+              "unexpected line format: \"" << line << "\"");
+    line = line_split[0];
+  }
+  return lines;
+}
+
+/* static */ std::unique_ptr<HttpClient> HttpClient::CurlClient(
+    NameResolver resolver) {
+  return std::unique_ptr<HttpClient>(new class CurlClient(std::move(resolver)));
 }
 
 /* static */ std::unique_ptr<HttpClient> HttpClient::ServerErrorRetryClient(

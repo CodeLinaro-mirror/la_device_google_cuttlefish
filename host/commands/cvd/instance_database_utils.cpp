@@ -36,8 +36,8 @@ Result<std::string> GetCuttlefishConfigPath(const std::string& home) {
   CF_EXPECT(android::base::Realpath(home, &home_realpath));
   static const char kSuffix[] = "/cuttlefish_assembly/cuttlefish_config.json";
   std::string config_path = AbsolutePath(home_realpath + kSuffix);
-  CF_EXPECT(FileExists(config_path));
-  return CF_ERR("No config file exists.");
+  CF_EXPECT(FileExists(config_path), "No config file exists");
+  return {config_path};
 }
 
 std::string GenInternalGroupName() {
@@ -46,9 +46,17 @@ std::string GenInternalGroupName() {
   return std::string(internal_name);
 }
 
+std::string GenDefaultGroupName() { return GenInternalGroupName(); }
+
 std::string LocalDeviceNameRule(const std::string& group_name,
                                 const std::string& instance_name) {
   return group_name + "-" + instance_name;
+}
+
+// [A-Za-z_][A-Za-z0-9_]*
+bool IsValidGroupName(const std::string& token) {
+  std::regex regular_expr("[A-Za-z_][A-Za-z_0-9]*");
+  return std::regex_match(token, regular_expr);
 }
 
 // [A-Za-z0-9_]+
@@ -72,7 +80,8 @@ bool PotentiallyHostBinariesDir(const std::string& host_binaries_dir) {
   return !result.empty();
 }
 
-std::string TooManyInstancesFound(const int n, const std::string& field_name) {
+std::string GenerateTooManyInstancesErrorMsg(const int n,
+                                             const std::string& field_name) {
   std::stringstream s;
   s << "Only up to " << n << " must match";
   if (!field_name.empty()) {

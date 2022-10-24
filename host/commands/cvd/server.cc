@@ -47,6 +47,7 @@
 #include "host/commands/cvd/demo_multi_vd.h"
 #include "host/commands/cvd/epoll_loop.h"
 #include "host/commands/cvd/help_command.h"
+#include "host/commands/cvd/logger.h"
 #include "host/commands/cvd/server_constants.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/inject.h"
@@ -57,10 +58,12 @@ namespace cuttlefish {
 static constexpr int kNumThreads = 10;
 
 CvdServer::CvdServer(BuildApi& build_api, EpollPool& epoll_pool,
-                     InstanceManager& instance_manager)
+                     InstanceManager& instance_manager,
+                     ServerLogger& server_logger)
     : build_api_(build_api),
       epoll_pool_(epoll_pool),
       instance_manager_(instance_manager),
+      server_logger_(server_logger),
       running_(true) {
   std::scoped_lock lock(threads_mutex_);
   for (auto i = 0; i < kNumThreads; i++) {
@@ -68,11 +71,12 @@ CvdServer::CvdServer(BuildApi& build_api, EpollPool& epoll_pool,
       while (running_) {
         auto result = epoll_pool_.HandleEvent();
         if (!result.ok()) {
-          LOG(ERROR) << "Epoll worker error:\n" << result.error();
+          LOG(ERROR) << "Epoll worker error:\n" << result.error().Message();
+          LOG(DEBUG) << "Epoll worker error:\n" << result.error().Trace();
         }
       }
       auto wakeup = BestEffortWakeup();
-      CHECK(wakeup.ok()) << wakeup.error().message();
+      CHECK(wakeup.ok()) << wakeup.error().Trace();
     });
   }
 }
@@ -80,7 +84,7 @@ CvdServer::CvdServer(BuildApi& build_api, EpollPool& epoll_pool,
 CvdServer::~CvdServer() {
   running_ = false;
   auto wakeup = BestEffortWakeup();
-  CHECK(wakeup.ok()) << wakeup.error().message();
+  CHECK(wakeup.ok()) << wakeup.error().Trace();
   Join();
 }
 
@@ -136,7 +140,7 @@ void CvdServer::Stop() {
       request->handler->Interrupt();
     }
     auto wakeup = BestEffortWakeup();
-    CHECK(wakeup.ok()) << wakeup.error();
+    CHECK(wakeup.ok()) << wakeup.error().Trace();
     std::scoped_lock lock(threads_mutex_);
     for (auto& thread : threads_) {
       auto current_thread = thread.get_id() == std::this_thread::get_id();
@@ -260,17 +264,18 @@ Result<void> CvdServer::HandleMessage(EpollEvent event) {
     return {};
   }
 
+  auto logger = server_logger_.LogThreadToFd(request->Err());
   auto response = HandleRequest(*request, event.fd);
   if (!response.ok()) {
     cvd::Response failure_message;
     failure_message.mutable_status()->set_code(cvd::Status::INTERNAL);
-    failure_message.mutable_status()->set_message(response.error().message());
+    failure_message.mutable_status()->set_message(response.error().Trace());
     CF_EXPECT(SendResponse(event.fd, failure_message));
     return {};  // Error already sent to the client, don't repeat on the server
   }
   CF_EXPECT(SendResponse(event.fd, *response));
 
-  auto self_cb = [this](EpollEvent ev) -> Result<void> {
+  auto self_cb = [this, err = request->Err()](EpollEvent ev) -> Result<void> {
     CF_EXPECT(HandleMessage(ev));
     return {};
   };
@@ -311,7 +316,9 @@ Result<cvd::Response> CvdServer::HandleRequest(RequestWithStdio request,
     ongoing_requests_.erase(shared);
   });
 
-  auto interrupt_cb = [shared](EpollEvent) -> Result<void> {
+  auto interrupt_cb = [this, shared,
+                       err = request.Err()](EpollEvent) -> Result<void> {
+    auto logger = server_logger_.LogThreadToFd(err);
     std::lock_guard lock(shared->mutex);
     CF_EXPECT(shared->handler != nullptr);
     CF_EXPECT(shared->handler->Interrupt());

@@ -71,6 +71,13 @@ DEFINE_bool(run_next_stage, false, "Continue running the device through the next
 DEFINE_string(wait_retry_period, "20", "Retry period for pending builds given "
                                        "in seconds. Set to 0 to not wait.");
 DEFINE_bool(keep_downloaded_archives, false, "Keep downloaded zip/tar.");
+#ifdef __BIONIC__
+DEFINE_bool(external_dns_resolver, true,
+            "Use an out-of-process mechanism to resolve DNS queries");
+#else
+DEFINE_bool(external_dns_resolver, false,
+            "Use an out-of-process mechanism to resolve DNS queries");
+#endif
 
 namespace cuttlefish {
 namespace {
@@ -306,7 +313,7 @@ std::unique_ptr<CredentialSource> TryOpenServiceAccountFile(
       http_client, content, BUILD_SCOPE);
   if (!result.ok()) {
     LOG(VERBOSE) << "Failed to load service account json file: \n"
-                 << result.error();
+                 << result.error().Trace();
     return {};
   }
   return std::unique_ptr<CredentialSource>(
@@ -335,6 +342,12 @@ Result<void> FetchCvdMain(int argc, char** argv) {
   FetcherConfig config;
   config.RecordFlags();
 
+#ifdef __BIONIC__
+  // TODO(schuffelen): Find a better way to deal with tzdata
+  setenv("ANDROID_TZDATA_ROOT", "/", /* overwrite */ 0);
+  setenv("ANDROID_ROOT", "/", /* overwrite */ 0);
+#endif
+
   std::string target_dir = AbsolutePath(FLAGS_directory);
   if (!DirectoryExists(target_dir)) {
     CF_EXPECT(mkdir(target_dir.c_str(), 0777) == 0,
@@ -345,7 +358,9 @@ Result<void> FetchCvdMain(int argc, char** argv) {
 
   curl_global_init(CURL_GLOBAL_DEFAULT);
   {
-    auto curl = HttpClient::CurlClient();
+    auto resolver =
+        FLAGS_external_dns_resolver ? GetEntDnsResolve : NameResolver();
+    auto curl = HttpClient::CurlClient(resolver);
     auto retrying_http_client = HttpClient::ServerErrorRetryClient(
         *curl, 10, std::chrono::milliseconds(5000));
     std::unique_ptr<CredentialSource> credential_source;
@@ -366,7 +381,7 @@ Result<void> FetchCvdMain(int argc, char** argv) {
               new RefreshCredentialSource(std::move(*attempt_load)));
         } else {
           LOG(VERBOSE) << "Failed to load acloud credentials: "
-                       << attempt_load.error();
+                       << attempt_load.error().Trace();
         }
       } else {
         LOG(INFO) << "\"" << file << "\" missing, running without credentials";
