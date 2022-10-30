@@ -24,7 +24,6 @@
 namespace cuttlefish {
 
 struct GCPInstance {
-  int disk_size_gb;
   const char* machine_type;
   const char* min_cpu_platform;
 };
@@ -65,6 +64,9 @@ class CloudOrchestratorApi {
 
   Result<std::string> CreateCVD(const std::string& host,
                                 const CreateCVDRequest& request);
+
+  Result<Operation> WaitHostOperation(const std::string& host,
+                                      const std::string& name);
 
   Result<std::vector<std::string>> ListCVDWebRTCStreams(
       const std::string& host);

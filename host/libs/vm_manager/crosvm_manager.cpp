@@ -126,10 +126,6 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
   crosvm_cmd.AddControlSocket(GetControlSocketPath(instance, crosvm_socket),
                               config.crosvm_binary());
 
-  if (HostArch() == Arch::X86_64) {
-    crosvm_cmd.Cmd().AddParameter("--no-i8042");
-  }
-
   if (!config.smt()) {
     crosvm_cmd.Cmd().AddParameter("--no-smt");
   }
@@ -188,7 +184,7 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
                                 instance.frames_socket_path());
 
   // crosvm_cmd.Cmd().AddParameter("--null-audio");
-  crosvm_cmd.Cmd().AddParameter("--mem=", config.memory_mb());
+  crosvm_cmd.Cmd().AddParameter("--mem=", instance.memory_mb());
   crosvm_cmd.Cmd().AddParameter("--cpus=", instance.cpus());
 
   auto disk_num = instance.virtual_disk_paths().size();

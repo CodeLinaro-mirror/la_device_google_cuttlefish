@@ -83,6 +83,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.light@2.0",
     "android.hardware.media.bufferpool@1.0",
     "android.hardware.media.bufferpool@2.0",
+    "android.hardware.media.omx@1.0", // deprecated b/205761766
     "android.hardware.memtrack@1.0",
     "android.hardware.neuralnetworks@1.3", // converted to AIDL, see b/161428342
     "android.hardware.nfc@1.2",
@@ -174,9 +175,6 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     // The interface is in development (b/205884982)
     {"android.hardware.audio.core.", 1},
 
-    // The implementation is on the way.
-    {"android.hardware.security.keymint.", 3},
-
     // No implementations on cuttlefish for omapi aidl hal
     {"android.se.omapi.", 1},
 
@@ -193,6 +191,10 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
 
     // No implementation on cuttlefish for fastboot AIDL hal
     {"android.hardware.fastboot.", 1},
+
+    // These types are only used in TV.
+    {"android.hardware.tv.cec.", 1},
+    {"android.hardware.tv.hdmi.", 1},
 
     // These types are only used in Automotive.
     {"android.automotive.computepipe.registry.", 1},
@@ -211,6 +213,9 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.hardware.automotive.occupant_awareness.", 1},
     {"android.hardware.automotive.remoteaccess.", 1},
     {"android.hardware.automotive.vehicle.", 2},
+
+    // TODO(b/250036572): Implement for the interface.
+    {"android.hardware.graphics.composer3.", 2},
 
     // These types are only used in TV.
     {"android.hardware.tv.tuner.", 2},

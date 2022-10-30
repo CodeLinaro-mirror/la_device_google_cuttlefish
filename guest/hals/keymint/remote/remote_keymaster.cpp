@@ -187,6 +187,11 @@ void RemoteKeymaster::GenerateCsr(const GenerateCsrRequest& request,
   ForwardCommand(GENERATE_CSR, request, response);
 }
 
+void RemoteKeymaster::GenerateCsrV2(const GenerateCsrV2Request& request,
+                                    GenerateCsrV2Response* response) {
+  ForwardCommand(GENERATE_CSR_V2, request, response);
+}
+
 void RemoteKeymaster::GetKeyCharacteristics(
     const GetKeyCharacteristicsRequest& request,
     GetKeyCharacteristicsResponse* response) {
@@ -316,6 +321,14 @@ GetRootOfTrustResponse RemoteKeymaster::GetRootOfTrust(
     const GetRootOfTrustRequest& request) {
   GetRootOfTrustResponse response(message_version());
   ForwardCommand(GET_ROOT_OF_TRUST, request, &response);
+  return response;
+}
+
+GetHwInfoResponse RemoteKeymaster::GetHwInfo() {
+  // Unused empty buffer to allow ForwardCommand to have something to serialize
+  Buffer request;
+  GetHwInfoResponse response(message_version());
+  ForwardCommand(GET_HW_INFO, request, &response);
   return response;
 }
 
