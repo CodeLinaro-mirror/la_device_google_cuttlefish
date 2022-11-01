@@ -223,4 +223,31 @@ TpmRemoteProvisioningContext::GenerateHmacSha256(
   return hmac;
 }
 
+void TpmRemoteProvisioningContext::GetHwInfo(
+    keymaster::GetHwInfoResponse* hwInfo) const {
+  hwInfo->version = 2;
+  hwInfo->rpcAuthorName = "Google";
+  hwInfo->supportedEekCurve = 2 /* CURVE_25519 */;
+  hwInfo->uniqueId = "remote keymint";
+}
+
+cppcose::ErrMsgOr<cppbor::Array> TpmRemoteProvisioningContext::BuildCsr(
+    const std::vector<uint8_t>& challenge, cppbor::Array keysToSign) const {
+  auto deviceInfo = std::move(*CreateDeviceInfo());
+  auto signedDataPayload = cppbor::Array()
+                               .add(1 /* version */)
+                               .add("keymint" /* CertificateType */)
+                               .add(std::move(deviceInfo))
+                               .add(challenge)
+                               .add(std::move(keysToSign));
+  auto signedData = constructCoseSign1(
+      devicePrivKey_, signedDataPayload.encode(), {} /* aad */);
+
+  return cppbor::Array()
+      .add(3 /* version */)
+      .add(cppbor::Map() /* UdsCerts */)
+      .add(std::move(*bcc_.clone()->asArray()) /* DiceCertChain */)
+      .add(std::move(*signedData) /* SignedData */);
+}
+
 }  // namespace cuttlefish

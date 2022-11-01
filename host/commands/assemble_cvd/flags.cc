@@ -46,14 +46,16 @@ using cuttlefish::vm_manager::CrosvmManager;
 using google::FlagSettingMode::SET_FLAGS_DEFAULT;
 using google::FlagSettingMode::SET_FLAGS_VALUE;
 
-DEFINE_int32(cpus, CF_DEFAULTS_CPUS, "Virtual CPU count.");
+DEFINE_string(cpus, std::to_string(CF_DEFAULTS_CPUS),
+              "Virtual CPU count.");
 DEFINE_string(data_policy, CF_DEFAULTS_DATA_POLICY,
               "How to handle userdata partition."
               " Either 'use_existing', 'create_if_missing', 'resize_up_to', or "
               "'always_create'.");
-DEFINE_int32(blank_data_image_mb, CF_DEFAULTS_BLANK_DATA_IMAGE_MB,
+DEFINE_string(blank_data_image_mb,
+              std::to_string(CF_DEFAULTS_BLANK_DATA_IMAGE_MB),
              "The size of the blank data image to generate, MB.");
-DEFINE_int32(gdb_port, CF_DEFAULTS_GDB_PORT,
+DEFINE_string(gdb_port, std::to_string(CF_DEFAULTS_GDB_PORT),
              "Port number to spawn kernel gdb on e.g. -gdb_port=1234. The"
              "kernel must have been built with CONFIG_RANDOMIZE_BASE "
              "disabled.");
@@ -94,7 +96,7 @@ DEFINE_string(extra_bootconfig_args, CF_DEFAULTS_EXTRA_BOOTCONFIG_ARGS,
               "requires ':=' instead of '='.");
 DEFINE_bool(guest_enforce_security, CF_DEFAULTS_GUEST_ENFORCE_SECURITY,
             "Whether to run in enforcing mode (non permissive).");
-DEFINE_int32(memory_mb, CF_DEFAULTS_MEMORY_MB,
+DEFINE_string(memory_mb, std::to_string(CF_DEFAULTS_MEMORY_MB),
              "Total amount of memory available for guest, MB.");
 DEFINE_string(serial_number, CF_DEFAULTS_SERIAL_NUMBER,
               "Serial number to use for the device");
@@ -341,8 +343,8 @@ DEFINE_bool(record_screen, CF_DEFAULTS_RECORD_SCREEN,
 DEFINE_bool(smt, CF_DEFAULTS_SMT,
             "Enable simultaneous multithreading (SMT/HT)");
 
-DEFINE_int32(
-    vsock_guest_cid, CF_DEFAULTS_VSOCK_GUEST_CID,
+DEFINE_string(
+    vsock_guest_cid, std::to_string(CF_DEFAULTS_VSOCK_GUEST_CID),
     "vsock_guest_cid is used to determine the guest vsock cid as well as all "
     "the ports"
     "of all vsock servers such as tombstone or modem simulator(s)."
@@ -377,7 +379,7 @@ DEFINE_bool(protected_vm, CF_DEFAULTS_PROTECTED_VM,
 DEFINE_bool(enable_audio, CF_DEFAULTS_ENABLE_AUDIO,
             "Whether to play or capture audio");
 
-DEFINE_uint32(camera_server_port, CF_DEFAULTS_CAMERA_SERVER_PORT,
+DEFINE_string(camera_server_port, std::to_string(CF_DEFAULTS_CAMERA_SERVER_PORT),
               "camera vsock port");
 
 DEFINE_string(userdata_format, CF_DEFAULTS_USERDATA_FORMAT,
@@ -673,13 +675,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
                ") does not work with vm_manager=" << FLAGS_vm_manager;
   }
 
-  CHECK(!FLAGS_smt || FLAGS_cpus % 2 == 0)
-      << "CPUs must be a multiple of 2 in SMT mode";
-  tmp_config_obj.set_smt(FLAGS_smt);
-
-  tmp_config_obj.set_memory_mb(FLAGS_memory_mb);
-  tmp_config_obj.set_ddr_mem_mb(FLAGS_memory_mb * 2);
-
   tmp_config_obj.set_setupwizard_mode(FLAGS_setupwizard_mode);
   tmp_config_obj.set_enable_bootanimation(FLAGS_enable_bootanimation);
 
@@ -806,6 +801,16 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   std::vector<std::string> dpi_vec = android::base::Split(FLAGS_dpi, ",");
   std::vector<std::string> refresh_rate_hz_vec =
       android::base::Split(FLAGS_refresh_rate_hz, ",");
+  std::vector<std::string> memory_mb_vec =
+      android::base::Split(FLAGS_memory_mb, ",");
+  std::vector<std::string> camera_server_port_vec =
+      android::base::Split(FLAGS_camera_server_port, ",");
+  std::vector<std::string> vsock_guest_cid_vec =
+      android::base::Split(FLAGS_vsock_guest_cid, ",");
+  std::vector<std::string> cpus_vec = android::base::Split(FLAGS_cpus, ",");
+  std::vector<std::string> blank_data_image_mb_vec =
+      android::base::Split(FLAGS_blank_data_image_mb, ",");
+  std::vector<std::string> gdb_port_vec = android::base::Split(FLAGS_gdb_port, ",");
 
   // new instance specific flags (moved from common flags)
   std::vector<std::string> gem5_binary_dirs =
@@ -858,8 +863,22 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     } else {
       instance.set_serial_number(FLAGS_serial_number + std::to_string(num));
     }
+
+    int vsock_guest_cid_int;
+    if (instance_index < vsock_guest_cid_vec.size()) {
+      CHECK(android::base::ParseInt(vsock_guest_cid_vec[instance_index].c_str(),
+                                    &vsock_guest_cid_int))
+        << "Failed to parse value \"" << vsock_guest_cid_vec[instance_index]
+        << "\" for vsock_guest_cid";
+    } else {
+      CHECK(android::base::ParseInt(vsock_guest_cid_vec[0].c_str(),
+                                    &vsock_guest_cid_int))
+        << "Failed to parse value \"" << vsock_guest_cid_vec[0]
+        << "\" for vsock_guest_cid";
+    }
+
     // call this before all stuff that has vsock server: e.g. touchpad, keyboard, etc
-    const auto vsock_guest_cid = FLAGS_vsock_guest_cid + num - GetInstance();
+    const auto vsock_guest_cid = vsock_guest_cid_int + num - GetInstance();
     instance.set_vsock_guest_cid(vsock_guest_cid);
     auto calc_vsock_port = [vsock_guest_cid](const int base_port) {
       // a base (vsock) port is like 9600 for modem_simulator, etc
@@ -867,15 +886,57 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     };
     instance.set_session_id(iface_config.mobile_tap.session_id);
 
+    int cpus_int;
+    if (instance_index < cpus_vec.size()) {
+      CHECK(android::base::ParseInt(cpus_vec[instance_index].c_str(),&cpus_int))
+        << "Failed to parse value \"" << cpus_vec[instance_index]
+        << "\" for cpus";
+    } else {
+      CHECK(android::base::ParseInt(cpus_vec[0].c_str(),&cpus_int))
+        << "Failed to parse value \"" << cpus_vec[0]
+        << "\" for cpus";
+    }
+    instance.set_cpus(cpus_int);
+    // TODO(weihsu): before vectorizing smt flag,
+    // make sure all instances have multiple of 2 then SMT mode
+    // if any of instance doesn't have multiple of 2 then NOT SMT
+    CHECK(!FLAGS_smt || cpus_int % 2 == 0)
+        << "CPUs must be a multiple of 2 in SMT mode";
+
     // new instance specific flags (moved from common flags)
     CHECK(instance_index<kernel_configs.size())
       << "instance_index " << instance_index << " out of boundary " << kernel_configs.size();
     instance.set_target_arch(kernel_configs[instance_index].target_arch);
     instance.set_console(FLAGS_console);
     instance.set_kgdb(FLAGS_console && FLAGS_kgdb);
-    instance.set_cpus(FLAGS_cpus);
-    instance.set_blank_data_image_mb(FLAGS_blank_data_image_mb);
-    instance.set_gdb_port(FLAGS_gdb_port);
+
+    int blank_data_image_mb_int;
+    if (instance_index < blank_data_image_mb_vec.size()) {
+      CHECK(android::base::ParseInt(blank_data_image_mb_vec[instance_index].c_str(),
+                                    &blank_data_image_mb_int))
+        << "Failed to parse value \"" << blank_data_image_mb_vec[instance_index]
+        << "\" for blank_data_image_mb";
+    } else {
+      CHECK(android::base::ParseInt(blank_data_image_mb_vec[0].c_str(),
+                                    &blank_data_image_mb_int))
+        << "Failed to parse value \"" << blank_data_image_mb_vec[0]
+        << "\" for blank_data_image_mb";
+    }
+    instance.set_blank_data_image_mb(blank_data_image_mb_int);
+
+    int gdb_port_int;
+    if (instance_index < gdb_port_vec.size()) {
+      CHECK(android::base::ParseInt(gdb_port_vec[instance_index].c_str(),
+                                    &gdb_port_int))
+        << "Failed to parse value \"" << gdb_port_vec[instance_index]
+        << "\" for gdb_port";
+    } else {
+      CHECK(android::base::ParseInt(gdb_port_vec[0].c_str(),
+                                    &gdb_port_int))
+        << "Failed to parse value \"" << gdb_port_vec[0]
+        << "\" for gdb_port";
+    }
+    instance.set_gdb_port(gdb_port_int);
 
     std::vector<CuttlefishConfig::DisplayConfig> display_configs;
     auto display0 = ParseDisplayConfig(FLAGS_display0);
@@ -897,51 +958,43 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
     int x_res = 0;
     if (instance_index < x_res_vec.size()) {
-      if (!android::base::ParseInt(x_res_vec[instance_index].c_str(), &x_res)) {
-        LOG(ERROR) << "Failed to parse value \"" << x_res_vec[instance_index]
-                   << "\" for x_res";
-      }
+      CHECK(android::base::ParseInt(x_res_vec[instance_index].c_str(), &x_res))
+        << "Failed to parse value \"" << x_res_vec[instance_index]
+        << "\" for x_res";
     } else if (x_res_vec.size() == 1) {
-      if (!android::base::ParseInt(x_res_vec[0].c_str(), &x_res)) {
-        LOG(ERROR) << "Failed to parse value \"" << x_res_vec[0]
-                   << "\" for x_res";
-      }
+      CHECK(android::base::ParseInt(x_res_vec[0].c_str(), &x_res))
+        << "Failed to parse value \"" << x_res_vec[0]
+        << "\" for x_res";
     }
     int y_res = 0;
     if (instance_index < y_res_vec.size()) {
-      if (!android::base::ParseInt(y_res_vec[instance_index].c_str(), &y_res)) {
-        LOG(ERROR) << "Failed to parse value \"" << y_res_vec[instance_index]
-                   << "\" for y_res";
-      }
+      CHECK(android::base::ParseInt(y_res_vec[instance_index].c_str(), &y_res))
+        << "Failed to parse value \"" << y_res_vec[instance_index]
+        << "\" for y_res";
     } else if (y_res_vec.size() == 1) {
-      if (!android::base::ParseInt(y_res_vec[0].c_str(), &y_res)) {
-        LOG(ERROR) << "Failed to parse value \"" << y_res_vec[0]
-                   << "\" for y_res";
-      }
+      CHECK(android::base::ParseInt(y_res_vec[0].c_str(), &y_res))
+        << "Failed to parse value \"" << y_res_vec[0]
+        << "\" for y_res";
     }
     int dpi = 0;
     if (instance_index < dpi_vec.size()) {
-      if (!android::base::ParseInt(dpi_vec[instance_index].c_str(), &dpi)) {
-        LOG(ERROR) << "Failed to parse value \"" << dpi_vec[instance_index]
-                   << "\" for dpi";
-      }
+      CHECK(android::base::ParseInt(dpi_vec[instance_index].c_str(), &dpi))
+        << "Failed to parse value \"" << dpi_vec[instance_index]
+        << "\" for dpi";
     } else if (dpi_vec.size() == 1) {
-      if (!android::base::ParseInt(dpi_vec[0].c_str(), &dpi)) {
-        LOG(ERROR) << "Failed to parse value \"" << dpi_vec[0]
-                   << "\" for dpi";
-      }
+      CHECK(android::base::ParseInt(dpi_vec[0].c_str(), &dpi))
+        << "Failed to parse value \"" << dpi_vec[0]
+        << "\" for dpi";
     }
     int refresh_rate_hz = 0;
     if (instance_index < refresh_rate_hz_vec.size()) {
-      if (!android::base::ParseInt(refresh_rate_hz_vec[instance_index].c_str(), &refresh_rate_hz)) {
-        LOG(ERROR) << "Failed to parse value \"" << refresh_rate_hz_vec[instance_index]
-                   << "\" for refresh_rate_hz";
-      }
+      CHECK(android::base::ParseInt(refresh_rate_hz_vec[instance_index].c_str(), &refresh_rate_hz))
+        << "Failed to parse value \"" << refresh_rate_hz_vec[instance_index]
+        << "\" for refresh_rate_hz";
     } else if (refresh_rate_hz_vec.size() == 1) {
-      if (!android::base::ParseInt(refresh_rate_hz_vec[0].c_str(), &refresh_rate_hz)) {
-        LOG(ERROR) << "Failed to parse value \"" << refresh_rate_hz_vec[0]
-                   << "\" for refresh_rate_hz";
-      }
+      CHECK(android::base::ParseInt(refresh_rate_hz_vec[0].c_str(), &refresh_rate_hz))
+        << "Failed to parse value \"" << refresh_rate_hz_vec[0]
+        << "\" for refresh_rate_hz";
     }
     if (x_res > 0 && y_res > 0) {
       if (display_configs.empty()) {
@@ -956,6 +1009,33 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
       }
     }
     instance.set_display_configs(display_configs);
+
+    int memory_mb;
+    if (instance_index >= memory_mb_vec.size()) {
+      CHECK(android::base::ParseInt(memory_mb_vec[0].c_str(), &memory_mb))
+        << "Failed to parse value \"" << memory_mb_vec[0]
+        << "\" for memory_mb";
+    } else {
+      CHECK(android::base::ParseInt(memory_mb_vec[instance_index].c_str(), &memory_mb))
+        << "Failed to parse value \"" << memory_mb_vec[instance_index]
+        << "\" for memory_mb";
+    }
+    instance.set_memory_mb(memory_mb);
+    instance.set_ddr_mem_mb(memory_mb * 2);
+
+    int camera_server_port;
+    if (instance_index < camera_server_port_vec.size()) {
+      CHECK(android::base::ParseInt(camera_server_port_vec[instance_index].c_str(),
+                                    &camera_server_port))
+        << "Failed to parse value \"" << camera_server_port_vec[instance_index]
+        << "\" for camera_server_port";
+    } else {
+      CHECK(android::base::ParseInt(camera_server_port_vec[0].c_str(),
+                                    &camera_server_port))
+        << "Failed to parse value \"" << camera_server_port_vec[0]
+        << "\" for camera_server_port";
+    }
+    instance.set_camera_server_port(camera_server_port);
 
     if (instance_index < gem5_binary_dirs.size()) {
       instance.set_gem5_binary_dir(gem5_binary_dirs[instance_index]);
@@ -1011,8 +1091,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
       instance.set_fixed_location_file_path(
           fixed_location_file_paths[instance_index]);
     }
-
-    instance.set_camera_server_port(FLAGS_camera_server_port);
 
     std::vector<std::string> virtual_disk_paths;
 
@@ -1123,6 +1201,8 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     }
     instance_index++;
   }  // end of num_instances loop
+
+  tmp_config_obj.set_smt(FLAGS_smt);
 
   std::vector<std::string> names;
   for (const auto& instance : tmp_config_obj.Instances()) {

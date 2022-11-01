@@ -69,6 +69,7 @@ cc_defaults {
         "libgtest_prod_headers",
     ],
     required: [
+        "cvd_internal_display",
         "cvd_internal_host_bugreport",
         "cvd_internal_start",
         "cvd_internal_status",
@@ -89,24 +90,13 @@ cc_library_host_static {
 }
 
 cc_library_host_static {
-    name: "libcvd_instance_db",
-    srcs: [
-        "instance_database.cpp",
-        "instance_database_impl.cpp",
-        "instance_database_utils.cpp",
-        "instance_group_record.cpp",
-        "instance_record.cpp",
-    ],
-    defaults: ["cvd_lib_defaults"],
-}
-
-cc_library_host_static {
     name: "libcvd_server",
     srcs: [
         "acloud_command.cpp",
         "build_api.cpp",
         "command_sequence.cpp",
         "demo_multi_vd.cpp",
+        "load_configs.cpp",
         "epoll_loop.cpp",
         "instance_lock.cpp",
         "instance_manager.cpp",
@@ -141,6 +131,7 @@ cc_defaults {
         "libcvd_client",
         "libcvd_instance_db",
         "libcvd_selector_frontend",
+        "libcvd_parser",
         "libcvd_server",
         "libfetch_cvd",
     ],
