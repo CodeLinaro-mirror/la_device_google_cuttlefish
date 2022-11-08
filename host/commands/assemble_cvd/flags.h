@@ -16,15 +16,15 @@ namespace cuttlefish {
 struct KernelConfig {
   Arch target_arch;
   bool bootconfig_supported;
+  bool hctr2_supported;
 };
 
 Result<std::vector<KernelConfig>> GetKernelConfigAndSetDefaults();
 // Must be called after ParseCommandLineFlags.
-CuttlefishConfig InitializeCuttlefishConfiguration(const std::string& root_dir,
-                                                   int modem_simulator_count,
-                                                   const std::vector<KernelConfig>& kernel_configs,
-                                                   fruit::Injector<>& injector,
-                                                   const FetcherConfig& fetcher_config);
+Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
+    const std::string& root_dir, int modem_simulator_count,
+    const std::vector<KernelConfig>& kernel_configs,
+    fruit::Injector<>& injector, const FetcherConfig& fetcher_config);
 
 std::string GetConfigFilePath(const CuttlefishConfig& config);
 std::string GetCuttlefishEnvPath();

@@ -20,6 +20,7 @@
 #include <json/json.h>
 
 #include "common/libs/utils/files.h"
+#include "common/libs/utils/flags_validator.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
 #include "host/libs/vm_manager/gem5_manager.h"
 #include "host/libs/vm_manager/qemu_manager.h"
@@ -398,6 +399,28 @@ int CuttlefishConfig::InstanceSpecific::ddr_mem_mb() const {
 }
 void CuttlefishConfig::MutableInstanceSpecific::set_ddr_mem_mb(int ddr_mem_mb) {
   (*Dictionary())[kDdrMemMb] = ddr_mem_mb;
+}
+
+static constexpr char kSetupWizardMode[] = "setupwizard_mode";
+std::string CuttlefishConfig::InstanceSpecific::setupwizard_mode() const {
+  return (*Dictionary())[kSetupWizardMode].asString();
+}
+Result<void> CuttlefishConfig::MutableInstanceSpecific::set_setupwizard_mode(
+    const std::string& mode) {
+  CF_EXPECT(ValidateStupWizardMode(mode),
+            "setupwizard_mode flag has invalid value: " << mode);
+  (*Dictionary())[kSetupWizardMode] = mode;
+  return {};
+}
+
+static constexpr char kUserdataFormat[] = "userdata_format";
+std::string CuttlefishConfig::InstanceSpecific::userdata_format() const {
+  return (*Dictionary())[kUserdataFormat].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_userdata_format(const std::string& userdata_format) {
+  auto fmt = userdata_format;
+  std::transform(fmt.begin(), fmt.end(), fmt.begin(), ::tolower);
+  (*Dictionary())[kUserdataFormat] = fmt;
 }
 
 static constexpr char kDisplayConfigs[] = "display_configs";

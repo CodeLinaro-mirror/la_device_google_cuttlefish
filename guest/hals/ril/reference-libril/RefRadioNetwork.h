@@ -42,10 +42,7 @@ class RefRadioNetwork : public android::hardware::radio::compat::RadioNetwork {
 
     ::ndk::ScopedAStatus exitEmergencyMode(int32_t serial) override;
 
-    ::ndk::ScopedAStatus cancelEmergencyNetworkScan(int32_t serial) override;
-    ::ndk::ScopedAStatus getRegistrationState(
-            int32_t serial, ::aidl::android::hardware::radio::RadioTechnologyFamily ratFamily,
-            ::aidl::android::hardware::radio::network::Domain domain) override;
+    ::ndk::ScopedAStatus cancelEmergencyNetworkScan(int32_t serial, bool resetScan) override;
 };
 
 }  // namespace cf::ril

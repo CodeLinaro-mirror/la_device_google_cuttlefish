@@ -65,14 +65,8 @@ ScopedAStatus RefRadioNetwork::exitEmergencyMode(int32_t serial) {
     return ok();
 }
 
-ScopedAStatus RefRadioNetwork::cancelEmergencyNetworkScan(int32_t serial) {
+ScopedAStatus RefRadioNetwork::cancelEmergencyNetworkScan(int32_t serial, bool resetScan) {
     respond()->cancelEmergencyNetworkScanResponse(responseInfo(serial));
-    return ok();
-}
-
-ScopedAStatus RefRadioNetwork::getRegistrationState(int32_t serial, RadioTechnologyFamily ratFamily,
-                                                    network::Domain domain) {
-    respond()->getRegistrationStateResponse(responseInfo(serial), {});
     return ok();
 }
 
