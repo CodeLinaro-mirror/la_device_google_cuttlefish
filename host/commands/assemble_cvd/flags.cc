@@ -558,6 +558,10 @@ Result<std::vector<KernelConfig>> ReadKernelConfig() {
     }
     kernel_config.bootconfig_supported =
         config.find("\nCONFIG_BOOT_CONFIG=y") != std::string::npos;
+    // Once all Cuttlefish kernel versions are at least 5.15, this code can be
+    // removed. CONFIG_CRYPTO_HCTR2=y will always be set.
+    kernel_config.hctr2_supported =
+        config.find("\nCONFIG_CRYPTO_HCTR2=y") != std::string::npos;
 
     unlink(ikconfig_path.c_str());
     kernel_configs.push_back(kernel_config);
@@ -569,10 +573,10 @@ Result<std::vector<KernelConfig>> ReadKernelConfig() {
 
 } // namespace
 
-CuttlefishConfig InitializeCuttlefishConfiguration(
+Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     const std::string& root_dir, int modem_simulator_count,
-    const std::vector<KernelConfig>& kernel_configs, fruit::Injector<>& injector,
-    const FetcherConfig& fetcher_config) {
+    const std::vector<KernelConfig>& kernel_configs,
+    fruit::Injector<>& injector, const FetcherConfig& fetcher_config) {
   CuttlefishConfig tmp_config_obj;
 
   for (const auto& fragment : injector.getMultibindings<ConfigFragment>()) {
@@ -582,14 +586,26 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_root_dir(root_dir);
 
+  // TODO(weihsu), b/250988697:
+  // FLAGS_vm_manager used too early, have to handle this vectorized string early
+  // Currently, all instances should use same vmm, added checking here
+  std::vector<std::string> vm_manager_vec =
+      android::base::Split(FLAGS_vm_manager, ",");
+  for (int i=1; i<vm_manager_vec.size(); i++) {
+    CHECK(vm_manager_vec[0]==vm_manager_vec[i])
+      << "All instances should have same vm_manager, " << FLAGS_vm_manager;
+  }
+
   // TODO(weihsu), b/250988697: these should move to instance,
   // currently use instance[0] to setup for all instances
   tmp_config_obj.set_bootconfig_supported(kernel_configs[0].bootconfig_supported);
-  auto vmm = GetVmManager(FLAGS_vm_manager, kernel_configs[0].target_arch);
+  tmp_config_obj.set_filename_encryption_mode(
+      kernel_configs[0].hctr2_supported ? "hctr2" : "cts");
+  auto vmm = GetVmManager(vm_manager_vec[0], kernel_configs[0].target_arch);
   if (!vmm) {
-    LOG(FATAL) << "Invalid vm_manager: " << FLAGS_vm_manager;
+    LOG(FATAL) << "Invalid vm_manager: " << vm_manager_vec[0];
   }
-  tmp_config_obj.set_vm_manager(FLAGS_vm_manager);
+  tmp_config_obj.set_vm_manager(vm_manager_vec[0]);
 
   const GraphicsAvailability graphics_availability =
     GetGraphicsAvailabilityWithSubprocessCheck();
@@ -607,7 +623,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     if (ShouldEnableAcceleratedRendering(graphics_availability)) {
       LOG(INFO) << "GPU auto mode: detected prerequisites for accelerated "
                    "rendering support.";
-      if (FLAGS_vm_manager == QemuManager::name()) {
+      if (vm_manager_vec[0] == QemuManager::name()) {
         LOG(INFO) << "Enabling --gpu_mode=drm_virgl.";
         tmp_config_obj.set_gpu_mode(kGpuModeDrmVirgl);
       } else {
@@ -672,10 +688,9 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   if (vmm->ConfigureGraphics(tmp_config_obj).empty()) {
     LOG(FATAL) << "Invalid (gpu_mode=," << FLAGS_gpu_mode <<
                " hwcomposer= " << FLAGS_hwcomposer <<
-               ") does not work with vm_manager=" << FLAGS_vm_manager;
+               ") does not work with vm_manager=" << vm_manager_vec[0];
   }
 
-  tmp_config_obj.set_setupwizard_mode(FLAGS_setupwizard_mode);
   tmp_config_obj.set_enable_bootanimation(FLAGS_enable_bootanimation);
 
   auto secure_hals = android::base::Split(FLAGS_secure_hals, ",");
@@ -790,8 +805,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_protected_vm(FLAGS_protected_vm);
 
-  tmp_config_obj.set_userdata_format(FLAGS_userdata_format);
-
   // old flags but vectorized for multi-device instances
   std::vector<std::string> gnss_file_paths = android::base::Split(FLAGS_gnss_file_path, ",");
   std::vector<std::string> fixed_location_file_paths =
@@ -811,6 +824,10 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   std::vector<std::string> blank_data_image_mb_vec =
       android::base::Split(FLAGS_blank_data_image_mb, ",");
   std::vector<std::string> gdb_port_vec = android::base::Split(FLAGS_gdb_port, ",");
+  std::vector<std::string> setupwizard_mode_vec =
+      android::base::Split(FLAGS_setupwizard_mode, ",");
+  std::vector<std::string> userdata_format_vec =
+      android::base::Split(FLAGS_userdata_format, ",");
 
   // new instance specific flags (moved from common flags)
   std::vector<std::string> gem5_binary_dirs =
@@ -1023,6 +1040,21 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     instance.set_memory_mb(memory_mb);
     instance.set_ddr_mem_mb(memory_mb * 2);
 
+    if (instance_index >= setupwizard_mode_vec.size()) {
+      CF_EXPECT(instance.set_setupwizard_mode(setupwizard_mode_vec[0]),
+                "setting setupwizard flag failed");
+    } else {
+      CF_EXPECT(
+          instance.set_setupwizard_mode(setupwizard_mode_vec[instance_index]),
+          "setting setupwizard flag failed");
+    }
+
+    if (instance_index >= userdata_format_vec.size()) {
+      instance.set_userdata_format(userdata_format_vec[0]);
+    } else {
+      instance.set_userdata_format(userdata_format_vec[instance_index]);
+    }
+
     int camera_server_port;
     if (instance_index < camera_server_port_vec.size()) {
       CHECK(android::base::ParseInt(camera_server_port_vec[instance_index].c_str(),
@@ -1076,7 +1108,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
     if (tmp_config_obj.gpu_mode() != kGpuModeDrmVirgl &&
         tmp_config_obj.gpu_mode() != kGpuModeGfxStream) {
-      if (FLAGS_vm_manager == QemuManager::name()) {
+      if (vm_manager_vec[0] == QemuManager::name()) {
         instance.set_keyboard_server_port(calc_vsock_port(7000));
         instance.set_touch_server_port(calc_vsock_port(7100));
       }
@@ -1097,7 +1129,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     bool os_overlay = true;
     os_overlay &= !FLAGS_protected_vm;
     // Gem5 already uses CoW wrappers around disk images
-    os_overlay &= FLAGS_vm_manager != Gem5Manager::name();
+    os_overlay &= vm_manager_vec[0] != Gem5Manager::name();
     os_overlay &= FLAGS_use_overlay;
     if (os_overlay) {
       auto path = const_instance.PerInstancePath("overlay.img");
@@ -1108,7 +1140,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
     bool persistent_disk = true;
     persistent_disk &= !FLAGS_protected_vm;
-    persistent_disk &= FLAGS_vm_manager != Gem5Manager::name();
+    persistent_disk &= vm_manager_vec[0] != Gem5Manager::name();
     if (persistent_disk) {
       auto path = const_instance.PerInstancePath("persistent_composite.img");
       virtual_disk_paths.push_back(path);
@@ -1307,7 +1339,6 @@ Result<std::vector<KernelConfig>> GetKernelConfigAndSetDefaults() {
     CF_EXPECT(kernel_configs[0].bootconfig_supported ==
               kernel_configs[instance_index].bootconfig_supported,
               "all instance bootconfig_supported should be same");
-
   }
   if (FLAGS_vm_manager == "") {
     if (IsHostCompatible(kernel_configs[0].target_arch)) {
@@ -1316,12 +1347,16 @@ Result<std::vector<KernelConfig>> GetKernelConfigAndSetDefaults() {
       FLAGS_vm_manager = QemuManager::name();
     }
   }
+  // TODO(weihsu), b/250988697:
+  // Currently, all instances should use same vmm
+  std::vector<std::string> vm_manager_vec =
+      android::base::Split(FLAGS_vm_manager, ",");
 
-  if (FLAGS_vm_manager == QemuManager::name()) {
+  if (vm_manager_vec[0] == QemuManager::name()) {
     SetDefaultFlagsForQemu(kernel_configs[0].target_arch);
-  } else if (FLAGS_vm_manager == CrosvmManager::name()) {
+  } else if (vm_manager_vec[0] == CrosvmManager::name()) {
     SetDefaultFlagsForCrosvm();
-  } else if (FLAGS_vm_manager == Gem5Manager::name()) {
+  } else if (vm_manager_vec[0] == Gem5Manager::name()) {
     // TODO: Get the other architectures working
     if (kernel_configs[0].target_arch != Arch::Arm64) {
       return CF_ERR("Gem5 only supports ARM64");
@@ -1330,7 +1365,7 @@ Result<std::vector<KernelConfig>> GetKernelConfigAndSetDefaults() {
   } else {
     return CF_ERR("Unknown Virtual Machine Manager: " << FLAGS_vm_manager);
   }
-  if (FLAGS_vm_manager != Gem5Manager::name()) {
+  if (vm_manager_vec[0] != Gem5Manager::name()) {
     auto host_operator_present =
         cuttlefish::FileIsSocket(HOST_OPERATOR_SOCKET_PATH);
     // The default for starting signaling server depends on whether or not webrtc

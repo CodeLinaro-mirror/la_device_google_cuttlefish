@@ -13,11 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+#include "host/commands/cvd/parser/cf_configs_instances.h"
+
 #include <android-base/logging.h>
 #include <iostream>
 
+#include "common/libs/utils/flags_validator.h"
 #include "host/commands/cvd/parser/cf_configs_common.h"
-#include "host/commands/cvd/parser/cf_configs_instances.h"
 #include "host/commands/cvd/parser/instance/cf_boot_configs.h"
 #include "host/commands/cvd/parser/instance/cf_vm_configs.h"
 
@@ -50,6 +53,9 @@ Result<void> ValidateInstancesConfigs(const Json::Value& root) {
       CF_EXPECT(ValidateBootConfigs(root[i]["boot"]), "ValidateBootConfigs fail");
     }
   }
+  CF_EXPECT(ValidateStringConfig(root, "vm", "setupwizard_mode",
+                                 ValidateStupWizardMode),
+            "Invalid value for setupwizard_mode flag");
 
   return {};
 }
@@ -59,10 +65,10 @@ void InitInstancesConfigs(Json::Value& root) {
   InitBootConfigs(root);
 }
 
-void GenerateInstancesConfigs(const Json::Value& root,
-                              std::vector<std::string>& result) {
-  GenerateVmConfigs(root, result);
-  GenerateBootConfigs(root, result);
+std::vector<std::string> GenerateInstancesConfigs(const Json::Value& root) {
+  std::vector<std::string> result = GenerateVmConfigs(root);
+  result = MergeResults(result, GenerateBootConfigs(root));
+  return result;
 }
 
 }  // namespace cuttlefish

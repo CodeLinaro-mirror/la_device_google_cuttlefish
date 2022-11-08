@@ -29,11 +29,10 @@ TEST(FlagsParserTest, ParseInvalidJson) {
     instances=50;
   )"""";
 
-  std::vector<std::string> serialized_data;
   Json::Value json_configs;
-  std::string strjson(test_string);
+  std::string json_text(test_string);
 
-  EXPECT_FALSE(ParseJsonString(strjson, json_configs));
+  EXPECT_FALSE(ParseJsonString(json_text, json_configs));
 }
 
 TEST(FlagsParserTest, ParseJsonWithSpellingError) {
@@ -47,12 +46,13 @@ TEST(FlagsParserTest, ParseJsonWithSpellingError) {
 }
   )"""";
 
-  std::vector<std::string> serialized_data;
   Json::Value json_configs;
-  std::string strjson(test_string);
+  std::string json_text(test_string);
 
-  EXPECT_TRUE(ParseJsonString(strjson, json_configs));
-  EXPECT_FALSE(ParseCvdConfigs(json_configs, serialized_data).ok());
+  EXPECT_TRUE(ParseJsonString(json_text, json_configs))
+      << "Invalid Json string";
+  auto serialized_data = ParseCvdConfigs(json_configs);
+  EXPECT_FALSE(serialized_data.ok());
 }
 
 TEST(FlagsParserTest, ParseBasicJsonSingleInstances) {
@@ -66,13 +66,15 @@ TEST(FlagsParserTest, ParseBasicJsonSingleInstances) {
 }
   )"""";
 
-  std::vector<std::string> serialized_data;
   Json::Value json_configs;
-  std::string strjson(test_string);
+  std::string json_text(test_string);
 
-  EXPECT_TRUE(ParseJsonString(strjson, json_configs));
-  EXPECT_TRUE(ParseCvdConfigs(json_configs, serialized_data).ok());
-  EXPECT_TRUE(FindConfig(serialized_data, "--num_instances=1"));
+  EXPECT_TRUE(ParseJsonString(json_text, json_configs))
+      << "Invalid Json string";
+  auto serialized_data = ParseCvdConfigs(json_configs);
+  EXPECT_TRUE(serialized_data.ok()) << serialized_data.error().Trace();
+  EXPECT_TRUE(FindConfig(*serialized_data, "--num_instances=1"))
+      << "num_instances flag is missing or wrongly formatted";
 }
 
 TEST(FlagsParserTest, ParseBasicJsonTwoInstances) {
@@ -89,13 +91,15 @@ TEST(FlagsParserTest, ParseBasicJsonTwoInstances) {
 }
   )"""";
 
-  std::vector<std::string> serialized_data;
   Json::Value json_configs;
-  std::string strjson(test_string);
+  std::string json_text(test_string);
 
-  EXPECT_TRUE(ParseJsonString(strjson, json_configs));
-  EXPECT_TRUE(ParseCvdConfigs(json_configs, serialized_data).ok());
-  EXPECT_TRUE(FindConfig(serialized_data, "--num_instances=2"));
+  EXPECT_TRUE(ParseJsonString(json_text, json_configs))
+      << "Invalid Json string";
+  auto serialized_data = ParseCvdConfigs(json_configs);
+  EXPECT_TRUE(serialized_data.ok()) << serialized_data.error().Trace();
+  EXPECT_TRUE(FindConfig(*serialized_data, "--num_instances=2"))
+      << "num_instances flag is missing or wrongly formatted";
 }
 
 }  // namespace cuttlefish
