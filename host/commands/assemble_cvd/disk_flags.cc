@@ -83,12 +83,24 @@ DEFINE_string(otheros_esp_image, CF_DEFAULTS_OTHEROS_ESP_IMAGE,
               "Location of cuttlefish esp image. If the image does not exist, "
               "and --otheros_root_image is specified, an esp partition image "
               "is created with default bootloaders.");
-DEFINE_string(otheros_kernel_path, CF_DEFAULTS_OTHEROS_KERNEL_PATH,
-              "Location of cuttlefish otheros kernel.");
-DEFINE_string(otheros_initramfs_path, CF_DEFAULTS_OTHEROS_INITRAMFS_PATH,
-              "Location of cuttlefish otheros initramfs.img.");
-DEFINE_string(otheros_root_image, CF_DEFAULTS_OTHEROS_ROOT_IMAGE,
-              "Location of cuttlefish otheros root filesystem image.");
+
+DEFINE_string(linux_kernel_path, CF_DEFAULTS_LINUX_KERNEL_PATH,
+              "Location of linux kernel for cuttlefish otheros flow.");
+DEFINE_string(linux_initramfs_path, CF_DEFAULTS_LINUX_INITRAMFS_PATH,
+              "Location of linux initramfs.img for cuttlefish otheros flow.");
+DEFINE_string(linux_root_image, CF_DEFAULTS_LINUX_ROOT_IMAGE,
+              "Location of linux root filesystem image for cuttlefish otheros flow.");
+
+DEFINE_string(fuchsia_zedboot_path, CF_DEFAULTS_FUCHSIA_ZEDBOOT_PATH,
+              "Location of fuchsia zedboot path for cuttlefish otheros flow.");
+DEFINE_string(fuchsia_multiboot_bin_path, CF_DEFAULTS_FUCHSIA_MULTIBOOT_BIN_PATH,
+              "Location of fuchsia multiboot bin path for cuttlefish otheros flow.");
+DEFINE_string(fuchsia_root_image, CF_DEFAULTS_FUCHSIA_ROOT_IMAGE,
+              "Location of fuchsia root filesystem image for cuttlefish otheros flow.");
+
+DEFINE_string(custom_partition_path, CF_DEFAULTS_CUSTOM_PARTITION_PATH,
+              "Location of custom image that will be passed as a \"custom\" partition"
+              "to rootfs and can be used by /dev/block/by-name/custom");
 
 DEFINE_string(blank_metadata_image_mb, CF_DEFAULTS_BLANK_METADATA_IMAGE_MB,
               "The size of the blank metadata image to generate, MB.");
@@ -191,19 +203,33 @@ Result<void> ResolveInstanceFiles() {
   return {};
 }
 
-std::vector<ImagePartition> otheros_composite_disk_config(
+std::vector<ImagePartition> linux_composite_disk_config(
     const CuttlefishConfig::InstanceSpecific& instance) {
   std::vector<ImagePartition> partitions;
 
   partitions.push_back(ImagePartition{
-      .label = "otheros_esp",
+      .label = "linux_esp",
       .image_file_path = AbsolutePath(instance.otheros_esp_image()),
       .type = kEfiSystemPartition,
       .read_only = FLAGS_use_overlay,
   });
   partitions.push_back(ImagePartition{
-      .label = "otheros_root",
-      .image_file_path = AbsolutePath(instance.otheros_root_image()),
+      .label = "linux_root",
+      .image_file_path = AbsolutePath(instance.linux_root_image()),
+      .read_only = FLAGS_use_overlay,
+  });
+
+  return partitions;
+}
+
+std::vector<ImagePartition> fuchsia_composite_disk_config(
+    const CuttlefishConfig::InstanceSpecific& instance) {
+  std::vector<ImagePartition> partitions;
+
+  partitions.push_back(ImagePartition{
+      .label = "fuchsia_esp",
+      .image_file_path = AbsolutePath(instance.otheros_esp_image()),
+      .type = kEfiSystemPartition,
       .read_only = FLAGS_use_overlay,
   });
 
@@ -284,6 +310,14 @@ std::vector<ImagePartition> android_composite_disk_config(
       .image_file_path = AbsolutePath(instance.new_metadata_image()),
       .read_only = FLAGS_use_overlay,
   });
+  const auto custom_partition_path = instance.custom_partition_path();
+  if (!custom_partition_path.empty()) {
+    partitions.push_back(ImagePartition{
+        .label = "custom",
+        .image_file_path = AbsolutePath(custom_partition_path),
+        .read_only = FLAGS_use_overlay,
+    });
+  }
 
   // TODO: remove after moving ap to otheros flow
   if (!FLAGS_ap_rootfs_image.empty()) {
@@ -302,10 +336,18 @@ std::vector<ImagePartition> android_composite_disk_config(
 
 std::vector<ImagePartition> GetOsCompositeDiskConfig(
     const CuttlefishConfig::InstanceSpecific& instance) {
-  if (!instance.otheros_root_image().empty()) {
-    return otheros_composite_disk_config(instance);
+
+  switch (instance.boot_flow()) {
+    case CuttlefishConfig::InstanceSpecific::BootFlow::Android:
+      return android_composite_disk_config(instance);
+      break;
+    case CuttlefishConfig::InstanceSpecific::BootFlow::Linux:
+      return linux_composite_disk_config(instance);
+      break;
+    case CuttlefishConfig::InstanceSpecific::BootFlow::Fuchsia:
+      return fuchsia_composite_disk_config(instance);
+      break;
   }
-  return android_composite_disk_config(instance);
 }
 
 DiskBuilder OsCompositeDiskBuilder(const CuttlefishConfig& config,
@@ -511,11 +553,7 @@ class Gem5ImageUnpacker : public SetupFeature {
               "Failed to extract the vendor boot image");
 
     // Assume the user specified a kernel manually which is a vmlinux
-    std::ofstream kernel(unpack_dir + "/kernel", std::ios_base::binary |
-                                                 std::ios_base::trunc);
-    std::ifstream vmlinux(instance_.kernel_path(), std::ios_base::binary);
-    kernel << vmlinux.rdbuf();
-    kernel.close();
+    CF_EXPECT(cuttlefish::Copy(instance_.kernel_path(), unpack_dir + "/kernel"));
 
     // Gem5 needs the bootloader binary to be a specific directory structure
     // to find it. Create a 'binaries' directory and copy it into there
@@ -524,23 +562,15 @@ class Gem5ImageUnpacker : public SetupFeature {
                     S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) == 0 ||
                   errno == EEXIST,
               "\"" << binaries_dir << "\": " << strerror(errno));
-    std::ofstream bootloader(
-        binaries_dir + "/" + cpp_basename(instance_.bootloader()),
-        std::ios_base::binary | std::ios_base::trunc);
-    std::ifstream src_bootloader(instance_.bootloader(), std::ios_base::binary);
-    bootloader << src_bootloader.rdbuf();
-    bootloader.close();
+    CF_EXPECT(cuttlefish::Copy(instance_.bootloader(),
+        binaries_dir + "/" + cpp_basename(instance_.bootloader())));
 
     // Gem5 also needs the ARM version of the bootloader, even though it
     // doesn't use it. It'll even open it to check it's a valid ELF file.
     // Work around this by copying such a named file from the same directory
-    std::ofstream boot_arm(binaries_dir + "/boot.arm",
-                           std::ios_base::binary | std::ios_base::trunc);
-    std::ifstream src_boot_arm(
+    CF_EXPECT(cuttlefish::Copy(
         cpp_dirname(instance_.bootloader()) + "/boot.arm",
-        std::ios_base::binary);
-    boot_arm << src_boot_arm.rdbuf();
-    boot_arm.close();
+        binaries_dir + "/boot.arm"));
 
     return {};
   }
@@ -1041,12 +1071,24 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
       android::base::Split(FLAGS_vbmeta_system_image, ",");
   std::vector<std::string> otheros_esp_image =
       android::base::Split(FLAGS_otheros_esp_image, ",");
-  std::vector<std::string> otheros_kernel_path =
-      android::base::Split(FLAGS_otheros_kernel_path, ",");
-  std::vector<std::string> otheros_initramfs_path =
-      android::base::Split(FLAGS_otheros_initramfs_path, ",");
-  std::vector<std::string> otheros_root_image =
-      android::base::Split(FLAGS_otheros_root_image, ",");
+
+  std::vector<std::string> linux_kernel_path =
+      android::base::Split(FLAGS_linux_kernel_path, ",");
+  std::vector<std::string> linux_initramfs_path =
+      android::base::Split(FLAGS_linux_initramfs_path, ",");
+  std::vector<std::string> linux_root_image =
+      android::base::Split(FLAGS_linux_root_image, ",");
+
+  std::vector<std::string> fuchsia_zedboot_path =
+      android::base::Split(FLAGS_fuchsia_zedboot_path, ",");
+  std::vector<std::string> fuchsia_multiboot_bin_path =
+      android::base::Split(FLAGS_fuchsia_multiboot_bin_path, ",");
+  std::vector<std::string> fuchsia_root_image =
+      android::base::Split(FLAGS_fuchsia_root_image, ",");
+
+  std::vector<std::string> custom_partition_path =
+      android::base::Split(FLAGS_custom_partition_path, ",");
+
   std::vector<std::string> bootloader =
       android::base::Split(FLAGS_bootloader, ",");
   std::vector<std::string> initramfs_path =
@@ -1126,26 +1168,45 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
       cur_metadata_image = metadata_image[instance_index];
     }
     instance.set_metadata_image(cur_metadata_image);
-    if (instance_index >= otheros_root_image.size()) {
-      instance.set_otheros_root_image(otheros_root_image[0]);
-    } else {
-      instance.set_otheros_root_image(otheros_root_image[instance_index]);
-    }
     if (instance_index >= otheros_esp_image.size()) {
       instance.set_otheros_esp_image(otheros_esp_image[0]);
     } else {
       instance.set_otheros_esp_image(otheros_esp_image[instance_index]);
     }
-    if (instance_index >= otheros_kernel_path.size()) {
-      instance.set_otheros_kernel_path(otheros_kernel_path[0]);
+    if (instance_index >= linux_kernel_path.size()) {
+      instance.set_linux_kernel_path(linux_kernel_path[0]);
     } else {
-      instance.set_otheros_kernel_path(otheros_kernel_path[instance_index]);
+      instance.set_linux_kernel_path(linux_kernel_path[instance_index]);
     }
-    if (instance_index >= otheros_initramfs_path.size()) {
-      instance.set_otheros_initramfs_path(otheros_initramfs_path[0]);
+    if (instance_index >= linux_initramfs_path.size()) {
+      instance.set_linux_initramfs_path(linux_initramfs_path[0]);
     } else {
-      instance.set_otheros_initramfs_path(
-          otheros_initramfs_path[instance_index]);
+      instance.set_linux_initramfs_path(linux_initramfs_path[instance_index]);
+    }
+    if (instance_index >= linux_root_image.size()) {
+      instance.set_linux_root_image(linux_root_image[0]);
+    } else {
+      instance.set_linux_root_image(linux_root_image[instance_index]);
+    }
+    if (instance_index >= fuchsia_zedboot_path.size()) {
+      instance.set_fuchsia_zedboot_path(fuchsia_zedboot_path[0]);
+    } else {
+      instance.set_fuchsia_zedboot_path(fuchsia_zedboot_path[instance_index]);
+    }
+    if (instance_index >= fuchsia_multiboot_bin_path.size()) {
+      instance.set_fuchsia_multiboot_bin_path(fuchsia_multiboot_bin_path[0]);
+    } else {
+      instance.set_fuchsia_multiboot_bin_path(fuchsia_multiboot_bin_path[instance_index]);
+    }
+    if (instance_index >= fuchsia_root_image.size()) {
+      instance.set_fuchsia_root_image(fuchsia_root_image[0]);
+    } else {
+      instance.set_fuchsia_root_image(fuchsia_root_image[instance_index]);
+    }
+    if (instance_index >= custom_partition_path.size()) {
+      instance.set_custom_partition_path(custom_partition_path[0]);
+    } else {
+      instance.set_custom_partition_path(custom_partition_path[instance_index]);
     }
     if (instance_index >= bootloader.size()) {
       instance.set_bootloader(bootloader[0]);

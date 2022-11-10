@@ -94,13 +94,14 @@ DEFINE_string(extra_bootconfig_args, CF_DEFAULTS_EXTRA_BOOTCONFIG_ARGS,
               "Space-separated list of extra bootconfig args. "
               "Note: overwriting an existing bootconfig argument "
               "requires ':=' instead of '='.");
-DEFINE_bool(guest_enforce_security, CF_DEFAULTS_GUEST_ENFORCE_SECURITY,
+DEFINE_string(guest_enforce_security,
+              CF_DEFAULTS_GUEST_ENFORCE_SECURITY?"true":"false",
             "Whether to run in enforcing mode (non permissive).");
 DEFINE_string(memory_mb, std::to_string(CF_DEFAULTS_MEMORY_MB),
              "Total amount of memory available for guest, MB.");
 DEFINE_string(serial_number, CF_DEFAULTS_SERIAL_NUMBER,
               "Serial number to use for the device");
-DEFINE_bool(use_random_serial, CF_DEFAULTS_USE_RANDOM_SERIAL,
+DEFINE_string(use_random_serial, CF_DEFAULTS_USE_RANDOM_SERIAL?"true":"false",
             "Whether to use random serial for the device.");
 DEFINE_string(vm_manager, CF_DEFAULTS_VM_MANAGER,
               "What virtual machine manager to use, one of {qemu_cli, crosvm}");
@@ -571,6 +572,18 @@ Result<std::vector<KernelConfig>> ReadKernelConfig() {
 
 #endif  // #ifdef __ANDROID__
 
+Result<bool> ParseBool(const std::string& flag_str,
+                        const std::string& flag_name) {
+  auto result = android::base::ParseBool(flag_str);
+  CF_EXPECT(result != android::base::ParseBoolResult::kError,
+            "Failed to parse value \"" << flag_str
+            << "\" for " << flag_name);
+  if (result == android::base::ParseBoolResult::kTrue) {
+    return true;
+  }
+  return false;
+}
+
 } // namespace
 
 Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
@@ -697,7 +710,6 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   tmp_config_obj.set_secure_hals(
       std::set<std::string>(secure_hals.begin(), secure_hals.end()));
 
-  tmp_config_obj.set_guest_enforce_security(FLAGS_guest_enforce_security);
   tmp_config_obj.set_extra_kernel_cmdline(FLAGS_extra_kernel_cmdline);
   tmp_config_obj.set_extra_bootconfig_args(FLAGS_extra_bootconfig_args);
 
@@ -828,6 +840,10 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       android::base::Split(FLAGS_setupwizard_mode, ",");
   std::vector<std::string> userdata_format_vec =
       android::base::Split(FLAGS_userdata_format, ",");
+  std::vector<std::string> guest_enforce_security_vec =
+      android::base::Split(FLAGS_guest_enforce_security, ",");
+  std::vector<std::string> use_random_serial_vec =
+      android::base::Split(FLAGS_use_random_serial, ",");
 
   // new instance specific flags (moved from common flags)
   std::vector<std::string> gem5_binary_dirs =
@@ -870,11 +886,19 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       iface_config = DefaultNetworkInterfaces(num);
     }
 
+    bool use_random_serial;
+    if (instance_index >= use_random_serial_vec.size()) {
+      use_random_serial = CF_EXPECT(ParseBool(use_random_serial_vec[0],
+                                    "use_random_serial"));
+    } else {
+      use_random_serial = CF_EXPECT(ParseBool(
+          use_random_serial_vec[instance_index], "use_random_serial"));
+    }
     auto instance = tmp_config_obj.ForInstance(num);
     auto const_instance =
         const_cast<const CuttlefishConfig&>(tmp_config_obj).ForInstance(num);
     instance.set_use_allocd(FLAGS_use_allocd);
-    if (FLAGS_use_random_serial) {
+    if (use_random_serial) {
       instance.set_serial_number(
           RandomSerialNumber("CFCVD" + std::to_string(num)));
     } else {
@@ -1054,6 +1078,16 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     } else {
       instance.set_userdata_format(userdata_format_vec[instance_index]);
     }
+
+    bool guest_enforce_security;
+    if (instance_index >= guest_enforce_security_vec.size()) {
+      guest_enforce_security = CF_EXPECT(ParseBool(guest_enforce_security_vec[0],
+                                    "guest_enforce_security"));
+    } else {
+      guest_enforce_security = CF_EXPECT(ParseBool(
+          guest_enforce_security_vec[instance_index], "guest_enforce_security"));
+    }
+    instance.set_guest_enforce_security(guest_enforce_security);
 
     int camera_server_port;
     if (instance_index < camera_server_port_vec.size()) {
