@@ -20,6 +20,9 @@
 #include <json/json.h>
 
 #include "common/libs/utils/files.h"
+#include "host/libs/vm_manager/crosvm_manager.h"
+#include "host/libs/vm_manager/gem5_manager.h"
+#include "host/libs/vm_manager/qemu_manager.h"
 
 namespace cuttlefish {
 namespace {
@@ -53,6 +56,14 @@ std::string CuttlefishConfig::InstanceSpecific::instance_dir() const {
 std::string CuttlefishConfig::InstanceSpecific::instance_internal_dir() const {
   return PerInstancePath(kInternalDirName);
 }
+
+// TODO (b/163575714) add virtio console support to the bootloader so the
+// virtio console path for the console device can be taken again. When that
+// happens, this function can be deleted along with all the code paths it
+// forces.
+bool CuttlefishConfig::InstanceSpecific::use_bootloader() const {
+  return true;
+};
 
 static constexpr char kSerialNumber[] = "serial_number";
 std::string CuttlefishConfig::InstanceSpecific::serial_number() const {
@@ -138,6 +149,118 @@ void CuttlefishConfig::MutableInstanceSpecific::set_fixed_location_file_path(
   (*Dictionary())[kFixedLocationFilePath] = fixed_location_file_path;
 }
 
+static constexpr char kGem5BinaryDir[] = "gem5_binary_dir";
+std::string CuttlefishConfig::InstanceSpecific::gem5_binary_dir() const {
+  return (*Dictionary())[kGem5BinaryDir].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_gem5_binary_dir(
+    const std::string& gem5_binary_dir) {
+  (*Dictionary())[kGem5BinaryDir] = gem5_binary_dir;
+}
+
+static constexpr char kGem5CheckpointDir[] = "gem5_checkpoint_dir";
+std::string CuttlefishConfig::InstanceSpecific::gem5_checkpoint_dir() const {
+  return (*Dictionary())[kGem5CheckpointDir].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_gem5_checkpoint_dir(
+    const std::string& gem5_checkpoint_dir) {
+  (*Dictionary())[kGem5CheckpointDir] = gem5_checkpoint_dir;
+}
+
+static constexpr char kKgdb[] = "kgdb";
+void CuttlefishConfig::MutableInstanceSpecific::set_kgdb(bool kgdb) {
+  (*Dictionary())[kKgdb] = kgdb;
+}
+bool CuttlefishConfig::InstanceSpecific::kgdb() const {
+  return (*Dictionary())[kKgdb].asBool();
+}
+
+static constexpr char kCpus[] = "cpus";
+void CuttlefishConfig::MutableInstanceSpecific::set_cpus(int cpus) { (*Dictionary())[kCpus] = cpus; }
+int CuttlefishConfig::InstanceSpecific::cpus() const { return (*Dictionary())[kCpus].asInt(); }
+
+static constexpr char kGdbPort[] = "gdb_port";
+void CuttlefishConfig::MutableInstanceSpecific::set_gdb_port(int port) {
+  (*Dictionary())[kGdbPort] = port;
+}
+int CuttlefishConfig::InstanceSpecific::gdb_port() const {
+  return (*Dictionary())[kGdbPort].asInt();
+}
+
+static constexpr char kDisplayConfigs[] = "display_configs";
+static constexpr char kXRes[] = "x_res";
+static constexpr char kYRes[] = "y_res";
+static constexpr char kDpi[] = "dpi";
+static constexpr char kRefreshRateHz[] = "refresh_rate_hz";
+std::vector<CuttlefishConfig::DisplayConfig>
+CuttlefishConfig::InstanceSpecific::display_configs() const {
+  std::vector<DisplayConfig> display_configs;
+  for (auto& display_config_json : (*Dictionary())[kDisplayConfigs]) {
+    DisplayConfig display_config = {};
+    display_config.width = display_config_json[kXRes].asInt();
+    display_config.height = display_config_json[kYRes].asInt();
+    display_config.dpi = display_config_json[kDpi].asInt();
+    display_config.refresh_rate_hz =
+        display_config_json[kRefreshRateHz].asInt();
+    display_configs.emplace_back(display_config);
+  }
+  return display_configs;
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_display_configs(
+    const std::vector<DisplayConfig>& display_configs) {
+  Json::Value display_configs_json(Json::arrayValue);
+
+  for (const DisplayConfig& display_configs : display_configs) {
+    Json::Value display_config_json(Json::objectValue);
+    display_config_json[kXRes] = display_configs.width;
+    display_config_json[kYRes] = display_configs.height;
+    display_config_json[kDpi] = display_configs.dpi;
+    display_config_json[kRefreshRateHz] = display_configs.refresh_rate_hz;
+    display_configs_json.append(display_config_json);
+  }
+
+  (*Dictionary())[kDisplayConfigs] = display_configs_json;
+}
+
+
+static constexpr char kTargetArch[] = "target_arch";
+void CuttlefishConfig::MutableInstanceSpecific::set_target_arch(
+    Arch target_arch) {
+  (*Dictionary())[kTargetArch] = static_cast<int>(target_arch);
+}
+Arch CuttlefishConfig::InstanceSpecific::target_arch() const {
+  return static_cast<Arch>((*Dictionary())[kTargetArch].asInt());
+}
+
+static constexpr char kConsole[] = "console";
+void CuttlefishConfig::MutableInstanceSpecific::set_console(bool console) {
+  (*Dictionary())[kConsole] = console;
+}
+bool CuttlefishConfig::InstanceSpecific::console() const {
+  return (*Dictionary())[kConsole].asBool();
+}
+std::string CuttlefishConfig::InstanceSpecific::console_dev() const {
+  auto can_use_virtio_console = !kgdb() && !use_bootloader();
+  std::string console_dev;
+  if (can_use_virtio_console ||
+      config_->vm_manager() == vm_manager::Gem5Manager::name()) {
+    // If kgdb and the bootloader are disabled, the Android serial console
+    // spawns on a virtio-console port. If the bootloader is enabled, virtio
+    // console can't be used since uboot doesn't support it.
+    console_dev = "hvc1";
+  } else {
+    // crosvm ARM does not support ttyAMA. ttyAMA is a part of ARM arch.
+    Arch target = target_arch();
+    if ((target == Arch::Arm64 || target == Arch::Arm) &&
+        config_->vm_manager() != vm_manager::CrosvmManager::name()) {
+      console_dev = "ttyAMA0";
+    } else {
+      console_dev = "ttyS0";
+    }
+  }
+  return console_dev;
+}
+
 std::string CuttlefishConfig::InstanceSpecific::logcat_pipe_name() const {
   return AbsolutePath(PerInstanceInternalPath("logcat-pipe"));
 }
@@ -187,6 +310,11 @@ std::string CuttlefishConfig::InstanceSpecific::sdcard_path() const {
 std::string CuttlefishConfig::InstanceSpecific::persistent_composite_disk_path()
     const {
   return AbsolutePath(PerInstancePath("persistent_composite.img"));
+}
+
+std::string CuttlefishConfig::InstanceSpecific::os_composite_disk_path()
+    const {
+  return AbsolutePath(PerInstancePath("os_composite.img"));
 }
 
 std::string CuttlefishConfig::InstanceSpecific::vbmeta_path() const {
@@ -415,6 +543,14 @@ void CuttlefishConfig::MutableInstanceSpecific::set_start_rootcanal(
 }
 bool CuttlefishConfig::InstanceSpecific::start_rootcanal() const {
   return (*Dictionary())[kStartRootcanal].asBool();
+}
+
+static constexpr char kStartNetsim[] = "start_netsim";
+void CuttlefishConfig::MutableInstanceSpecific::set_start_netsim(bool start) {
+  (*Dictionary())[kStartNetsim] = start;
+}
+bool CuttlefishConfig::InstanceSpecific::start_netsim() const {
+  return (*Dictionary())[kStartNetsim].asBool();
 }
 
 static constexpr char kStartAp[] = "start_ap";

@@ -136,9 +136,9 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
     crosvm_cmd.Cmd().AddParameter("--protected-vm");
   }
 
-  if (config.gdb_port() > 0) {
-    CF_EXPECT(config.cpus() == 1, "CPUs must be 1 for crosvm gdb mode");
-    crosvm_cmd.Cmd().AddParameter("--gdb=", config.gdb_port());
+  if (instance.gdb_port() > 0) {
+    CF_EXPECT(instance.cpus() == 1, "CPUs must be 1 for crosvm gdb mode");
+    crosvm_cmd.Cmd().AddParameter("--gdb=", instance.gdb_port());
   }
 
   const auto gpu_capture_enabled = !config.gpu_capture_binary().empty();
@@ -165,7 +165,7 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
                                   gpu_common_3d_string, gpu_angle_string);
   }
 
-  for (const auto& display_config : config.display_configs()) {
+  for (const auto& display_config : instance.display_configs()) {
     crosvm_cmd.Cmd().AddParameter(
         "--gpu-display=", "width=", display_config.width, ",",
         "height=", display_config.height);
@@ -176,7 +176,7 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
 
   // crosvm_cmd.Cmd().AddParameter("--null-audio");
   crosvm_cmd.Cmd().AddParameter("--mem=", config.memory_mb());
-  crosvm_cmd.Cmd().AddParameter("--cpus=", config.cpus());
+  crosvm_cmd.Cmd().AddParameter("--cpus=", instance.cpus());
 
   auto disk_num = instance.virtual_disk_paths().size();
   CF_EXPECT(VmManager::kMaxDisks >= disk_num,
@@ -194,7 +194,7 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
     auto touch_type_parameter =
         config.enable_webrtc() ? "--multi-touch=" : "--single-touch=";
 
-    auto display_configs = config.display_configs();
+    auto display_configs = instance.display_configs();
     CF_EXPECT(display_configs.size() >= 1);
 
     for (int i = 0; i < display_configs.size(); ++i) {
@@ -270,12 +270,12 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
   crosvm_cmd.AddHvcReadOnly(instance.kernel_log_pipe_name(),
                             config.enable_kernel_log());
 
-  if (config.console()) {
+  if (instance.console()) {
     // stdin is the only currently supported way to write data to a serial port in
     // crosvm. A file (named pipe) is used here instead of stdout to ensure only
     // the serial port output is received by the console forwarder as crosvm may
     // print other messages to stdout.
-    if (config.kgdb() || config.use_bootloader()) {
+    if (instance.kgdb() || instance.use_bootloader()) {
       crosvm_cmd.AddSerialConsoleReadWrite(instance.console_out_pipe_name(),
                                            instance.console_in_pipe_name(),
                                            config.enable_kernel_log());
@@ -296,7 +296,7 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
     // In kgdb mode, earlycon is an interactive console, and so early
     // dmesg will go there instead of the kernel.log
     if (config.enable_kernel_log() &&
-        (config.kgdb() || config.use_bootloader())) {
+        (instance.kgdb() || instance.use_bootloader())) {
       crosvm_cmd.AddSerialConsoleReadOnly(instance.kernel_log_pipe_name());
     }
 
@@ -361,8 +361,7 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
                           << " devices");
 
   if (config.enable_audio()) {
-    crosvm_cmd.Cmd().AddParameter(
-        "--sound=", config.ForDefaultInstance().audio_server_path());
+    crosvm_cmd.Cmd().AddParameter("--sound=", instance.audio_server_path());
   }
 
   // TODO(b/162071003): virtiofs crashes without sandboxing, this should be fixed
@@ -460,5 +459,4 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
 }
 
 } // namespace vm_manager
-} // namespace cuttlefish
-
+}  // namespace cuttlefish

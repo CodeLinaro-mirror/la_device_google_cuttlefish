@@ -58,6 +58,9 @@ DEFINE_string(verbosity, "INFO", "Console logging verbosity. Options are VERBOSE
 DEFINE_string(file_verbosity, "DEBUG",
               "Log file logging verbosity. Options are VERBOSE,DEBUG,INFO,"
               "WARNING,ERROR");
+DEFINE_bool(use_overlay, true,
+            "Capture disk writes an overlay. This is a "
+            "prerequisite for powerwash_cvd or multiple instances.");
 
 namespace {
 
@@ -118,14 +121,21 @@ std::string ValidateMetricsConfirmation(std::string use_metrics) {
   if (ch != 'n') {
     std::cout << "===================================================================\n";
     std::cout << "NOTICE:\n\n";
-    std::cout << "We collect usage statistics in accordance with our\n"
-                 "Content Licenses (https://source.android.com/setup/start/licenses),\n"
-                 "Contributor License Agreement (https://cla.developers.google.com/),\n"
-                 "Privacy Policy (https://policies.google.com/privacy) and\n"
-                 "Terms of Service (https://policies.google.com/terms).\n";
-    std::cout << "===================================================================\n\n";
+    std::cout << "By using this Android Virtual Device, you agree to\n";
+    std::cout << "Google Terms of Service (https://policies.google.com/terms).\n";
+    std::cout << "The Google Privacy Policy (https://policies.google.com/privacy)\n";
+    std::cout << "describes how Google handles information generated as you use\n";
+    std::cout << "Google Services.";
+
     if (use_metrics.empty()) {
-      std::cout << "Do you accept anonymous usage statistics reporting (Y/n)?: ";
+      std::cout << "\n";
+      std::cout << "===================================================================\n";
+      std::cout << "Automatically send diagnostic information to Google, such as crash\n";
+      std::cout << "reports and usage data from this Android Virtual Device (Y/n)?:";
+    } else {
+      std::cout << " You can adjust these permission at any time by\n";
+      std::cout << "\"launch_cvd -report_anonymous_usage_stats=n\"\n";
+      std::cout << "===================================================================\n\n";
     }
   }
   for (;;) {
@@ -199,6 +209,22 @@ int main(int argc, char** argv) {
   auto instance_nums =
       cuttlefish::InstanceNumsCalculator().FromGlobalGflags().Calculate();
   CHECK(instance_nums.ok()) << instance_nums.error();
+
+  if (cuttlefish::CuttlefishConfig::ConfigExists()) {
+    auto previous_config = cuttlefish::CuttlefishConfig::Get();
+    CHECK(previous_config);
+    CHECK(previous_config->Instances().size() > 0);
+    auto previous_instance = previous_config->Instances()[0];
+    const auto& disks = previous_instance.virtual_disk_paths();
+    auto overlay = previous_instance.PerInstancePath("overlay.img");
+    auto used_overlay =
+        std::find(disks.begin(), disks.end(), overlay) != disks.end();
+    CHECK(used_overlay == FLAGS_use_overlay)
+        << "Cannot transition between different values of --use_overlay "
+        << "(Previous = " << used_overlay << ", current = " << FLAGS_use_overlay
+        << "). To fix this, delete \"" << previous_config->root_dir()
+        << "\" and any image files.";
+  }
 
   CHECK(instance_nums->size() > 0) << "Expected at least one instance";
   auto instance_num_str = std::to_string(*instance_nums->begin());

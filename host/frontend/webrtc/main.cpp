@@ -258,7 +258,7 @@ int main(int argc, char** argv) {
 
   uint32_t display_index = 0;
   std::vector<std::shared_ptr<VideoSink>> displays;
-  for (const auto& display_config : cvd_config->display_configs()) {
+  for (const auto& display_config : instance.display_configs()) {
     const std::string display_id = "display_" + std::to_string(display_index);
 
     auto display =
@@ -296,7 +296,7 @@ int main(int argc, char** argv) {
 
   observer_factory->SetDisplayHandler(display_handler);
 
-  streamer->SetHardwareSpec("CPUs", cvd_config->cpus());
+  streamer->SetHardwareSpec("CPUs", instance.cpus());
   streamer->SetHardwareSpec("RAM", std::to_string(cvd_config->memory_mb()) + " mb");
 
   std::string user_friendly_gpu_mode;
@@ -346,53 +346,47 @@ int main(int argc, char** argv) {
 
   const auto& actions_provider =
       injector.get<cuttlefish::CustomActionConfigProvider&>();
-  for (const auto& custom_action : actions_provider.CustomActions()) {
-    if (custom_action.shell_command) {
-      if (custom_action.buttons.size() != 1) {
-        LOG(FATAL) << "Expected exactly one button for custom action command: "
-                   << *(custom_action.shell_command);
-      }
-      const auto button = custom_action.buttons[0];
-      streamer->AddCustomControlPanelButtonWithShellCommand(
-          button.command, button.title, button.icon_name,
-          *(custom_action.shell_command));
-    } else if (custom_action.server) {
-      if (action_server_fds.find(*(custom_action.server)) !=
-          action_server_fds.end()) {
-        LOG(INFO) << "Connecting to custom action server "
-                  << *(custom_action.server);
 
-        int fd = action_server_fds[*(custom_action.server)];
-        cuttlefish::SharedFD custom_action_server = cuttlefish::SharedFD::Dup(fd);
-        close(fd);
+  for (const auto& custom_action : actions_provider.CustomShellActions()) {
+    const auto button = custom_action.button;
+    streamer->AddCustomControlPanelButtonWithShellCommand(
+        button.command, button.title, button.icon_name,
+        custom_action.shell_command);
+  }
 
-        if (custom_action_server->IsOpen()) {
-          std::vector<std::string> commands_for_this_server;
-          for (const auto& button : custom_action.buttons) {
-            streamer->AddCustomControlPanelButton(button.command, button.title,
-                                                  button.icon_name);
-            commands_for_this_server.push_back(button.command);
-          }
-          observer_factory->AddCustomActionServer(custom_action_server,
-                                                  commands_for_this_server);
-        } else {
-          LOG(ERROR) << "Error connecting to custom action server: "
-                     << *(custom_action.server);
-        }
-      } else {
-        LOG(ERROR) << "Custom action server not provided as command line flag: "
-                   << *(custom_action.server);
+  for (const auto& custom_action : actions_provider.CustomActionServers()) {
+    if (action_server_fds.find(custom_action.server) ==
+        action_server_fds.end()) {
+      LOG(ERROR) << "Custom action server not provided as command line flag: "
+                 << custom_action.server;
+      continue;
+    }
+    LOG(INFO) << "Connecting to custom action server " << custom_action.server;
+
+    int fd = action_server_fds[custom_action.server];
+    cuttlefish::SharedFD custom_action_server = cuttlefish::SharedFD::Dup(fd);
+    close(fd);
+
+    if (custom_action_server->IsOpen()) {
+      std::vector<std::string> commands_for_this_server;
+      for (const auto& button : custom_action.buttons) {
+        streamer->AddCustomControlPanelButton(button.command, button.title,
+                                              button.icon_name);
+        commands_for_this_server.push_back(button.command);
       }
-    } else if (!custom_action.device_states.empty()) {
-      if (custom_action.buttons.size() != 1) {
-        LOG(FATAL)
-            << "Expected exactly one button for custom action device states.";
-      }
-      const auto button = custom_action.buttons[0];
+      observer_factory->AddCustomActionServer(custom_action_server,
+                                              commands_for_this_server);
+    } else {
+      LOG(ERROR) << "Error connecting to custom action server: "
+                 << custom_action.server;
+    }
+  }
+
+  for (const auto& custom_action : actions_provider.CustomDeviceStateActions()) {
+      const auto button = custom_action.button;
       streamer->AddCustomControlPanelButtonWithDeviceStates(
           button.command, button.title, button.icon_name,
           custom_action.device_states);
-    }
   }
 
   std::shared_ptr<cuttlefish::webrtc_streaming::OperatorObserver> operator_observer(

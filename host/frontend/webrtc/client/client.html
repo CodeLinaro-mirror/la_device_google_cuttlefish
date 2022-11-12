@@ -24,6 +24,17 @@
     </head>
 
     <body>
+      <script>
+        // Set the theme as soon as possible, before most elements in the UI
+        //  have been loaded.
+        const params = new URLSearchParams(location.search);
+        let theme = params.get("theme");
+        if (theme === "light") {
+          document.querySelector('body').classList.add('light-theme');
+        } else if (theme === "dark") {
+          document.querySelector('body').classList.add('dark-theme');
+        }
+      </script>
       <div id="loader"></div>
       <div id="error-message-div">
         <h3 id="error-message" class="hidden">
@@ -31,20 +42,7 @@
         </h3>
       </div>
       <section id="device-connection">
-        <div id='header'>
-          <div id='app-controls'>
-            <div id="keyboard-capture-control" title="Capture Keyboard"></div>
-            <div id="mic-capture-control" title="Capture Microphone"></div>
-            <div id="camera-control" title="Capture Camera"></div>
-            <div id="audio-playback-control" title="Play audio">
-              <audio id="device-audio"></audio>
-            </div>
-            <div id="record-video-control" title="Capture Display as Webm"></div>
-          </div>
-          <div id='status-div'>
-            <h3 id='status-message' class='connecting'>Connecting to device</h3>
-          </div>
-        </div>
+        <audio id="device-audio"></audio>
         <div id='controls-and-displays'>
           <div id='control-panel-default-buttons' class='control-panel-column'>
             <button id='power_btn' title='Power' disabled='true' class='material-icons'>power_settings_new</button>
@@ -54,15 +52,21 @@
             <button id='bluetooth-modal-button' title='Bluetooth console' class='material-icons'>
               settings_bluetooth
             </button>
+            <button id='back_btn' title='Back' disabled='true' class='material-icons'>arrow_back</button>
             <button id='home_btn' title='Home' disabled='true' class='material-icons'>home</button>
             <button id='menu_btn' title='Menu' disabled='true' class='material-icons'>menu</button>
-            <button id='rotate_btn' title='Rotate' disabled='true' class='material-icons' data-adb="true">screen_rotation</button>
+            <button id='rotate_left_btn' title='Rotate left' disabled='true' class='material-icons' data-adb="true">rotate_90_degrees_ccw</button>
+            <button id='rotate_right_btn' title='Rotate right' disabled='true' class='material-icons' data-adb="true">rotate_90_degrees_cw</button>
             <button id='volume_up_btn' title='Volume up' disabled='true' class='material-icons'>volume_up</button>
             <button id='volume_down_btn' title='Volume down' disabled='true' class='material-icons'>volume_down</button>
+            <button id='volume_off_btn' title='Volume off' class='material-icons'>volume_off</button>
+            <button id='camera_off_btn' title='Capture camera' class='material-icons'>videocam_off</button>
+            <button id='record_video_btn' title='Record screen' class='material-icons'>movie_creation</button>
             <button id='mic_btn' title='Microphone' disabled='true' class='material-icons'>mic</button>
           </div>
           <div id='control-panel-custom-buttons' class='control-panel-column'></div>
-          <div id='device-displays'>
+          <!-- tabindex="-1" allows this element to capture keyboard events -->
+          <div id='device-displays' tabindex="-1">
           </div>
         </div>
       </section>
@@ -161,5 +165,13 @@
        <script src="js/cf_webrtc.js" type="module"></script>
        <script src="js/controls.js"></script>
        <script src="js/app.js"></script>
+       <template id="display-template">
+         <div class="device-display">
+           <div class="device-display-info"></div>
+           <div class="device-video-container">
+             <video autoplay muted class="device-display-video"></video>
+           </div>
+         </div>
+       </template>
     </body>
 </html>

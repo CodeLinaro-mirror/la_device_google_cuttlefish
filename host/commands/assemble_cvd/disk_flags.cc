@@ -93,6 +93,7 @@ DECLARE_string(initramfs_path);
 DECLARE_string(kernel_path);
 DECLARE_bool(resume);
 DECLARE_bool(protected_vm);
+DECLARE_bool(use_overlay);
 
 namespace cuttlefish {
 
@@ -149,97 +150,98 @@ std::vector<ImagePartition> GetOsCompositeDiskConfig() {
   partitions.push_back(ImagePartition{
       .label = "misc",
       .image_file_path = AbsolutePath(FLAGS_misc_image),
-      .read_only = true,
+      .read_only = FLAGS_use_overlay,
   });
   partitions.push_back(ImagePartition{
       .label = "boot_a",
       .image_file_path = AbsolutePath(FLAGS_boot_image),
-      .read_only = true,
+      .read_only = FLAGS_use_overlay,
   });
   partitions.push_back(ImagePartition{
       .label = "boot_b",
       .image_file_path = AbsolutePath(FLAGS_boot_image),
-      .read_only = true,
+      .read_only = FLAGS_use_overlay,
   });
   partitions.push_back(ImagePartition{
       .label = "init_boot_a",
       .image_file_path = AbsolutePath(FLAGS_init_boot_image),
-      .read_only = true,
+      .read_only = FLAGS_use_overlay,
   });
   partitions.push_back(ImagePartition{
       .label = "init_boot_b",
       .image_file_path = AbsolutePath(FLAGS_init_boot_image),
-      .read_only = true,
+      .read_only = FLAGS_use_overlay,
   });
   partitions.push_back(ImagePartition{
       .label = "vendor_boot_a",
       .image_file_path = AbsolutePath(FLAGS_vendor_boot_image),
-      .read_only = true,
+      .read_only = FLAGS_use_overlay,
   });
   partitions.push_back(ImagePartition{
       .label = "vendor_boot_b",
       .image_file_path = AbsolutePath(FLAGS_vendor_boot_image),
-      .read_only = true,
+      .read_only = FLAGS_use_overlay,
   });
   partitions.push_back(ImagePartition{
       .label = "vbmeta_a",
       .image_file_path = AbsolutePath(FLAGS_vbmeta_image),
-      .read_only = true,
+      .read_only = FLAGS_use_overlay,
   });
   partitions.push_back(ImagePartition{
       .label = "vbmeta_b",
       .image_file_path = AbsolutePath(FLAGS_vbmeta_image),
-      .read_only = true,
+      .read_only = FLAGS_use_overlay,
   });
   partitions.push_back(ImagePartition{
       .label = "vbmeta_system_a",
       .image_file_path = AbsolutePath(FLAGS_vbmeta_system_image),
-      .read_only = true,
+      .read_only = FLAGS_use_overlay,
   });
   partitions.push_back(ImagePartition{
       .label = "vbmeta_system_b",
       .image_file_path = AbsolutePath(FLAGS_vbmeta_system_image),
-      .read_only = true,
+      .read_only = FLAGS_use_overlay,
   });
   partitions.push_back(ImagePartition{
       .label = "super",
       .image_file_path = AbsolutePath(FLAGS_super_image),
-      .read_only = true,
+      .read_only = FLAGS_use_overlay,
   });
   partitions.push_back(ImagePartition{
       .label = "userdata",
       .image_file_path = AbsolutePath(FLAGS_data_image),
-      .read_only = true,
+      .read_only = FLAGS_use_overlay,
   });
   partitions.push_back(ImagePartition{
       .label = "metadata",
       .image_file_path = AbsolutePath(FLAGS_metadata_image),
-      .read_only = true,
+      .read_only = FLAGS_use_overlay,
   });
   if (!FLAGS_otheros_root_image.empty()) {
     partitions.push_back(ImagePartition{
         .label = "otheros_esp",
         .image_file_path = AbsolutePath(FLAGS_otheros_esp_image),
         .type = kEfiSystemPartition,
-        .read_only = true,
+        .read_only = FLAGS_use_overlay,
     });
     partitions.push_back(ImagePartition{
         .label = "otheros_root",
         .image_file_path = AbsolutePath(FLAGS_otheros_root_image),
-        .read_only = true,
+        .read_only = FLAGS_use_overlay,
     });
   }
   if (!FLAGS_ap_rootfs_image.empty()) {
     partitions.push_back(ImagePartition{
         .label = "ap_rootfs",
         .image_file_path = AbsolutePath(FLAGS_ap_rootfs_image),
-        .read_only = true,
+        .read_only = FLAGS_use_overlay,
     });
   }
   return partitions;
 }
 
-DiskBuilder OsCompositeDiskBuilder(const CuttlefishConfig& config) {
+DiskBuilder OsCompositeDiskBuilder(const CuttlefishConfig& config,
+    const CuttlefishConfig::InstanceSpecific& instance) {
   return DiskBuilder()
       .Partitions(GetOsCompositeDiskConfig())
       .VmManager(config.vm_manager())
@@ -247,7 +249,7 @@ DiskBuilder OsCompositeDiskBuilder(const CuttlefishConfig& config) {
       .ConfigPath(config.AssemblyPath("os_composite_disk_config.txt"))
       .HeaderPath(config.AssemblyPath("os_composite_gpt_header.img"))
       .FooterPath(config.AssemblyPath("os_composite_gpt_footer.img"))
-      .CompositeDiskPath(config.os_composite_disk_path())
+      .CompositeDiskPath(instance.os_composite_disk_path())
       .ResumeIfPossible(FLAGS_resume);
 }
 
@@ -948,6 +950,7 @@ Result<void> CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
   for (const auto& instance : config.Instances()) {
     fruit::Injector<> instance_injector(DiskChangesPerInstanceComponent,
                                         &fetcher_config, &config, &instance);
+
     for (auto& late_injected :
          instance_injector.getMultibindings<LateInjected>()) {
       CF_EXPECT(late_injected->LateInject(instance_injector));
@@ -980,11 +983,11 @@ Result<void> CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
                << "\": " << existing_sizes.disk_size;
   }
 
-  auto os_disk_builder = OsCompositeDiskBuilder(config);
-  auto built_composite =
-      CF_EXPECT(os_disk_builder.BuildCompositeDiskIfNecessary());
-  if (built_composite) {
-    for (auto instance : config.Instances()) {
+  for (const auto& instance : config.Instances()) {
+    auto os_disk_builder = OsCompositeDiskBuilder(config, instance);
+    auto built_composite =
+        CF_EXPECT(os_disk_builder.BuildCompositeDiskIfNecessary());
+    if (built_composite) {
       if (FileExists(instance.access_kregistry_path())) {
         CF_EXPECT(CreateBlankImage(instance.access_kregistry_path(), 2 /* mb */,
                                    "none"),
@@ -1000,10 +1003,8 @@ Result<void> CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
                   "Failed for\"" << instance.pstore_path() << "\"");
       }
     }
-  }
 
-  if (!FLAGS_protected_vm) {
-    for (auto instance : config.Instances()) {
+    if (!FLAGS_protected_vm) {
       os_disk_builder.OverlayPath(instance.PerInstancePath("overlay.img"));
       CF_EXPECT(os_disk_builder.BuildOverlayIfNecessary());
       if (instance.start_ap()) {
