@@ -137,12 +137,8 @@ static const std::set<std::string> kAlwaysMissingAidl = {
     // types-only packages, which never expect a default implementation
     "android.hardware.audio.common.",
     "android.hardware.biometrics.common.",
-    "android.hardware.biometrics.common.",
-    "android.hardware.common.",
     "android.hardware.common.",
     "android.hardware.common.fmq.",
-    "android.hardware.graphics.common.",
-    "android.hardware.graphics.common.",
     "android.hardware.graphics.common.",
     "android.hardware.input.common.",
     "android.media.audio.common.",
@@ -157,6 +153,10 @@ static const std::set<std::string> kAlwaysMissingAidl = {
     "android.hardware.camera.common.",
     "android.hardware.camera.device.",
     "android.hardware.camera.metadata.",
+
+    // android.hardware.media.bufferpool2 is a HAL-less interface.
+    // It could be used for buffer recycling and caching by using the interface.
+    "android.hardware.media.bufferpool2."
 };
 
 /*
@@ -175,6 +175,9 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     // The interface is in development (b/205884982)
     {"android.hardware.audio.core.", 1},
 
+    // Cuttlefish will use the default implementation (b/205758693)
+    {"android.hardware.bluetooth.", 1},
+
     // No implementations on cuttlefish for omapi aidl hal
     {"android.se.omapi.", 1},
 
@@ -184,6 +187,7 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.hardware.keymaster.", 1},
     {"android.hardware.keymaster.", 2},
     {"android.hardware.keymaster.", 3},
+    {"android.hardware.keymaster.", 4},
 
     // Sound trigger doesn't have a default implementation.
     {"android.hardware.soundtrigger3.", 1},
@@ -222,6 +226,7 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.hardware.tv.input.", 1},
 
     // No implementation of IRadioIms yet TODO(b/250912118)
+    {"android.hardware.radio.ims.", 1},
     {"android.hardware.radio.ims.media.", 1},
 };
 

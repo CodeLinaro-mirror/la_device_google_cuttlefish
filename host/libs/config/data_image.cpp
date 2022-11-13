@@ -30,11 +30,14 @@ const int FSCK_ERROR_CORRECTED_REQUIRES_REBOOT = 2;
 //       build an EFI monolith for this architecture.
 const std::string kBootPathIA32 = "EFI/BOOT/BOOTIA32.EFI";
 const std::string kBootPathAA64 = "EFI/BOOT/BOOTAA64.EFI";
+const std::string kModulesPath = "EFI/modules";
+const std::string kMultibootModulePath = kModulesPath + "/multiboot.mod";
 const std::string kM5 = "";
 
 // These are the paths Debian installs the monoliths to. If another distro
 // uses an alternative monolith path, add it to this table
 const std::pair<std::string, std::string> kGrubBlobTable[] = {
+    {"/usr/lib/grub/i386-efi/multiboot.mod", kMultibootModulePath},
     {"/usr/lib/grub/i386-efi/monolithic/grubia32.efi", kBootPathIA32},
     {"/usr/lib/grub/arm64-efi/monolithic/grubaa64.efi", kBootPathAA64},
 };
@@ -90,6 +93,17 @@ bool NewfsMsdos(const std::string& data_image, int data_image_mb,
                          "-@",
                          std::to_string(offset_size_bytes),
                          data_image}) == 0;
+}
+
+bool CopyToMsdos(const std::string& image, const std::string& path,
+                 const std::string& destination) {
+  const auto mcopy = HostBinaryPath("mcopy");
+  const auto success = execute({mcopy, "-o", "-i", image, "-s", path, destination});
+  if (success != 0) {
+    LOG(ERROR) << "Failed to copy " << path << " to " << image;
+    return false;
+  }
+  return true;
 }
 
 bool ResizeImage(const std::string& data_image, int data_image_mb,
@@ -381,17 +395,13 @@ class InitializeEspImageImpl : public InitializeEspImage {
   std::string Name() const override { return "InitializeEspImageImpl"; }
   std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
   bool Enabled() const override {
-    return !instance_.otheros_root_image().empty();
+    auto flow = instance_.boot_flow();
+    return flow == CuttlefishConfig::InstanceSpecific::BootFlow::Linux ||
+      flow == CuttlefishConfig::InstanceSpecific::BootFlow::Fuchsia;
   }
 
  protected:
   bool Setup() override {
-    bool esp_exists = FileHasContent(instance_.otheros_esp_image());
-    if (esp_exists) {
-      LOG(DEBUG) << "esp partition image: use existing";
-      return true;
-    }
-
     LOG(DEBUG) << "esp partition image: creating default";
 
     // newfs_msdos won't make a partition smaller than 257 mb
@@ -419,7 +429,7 @@ class InitializeEspImageImpl : public InitializeEspImage {
       // extra directories below and copy the initial grub.cfg there as well
       auto mmd = HostBinaryPath("mmd");
       success =
-          execute({mmd, "-i", tmp_esp_image, "EFI", "EFI/BOOT", "EFI/debian"});
+          execute({mmd, "-i", tmp_esp_image, "EFI", "EFI/BOOT", "EFI/debian", "EFI/modules"});
       if (success != 0) {
         LOG(ERROR) << "Failed to create directories in " << tmp_esp_image;
         return false;
@@ -435,18 +445,13 @@ class InitializeEspImageImpl : public InitializeEspImage {
     // we can find, which minimizes complexity. If the user removed the grub bin
     // package from their system, the ESP will be empty and Other OS will not be
     // supported
-    auto mcopy = HostBinaryPath("mcopy");
     bool copied = false;
     for (int i=0; i<size; i++) {
       auto grub = kBlobTable[i];
       if (!FileExists(grub.first)) {
         continue;
       }
-      success = execute({mcopy, "-o", "-i", tmp_esp_image, "-s", grub.first,
-                         "::" + grub.second});
-      if (success != 0) {
-        LOG(ERROR) << "Failed to copy " << grub.first << " to " << grub.second
-                   << " in " << tmp_esp_image;
+      if (!CopyToMsdos(tmp_esp_image, grub.first, "::" + grub.second)) {
         return false;
       }
       copied = true;
@@ -462,32 +467,34 @@ class InitializeEspImageImpl : public InitializeEspImage {
     if (config_.vm_manager() != vm_manager::Gem5Manager::name()) {
       auto grub_cfg = DefaultHostArtifactsPath("etc/grub/grub.cfg");
       CHECK(FileExists(grub_cfg)) << "Missing file " << grub_cfg << "!";
-      success =
-          execute({mcopy, "-i", tmp_esp_image, "-s", grub_cfg, "::EFI/debian/"});
-      if (success != 0) {
-        LOG(ERROR) << "Failed to copy " << grub_cfg << " to " << tmp_esp_image;
+      if (!CopyToMsdos(tmp_esp_image, grub_cfg, "::EFI/debian/")) {
         return false;
       }
     }
 
-    if (!instance_.otheros_kernel_path().empty()) {
-      success = execute({mcopy, "-i", tmp_esp_image, "-s",
-                         instance_.otheros_kernel_path(), "::vmlinuz"});
-      if (success != 0) {
-        LOG(ERROR) << "Failed to copy " << instance_.otheros_kernel_path()
-                   << " to " << tmp_esp_image;
-        return false;
-      }
-
-      if (!instance_.otheros_initramfs_path().empty()) {
-        success = execute({mcopy, "-i", tmp_esp_image, "-s",
-                           instance_.otheros_initramfs_path(), "::initrd.img"});
-        if (success != 0) {
-          LOG(ERROR) << "Failed to copy " << instance_.otheros_initramfs_path()
-                     << " to " << tmp_esp_image;
+    switch (instance_.boot_flow()) {
+      case CuttlefishConfig::InstanceSpecific::BootFlow::Linux:
+        if (!CopyToMsdos(tmp_esp_image, instance_.linux_kernel_path(), "::vmlinuz")) {
           return false;
         }
-      }
+
+        if (!instance_.linux_initramfs_path().empty()) {
+          if (!CopyToMsdos(tmp_esp_image, instance_.linux_initramfs_path(), "::initrd.img")) {
+            return false;
+          }
+        }
+        break;
+      case CuttlefishConfig::InstanceSpecific::BootFlow::Fuchsia:
+        if (!CopyToMsdos(tmp_esp_image, instance_.fuchsia_zedboot_path(), "::zedboot.zbi")) {
+          return false;
+        }
+        if (!CopyToMsdos(tmp_esp_image,
+                         instance_.fuchsia_multiboot_bin_path(), "::multiboot.bin")) {
+          return false;
+        }
+        break;
+      default:
+        break;
     }
 
     if (!cuttlefish::RenameFile(tmp_esp_image, instance_.otheros_esp_image())) {
