@@ -339,14 +339,6 @@ void CuttlefishConfig::set_restart_subprocesses(bool restart_subprocesses) {
   (*dictionary_)[kRestartSubprocesses] = restart_subprocesses;
 }
 
-static constexpr char kRunAsDaemon[] = "run_as_daemon";
-bool CuttlefishConfig::run_as_daemon() const {
-  return (*dictionary_)[kRunAsDaemon].asBool();
-}
-void CuttlefishConfig::set_run_as_daemon(bool run_as_daemon) {
-  (*dictionary_)[kRunAsDaemon] = run_as_daemon;
-}
-
 static constexpr char kBootSlot[] = "boot_slot";
 void CuttlefishConfig::set_boot_slot(const std::string& boot_slot) {
   (*dictionary_)[kBootSlot] = boot_slot;
@@ -441,32 +433,6 @@ void CuttlefishConfig::set_sig_server_headers_path(const std::string& path) {
 }
 std::string CuttlefishConfig::sig_server_headers_path() const {
   return (*dictionary_)[kSigServerHeadersPath].asString();
-}
-
-static constexpr char kRunModemSimulator[] = "enable_modem_simulator";
-bool CuttlefishConfig::enable_modem_simulator() const {
-  return (*dictionary_)[kRunModemSimulator].asBool();
-}
-void CuttlefishConfig::set_enable_modem_simulator(bool enable_modem_simulator) {
-  (*dictionary_)[kRunModemSimulator] = enable_modem_simulator;
-}
-
-static constexpr char kModemSimulatorInstanceNumber[] =
-    "modem_simulator_instance_number";
-void CuttlefishConfig::set_modem_simulator_instance_number(
-    int instance_number) {
-  (*dictionary_)[kModemSimulatorInstanceNumber] = instance_number;
-}
-int CuttlefishConfig::modem_simulator_instance_number() const {
-  return (*dictionary_)[kModemSimulatorInstanceNumber].asInt();
-}
-
-static constexpr char kModemSimulatorSimType[] = "modem_simulator_sim_type";
-void CuttlefishConfig::set_modem_simulator_sim_type(int sim_type) {
-  (*dictionary_)[kModemSimulatorSimType] = sim_type;
-}
-int CuttlefishConfig::modem_simulator_sim_type() const {
-  return (*dictionary_)[kModemSimulatorSimType].asInt();
 }
 
 static constexpr char kHostToolsVersion[] = "host_tools_version";
@@ -591,14 +557,6 @@ std::string CuttlefishConfig::ril_dns() const {
   return (*dictionary_)[kRilDns].asString();
 }
 
-static constexpr char kEnableMinimalMode[] = "enable_minimal_mode";
-bool CuttlefishConfig::enable_minimal_mode() const {
-  return (*dictionary_)[kEnableMinimalMode].asBool();
-}
-void CuttlefishConfig::set_enable_minimal_mode(bool enable_minimal_mode) {
-  (*dictionary_)[kEnableMinimalMode] = enable_minimal_mode;
-}
-
 static constexpr char kEnableKernelLog[] = "enable_kernel_log";
 void CuttlefishConfig::set_enable_kernel_log(bool enable_kernel_log) {
   (*dictionary_)[kEnableKernelLog] = enable_kernel_log;
@@ -669,6 +627,15 @@ int CuttlefishConfig::rootcanal_link_port() const {
 }
 void CuttlefishConfig::set_rootcanal_link_port(int rootcanal_link_port) {
   (*dictionary_)[kRootcanalLinkPort] = rootcanal_link_port;
+}
+
+static constexpr char kRootcanalLinkBlePort[] = "rootcanal_link_ble_port";
+int CuttlefishConfig::rootcanal_link_ble_port() const {
+  return (*dictionary_)[kRootcanalLinkBlePort].asInt();
+}
+void CuttlefishConfig::set_rootcanal_link_ble_port(
+    int rootcanal_link_ble_port) {
+  (*dictionary_)[kRootcanalLinkBlePort] = rootcanal_link_ble_port;
 }
 
 static constexpr char kRootcanalTestPort[] = "rootcanal_test_port";

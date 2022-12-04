@@ -161,7 +161,7 @@ std::vector<std::string> BootconfigArgsFromConfig(
         concat("androidboot.vsock_camera_cid=", instance.vsock_guest_cid()));
   }
 
-  if (config.enable_modem_simulator() &&
+  if (instance.enable_modem_simulator() &&
       instance.modem_simulator_ports() != "") {
     bootconfig_args.push_back(concat("androidboot.modem_simulator_ports=",
                                      instance.modem_simulator_ports()));
@@ -192,6 +192,12 @@ std::vector<std::string> BootconfigArgsFromConfig(
     bootconfig_args.push_back("androidboot.hypervisor.vm.supported=1");
     bootconfig_args.push_back(
         "androidboot.hypervisor.protected_vm.supported=0");
+  }
+  if (!instance.kernel_path().empty()) {
+    bootconfig_args.emplace_back("androidboot.kernel_hotswapped=1");
+  }
+  if (!instance.initramfs_path().empty()) {
+    bootconfig_args.emplace_back("androidboot.ramdisk_hotswapped=1");
   }
 
   AppendVector(&bootconfig_args, config.extra_bootconfig_args());
