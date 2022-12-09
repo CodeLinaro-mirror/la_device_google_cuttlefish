@@ -13,63 +13,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <optional>
-#include <string>
-#include <vector>
-
-#include <android-base/strings.h>
-#include <gtest/gtest.h>
-
-#include "host/commands/cvd/selector/selector_cmdline_parser.h"
-#include "host/commands/cvd/selector/selector_option_parser_utils.h"
+#include "host/commands/cvd/unittests/selector/selector_parser_names_test_helper.h"
 
 namespace cuttlefish {
 namespace selector {
-namespace {
 
-struct ExpectedOutput {
-  std::optional<std::vector<std::string>> names;
-  std::optional<std::string> group_name;
-  std::optional<std::vector<std::string>> per_instance_names;
-};
-
-struct InputOutput {
-  std::string input;
-  ExpectedOutput expected;
-};
-
-}  // namespace
-
-class CvdSelectorParserNamesTest : public testing::TestWithParam<InputOutput> {
- protected:
-  CvdSelectorParserNamesTest() { Init(); }
-  void Init() {
-    auto [input, expected_output] = GetParam();
-    selector_args_ = android::base::Tokenize(input, " ");
-    expected_output_ = std::move(expected_output);
-    auto parse_result =
-        SelectorFlagsParser::ConductSelectFlagsParser(selector_args_);
-    if (parse_result.ok()) {
-      parser_ = std::move(*parse_result);
-    }
-  }
-
-  std::vector<std::string> selector_args_;
-  ExpectedOutput expected_output_;
-  std::optional<SelectorFlagsParser> parser_;
-};
-
-TEST_P(CvdSelectorParserNamesTest, ValidInputs) {
-  /*
-   * if ParseOptions() is successful, parser_ is not nullopt
-   */
-  ASSERT_TRUE(parser_);
-}
+TEST_P(ValidNamesTest, ValidInputs) { ASSERT_TRUE(parser_); }
 
 /**
  * Note that invalid inputs must be tested at the InstanceDatabase level
  */
-TEST_P(CvdSelectorParserNamesTest, FieldsNoSubstring) {
+TEST_P(ValidNamesTest, FieldsNoSubstring) {
   if (!parser_) {
     /*
      * We aren't testing whether or not parsing is working.
@@ -83,7 +37,7 @@ TEST_P(CvdSelectorParserNamesTest, FieldsNoSubstring) {
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    CvdParser, CvdSelectorParserNamesTest,
+    CvdParser, ValidNamesTest,
     testing::Values(
         InputOutput{.input = "--name=cf",
                     .expected = ExpectedOutput{.group_name = "cf"}},
@@ -127,69 +81,15 @@ INSTANTIATE_TEST_SUITE_P(
             .expected = ExpectedOutput{
                 .per_instance_names = std::vector<std::string>{"my_cool"}}}));
 
-class CvdSelectorParserInvalidNamesTest
-    : public testing::TestWithParam<std::string> {
- protected:
-  CvdSelectorParserInvalidNamesTest() {
-    input_ = GetParam();
-    selector_args_ = android::base::Tokenize(input_, " ");
-  }
-  std::string input_;
-  std::vector<std::string> selector_args_;
-};
-
-TEST_P(CvdSelectorParserInvalidNamesTest, InvalidInputs) {
-  auto parse_result =
-      SelectorFlagsParser::ConductSelectFlagsParser(selector_args_);
-
-  ASSERT_FALSE(parse_result.ok()) << "Failed with " << input_;
-}
+TEST_P(InvalidNamesTest, InvalidInputs) { ASSERT_FALSE(parser_); }
 
 INSTANTIATE_TEST_SUITE_P(
-    CvdParser2, CvdSelectorParserInvalidNamesTest,
+    CvdParser, InvalidNamesTest,
     testing::Values("--name", "--name=?34", "--device_name=abcd",
                     "--group_name=3ab", "--name=x --device_name=y",
                     "--name=x --group_name=cf",
                     "--device_name=z --instance_name=p", "--instance_name=*79a",
                     "--device_name=abcd-e,xyz-f", "--device_name=xyz-e,xyz-e"));
-
-struct SubstringTestInput {
-  std::string input_args;
-  bool expected;
-};
-
-class CvdSelectorParserSubstringTest
-    : public testing::TestWithParam<SubstringTestInput> {
- protected:
-  CvdSelectorParserSubstringTest() {
-    auto [input, expected] = GetParam();
-    auto selector_args = android::base::Tokenize(input, " ");
-    auto parse_result =
-        SelectorFlagsParser::ConductSelectFlagsParser(selector_args);
-    if (parse_result.ok()) {
-      parser_ = std::move(*parse_result);
-    }
-    expected_result_ = expected;
-  }
-  bool expected_result_;
-  std::optional<SelectorFlagsParser> parser_;
-};
-
-TEST_P(CvdSelectorParserSubstringTest, Substring) {
-  ASSERT_EQ(parser_ != std::nullopt, expected_result_);
-}
-
-INSTANTIATE_TEST_SUITE_P(
-    CvdParser3, CvdSelectorParserSubstringTest,
-    testing::Values(SubstringTestInput{"--name cvd", true},
-                    SubstringTestInput{"c v --name cvd d", true},
-                    SubstringTestInput{"--name cvd c", true},
-                    SubstringTestInput{"--name cvd c v", true},
-                    SubstringTestInput{"c --name cvd v", true},
-                    SubstringTestInput{"--name cvd c,v,d", true},
-                    SubstringTestInput{"--name cvd c v,d", true},
-                    SubstringTestInput{"--name cvd c,", false},
-                    SubstringTestInput{"--name cvd c v,,d", false}));
 
 }  // namespace selector
 }  // namespace cuttlefish

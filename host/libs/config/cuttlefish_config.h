@@ -169,9 +169,6 @@ class CuttlefishConfig {
   void set_enable_gnss_grpc_proxy(const bool enable_gnss_grpc_proxy);
   bool enable_gnss_grpc_proxy() const;
 
-  void set_run_as_daemon(bool run_as_daemon);
-  bool run_as_daemon() const;
-
   void set_boot_slot(const std::string& boot_slot);
   std::string boot_slot() const;
 
@@ -259,19 +256,6 @@ class CuttlefishConfig {
   void set_enable_kernel_log(bool enable_kernel_log);
   bool enable_kernel_log() const;
 
-  // Configuration flags for a minimal device
-  bool enable_minimal_mode() const;
-  void set_enable_minimal_mode(bool enable_minimal_mode);
-
-  void set_enable_modem_simulator(bool enable_modem_simulator);
-  bool enable_modem_simulator() const;
-
-  void set_modem_simulator_instance_number(int instance_numbers);
-  int modem_simulator_instance_number() const;
-
-  void set_modem_simulator_sim_type(int sim_type);
-  int modem_simulator_sim_type() const;
-
   void set_host_tools_version(const std::map<std::string, uint32_t>&);
   std::map<std::string, uint32_t> host_tools_version() const;
 
@@ -298,6 +282,9 @@ class CuttlefishConfig {
 
   void set_rootcanal_link_port(int rootcanal_link_port);
   int rootcanal_link_port() const;
+
+  void set_rootcanal_link_ble_port(int rootcanal_link_ble_port);
+  int rootcanal_link_ble_port() const;
 
   void set_rootcanal_test_port(int rootcanal_test_port);
   int rootcanal_test_port() const;
@@ -532,6 +519,15 @@ class CuttlefishConfig {
     std::string setupwizard_mode() const;
     std::string userdata_format() const;
     bool guest_enforce_security() const;
+    bool use_sdcard() const;
+    bool pause_in_bootloader() const;
+    bool run_as_daemon() const;
+
+    // Configuration flags for a minimal device
+    bool enable_minimal_mode() const;
+    bool enable_modem_simulator() const;
+    int modem_simulator_instance_number() const;
+    int modem_simulator_sim_type() const;
 
     // android artifacts
     std::string boot_image() const;
@@ -636,6 +632,15 @@ class CuttlefishConfig {
     Result<void> set_setupwizard_mode(const std::string& title);
     void set_userdata_format(const std::string& userdata_format);
     void set_guest_enforce_security(bool guest_enforce_security);
+    void set_use_sdcard(bool use_sdcard);
+    void set_pause_in_bootloader(bool pause_in_bootloader);
+    void set_run_as_daemon(bool run_as_daemon);
+
+    // Configuration flags for a minimal device
+    void set_enable_minimal_mode(bool enable_minimal_mode);
+    void set_enable_modem_simulator(bool enable_modem_simulator);
+    void set_modem_simulator_instance_number(int instance_numbers);
+    void set_modem_simulator_sim_type(int sim_type);
 
     // system image files
     void set_boot_image(const std::string& boot_image);

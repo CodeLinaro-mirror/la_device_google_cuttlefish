@@ -463,6 +463,68 @@ bool CuttlefishConfig::InstanceSpecific::guest_enforce_security() const {
   return (*Dictionary())[kGuestEnforceSecurity].asBool();
 }
 
+static constexpr char kUseSdcard[] = "use_sdcard";
+void CuttlefishConfig::MutableInstanceSpecific::set_use_sdcard(bool use_sdcard) {
+  (*Dictionary())[kUseSdcard] = use_sdcard;
+}
+bool CuttlefishConfig::InstanceSpecific::use_sdcard() const {
+  return (*Dictionary())[kUseSdcard].asBool();
+}
+
+static constexpr char kPauseInBootloader[] = "pause_in_bootloader";
+void CuttlefishConfig::MutableInstanceSpecific::set_pause_in_bootloader(bool pause_in_bootloader) {
+  (*Dictionary())[kPauseInBootloader] = pause_in_bootloader;
+}
+bool CuttlefishConfig::InstanceSpecific::pause_in_bootloader() const {
+  return (*Dictionary())[kPauseInBootloader].asBool();
+}
+
+static constexpr char kRunAsDaemon[] = "run_as_daemon";
+bool CuttlefishConfig::InstanceSpecific::run_as_daemon() const {
+  return (*Dictionary())[kRunAsDaemon].asBool();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_run_as_daemon(bool run_as_daemon) {
+  (*Dictionary())[kRunAsDaemon] = run_as_daemon;
+}
+
+static constexpr char kEnableMinimalMode[] = "enable_minimal_mode";
+bool CuttlefishConfig::InstanceSpecific::enable_minimal_mode() const {
+  return (*Dictionary())[kEnableMinimalMode].asBool();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_enable_minimal_mode(
+    bool enable_minimal_mode) {
+  (*Dictionary())[kEnableMinimalMode] = enable_minimal_mode;
+}
+
+static constexpr char kRunModemSimulator[] = "enable_modem_simulator";
+bool CuttlefishConfig::InstanceSpecific::enable_modem_simulator() const {
+  return (*Dictionary())[kRunModemSimulator].asBool();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_enable_modem_simulator(
+    bool enable_modem_simulator) {
+  (*Dictionary())[kRunModemSimulator] = enable_modem_simulator;
+}
+
+static constexpr char kModemSimulatorInstanceNumber[] =
+    "modem_simulator_instance_number";
+void CuttlefishConfig::MutableInstanceSpecific::
+    set_modem_simulator_instance_number(int instance_number) {
+  (*Dictionary())[kModemSimulatorInstanceNumber] = instance_number;
+}
+int CuttlefishConfig::InstanceSpecific::modem_simulator_instance_number()
+    const {
+  return (*Dictionary())[kModemSimulatorInstanceNumber].asInt();
+}
+
+static constexpr char kModemSimulatorSimType[] = "modem_simulator_sim_type";
+void CuttlefishConfig::MutableInstanceSpecific::set_modem_simulator_sim_type(
+    int sim_type) {
+  (*Dictionary())[kModemSimulatorSimType] = sim_type;
+}
+int CuttlefishConfig::InstanceSpecific::modem_simulator_sim_type() const {
+  return (*Dictionary())[kModemSimulatorSimType].asInt();
+}
+
 static constexpr char kDisplayConfigs[] = "display_configs";
 static constexpr char kXRes[] = "x_res";
 static constexpr char kYRes[] = "y_res";
