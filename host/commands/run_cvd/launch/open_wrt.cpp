@@ -65,16 +65,14 @@ class OpenWrt : public CommandSource {
             << "network may not work.";
       }
     }
-    if (config_.enable_sandbox()) {
+    if (instance_.enable_sandbox()) {
       ap_cmd.Cmd().AddParameter("--seccomp-policy-dir=",
                                 config_.seccomp_policy_dir());
     } else {
       ap_cmd.Cmd().AddParameter("--disable-sandbox");
     }
     ap_cmd.AddReadWriteDisk(instance_.PerInstancePath("ap_overlay.img"));
-
-    ap_cmd.Cmd().AddParameter("--params=\"root=" + config_.ap_image_dev_path() +
-                              "\"");
+    ap_cmd.AddReadWriteDisk(instance_.persistent_ap_composite_disk_path());
 
     auto boot_logs_path =
         instance_.PerInstanceLogPath("crosvm_openwrt_boot.log");
@@ -82,7 +80,7 @@ class OpenWrt : public CommandSource {
     ap_cmd.AddSerialConsoleReadOnly(boot_logs_path);
     ap_cmd.AddHvcReadOnly(logs_path);
 
-    ap_cmd.Cmd().AddParameter(config_.ap_kernel_image());
+    ap_cmd.Cmd().AddParameter("--bios=", instance_.bootloader());
 
     std::vector<Command> commands;
     commands.emplace_back(log_tee_.CreateLogTee(ap_cmd.Cmd(), "openwrt"));
@@ -93,12 +91,8 @@ class OpenWrt : public CommandSource {
   // SetupFeature
   std::string Name() const override { return "OpenWrt"; }
   bool Enabled() const override {
-#ifndef ENFORCE_MAC80211_HWSIM
-    return false;
-#else
     return instance_.start_ap() &&
            config_.vm_manager() == vm_manager::CrosvmManager::name();
-#endif
   }
 
  private:

@@ -177,27 +177,14 @@ PRODUCT_PACKAGES += \
     QualifiedNetworksService
 
 #
+# Package for AOSP GBA
+#
+PRODUCT_PACKAGES += \
+    GbaService
+
+#
 # Packages for the OpenGL implementation
 #
-
-# ANGLE provides an OpenGL implementation built on top of Vulkan.
-PRODUCT_PACKAGES += \
-    libEGL_angle \
-    libGLESv1_CM_angle \
-    libGLESv2_angle
-
-# ANGLE options:
-#
-# * preferLinearFilterForYUV
-#     Prefer linear filtering for YUV AHBs to pass
-#     android.media.decoder.cts.DecodeAccuracyTest.
-#
-# * mapUnspecifiedColorSpaceToPassThrough
-#     Map unspecified color spaces to PASS_THROUGH to pass
-#     android.media.codec.cts.DecodeEditEncodeTest and
-#     android.media.codec.cts.EncodeDecodeTest.
-PRODUCT_VENDOR_PROPERTIES += \
-    debug.angle.feature_overrides_enabled=preferLinearFilterForYUV:mapUnspecifiedColorSpaceToPassThrough
 
 # GL implementation for virgl
 PRODUCT_PACKAGES += \
@@ -297,6 +284,7 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/media_profiles.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_profiles_V1_0.xml \
     device/google/cuttlefish/shared/permissions/privapp-permissions-cuttlefish.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/privapp-permissions-cuttlefish.xml \
     frameworks/av/media/libeffects/data/audio_effects.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects.xml \
+    hardware/interfaces/audio/aidl/default/audio_effects_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects_config.xml \
     frameworks/av/media/libstagefright/data/media_codecs_google_audio.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_audio.xml \
     frameworks/av/media/libstagefright/data/media_codecs_google_telephony.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_telephony.xml \
     frameworks/av/services/audiopolicy/config/a2dp_in_audio_policy_configuration_7_0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/a2dp_in_audio_policy_configuration_7_0.xml \
@@ -395,8 +383,9 @@ endif
 # Gralloc HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.graphics.allocator-V1-service.minigbm \
-    android.hardware.graphics.mapper@4.0-impl.minigbm
+    android.hardware.graphics.allocator-service.minigbm \
+    android.hardware.graphics.mapper@4.0-impl.minigbm \
+    mapper.minigbm
 
 #
 # Bluetooth HAL and Compatibility Bluetooth library (for older revs).
@@ -459,7 +448,8 @@ LOCAL_AUDIO_PRODUCT_COPY_FILES := \
     frameworks/av/services/audiopolicy/config/r_submix_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/r_submix_audio_policy_configuration.xml \
     frameworks/av/services/audiopolicy/config/audio_policy_volumes.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy_volumes.xml \
     frameworks/av/services/audiopolicy/config/default_volume_tables.xml:$(TARGET_COPY_OUT_VENDOR)/etc/default_volume_tables.xml \
-    frameworks/av/media/libeffects/data/audio_effects.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects.xml
+    frameworks/av/media/libeffects/data/audio_effects.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects.xml \
+    hardware/interfaces/audio/aidl/default/audio_effects_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects_config.xml
 endif
 
 PRODUCT_PACKAGES += $(LOCAL_AUDIO_PRODUCT_PACKAGE)
@@ -612,16 +602,9 @@ PRODUCT_PACKAGES += \
     android.hardware.neuralnetworks-service-sample-limited \
     android.hardware.neuralnetworks-shim-service-sample
 
-#
 # USB
-# TODO(b/227791019): Convert USB AIDL HAL to APEX
-# ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
-# PRODUCT_PACKAGES += \
-#    com.android.hardware.usb
-#else
 PRODUCT_PACKAGES += \
-    android.hardware.usb-service.example
-#endif
+    com.android.hardware.usb
 
 # Vibrator HAL
 ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
@@ -758,8 +741,6 @@ endif
 
 # Host packages to install
 PRODUCT_HOST_PACKAGES += socket_vsock_proxy
-
-PRODUCT_EXTRA_VNDK_VERSIONS := 28 29 30 31
 
 PRODUCT_SOONG_NAMESPACES += external/mesa3d
 
