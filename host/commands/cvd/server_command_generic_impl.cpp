@@ -83,18 +83,25 @@ Result<cvd::Response> CvdCommandHandler::Handle(
         instance_manager_.GetInstanceGroupInfo(uid, invocation_info.home);
     if (assembly_info_result.ok()) {
       auto assembly_info = assembly_info_result.value();
-      bin_path = assembly_info.host_binaries_dir + invocation_info.bin;
+      bin_path =
+          assembly_info.host_artifacts_path + "/bin/" + invocation_info.bin;
     } else {
       bin_path =
           invocation_info.host_artifacts_path + "/bin/" + invocation_info.bin;
     }
   }
 
-  Command command = CF_EXPECT(ConstructCommand(
-      bin_path, invocation_info.home, invocation_info.args,
-      invocation_info.envs,
-      request.Message().command_request().working_directory(),
-      invocation_info.bin, request.In(), request.Out(), request.Err()));
+  ConstructCommandParam construct_cmd_param{
+      .bin_path = bin_path,
+      .home = invocation_info.home,
+      .args = invocation_info.args,
+      .envs = invocation_info.envs,
+      .working_dir = request.Message().command_request().working_directory(),
+      .command_name = invocation_info.bin,
+      .in = request.In(),
+      .out = request.Out(),
+      .err = request.Err()};
+  Command command = CF_EXPECT(ConstructCommand(construct_cmd_param));
 
   SubprocessOptions options;
   if (request.Message().command_request().wait_behavior() ==

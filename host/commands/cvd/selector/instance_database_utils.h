@@ -29,6 +29,10 @@
 namespace cuttlefish {
 namespace selector {
 
+// given /a/b/c/d/e, ensures
+// all directories from /a through /a/b/c/d/e exist
+Result<void> EnsureDirectoryExistsAllTheWay(const std::string& dir);
+
 Result<std::string> GetCuttlefishConfigPath(const std::string& home);
 
 std::string GenInternalGroupName();
@@ -47,10 +51,10 @@ bool IsValidGroupName(const std::string& token);
 bool IsValidDeviceName(const std::string& token);
 
 /**
- * Runs simple tests to see if it could potentially be a host binaries dir
+ * Runs simple tests to see if it could potentially be a host artifacts dir
  *
  */
-bool PotentiallyHostBinariesDir(const std::string& host_binaries_dir);
+bool PotentiallyHostArtifactsPath(const std::string& host_binaries_dir);
 
 /**
  * simply returns:

@@ -28,6 +28,8 @@
 namespace cuttlefish {
 namespace {
 
+using APBootFlow = CuttlefishConfig::InstanceSpecific::APBootFlow;
+
 const char* kInstances = "instances";
 
 std::string IdToName(const std::string& id) { return kCvdNamePrefix + id; }
@@ -573,6 +575,30 @@ bool CuttlefishConfig::InstanceSpecific::enable_gpu_angle() const {
   return (*Dictionary())[kEnableGpuAngle].asBool();
 }
 
+static constexpr char kEnableAudio[] = "enable_audio";
+void CuttlefishConfig::MutableInstanceSpecific::set_enable_audio(bool enable) {
+  (*Dictionary())[kEnableAudio] = enable;
+}
+bool CuttlefishConfig::InstanceSpecific::enable_audio() const {
+  return (*Dictionary())[kEnableAudio].asBool();
+}
+
+static constexpr char kEnableVehicleHalServer[] = "enable_vehicle_hal_server";
+void CuttlefishConfig::MutableInstanceSpecific::set_enable_vehicle_hal_grpc_server(bool enable_vehicle_hal_grpc_server) {
+  (*Dictionary())[kEnableVehicleHalServer] = enable_vehicle_hal_grpc_server;
+}
+bool CuttlefishConfig::InstanceSpecific::enable_vehicle_hal_grpc_server() const {
+  return (*Dictionary())[kEnableVehicleHalServer].asBool();
+}
+
+static constexpr char kEnableGnssGrpcProxy[] = "enable_gnss_grpc_proxy";
+void CuttlefishConfig::MutableInstanceSpecific::set_enable_gnss_grpc_proxy(const bool enable_gnss_grpc_proxy) {
+  (*Dictionary())[kEnableGnssGrpcProxy] = enable_gnss_grpc_proxy;
+}
+bool CuttlefishConfig::InstanceSpecific::enable_gnss_grpc_proxy() const {
+  return (*Dictionary())[kEnableGnssGrpcProxy].asBool();
+}
+
 static constexpr char kDisplayConfigs[] = "display_configs";
 static constexpr char kXRes[] = "x_res";
 static constexpr char kYRes[] = "y_res";
@@ -722,6 +748,10 @@ std::string CuttlefishConfig::InstanceSpecific::ap_composite_disk_path()
 
 std::string CuttlefishConfig::InstanceSpecific::vbmeta_path() const {
   return AbsolutePath(PerInstancePath("vbmeta.img"));
+}
+
+std::string CuttlefishConfig::InstanceSpecific::ap_vbmeta_path() const {
+  return AbsolutePath(PerInstancePath("ap_vbmeta.img"));
 }
 
 std::string CuttlefishConfig::InstanceSpecific::uboot_env_image_path() const {
@@ -979,12 +1009,12 @@ bool CuttlefishConfig::InstanceSpecific::start_netsim() const {
   return (*Dictionary())[kStartNetsim].asBool();
 }
 
-static constexpr char kStartAp[] = "start_ap";
-void CuttlefishConfig::MutableInstanceSpecific::set_start_ap(bool start) {
-  (*Dictionary())[kStartAp] = start;
+static constexpr char kApBootFlow[] = "ap_boot_flow";
+void CuttlefishConfig::MutableInstanceSpecific::set_ap_boot_flow(APBootFlow flow) {
+  (*Dictionary())[kApBootFlow] = static_cast<int>(flow);
 }
-bool CuttlefishConfig::InstanceSpecific::start_ap() const {
-  return (*Dictionary())[kStartAp].asBool();
+APBootFlow CuttlefishConfig::InstanceSpecific::ap_boot_flow() const {
+  return static_cast<APBootFlow>((*Dictionary())[kApBootFlow].asInt());
 }
 
 std::string CuttlefishConfig::InstanceSpecific::touch_socket_path(

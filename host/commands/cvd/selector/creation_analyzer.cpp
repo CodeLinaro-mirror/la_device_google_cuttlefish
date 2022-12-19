@@ -38,13 +38,23 @@
 namespace cuttlefish {
 namespace selector {
 
+static bool IsCvdStart(const std::string& cmd) {
+  if (cmd.empty()) {
+    return false;
+  }
+  return cmd == "start";
+}
+
 Result<GroupCreationInfo> CreationAnalyzer::Analyze(
-    const CreationAnalyzerParam& param, const std::optional<ucred>& credential,
-    const InstanceDatabase& instance_database,
+    const std::string& cmd, const CreationAnalyzerParam& param,
+    const ucred& credential, const InstanceDatabase& instance_database,
     InstanceLockFileManager& instance_lock_file_manager) {
+  CF_EXPECT(IsCvdStart(cmd),
+            "CreationAnalyzer::Analyze() is for cvd start only.");
+  const auto uid = credential.uid;
   auto selector_options_parser =
       CF_EXPECT(SelectorFlagsParser::ConductSelectFlagsParser(
-          param.selector_args, param.cmd_args, param.envs));
+          uid, param.selector_args, param.cmd_args, param.envs));
   CreationAnalyzer analyzer(param, credential,
                             std::move(selector_options_parser),
                             instance_database, instance_lock_file_manager);
@@ -53,7 +63,7 @@ Result<GroupCreationInfo> CreationAnalyzer::Analyze(
 }
 
 CreationAnalyzer::CreationAnalyzer(
-    const CreationAnalyzerParam& param, const std::optional<ucred>& credential,
+    const CreationAnalyzerParam& param, const ucred& credential,
     SelectorFlagsParser&& selector_options_parser,
     const InstanceDatabase& instance_database,
     InstanceLockFileManager& instance_file_lock_manager)
@@ -193,22 +203,11 @@ CreationAnalyzer::AnalyzeInstanceIdsWithLock() {
   return instance_file_locks;
 }
 
-static bool IsCvdStart(const std::vector<std::string>& args) {
-  if (args.empty()) {
-    return false;
-  }
-  if (args[0] == "start") {
-    return true;
-  }
-  return (args.size() > 1 && args[1] == "start");
-}
-
 Result<GroupCreationInfo> CreationAnalyzer::Analyze() {
-  CF_EXPECT(IsCvdStart(cmd_args_),
-            "CreationAnalyzer::Analyze() is for cvd start only.");
   auto instance_info = CF_EXPECT(AnalyzeInstanceIdsWithLock());
   group_name_ = AnalyzeGroupName(instance_info);
   home_ = CF_EXPECT(AnalyzeHome());
+  envs_["HOME"] = home_;
   CF_EXPECT(envs_.find(kAndroidHostOut) != envs_.end());
   host_artifacts_path_ = envs_.at(kAndroidHostOut);
 
@@ -246,10 +245,7 @@ std::string CreationAnalyzer::AnalyzeGroupName(
 }
 
 Result<std::string> CreationAnalyzer::AnalyzeHome() const {
-  CF_EXPECT(credential_ != std::nullopt,
-            "Credential is necessary for cvd start.");
-  auto system_wide_home =
-      CF_EXPECT(SystemWideUserHome(credential_.value().uid));
+  auto system_wide_home = CF_EXPECT(SystemWideUserHome(credential_.uid));
   if (envs_.find("HOME") != envs_.end() &&
       envs_.at("HOME") != system_wide_home) {
     // explicitly overridden by the user
@@ -259,6 +255,7 @@ Result<std::string> CreationAnalyzer::AnalyzeHome() const {
             "To auto-generate HOME, the group name is a must.");
   std::string auto_generated_home{kParentOfDefaultHomeDirectories};
   auto_generated_home.append("/" + group_name_);
+  CF_EXPECT(EnsureDirectoryExistsAllTheWay(auto_generated_home));
   return auto_generated_home;
 }
 
