@@ -118,6 +118,7 @@ DECLARE_bool(use_overlay);
 
 namespace cuttlefish {
 
+using APBootFlow = CuttlefishConfig::InstanceSpecific::APBootFlow;
 using vm_manager::Gem5Manager;
 
 Result<void> ResolveInstanceFiles() {
@@ -248,16 +249,19 @@ std::vector<ImagePartition> android_composite_disk_config(
       .image_file_path = AbsolutePath(instance.new_boot_image()),
       .read_only = FLAGS_use_overlay,
   });
-  partitions.push_back(ImagePartition{
-      .label = "init_boot_a",
-      .image_file_path = AbsolutePath(instance.init_boot_image()),
-      .read_only = FLAGS_use_overlay,
-  });
-  partitions.push_back(ImagePartition{
-      .label = "init_boot_b",
-      .image_file_path = AbsolutePath(instance.init_boot_image()),
-      .read_only = FLAGS_use_overlay,
-  });
+  const auto init_boot_path = instance.init_boot_image();
+  if (FileExists(init_boot_path)) {
+    partitions.push_back(ImagePartition{
+        .label = "init_boot_a",
+        .image_file_path = AbsolutePath(init_boot_path),
+        .read_only = FLAGS_use_overlay,
+    });
+    partitions.push_back(ImagePartition{
+        .label = "init_boot_b",
+        .image_file_path = AbsolutePath(init_boot_path),
+        .read_only = FLAGS_use_overlay,
+    });
+  }
   partitions.push_back(ImagePartition{
       .label = "vendor_boot_a",
       .image_file_path = AbsolutePath(instance.new_vendor_boot_image()),
@@ -315,14 +319,17 @@ std::vector<ImagePartition> android_composite_disk_config(
   return partitions;
 }
 
-std::vector<ImagePartition> GetApCompositeDiskConfig(const CuttlefishConfig& config) {
+std::vector<ImagePartition> GetApCompositeDiskConfig(const CuttlefishConfig& config,
+    const CuttlefishConfig::InstanceSpecific& instance) {
   std::vector<ImagePartition> partitions;
 
-  partitions.push_back(ImagePartition{
-      .label = "ap_esp",
-      .image_file_path = AbsolutePath(config.ap_esp_image()),
-      .read_only = FLAGS_use_overlay,
-  });
+  if (instance.ap_boot_flow() == APBootFlow::Grub) {
+    partitions.push_back(ImagePartition{
+        .label = "ap_esp",
+        .image_file_path = AbsolutePath(config.ap_esp_image()),
+        .read_only = FLAGS_use_overlay,
+    });
+  }
 
   partitions.push_back(ImagePartition{
       .label = "ap_rootfs",
@@ -365,7 +372,7 @@ DiskBuilder OsCompositeDiskBuilder(const CuttlefishConfig& config,
 DiskBuilder ApCompositeDiskBuilder(const CuttlefishConfig& config,
     const CuttlefishConfig::InstanceSpecific& instance) {
   return DiskBuilder()
-      .Partitions(GetApCompositeDiskConfig(config))
+      .Partitions(GetApCompositeDiskConfig(config, instance))
       .VmManager(config.vm_manager())
       .CrosvmPath(config.crosvm_binary())
       .ConfigPath(instance.PerInstancePath("ap_composite_disk_config.txt"))
@@ -377,8 +384,7 @@ DiskBuilder ApCompositeDiskBuilder(const CuttlefishConfig& config,
 
 std::vector<ImagePartition> persistent_composite_disk_config(
     const CuttlefishConfig& config,
-    const CuttlefishConfig::InstanceSpecific& instance,
-    const std::string& uboot_env_image_path) {
+    const CuttlefishConfig::InstanceSpecific& instance) {
   std::vector<ImagePartition> partitions;
 
   // Note that if the position of uboot_env changes, the environment for
@@ -386,7 +392,7 @@ std::vector<ImagePartition> persistent_composite_disk_config(
   // cuttlefish.fragment in external/u-boot).
   partitions.push_back(ImagePartition{
       .label = "uboot_env",
-      .image_file_path = AbsolutePath(uboot_env_image_path),
+      .image_file_path = AbsolutePath(instance.uboot_env_image_path()),
   });
   partitions.push_back(ImagePartition{
       .label = "vbmeta",
@@ -405,6 +411,25 @@ std::vector<ImagePartition> persistent_composite_disk_config(
         .image_file_path = AbsolutePath(instance.persistent_bootconfig_path()),
     });
   }
+  return partitions;
+}
+
+std::vector<ImagePartition> persistent_ap_composite_disk_config(
+    const CuttlefishConfig::InstanceSpecific& instance) {
+  std::vector<ImagePartition> partitions;
+
+  // Note that if the position of uboot_env changes, the environment for
+  // u-boot must be updated as well (see boot_config.cc and
+  // cuttlefish.fragment in external/u-boot).
+  partitions.push_back(ImagePartition{
+      .label = "uboot_env",
+      .image_file_path = AbsolutePath(instance.ap_uboot_env_image_path()),
+  });
+  partitions.push_back(ImagePartition{
+      .label = "vbmeta",
+      .image_file_path = AbsolutePath(instance.ap_vbmeta_path()),
+  });
+
   return partitions;
 }
 
@@ -547,19 +572,19 @@ class Gem5ImageUnpacker : public SetupFeature {
      */
 
     CF_EXPECT(FileHasContent(instance_.boot_image()), instance_.boot_image());
+
+    const std::string unpack_dir = config_.assembly_dir();
     // The init_boot partition is be optional for testing boot.img
     // with the ramdisk inside.
     if (!FileHasContent(instance_.init_boot_image())) {
       LOG(WARNING) << "File not found: " << instance_.init_boot_image();
+    } else {
+      CF_EXPECT(UnpackBootImage(instance_.init_boot_image(), unpack_dir),
+                "Failed to extract the init boot image");
     }
 
     CF_EXPECT(FileHasContent(instance_.vendor_boot_image()),
               instance_.vendor_boot_image());
-
-    const std::string unpack_dir = config_.assembly_dir();
-
-    CF_EXPECT(UnpackBootImage(instance_.init_boot_image(), unpack_dir),
-              "Failed to extract the init boot image");
 
     CF_EXPECT(UnpackVendorBootImageIfNotUnpacked(instance_.vendor_boot_image(),
                                                  unpack_dir),
@@ -619,7 +644,6 @@ class GeneratePersistentBootconfig : public SetupFeature {
     if(!config_.bootconfig_supported()) {
       return {};
     }
-
     const auto bootconfig_path = instance_.persistent_bootconfig_path();
     if (!FileExists(bootconfig_path)) {
       CF_EXPECT(CreateBlankImage(bootconfig_path, 1 /* mb */, "none"),
@@ -699,7 +723,7 @@ class GeneratePersistentVbmeta : public SetupFeature {
     return "GeneratePersistentVbmeta";
   }
   bool Enabled() const override {
-    return (!config_.protected_vm());
+    return true;
   }
 
  private:
@@ -711,11 +735,27 @@ class GeneratePersistentVbmeta : public SetupFeature {
   }
 
   bool Setup() override {
+    if (!config_.protected_vm()) {
+      if (!PrepareVBMetaImage(instance_.vbmeta_path(), config_.bootconfig_supported())) {
+        return false;
+      }
+    }
+
+    if (instance_.ap_boot_flow() == APBootFlow::Grub) {
+      if (!PrepareVBMetaImage(instance_.ap_vbmeta_path(), false)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  bool PrepareVBMetaImage(const std::string& path, bool has_boot_config) {
     auto avbtool_path = HostBinaryPath("avbtool");
     Command vbmeta_cmd(avbtool_path);
     vbmeta_cmd.AddParameter("make_vbmeta_image");
     vbmeta_cmd.AddParameter("--output");
-    vbmeta_cmd.AddParameter(instance_.vbmeta_path());
+    vbmeta_cmd.AddParameter(path);
     vbmeta_cmd.AddParameter("--algorithm");
     vbmeta_cmd.AddParameter("SHA256_RSA4096");
     vbmeta_cmd.AddParameter("--key");
@@ -726,7 +766,7 @@ class GeneratePersistentVbmeta : public SetupFeature {
     vbmeta_cmd.AddParameter("uboot_env:1:" +
                             DefaultHostArtifactsPath("etc/cvd.avbpubkey"));
 
-    if (config_.bootconfig_supported()) {
+    if (has_boot_config) {
         vbmeta_cmd.AddParameter("--chain_partition");
         vbmeta_cmd.AddParameter("bootconfig:2:" +
                                 DefaultHostArtifactsPath("etc/cvd.avbpubkey"));
@@ -739,18 +779,18 @@ class GeneratePersistentVbmeta : public SetupFeature {
       return false;
     }
 
-    if (FileSize(instance_.vbmeta_path()) > VBMETA_MAX_SIZE) {
-      LOG(ERROR) << "Generated vbmeta - " << instance_.vbmeta_path()
+    const auto vbmeta_size = FileSize(path);
+    if (vbmeta_size > VBMETA_MAX_SIZE) {
+      LOG(ERROR) << "Generated vbmeta - " << path
                  << " is larger than the expected " << VBMETA_MAX_SIZE
                  << ". Stopping.";
       return false;
     }
-    if (FileSize(instance_.vbmeta_path()) != VBMETA_MAX_SIZE) {
-      auto fd = SharedFD::Open(instance_.vbmeta_path(), O_RDWR);
+    if (vbmeta_size != VBMETA_MAX_SIZE) {
+      auto fd = SharedFD::Open(path, O_RDWR);
       if (!fd->IsOpen() || fd->Truncate(VBMETA_MAX_SIZE) != 0) {
         LOG(ERROR) << "`truncate --size=" << VBMETA_MAX_SIZE << " "
-                   << instance_.vbmeta_path() << "` "
-                   << "failed: " << fd->StrError();
+                   << path << "` failed: " << fd->StrError();
         return false;
       }
     }
@@ -956,8 +996,7 @@ class InitializeInstanceCompositeDisk : public SetupFeature {
     };
     auto persistent_disk_builder =
         DiskBuilder()
-            .Partitions(persistent_composite_disk_config(
-                config_, instance_, instance_.uboot_env_image_path()))
+            .Partitions(persistent_composite_disk_config(config_, instance_))
             .VmManager(config_.vm_manager())
             .CrosvmPath(config_.crosvm_binary())
             .ConfigPath(ipath("persistent_composite_disk_config.txt"))
@@ -967,11 +1006,10 @@ class InitializeInstanceCompositeDisk : public SetupFeature {
             .ResumeIfPossible(FLAGS_resume);
     CF_EXPECT(persistent_disk_builder.BuildCompositeDiskIfNecessary());
 
-    if (instance_.start_ap()) {
+    if (instance_.ap_boot_flow() == APBootFlow::Grub) {
       auto persistent_ap_disk_builder =
         DiskBuilder()
-            .Partitions(persistent_composite_disk_config(
-                config_, instance_, instance_.ap_uboot_env_image_path()))
+            .Partitions(persistent_ap_composite_disk_config(instance_))
             .VmManager(config_.vm_manager())
             .CrosvmPath(config_.crosvm_binary())
             .ConfigPath(ipath("ap_persistent_composite_disk_config.txt"))
@@ -1381,7 +1419,7 @@ Result<void> CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
     const auto os_built_composite = CF_EXPECT(os_disk_builder.BuildCompositeDiskIfNecessary());
 
     auto ap_disk_builder = ApCompositeDiskBuilder(config, instance);
-    if (instance.start_ap()) {
+    if (instance.ap_boot_flow() != APBootFlow::None) {
       CF_EXPECT(ap_disk_builder.BuildCompositeDiskIfNecessary());
     }
 
@@ -1405,7 +1443,7 @@ Result<void> CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
     if (!FLAGS_protected_vm) {
       os_disk_builder.OverlayPath(instance.PerInstancePath("overlay.img"));
       CF_EXPECT(os_disk_builder.BuildOverlayIfNecessary());
-      if (instance.start_ap()) {
+      if (instance.ap_boot_flow() != APBootFlow::None) {
         ap_disk_builder.OverlayPath(instance.PerInstancePath("ap_overlay.img"));
         CF_EXPECT(ap_disk_builder.BuildOverlayIfNecessary());
       }

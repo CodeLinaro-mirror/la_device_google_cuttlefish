@@ -106,9 +106,6 @@ class CuttlefishConfig {
     int refresh_rate_hz;
   };
 
-  bool deprecated_boot_completed() const;
-  void set_deprecated_boot_completed(bool deprecated_boot_completed);
-
   void set_cuttlefish_env_path(const std::string& path);
   std::string cuttlefish_env_path() const;
 
@@ -141,12 +138,6 @@ class CuttlefishConfig {
 
   void set_webrtc_enable_adb_websocket(bool enable);
   bool webrtc_enable_adb_websocket() const;
-
-  void set_enable_vehicle_hal_grpc_server(bool enable_vhal_server);
-  bool enable_vehicle_hal_grpc_server() const;
-
-  void set_enable_gnss_grpc_proxy(const bool enable_gnss_grpc_proxy);
-  bool enable_gnss_grpc_proxy() const;
 
   void set_boot_slot(const std::string& boot_slot);
   std::string boot_slot() const;
@@ -286,9 +277,6 @@ class CuttlefishConfig {
 
   void set_smt(bool smt);
   bool smt() const;
-
-  void set_enable_audio(bool enable);
-  bool enable_audio() const;
 
   void set_protected_vm(bool protected_vm);
   bool protected_vm() const;
@@ -462,8 +450,22 @@ class CuttlefishConfig {
     // Whether this instance should start a netsim instance
     bool start_netsim() const;
 
-    // Whether this instance should start an ap instance
-    bool start_ap() const;
+    enum class APBootFlow {
+      // Not starting AP at all (for example not the 1st instance)
+      None,
+      // Generating ESP and using U-BOOT to boot AP
+      Grub,
+      // Using legacy way to boot AP in case we cannot generate ESP image.
+      // Currently we have only one case when we cannot do it. When users
+      // have ubuntu bionic which doesn't have monolith binaris in the
+      // grub-efi-arm64-bin (for arm64) and grub-efi-ia32-bin (x86) deb packages.
+      // TODO(b/260337906): check is it possible to add grub binaries into the AOSP
+      // to deliver the proper grub environment
+      // TODO(b/260338443): use grub-mkimage from grub-common in case we cannot overcome
+      // legal issues
+      LegacyDirect
+    };
+    APBootFlow ap_boot_flow() const;
 
     // Wifi MAC address inside the guest
     int wifi_mac_prefix() const;
@@ -473,6 +475,8 @@ class CuttlefishConfig {
     std::string persistent_bootconfig_path() const;
 
     std::string vbmeta_path() const;
+
+    std::string ap_vbmeta_path() const;
 
     std::string id() const;
 
@@ -514,6 +518,9 @@ class CuttlefishConfig {
     bool use_sdcard() const;
     bool pause_in_bootloader() const;
     bool run_as_daemon() const;
+    bool enable_audio() const;
+    bool enable_vehicle_hal_grpc_server() const;
+    bool enable_gnss_grpc_proxy() const;
 
     // Configuration flags for a minimal device
     bool enable_minimal_mode() const;
@@ -606,7 +613,7 @@ class CuttlefishConfig {
     void set_start_wmediumd(bool start);
     void set_start_rootcanal(bool start);
     void set_start_netsim(bool start);
-    void set_start_ap(bool start);
+    void set_ap_boot_flow(InstanceSpecific::APBootFlow flow);
     // Wifi MAC address inside the guest
     void set_wifi_mac_prefix(const int wifi_mac_prefix);
     // Gnss grpc proxy server port inside the host
@@ -635,6 +642,9 @@ class CuttlefishConfig {
     void set_use_sdcard(bool use_sdcard);
     void set_pause_in_bootloader(bool pause_in_bootloader);
     void set_run_as_daemon(bool run_as_daemon);
+    void set_enable_audio(bool enable);
+    void set_enable_vehicle_hal_grpc_server(bool enable_vhal_server);
+    void set_enable_gnss_grpc_proxy(const bool enable_gnss_grpc_proxy);
 
     // Configuration flags for a minimal device
     void set_enable_minimal_mode(bool enable_minimal_mode);
