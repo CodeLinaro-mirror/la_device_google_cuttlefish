@@ -56,10 +56,12 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.camera.provider@2.7", // Camera converted to AIDL, b/196432585
     "android.hardware.cas.native@1.0",
     "android.hardware.configstore@1.1", // deprecated, see b/149050985, b/149050733
+    "android.hardware.confirmationui@1.0", // converted to AIDL, see b/205760172
     "android.hardware.contexthub@1.2",
     "android.hardware.drm@1.4", // converted to AIDL, b/200055138
     "android.hardware.fastboot@1.1",
     "android.hardware.dumpstate@1.1", // deprecated, see b/205760700
+    "android.hardware.gatekeeper@1.0", // converted to AIDL, b/205760843
     "android.hardware.gnss@1.1", // GNSS converted to AIDL, b/206670536
     "android.hardware.gnss@2.1", // GNSS converted to AIDL, b/206670536
     "android.hardware.gnss.measurement_corrections@1.1", // is sub-interface of gnss
@@ -81,6 +83,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.light@2.0",
     "android.hardware.media.bufferpool@1.0",
     "android.hardware.media.bufferpool@2.0",
+    "android.hardware.media.omx@1.0", // deprecated b/205761766
     "android.hardware.memtrack@1.0",
     "android.hardware.neuralnetworks@1.3", // converted to AIDL, see b/161428342
     "android.hardware.nfc@1.2",
@@ -98,6 +101,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.tetheroffload.config@1.0",
     "android.hardware.tetheroffload.control@1.1", // see b/170699770
     "android.hardware.thermal@1.1",
+    "android.hardware.thermal@2.0", // Converted to AIDL (see b/205762943)
     "android.hardware.tv.cec@1.1",
     "android.hardware.tv.input@1.0",
     "android.hardware.tv.tuner@1.1",
@@ -133,12 +137,8 @@ static const std::set<std::string> kAlwaysMissingAidl = {
     // types-only packages, which never expect a default implementation
     "android.hardware.audio.common.",
     "android.hardware.biometrics.common.",
-    "android.hardware.biometrics.common.",
-    "android.hardware.common.",
     "android.hardware.common.",
     "android.hardware.common.fmq.",
-    "android.hardware.graphics.common.",
-    "android.hardware.graphics.common.",
     "android.hardware.graphics.common.",
     "android.hardware.input.common.",
     "android.media.audio.common.",
@@ -153,6 +153,10 @@ static const std::set<std::string> kAlwaysMissingAidl = {
     "android.hardware.camera.common.",
     "android.hardware.camera.device.",
     "android.hardware.camera.metadata.",
+
+    // android.hardware.media.bufferpool2 is a HAL-less interface.
+    // It could be used for buffer recycling and caching by using the interface.
+    "android.hardware.media.bufferpool2."
 };
 
 /*
@@ -166,10 +170,13 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     // Cuttlefish Identity Credential HAL implementation is currently
     // stuck at version 3 while RKP support is being added. Will be
     // updated soon.
-    {"android.hardware.identity.", 4},
+    {"android.hardware.identity.", 5},
 
     // The interface is in development (b/205884982)
     {"android.hardware.audio.core.", 1},
+
+    // Cuttlefish will use the default implementation (b/205758693)
+    {"android.hardware.bluetooth.", 1},
 
     // No implementations on cuttlefish for omapi aidl hal
     {"android.se.omapi.", 1},
@@ -180,10 +187,18 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.hardware.keymaster.", 1},
     {"android.hardware.keymaster.", 2},
     {"android.hardware.keymaster.", 3},
+    {"android.hardware.keymaster.", 4},
 
     // Sound trigger doesn't have a default implementation.
     {"android.hardware.soundtrigger3.", 1},
     {"android.media.soundtrigger.", 1},
+
+    // No implementation on cuttlefish for fastboot AIDL hal
+    {"android.hardware.fastboot.", 1},
+
+    // These types are only used in TV.
+    {"android.hardware.tv.cec.", 1},
+    {"android.hardware.tv.hdmi.", 1},
 
     // These types are only used in Automotive.
     {"android.automotive.computepipe.registry.", 1},
@@ -198,15 +213,20 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.hardware.automotive.audiocontrol.", 1},
     {"android.hardware.automotive.audiocontrol.", 2},
     {"android.hardware.automotive.evs.", 1},
+    {"android.hardware.broadcastradio.", 1},
     {"android.hardware.automotive.occupant_awareness.", 1},
+    {"android.hardware.automotive.remoteaccess.", 1},
     {"android.hardware.automotive.vehicle.", 2},
 
+    // TODO(b/250036572): Implement for the interface.
+    {"android.hardware.graphics.composer3.", 2},
+
     // These types are only used in TV.
-    {"android.hardware.tv.tuner.", 1},
+    {"android.hardware.tv.tuner.", 2},
     {"android.hardware.tv.input.", 1},
 
-    // No implementation of V2 yet TODO(b/232285403)
-    {"android.hardware.radio.network.", 2},
+    // No implementation of IRadioIms yet TODO(b/250912118)
+    {"android.hardware.radio.ims.media.", 1},
 };
 
 static const std::set<VersionedAidlPackage> kComingSoonAidl = {

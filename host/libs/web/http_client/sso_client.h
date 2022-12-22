@@ -41,6 +41,10 @@ class SsoClient : public HttpClient {
       const std::string&, const std::string&,
       const std::vector<std::string>& headers = {}) override;
 
+  Result<HttpResponse<std::string>> DeleteToString(
+      const std::string& url,
+      const std::vector<std::string>& headers = {}) override;
+
   Result<HttpResponse<Json::Value>> PostToJson(
       const std::string&, const std::string&,
       const std::vector<std::string>& headers = {}) override;
@@ -57,7 +61,7 @@ class SsoClient : public HttpClient {
       const std::string&,
       const std::vector<std::string>& headers = {}) override;
 
-  Result<long> DownloadToCallback(
+  Result<HttpResponse<void>> DownloadToCallback(
       DataCallback, const std::string&,
       const std::vector<std::string>& headers = {}) override;
 

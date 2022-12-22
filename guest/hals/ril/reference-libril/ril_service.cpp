@@ -16,6 +16,7 @@
 
 #define LOG_TAG "RILC"
 
+#include "RefRadioIms.h"
 #include "RefRadioNetwork.h"
 
 #include <android-base/logging.h>
@@ -27,6 +28,7 @@
 #include <android/hardware/radio/1.6/types.h>
 #include <libradiocompat/CallbackManager.h>
 #include <libradiocompat/RadioData.h>
+#include <libradiocompat/RadioIms.h>
 #include <libradiocompat/RadioMessaging.h>
 #include <libradiocompat/RadioModem.h>
 #include <libradiocompat/RadioSim.h>
@@ -4941,7 +4943,7 @@ int radio_1_6::getIccCardStatusResponse(int slotId,
                 appStatus[i].pin2 = (PinState) rilAppStatus[i].pin2;
             }
         }
-        if (radioService[slotId]->mRadioResponseV1_5 != NULL) {
+        if (p_cur && radioService[slotId]->mRadioResponseV1_5 != NULL) {
             ::android::hardware::radio::V1_2::CardStatus cardStatusV1_2;
             ::android::hardware::radio::V1_4::CardStatus cardStatusV1_4;
             ::android::hardware::radio::V1_5::CardStatus cardStatusV1_5;
@@ -4972,7 +4974,7 @@ int radio_1_6::getIccCardStatusResponse(int slotId,
             Return<void> retStatus = radioService[slotId]->mRadioResponseV1_5->
                     getIccCardStatusResponse_1_5(responseInfo, cardStatusV1_5);
             radioService[slotId]->checkReturnStatus(retStatus);
-        } else if (radioService[slotId]->mRadioResponseV1_4 != NULL) {
+        } else if (p_cur && radioService[slotId]->mRadioResponseV1_4 != NULL) {
             ::android::hardware::radio::V1_2::CardStatus cardStatusV1_2;
             ::android::hardware::radio::V1_4::CardStatus cardStatusV1_4;
             cardStatusV1_2.base = cardStatus;
@@ -4982,7 +4984,7 @@ int radio_1_6::getIccCardStatusResponse(int slotId,
             Return<void> retStatus = radioService[slotId]->mRadioResponseV1_4->
                     getIccCardStatusResponse_1_4(responseInfo, cardStatusV1_4);
             radioService[slotId]->checkReturnStatus(retStatus);
-        } else if (radioService[slotId]->mRadioResponseV1_3 != NULL) {
+        } else if (p_cur && radioService[slotId]->mRadioResponseV1_3 != NULL) {
             ::android::hardware::radio::V1_2::CardStatus cardStatusV1_2;
             cardStatusV1_2.base = cardStatus;
             cardStatusV1_2.physicalSlotId = -1;
@@ -4990,7 +4992,7 @@ int radio_1_6::getIccCardStatusResponse(int slotId,
             Return<void> retStatus = radioService[slotId]->mRadioResponseV1_3->
                     getIccCardStatusResponse_1_2(responseInfo, cardStatusV1_2);
             radioService[slotId]->checkReturnStatus(retStatus);
-        } else if (radioService[slotId]->mRadioResponseV1_2 != NULL) {
+        } else if (p_cur && radioService[slotId]->mRadioResponseV1_2 != NULL) {
             ::android::hardware::radio::V1_2::CardStatus cardStatusV1_2;
             cardStatusV1_2.base = cardStatus;
             cardStatusV1_2.physicalSlotId = -1;
@@ -13430,6 +13432,7 @@ void radio_1_6::registerService(RIL_RadioFunctions *callbacks, CommandInfo *comm
         publishRadioHal<cf::ril::RefRadioNetwork>(context, radioHidl, callbackMgr, slot);
         publishRadioHal<compat::RadioSim>(context, radioHidl, callbackMgr, slot);
         publishRadioHal<compat::RadioVoice>(context, radioHidl, callbackMgr, slot);
+        publishRadioHal<cf::ril::RefRadioIms>(context, radioHidl, callbackMgr, slot);
 
         RLOGD("registerService: OemHook is enabled = %s", kOemHookEnabled ? "true" : "false");
         if (kOemHookEnabled) {

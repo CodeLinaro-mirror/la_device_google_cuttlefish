@@ -38,7 +38,6 @@
 
 using cuttlefish::vm_manager::CrosvmManager;
 
-DECLARE_bool(pause_in_bootloader);
 DECLARE_string(vm_manager);
 
 // Taken from external/avb/avbtool.py; this define is not in the headers
@@ -47,7 +46,42 @@ DECLARE_string(vm_manager);
 namespace cuttlefish {
 namespace {
 
+void WritePausedEntrypoint(std::ostream& env, const char* entrypoint,
+                           const CuttlefishConfig::InstanceSpecific& instance) {
+  if (instance.pause_in_bootloader()) {
+    env << "if test $paused -ne 1; then paused=1; else " << entrypoint << "; fi";
+  } else {
+    env << entrypoint;
+  }
+
+  env << '\0';
+}
+
+void WriteAndroidEnvironment(
+    const CuttlefishConfig& config,std::ostream& env,
+    const CuttlefishConfig::InstanceSpecific& instance) {
+  WritePausedEntrypoint(env, "run bootcmd_android", instance);
+
+  if (!config.boot_slot().empty()) {
+    env << "android_slot_suffix=_" << config.boot_slot() << '\0';
+  }
+  env << '\0';
+}
+
+void WriteEFIEnvironment(
+    std::ostream& env, const CuttlefishConfig::InstanceSpecific& instance) {
+  // TODO(b/256602611): get rid of loadddr hardcode. make sure loadddr
+  // env setup in the bootloader.
+  WritePausedEntrypoint(env,
+    "load virtio 0:${devplist} 0x80200000 efi/boot/bootaa64.efi "
+    "&& bootefi 0x80200000 ${fdtcontroladdr}; "
+    "load virtio 0:${devplist} 0x02400000 efi/boot/bootia32.efi && "
+    "bootefi 0x02400000 ${fdtcontroladdr}", instance
+  );
+}
+
 size_t WriteEnvironment(const CuttlefishConfig& config,
+                        const CuttlefishConfig::InstanceSpecific& instance,
                         const std::string& kernel_args,
                         const std::string& env_path) {
   std::ostringstream env;
@@ -57,16 +91,16 @@ size_t WriteEnvironment(const CuttlefishConfig& config,
   } else {
     env << "uenvcmd=setenv bootargs \"$cbootargs\" && ";
   }
-  if (FLAGS_pause_in_bootloader) {
-    env << "if test $paused -ne 1; then paused=1; else run bootcmd_android; fi";
-  } else {
-    env << "run bootcmd_android";
+
+  switch (instance.boot_flow()) {
+    case CuttlefishConfig::InstanceSpecific::BootFlow::Android:
+      WriteAndroidEnvironment(config, env, instance);
+      break;
+    case CuttlefishConfig::InstanceSpecific::BootFlow::Linux:
+    case CuttlefishConfig::InstanceSpecific::BootFlow::Fuchsia:
+      WriteEFIEnvironment(env, instance);
+      break;
   }
-  env << '\0';
-  if (!config.boot_slot().empty()) {
-    env << "android_slot_suffix=_" << config.boot_slot() << '\0';
-  }
-  env << '\0';
 
   std::string env_str = env.str();
   std::ofstream file_out(env_path.c_str(), std::ios::binary);
@@ -120,7 +154,7 @@ class InitBootloaderEnvPartitionImpl : public InitBootloaderEnvPartition {
       kernel_cmdline += " ";
       kernel_cmdline += bootconfig_args;
     }
-    if (!WriteEnvironment(config_, kernel_cmdline, uboot_env_path)) {
+    if (!WriteEnvironment(config_, instance_, kernel_cmdline, uboot_env_path)) {
       LOG(ERROR) << "Unable to write out plaintext env '" << uboot_env_path
                  << ".'";
       return false;

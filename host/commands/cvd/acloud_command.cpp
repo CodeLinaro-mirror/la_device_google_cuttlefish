@@ -20,6 +20,7 @@
 #include <vector>
 
 #include <android-base/strings.h>
+#include <android-base/parseint.h>
 
 #include "cvd_server.pb.h"
 
@@ -32,6 +33,7 @@
 #include "host/commands/cvd/instance_lock.h"
 #include "host/commands/cvd/server.h"
 #include "host/commands/cvd/server_client.h"
+#include "host/libs/config/cuttlefish_config.h"
 
 namespace cuttlefish {
 
@@ -96,6 +98,16 @@ class ConvertAcloudCreateCommand {
       return true;
     });
     flags.emplace_back(local_instance_flag);
+
+    std::optional<std::string> flavor;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--config"})
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--flavor"})
+            .Setter([&flavor](const FlagMatch& m) {
+              flavor = m.value;
+              return true;
+            }));
 
     bool verbose = false;
     flags.emplace_back(Flag()
@@ -311,6 +323,10 @@ class ConvertAcloudCreateCommand {
     start_command.add_args("report_anonymous_usage_stats");
     start_command.add_args("--report_anonymous_usage_stats");
     start_command.add_args("y");
+    if (flavor) {
+      start_command.add_args("-config");
+      start_command.add_args(flavor.value());
+    }
     if (launch_args) {
       for (const auto& arg : CF_EXPECT(BashTokenize(*launch_args))) {
         start_command.add_args(arg);
@@ -329,7 +345,7 @@ class ConvertAcloudCreateCommand {
       start_env[kAndroidHostOut] = dir;
       start_env[kAndroidProductOut] = dir;
     }
-    start_env["CUTTLEFISH_INSTANCE"] = std::to_string(lock->Instance());
+    start_env[kCuttlefishInstanceEnvVarName] = std::to_string(lock->Instance());
     start_env["HOME"] = dir;
     *start_command.mutable_working_directory() = dir;
 

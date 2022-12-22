@@ -99,7 +99,10 @@ class ServerLoopImpl : public ServerLoop,
               client->Write(&response, sizeof(response));
               std::exit(0);
             } else {
-              LOG(ERROR) << "Failed to stop subprocesses:\n" << stop.error();
+              LOG(ERROR) << "Failed to stop subprocesses:\n"
+                         << stop.error().Message();
+              LOG(DEBUG) << "Failed to stop subprocesses:\n"
+                         << stop.error().Trace();
               auto response = LauncherResponse::kError;
               client->Write(&response, sizeof(response));
             }
@@ -124,7 +127,10 @@ class ServerLoopImpl : public ServerLoop,
 
             auto stop = process_monitor.StopMonitoredProcesses();
             if (!stop.ok()) {
-              LOG(ERROR) << "Stopping processes failed:\n" << stop.error();
+              LOG(ERROR) << "Stopping processes failed:\n"
+                         << stop.error().Message();
+              LOG(DEBUG) << "Stopping processes failed:\n"
+                         << stop.error().Trace();
               auto response = LauncherResponse::kError;
               client->Write(&response, sizeof(response));
               break;
@@ -148,7 +154,10 @@ class ServerLoopImpl : public ServerLoop,
           case LauncherAction::kRestart: {
             auto stop = process_monitor.StopMonitoredProcesses();
             if (!stop.ok()) {
-              LOG(ERROR) << "Stopping processes failed:\n" << stop.error();
+              LOG(ERROR) << "Stopping processes failed:\n"
+                         << stop.error().Message();
+              LOG(DEBUG) << "Stopping processes failed:\n"
+                         << stop.error().Trace();
               auto response = LauncherResponse::kError;
               client->Write(&response, sizeof(response));
               break;
@@ -246,8 +255,8 @@ class ServerLoopImpl : public ServerLoop,
     if (instance_.start_ap()) {
       overlay_files.emplace_back("ap_overlay.img");
     }
-    for (auto overlay_file : {"overlay.img", "ap_overlay.img"}) {
-      auto overlay_path = instance_.PerInstancePath(overlay_file);
+    for (const auto& overlay_file : overlay_files) {
+      auto overlay_path = instance_.PerInstancePath(overlay_file.c_str());
       unlink(overlay_path.c_str());
       if (!CreateQcowOverlay(config_.crosvm_binary(),
                              instance_.os_composite_disk_path(), overlay_path)) {

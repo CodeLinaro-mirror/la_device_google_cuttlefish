@@ -22,10 +22,8 @@
 #include <vector>
 
 #include "common/libs/utils/environment.h"
-#include "common/libs/utils/files.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/vm_manager/qemu_manager.h"
-#include "host/libs/vm_manager/vm_manager.h"
 
 namespace cuttlefish {
 

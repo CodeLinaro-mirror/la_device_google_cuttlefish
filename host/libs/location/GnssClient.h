@@ -21,18 +21,15 @@
 #include <grpcpp/create_channel.h>
 #include "common/libs/utils/result.h"
 #include "gnss_grpc_proxy.grpc.pb.h"
+#include "host/libs/location/GpsFix.h"
 
 namespace cuttlefish {
 class GnssClient {
  public:
-  GnssClient(std::shared_ptr<grpc::Channel> channel);
+  GnssClient(const std::shared_ptr<grpc::Channel>& channel);
 
-  // Aseembles the client's payload, sends it and presents the response back
-  // from the server.
-  Result<grpc::Status> SendSingleGpsLoc(const std::string& user);
-  std::string FormatGps(const std::string& latitude,
-                        const std::string& longitude,
-                        const std::string& elevation);
+  Result<grpc::Status> SendGpsLocations(
+      int delay, const GpsFixArray& coordinates);
 
  private:
   std::unique_ptr<gnss_grpc_proxy::GnssGrpcProxy::Stub> stub_;

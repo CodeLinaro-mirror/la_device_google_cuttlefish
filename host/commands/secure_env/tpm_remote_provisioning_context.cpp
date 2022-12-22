@@ -125,7 +125,6 @@ TpmRemoteProvisioningContext::GenerateBcc(bool testMode) const {
                      .add(CoseKey::KEY_TYPE, OCTET_KEY_PAIR)
                      .add(CoseKey::ALGORITHM, EDDSA)
                      .add(CoseKey::CURVE, ED25519)
-                     .add(CoseKey::KEY_OPS, VERIFY)
                      .add(CoseKey::PUBKEY_X, pubKey)
                      .canonicalize();
   auto sign1Payload =
@@ -222,6 +221,33 @@ TpmRemoteProvisioningContext::GenerateHmacSha256(
   std::copy(tpm_digest->buffer, tpm_digest->buffer + tpm_digest->size,
             hmac.begin());
   return hmac;
+}
+
+void TpmRemoteProvisioningContext::GetHwInfo(
+    keymaster::GetHwInfoResponse* hwInfo) const {
+  hwInfo->version = 2;
+  hwInfo->rpcAuthorName = "Google";
+  hwInfo->supportedEekCurve = 2 /* CURVE_25519 */;
+  hwInfo->uniqueId = "remote keymint";
+}
+
+cppcose::ErrMsgOr<cppbor::Array> TpmRemoteProvisioningContext::BuildCsr(
+    const std::vector<uint8_t>& challenge, cppbor::Array keysToSign) const {
+  auto deviceInfo = std::move(*CreateDeviceInfo());
+  auto signedDataPayload = cppbor::Array()
+                               .add(1 /* version */)
+                               .add("keymint" /* CertificateType */)
+                               .add(std::move(deviceInfo))
+                               .add(challenge)
+                               .add(std::move(keysToSign));
+  auto signedData = constructCoseSign1(
+      devicePrivKey_, signedDataPayload.encode(), {} /* aad */);
+
+  return cppbor::Array()
+      .add(3 /* version */)
+      .add(cppbor::Map() /* UdsCerts */)
+      .add(std::move(*bcc_.clone()->asArray()) /* DiceCertChain */)
+      .add(std::move(*signedData) /* SignedData */);
 }
 
 }  // namespace cuttlefish

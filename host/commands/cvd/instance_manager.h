@@ -16,10 +16,11 @@
 
 #pragma once
 
-#include <map>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <string>
+#include <vector>
 
 #include <fruit/fruit.h>
 
@@ -28,6 +29,7 @@
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/result.h"
 #include "host/commands/cvd/instance_lock.h"
+#include "host/commands/cvd/selector/instance_database.h"
 
 namespace cuttlefish {
 
@@ -45,21 +47,38 @@ class InstanceManager {
   INJECT(InstanceManager(InstanceLockFileManager&));
 
   bool HasInstanceGroups() const;
-  void SetInstanceGroup(const InstanceGroupDir&, const InstanceGroupInfo&);
+  Result<void> SetInstanceGroup(const InstanceGroupDir&,
+                                const InstanceGroupInfo&);
   void RemoveInstanceGroup(const InstanceGroupDir&);
-  Result<InstanceGroupInfo> GetInstanceGroup(const InstanceGroupDir&) const;
+  Result<InstanceGroupInfo> GetInstanceGroupInfo(const InstanceGroupDir&) const;
 
   cvd::Status CvdClear(const SharedFD& out, const SharedFD& err);
-  cvd::Status CvdFleet(const SharedFD& out, const std::string& envconfig) const;
+  Result<cvd::Status> CvdFleet(const SharedFD& out, const SharedFD& err,
+                               const std::optional<std::string>& env_config,
+                               const std::string& host_tool_dir,
+                               const std::vector<std::string>& args) const;
+  static Result<std::string> GetCuttlefishConfigPath(const std::string& home);
 
  private:
+  Result<cvd::Status> CvdFleetImpl(
+      const SharedFD& out, const SharedFD& err,
+      const std::optional<std::string>& env_config) const;
+  Result<cvd::Status> CvdFleetHelp(const SharedFD& out, const SharedFD& err,
+                                   const std::string& host_tool_dir) const;
+
+  static void IssueStatusCommand(const SharedFD& out, const SharedFD& err,
+                                 const std::string& config_file_path,
+                                 const selector::LocalInstanceGroup& group);
+  void IssueStopCommand(const SharedFD& out, const SharedFD& err,
+                        const std::string& config_file_path,
+                        const selector::LocalInstanceGroup& group);
+
   InstanceLockFileManager& lock_manager_;
 
-  mutable std::mutex instance_groups_mutex_;
-  std::map<InstanceGroupDir, InstanceGroupInfo> instance_groups_;
-};
+  mutable std::mutex instance_db_mutex_;
+  selector::InstanceDatabase instance_db_;
 
-std::optional<std::string> GetCuttlefishConfigPath(
-    const std::string& assembly_dir);
+  using Query = selector::Query;
+};
 
 }  // namespace cuttlefish

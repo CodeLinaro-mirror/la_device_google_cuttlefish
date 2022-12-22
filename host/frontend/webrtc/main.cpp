@@ -34,10 +34,10 @@
 #include "host/frontend/webrtc/connection_observer.h"
 #include "host/frontend/webrtc/display_handler.h"
 #include "host/frontend/webrtc/kernel_log_events_handler.h"
-#include "host/frontend/webrtc/lib/camera_controller.h"
-#include "host/frontend/webrtc/lib/local_recorder.h"
-#include "host/frontend/webrtc/lib/streamer.h"
-#include "host/frontend/webrtc/lib/video_sink.h"
+#include "host/frontend/webrtc/libdevice/camera_controller.h"
+#include "host/frontend/webrtc/libdevice/local_recorder.h"
+#include "host/frontend/webrtc/libdevice/streamer.h"
+#include "host/frontend/webrtc/libdevice/video_sink.h"
 #include "host/libs/audio_connector/server.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/logging.h"
@@ -256,21 +256,8 @@ int main(int argc, char** argv) {
   auto streamer = Streamer::Create(streamer_config, observer_factory);
   CHECK(streamer) << "Could not create streamer";
 
-  uint32_t display_index = 0;
-  std::vector<std::shared_ptr<VideoSink>> displays;
-  for (const auto& display_config : instance.display_configs()) {
-    const std::string display_id = "display_" + std::to_string(display_index);
-
-    auto display =
-        streamer->AddDisplay(display_id, display_config.width,
-                             display_config.height, display_config.dpi, true);
-    displays.push_back(display);
-
-    ++display_index;
-  }
-
   auto display_handler =
-      std::make_shared<DisplayHandler>(std::move(displays), screen_connector);
+      std::make_shared<DisplayHandler>(*streamer, screen_connector);
 
   if (instance.camera_server_port()) {
     auto camera_controller = streamer->AddCamera(instance.camera_server_port(),
@@ -297,7 +284,7 @@ int main(int argc, char** argv) {
   observer_factory->SetDisplayHandler(display_handler);
 
   streamer->SetHardwareSpec("CPUs", instance.cpus());
-  streamer->SetHardwareSpec("RAM", std::to_string(cvd_config->memory_mb()) + " mb");
+  streamer->SetHardwareSpec("RAM", std::to_string(instance.memory_mb()) + " mb");
 
   std::string user_friendly_gpu_mode;
   if (cvd_config->gpu_mode() == cuttlefish::kGpuModeGuestSwiftshader) {

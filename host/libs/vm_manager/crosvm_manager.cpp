@@ -67,30 +67,38 @@ std::vector<std::string> CrosvmManager::ConfigureGraphics(
     return {
         "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_2),
         "androidboot.hardware.gralloc=minigbm",
-        "androidboot.hardware.hwcomposer="+ config.hwcomposer(),
+        "androidboot.hardware.hwcomposer=" + config.hwcomposer(),
+        "androidboot.hardware.hwcomposer.display_finder_mode=drm",
         "androidboot.hardware.egl=angle",
         "androidboot.hardware.vulkan=pastel",
-        "androidboot.opengles.version=196609"};  // OpenGL ES 3.1
+        "androidboot.opengles.version=196609",  // OpenGL ES 3.1
+    };
   }
 
   if (config.gpu_mode() == kGpuModeDrmVirgl) {
     return {
-      "androidboot.cpuvulkan.version=0",
-      "androidboot.hardware.gralloc=minigbm",
-      "androidboot.hardware.hwcomposer=drm",
-      "androidboot.hardware.egl=mesa",
-      // No "hardware" Vulkan support, yet
-      "androidboot.opengles.version=196608"};  // OpenGL ES 3.0
+        "androidboot.cpuvulkan.version=0",
+        "androidboot.hardware.gralloc=minigbm",
+        "androidboot.hardware.hwcomposer=ranchu",
+        "androidboot.hardware.hwcomposer.mode=client",
+        "androidboot.hardware.hwcomposer.display_finder_mode=drm",
+        "androidboot.hardware.egl=mesa",
+        // No "hardware" Vulkan support, yet
+        "androidboot.opengles.version=196608",  // OpenGL ES 3.0
+    };
   }
   if (config.gpu_mode() == kGpuModeGfxStream) {
     std::string gles_impl = config.enable_gpu_angle() ? "angle" : "emulation";
-    return {"androidboot.cpuvulkan.version=0",
-            "androidboot.hardware.gralloc=minigbm",
-            "androidboot.hardware.hwcomposer=" + config.hwcomposer(),
-            "androidboot.hardware.egl=" + gles_impl,
-            "androidboot.hardware.vulkan=ranchu",
-            "androidboot.hardware.gltransport=virtio-gpu-asg",
-            "androidboot.opengles.version=196608"};  // OpenGL ES 3.0
+    return {
+        "androidboot.cpuvulkan.version=0",
+        "androidboot.hardware.gralloc=minigbm",
+        "androidboot.hardware.hwcomposer=" + config.hwcomposer(),
+        "androidboot.hardware.hwcomposer.display_finder_mode=drm",
+        "androidboot.hardware.egl=" + gles_impl,
+        "androidboot.hardware.vulkan=ranchu",
+        "androidboot.hardware.gltransport=virtio-gpu-asg",
+        "androidboot.opengles.version=196608",  // OpenGL ES 3.0
+    };
   }
   return {};
 }
@@ -109,13 +117,21 @@ std::string CrosvmManager::ConfigureBootDevices(int num_disks) {
 }
 
 constexpr auto crosvm_socket = "crosvm_control.sock";
+constexpr auto process_restarter = "process_restarter";
 
 Result<std::vector<Command>> CrosvmManager::StartCommands(
     const CuttlefishConfig& config) {
   auto instance = config.ForDefaultInstance();
+
   CrosvmBuilder crosvm_cmd;
-  crosvm_cmd.SetBinary(config.crosvm_binary());
-  crosvm_cmd.AddControlSocket(GetControlSocketPath(instance, crosvm_socket));
+  crosvm_cmd.Cmd().SetExecutableAndName(HostBinaryPath(process_restarter));
+  crosvm_cmd.Cmd().AddParameter(kCrosvmVmResetExitCode);
+  crosvm_cmd.Cmd().AddParameter(config.crosvm_binary());
+  // Flag allows exit codes other than 0 or 1, must be before command argument
+  crosvm_cmd.Cmd().AddParameter("--extended-status");
+  crosvm_cmd.Cmd().AddParameter("run");
+  crosvm_cmd.AddControlSocket(GetControlSocketPath(instance, crosvm_socket),
+                              config.crosvm_binary());
 
   if (!config.smt()) {
     crosvm_cmd.Cmd().AddParameter("--no-smt");
@@ -166,16 +182,26 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
   }
 
   for (const auto& display_config : instance.display_configs()) {
-    crosvm_cmd.Cmd().AddParameter(
-        "--gpu-display=", "width=", display_config.width, ",",
-        "height=", display_config.height);
+    const auto display_w = std::to_string(display_config.width);
+    const auto display_h = std::to_string(display_config.height);
+    const auto display_dpi = std::to_string(display_config.dpi);
+    const auto display_rr = std::to_string(display_config.refresh_rate_hz);
+    const auto display_params = android::base::Join(
+        std::vector<std::string>{
+            "mode=windowed[" + display_w + "," + display_h + "]",
+            "horizontal-dpi=" + display_dpi,
+            "vertical-dpi=" + display_dpi,
+            "refresh-rate=" + display_rr,
+        },
+        ",");
+    crosvm_cmd.Cmd().AddParameter("--gpu-display=", display_params);
   }
 
   crosvm_cmd.Cmd().AddParameter("--wayland-sock=",
                                 instance.frames_socket_path());
 
   // crosvm_cmd.Cmd().AddParameter("--null-audio");
-  crosvm_cmd.Cmd().AddParameter("--mem=", config.memory_mb());
+  crosvm_cmd.Cmd().AddParameter("--mem=", instance.memory_mb());
   crosvm_cmd.Cmd().AddParameter("--cpus=", instance.cpus());
 
   auto disk_num = instance.virtual_disk_paths().size();
@@ -271,10 +297,10 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
                             config.enable_kernel_log());
 
   if (instance.console()) {
-    // stdin is the only currently supported way to write data to a serial port in
-    // crosvm. A file (named pipe) is used here instead of stdout to ensure only
-    // the serial port output is received by the console forwarder as crosvm may
-    // print other messages to stdout.
+    // stdin is the only currently supported way to write data to a serial port
+    // in crosvm. A file (named pipe) is used here instead of stdout to ensure
+    // only the serial port output is received by the console forwarder as
+    // crosvm may print other messages to stdout.
     if (instance.kgdb() || instance.use_bootloader()) {
       crosvm_cmd.AddSerialConsoleReadWrite(instance.console_out_pipe_name(),
                                            instance.console_in_pipe_name(),
@@ -364,7 +390,8 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
     crosvm_cmd.Cmd().AddParameter("--sound=", instance.audio_server_path());
   }
 
-  // TODO(b/162071003): virtiofs crashes without sandboxing, this should be fixed
+  // TODO(b/162071003): virtiofs crashes without sandboxing, this should be
+  // fixed
   if (0 && config.enable_sandbox()) {
     // Set up directory shared with virtiofs
     crosvm_cmd.Cmd().AddParameter(
@@ -373,7 +400,7 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
   }
 
   // This needs to be the last parameter
-  crosvm_cmd.Cmd().AddParameter("--bios=", config.bootloader());
+  crosvm_cmd.Cmd().AddParameter("--bios=", instance.bootloader());
 
   // TODO(b/199103204): remove this as well when PRODUCT_ENFORCE_MAC80211_HWSIM
   // is removed
@@ -390,8 +417,9 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
     std::uint8_t dhcp_server_ip[] = {
         192, 168, 96, (std::uint8_t)(ForCurrentInstance(1) * 4 - 3)};
     if (!ReleaseDhcpLeases(lease_file, wifi_tap, dhcp_server_ip)) {
-      LOG(ERROR) << "Failed to release wifi DHCP leases. Connecting to the wifi "
-                 << "network may not work.";
+      LOG(ERROR)
+          << "Failed to release wifi DHCP leases. Connecting to the wifi "
+          << "network may not work.";
     }
   }
 
@@ -458,5 +486,5 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
   return ret;
 }
 
-} // namespace vm_manager
+}  // namespace vm_manager
 }  // namespace cuttlefish

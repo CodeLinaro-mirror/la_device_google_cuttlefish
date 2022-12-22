@@ -10,6 +10,7 @@
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/libs/config/mbr.h"
+#include "host/libs/config/esp.h"
 #include "host/libs/vm_manager/gem5_manager.h"
 
 namespace cuttlefish {
@@ -30,26 +31,23 @@ const int FSCK_ERROR_CORRECTED_REQUIRES_REBOOT = 2;
 //       build an EFI monolith for this architecture.
 const std::string kBootPathIA32 = "EFI/BOOT/BOOTIA32.EFI";
 const std::string kBootPathAA64 = "EFI/BOOT/BOOTAA64.EFI";
-const std::string kM5 = "";
+const std::string kModulesPath = "EFI/modules";
+const std::string kMultibootModulePath = kModulesPath + "/multiboot.mod";
 
 // These are the paths Debian installs the monoliths to. If another distro
 // uses an alternative monolith path, add it to this table
 const std::pair<std::string, std::string> kGrubBlobTable[] = {
+    {"/usr/lib/grub/i386-efi/multiboot.mod", kMultibootModulePath},
     {"/usr/lib/grub/i386-efi/monolithic/grubia32.efi", kBootPathIA32},
     {"/usr/lib/grub/arm64-efi/monolithic/grubaa64.efi", kBootPathAA64},
 };
 
-// M5 checkpoint required binary file
-const std::pair<std::string, std::string> kM5BlobTable[] = {
-    {"/tmp/m5", kM5},
-};
-
-bool ForceFsckImage(const CuttlefishConfig& config,
-                    const std::string& data_image) {
+bool ForceFsckImage(const std::string& data_image,
+                    const CuttlefishConfig::InstanceSpecific& instance) {
   std::string fsck_path;
-  if (config.userdata_format() == "f2fs") {
+  if (instance.userdata_format() == "f2fs") {
     fsck_path = HostBinaryPath("fsck.f2fs");
-  } else if (config.userdata_format() == "ext4") {
+  } else if (instance.userdata_format() == "ext4") {
     fsck_path = "/sbin/e2fsck";
   }
   int fsck_status = execute({fsck_path, "-y", "-f", data_image});
@@ -61,39 +59,8 @@ bool ForceFsckImage(const CuttlefishConfig& config,
   return true;
 }
 
-bool NewfsMsdos(const std::string& data_image, int data_image_mb,
-                int offset_num_mb) {
-  off_t image_size_bytes = static_cast<off_t>(data_image_mb) << 20;
-  off_t offset_size_bytes = static_cast<off_t>(offset_num_mb) << 20;
-  image_size_bytes -= offset_size_bytes;
-  off_t image_size_sectors = image_size_bytes / 512;
-  auto newfs_msdos_path = HostBinaryPath("newfs_msdos");
-  return execute({newfs_msdos_path,
-                         "-F",
-                         "32",
-                         "-m",
-                         "0xf8",
-                         "-o",
-                         "0",
-                         "-c",
-                         "8",
-                         "-h",
-                         "255",
-                         "-u",
-                         "63",
-                         "-S",
-                         "512",
-                         "-s",
-                         std::to_string(image_size_sectors),
-                         "-C",
-                         std::to_string(data_image_mb) + "M",
-                         "-@",
-                         std::to_string(offset_size_bytes),
-                         data_image}) == 0;
-}
-
-bool ResizeImage(const CuttlefishConfig& config, const std::string& data_image,
-                 int data_image_mb) {
+bool ResizeImage(const std::string& data_image, int data_image_mb,
+                 const CuttlefishConfig::InstanceSpecific& instance) {
   auto file_mb = FileSize(data_image) >> 20;
   if (file_mb > data_image_mb) {
     LOG(ERROR) << data_image << " is already " << file_mb << " MB, will not "
@@ -110,14 +77,14 @@ bool ResizeImage(const CuttlefishConfig& config, const std::string& data_image,
                   << data_image << "` failed:" << fd->StrError();
       return false;
     }
-    bool fsck_success = ForceFsckImage(config, data_image);
+    bool fsck_success = ForceFsckImage(data_image, instance);
     if (!fsck_success) {
       return false;
     }
     std::string resize_path;
-    if (config.userdata_format() == "f2fs") {
+    if (instance.userdata_format() == "f2fs") {
       resize_path = HostBinaryPath("resize.f2fs");
-    } else if (config.userdata_format() == "ext4") {
+    } else if (instance.userdata_format() == "ext4") {
       resize_path = "/sbin/resize2fs";
     }
     int resize_status = execute({resize_path, data_image});
@@ -126,7 +93,7 @@ bool ResizeImage(const CuttlefishConfig& config, const std::string& data_image,
                  << resize_status;
       return false;
     }
-    fsck_success = ForceFsckImage(config, data_image);
+    fsck_success = ForceFsckImage(data_image, instance);
     if (!fsck_success) {
       return false;
     }
@@ -157,8 +124,8 @@ bool CreateBlankImage(
     }
   } else if (image_fmt == "f2fs") {
     auto make_f2fs_path = cuttlefish::HostBinaryPath("make_f2fs");
-    if (execute({make_f2fs_path, "-t", image_fmt, image, "-C", "utf8", "-O",
-             "compression,extra_attr,project_quota", "-g", "android"}) != 0) {
+    if (execute({make_f2fs_path, "-l", "data", image, "-C", "utf8", "-O",
+     "compression,extra_attr,project_quota,casefold", "-g", "android"}) != 0) {
       return false;
     }
   } else if (image_fmt == "sdcard") {
@@ -218,31 +185,11 @@ std::string GetFsType(const std::string& path) {
   return fs_type;
 }
 
-struct DataImageTag {};
-
-class FixedDataImagePath : public DataImagePath {
- public:
-  INJECT(FixedDataImagePath(ANNOTATED(DataImageTag, std::string) path))
-      : path_(path) {}
-
-  const std::string& Path() const override { return path_; }
-
- private:
-  std::string path_;
-};
-
-fruit::Component<DataImagePath> FixedDataImagePathComponent(
-    const std::string* path) {
-  return fruit::createComponent()
-      .bind<DataImagePath, FixedDataImagePath>()
-      .bindInstance<fruit::Annotated<DataImageTag, std::string>>(*path);
-}
-
 class InitializeDataImageImpl : public InitializeDataImage {
  public:
-  INJECT(InitializeDataImageImpl(const CuttlefishConfig& config,
-                                 DataImagePath& data_path))
-      : config_(config), data_path_(data_path) {}
+  INJECT(InitializeDataImageImpl(
+      const CuttlefishConfig::InstanceSpecific& instance))
+      : instance_(instance) {}
 
   // SetupFeature
   std::string Name() const override { return "InitializeDataImageImpl"; }
@@ -254,12 +201,17 @@ class InitializeDataImageImpl : public InitializeDataImage {
     auto action = ChooseAction();
     if (!action.ok()) {
       LOG(ERROR) << "Failed to select a userdata processing action: "
-                 << action.error();
+                 << action.error().Message();
+      LOG(DEBUG) << "Failed to select a userdata processing action: "
+                 << action.error().Trace();
       return false;
     }
     auto result = EvaluateAction(*action);
     if (!result.ok()) {
-      LOG(ERROR) << "Failed to evaluate userdata action: " << result.error();
+      LOG(ERROR) << "Failed to evaluate userdata action: "
+                 << result.error().Message();
+      LOG(DEBUG) << "Failed to evaluate userdata action: "
+                 << result.error().Trace();
       return false;
     }
     return true;
@@ -269,31 +221,31 @@ class InitializeDataImageImpl : public InitializeDataImage {
   enum class DataImageAction { kNoAction, kCreateImage, kResizeImage };
 
   Result<DataImageAction> ChooseAction() {
-    if (config_.data_policy() == kDataPolicyAlwaysCreate) {
+    if (instance_.data_policy() == kDataPolicyAlwaysCreate) {
       return DataImageAction::kCreateImage;
     }
-    if (!FileHasContent(data_path_.Path())) {
-      if (config_.data_policy() == kDataPolicyUseExisting) {
+    if (!FileHasContent(instance_.data_image())) {
+      if (instance_.data_policy() == kDataPolicyUseExisting) {
         return CF_ERR("A data image must exist to use -data_policy="
                       << kDataPolicyUseExisting);
-      } else if (config_.data_policy() == kDataPolicyResizeUpTo) {
-        return CF_ERR(data_path_.Path()
+      } else if (instance_.data_policy() == kDataPolicyResizeUpTo) {
+        return CF_ERR(instance_.data_image()
                       << " does not exist, but resizing was requested");
       }
       return DataImageAction::kCreateImage;
     }
-    if (config_.data_policy() == kDataPolicyUseExisting) {
+    if (instance_.data_policy() == kDataPolicyUseExisting) {
       return DataImageAction::kNoAction;
     }
-    auto current_fs_type = GetFsType(data_path_.Path());
-    if (current_fs_type != config_.userdata_format()) {
-      CF_EXPECT(config_.data_policy() == kDataPolicyResizeUpTo,
+    auto current_fs_type = GetFsType(instance_.data_image());
+    if (current_fs_type != instance_.userdata_format()) {
+      CF_EXPECT(instance_.data_policy() == kDataPolicyResizeUpTo,
                 "Changing the fs format is incompatible with -data_policy="
                     << kDataPolicyResizeUpTo << " (\"" << current_fs_type
-                    << "\" != \"" << config_.userdata_format() << "\")");
+                    << "\" != \"" << instance_.userdata_format() << "\")");
       return DataImageAction::kCreateImage;
     }
-    if (config_.data_policy() == kDataPolicyResizeUpTo) {
+    if (instance_.data_policy() == kDataPolicyResizeUpTo) {
       return DataImageAction::kResizeImage;
     }
     return DataImageAction::kNoAction;
@@ -302,41 +254,40 @@ class InitializeDataImageImpl : public InitializeDataImage {
   Result<void> EvaluateAction(DataImageAction action) {
     switch (action) {
       case DataImageAction::kNoAction:
-        LOG(DEBUG) << data_path_.Path() << " exists. Not creating it.";
+        LOG(DEBUG) << instance_.data_image() << " exists. Not creating it.";
         return {};
       case DataImageAction::kCreateImage: {
-        RemoveFile(data_path_.Path());
-        CF_EXPECT(config_.blank_data_image_mb() != 0,
+        RemoveFile(instance_.data_image());
+        CF_EXPECT(instance_.blank_data_image_mb() != 0,
                   "Expected `-blank_data_image_mb` to be set for "
                   "image creation.");
-        CF_EXPECT(
-            CreateBlankImage(data_path_.Path(), config_.blank_data_image_mb(),
-                             config_.userdata_format()),
-            "Failed to create a blank image at \""
-                << data_path_.Path() << "\" with size "
-                << config_.blank_data_image_mb() << " and format \""
-                << config_.userdata_format() << "\"");
+        CF_EXPECT(CreateBlankImage(instance_.data_image(),
+                                   instance_.blank_data_image_mb(),
+                                   instance_.userdata_format()),
+                  "Failed to create a blank image at \""
+                      << instance_.data_image() << "\" with size "
+                      << instance_.blank_data_image_mb() << " and format \""
+                      << instance_.userdata_format() << "\"");
         return {};
       }
       case DataImageAction::kResizeImage: {
-        CF_EXPECT(config_.blank_data_image_mb() != 0,
+        CF_EXPECT(instance_.blank_data_image_mb() != 0,
                   "Expected `-blank_data_image_mb` to be set for "
                   "image resizing.");
-        CF_EXPECT(ResizeImage(config_, data_path_.Path(),
-                              config_.blank_data_image_mb()),
-                  "Failed to resize \"" << data_path_.Path() << "\" to "
-                                        << config_.blank_data_image_mb()
+        CF_EXPECT(ResizeImage(instance_.data_image(),
+                              instance_.blank_data_image_mb(), instance_),
+                  "Failed to resize \"" << instance_.data_image() << "\" to "
+                                        << instance_.blank_data_image_mb()
                                         << " MB");
         return {};
       }
     }
   }
 
-  const CuttlefishConfig& config_;
-  DataImagePath& data_path_;
+  const CuttlefishConfig::InstanceSpecific& instance_;
 };
 
-fruit::Component<fruit::Required<const CuttlefishConfig, DataImagePath>,
+fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>,
                  InitializeDataImage>
 InitializeDataImageComponent() {
   return fruit::createComponent()
@@ -344,23 +295,11 @@ InitializeDataImageComponent() {
       .bind<InitializeDataImage, InitializeDataImageImpl>();
 }
 
-struct MiscImageTag {};
-
-class FixedMiscImagePath : public MiscImagePath {
- public:
-  INJECT(FixedMiscImagePath(ANNOTATED(MiscImageTag, std::string) path))
-      : path_(path) {}
-
-  const std::string& Path() const override { return path_; }
-
- private:
-  std::string path_;
-};
-
 class InitializeMiscImageImpl : public InitializeMiscImage {
  public:
-  INJECT(InitializeMiscImageImpl(MiscImagePath& misc_path))
-      : misc_path_(misc_path) {}
+  INJECT(InitializeMiscImageImpl(
+      const CuttlefishConfig::InstanceSpecific& instance))
+      : instance_(instance) {}
 
   // SetupFeature
   std::string Name() const override { return "InitializeMiscImageImpl"; }
@@ -369,17 +308,17 @@ class InitializeMiscImageImpl : public InitializeMiscImage {
  private:
   std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
   bool Setup() override {
-    bool misc_exists = FileHasContent(misc_path_.Path());
+    bool misc_exists = FileHasContent(instance_.misc_image());
 
     if (misc_exists) {
       LOG(DEBUG) << "misc partition image: use existing at \""
-                 << misc_path_.Path() << "\"";
+                 << instance_.misc_image() << "\"";
       return true;
     }
 
     LOG(DEBUG) << "misc partition image: creating empty at \""
-               << misc_path_.Path() << "\"";
-    if (!CreateBlankImage(misc_path_.Path(), 1 /* mb */, "none")) {
+               << instance_.misc_image() << "\"";
+    if (!CreateBlankImage(instance_.new_misc_image(), 1 /* mb */, "none")) {
       LOG(ERROR) << "Failed to create misc image";
       return false;
     }
@@ -387,185 +326,102 @@ class InitializeMiscImageImpl : public InitializeMiscImage {
   }
 
  private:
-  MiscImagePath& misc_path_;
+  const CuttlefishConfig::InstanceSpecific& instance_;
 };
 
-fruit::Component<MiscImagePath> FixedMiscImagePathComponent(
-    const std::string* path) {
-  return fruit::createComponent()
-      .bind<MiscImagePath, FixedMiscImagePath>()
-      .bindInstance<fruit::Annotated<MiscImageTag, std::string>>(*path);
-}
-
-fruit::Component<fruit::Required<MiscImagePath>, InitializeMiscImage>
+fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>,
+                 InitializeMiscImage>
 InitializeMiscImageComponent() {
   return fruit::createComponent()
       .addMultibinding<SetupFeature, InitializeMiscImage>()
       .bind<InitializeMiscImage, InitializeMiscImageImpl>();
 }
 
-struct EspImageTag {};
-struct KernelPathTag {};
-struct InitRamFsTag {};
-struct RootFsTag {};
-struct ConfigTag {};
-
 class InitializeEspImageImpl : public InitializeEspImage {
  public:
-  INJECT(InitializeEspImageImpl(ANNOTATED(EspImageTag, std::string) esp_image,
-                                ANNOTATED(KernelPathTag, std::string)
-                                    kernel_path,
-                                ANNOTATED(InitRamFsTag, std::string)
-                                    initramfs_path,
-                                ANNOTATED(RootFsTag, std::string) rootfs_path,
-                                ANNOTATED(ConfigTag, const CuttlefishConfig *) config))
-      : esp_image_(esp_image),
-        kernel_path_(kernel_path),
-        initramfs_path_(initramfs_path),
-        rootfs_path_(rootfs_path),
-        config_(config){}
+  INJECT(InitializeEspImageImpl(
+      const CuttlefishConfig& config,
+      const CuttlefishConfig::InstanceSpecific& instance))
+      : config_(config), instance_(instance) {}
 
   // SetupFeature
   std::string Name() const override { return "InitializeEspImageImpl"; }
   std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
-  bool Enabled() const override { return !rootfs_path_.empty(); }
+  bool Enabled() const override {
+    auto flow = instance_.boot_flow();
+    return flow == CuttlefishConfig::InstanceSpecific::BootFlow::Linux ||
+      flow == CuttlefishConfig::InstanceSpecific::BootFlow::Fuchsia;
+  }
 
  protected:
   bool Setup() override {
-    bool esp_exists = FileHasContent(esp_image_);
-    if (esp_exists) {
-      LOG(DEBUG) << "esp partition image: use existing";
-      return true;
-    }
-
     LOG(DEBUG) << "esp partition image: creating default";
-
-    // newfs_msdos won't make a partition smaller than 257 mb
-    // this should be enough for anybody..
-    auto tmp_esp_image = esp_image_ + ".tmp";
-    if (!NewfsMsdos(tmp_esp_image, 257 /* mb */, 0 /* mb (offset) */)) {
-      LOG(ERROR) << "Failed to create filesystem for " << tmp_esp_image;
-      return false;
-    }
+    auto builder = EspBuilder(instance_.otheros_esp_image());
 
     // For licensing and build reproducibility reasons, pick up the bootloaders
     // from the host Linux distribution (if present) and pack them into the
     // automatically generated ESP. If the user wants their own bootloaders,
     // they can use -esp_image=/path/to/esp.img to override, so we don't need
     // to accommodate customizations of this packing process.
-
-    int success;
     const std::pair<std::string, std::string> *kBlobTable;
     std::size_t size;
     // Skip GRUB on Gem5
-    if (config_->vm_manager() != vm_manager::Gem5Manager::name()){
+    if (config_.vm_manager() != vm_manager::Gem5Manager::name()) {
       // Currently we only support Debian based distributions, and GRUB is built
       // for those distros to always load grub.cfg from EFI/debian/grub.cfg, and
       // nowhere else. If you want to add support for other distros, make the
       // extra directories below and copy the initial grub.cfg there as well
-      auto mmd = HostBinaryPath("mmd");
-      success =
-          execute({mmd, "-i", tmp_esp_image, "EFI", "EFI/BOOT", "EFI/debian"});
-      if (success != 0) {
-        LOG(ERROR) << "Failed to create directories in " << tmp_esp_image;
-        return false;
-      }
+      builder.Directory("EFI")
+          .Directory("EFI/BOOT")
+          .Directory("EFI/debian")
+          .Directory("EFI/modules");
+
       size = sizeof(kGrubBlobTable)/sizeof(const std::pair<std::string, std::string>);
       kBlobTable = kGrubBlobTable;
-    } else {
-      size = sizeof(kM5BlobTable)/sizeof(const std::pair<std::string, std::string>);
-      kBlobTable = kM5BlobTable;
-    }
 
-    // The grub binaries are small, so just copy all the architecture blobs
-    // we can find, which minimizes complexity. If the user removed the grub bin
-    // package from their system, the ESP will be empty and Other OS will not be
-    // supported
-    auto mcopy = HostBinaryPath("mcopy");
-    bool copied = false;
-    for (int i=0; i<size; i++) {
-      auto grub = kBlobTable[i];
-      if (!FileExists(grub.first)) {
-        continue;
+      // The grub binaries are small, so just copy all the architecture blobs
+      // we can find, which minimizes complexity. If the user removed the grub bin
+      // package from their system, the ESP will be empty and Other OS will not be
+      // supported
+      for (int i = 0; i < size; i++) {
+        const auto grub = kBlobTable[i];
+        builder.File(grub.first, grub.second, false);
       }
-      success = execute({mcopy, "-o", "-i", tmp_esp_image, "-s", grub.first,
-                         "::" + grub.second});
-      if (success != 0) {
-        LOG(ERROR) << "Failed to copy " << grub.first << " to " << grub.second
-                   << " in " << tmp_esp_image;
-        return false;
-      }
-      copied = true;
-    }
 
-    if (!copied) {
-      LOG(ERROR) << "Binary dependencies were not found on this system; Other OS "
-                    "support will be broken";
-      return false;
-    }
-
-    // Skip Gem5 case. Gem5 will never be able to use bootloaders like grub.
-    if (config_->vm_manager() != vm_manager::Gem5Manager::name()){
       auto grub_cfg = DefaultHostArtifactsPath("etc/grub/grub.cfg");
-      CHECK(FileExists(grub_cfg)) << "Missing file " << grub_cfg << "!";
-      success =
-          execute({mcopy, "-i", tmp_esp_image, "-s", grub_cfg, "::EFI/debian/"});
-      if (success != 0) {
-        LOG(ERROR) << "Failed to copy " << grub_cfg << " to " << tmp_esp_image;
-        return false;
-      }
+      builder.File(grub_cfg, "EFI/debian/");
     }
 
-    if (!kernel_path_.empty()) {
-      success = execute(
-          {mcopy, "-i", tmp_esp_image, "-s", kernel_path_, "::vmlinuz"});
-      if (success != 0) {
-        LOG(ERROR) << "Failed to copy " << kernel_path_ << " to "
-                   << tmp_esp_image;
-        return false;
-      }
-
-      if (!initramfs_path_.empty()) {
-        success = execute({mcopy, "-i", tmp_esp_image, "-s", initramfs_path_,
-                           "::initrd.img"});
-        if (success != 0) {
-          LOG(ERROR) << "Failed to copy " << initramfs_path_ << " to "
-                     << tmp_esp_image;
-          return false;
+    switch (instance_.boot_flow()) {
+      case CuttlefishConfig::InstanceSpecific::BootFlow::Linux:
+        builder.File(instance_.linux_kernel_path(), "vmlinuz");
+        if (!instance_.linux_initramfs_path().empty()) {
+          builder.File(instance_.linux_initramfs_path(), "initrd.img");
         }
-      }
+        break;
+      case CuttlefishConfig::InstanceSpecific::BootFlow::Fuchsia:
+        builder.File(instance_.fuchsia_zedboot_path(), "zedboot.zbi");
+        builder.File(instance_.fuchsia_multiboot_bin_path(), "multiboot.bin");
+        break;
+      default:
+        break;
     }
 
-    if (!cuttlefish::RenameFile(tmp_esp_image, esp_image_)) {
-      LOG(ERROR) << "Renaming " << tmp_esp_image << " to " << esp_image_
-                 << " failed";
-      return false;
-    }
-    return true;
+    return builder.Build();
   }
 
  private:
-  std::string esp_image_;
-  std::string kernel_path_;
-  std::string initramfs_path_;
-  std::string rootfs_path_;
-  const CuttlefishConfig* config_;
+  const CuttlefishConfig& config_;
+  const CuttlefishConfig::InstanceSpecific& instance_;
 };
 
-fruit::Component<fruit::Required<const CuttlefishConfig>,
-    InitializeEspImage> InitializeEspImageComponent(
-    const std::string* esp_image, const std::string* kernel_path,
-    const std::string* initramfs_path, const std::string* rootfs_path,
-    const CuttlefishConfig* config) {
+fruit::Component<fruit::Required<const CuttlefishConfig,
+                                 const CuttlefishConfig::InstanceSpecific>,
+                 InitializeEspImage>
+InitializeEspImageComponent() {
   return fruit::createComponent()
       .addMultibinding<SetupFeature, InitializeEspImage>()
-      .bind<InitializeEspImage, InitializeEspImageImpl>()
-      .bindInstance<fruit::Annotated<EspImageTag, std::string>>(*esp_image)
-      .bindInstance<fruit::Annotated<KernelPathTag, std::string>>(*kernel_path)
-      .bindInstance<fruit::Annotated<InitRamFsTag, std::string>>(
-          *initramfs_path)
-      .bindInstance<fruit::Annotated<RootFsTag, std::string>>(*rootfs_path)
-      .bindInstance<fruit::Annotated<ConfigTag, CuttlefishConfig>>(*config);
+      .bind<InitializeEspImage, InitializeEspImageImpl>();
 }
 
 } // namespace cuttlefish

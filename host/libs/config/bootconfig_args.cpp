@@ -85,6 +85,8 @@ std::vector<std::string> BootconfigArgsFromConfig(
 
   bootconfig_args.push_back(
       concat("androidboot.serialno=", instance.serial_number()));
+  bootconfig_args.push_back(
+      concat("androidboot.ddr_size=", concat(instance.ddr_mem_mb(), "MB")));
 
   // TODO(b/131884992): update to specify multiple once supported.
   const auto display_configs = instance.display_configs();
@@ -93,11 +95,11 @@ std::vector<std::string> BootconfigArgsFromConfig(
       concat("androidboot.lcd_density=", display_configs[0].dpi));
 
   bootconfig_args.push_back(
-      concat("androidboot.setupwizard_mode=", config.setupwizard_mode()));
+      concat("androidboot.setupwizard_mode=", instance.setupwizard_mode()));
   bootconfig_args.push_back(concat("androidboot.enable_bootanimation=",
                                    config.enable_bootanimation()));
 
-  if (!config.guest_enforce_security()) {
+  if (!instance.guest_enforce_security()) {
     bootconfig_args.push_back("androidboot.selinux=permissive");
   }
 
@@ -159,14 +161,19 @@ std::vector<std::string> BootconfigArgsFromConfig(
         concat("androidboot.vsock_camera_cid=", instance.vsock_guest_cid()));
   }
 
-  if (config.enable_modem_simulator() &&
+  if (instance.enable_modem_simulator() &&
       instance.modem_simulator_ports() != "") {
     bootconfig_args.push_back(concat("androidboot.modem_simulator_ports=",
                                      instance.modem_simulator_ports()));
   }
 
-  bootconfig_args.push_back(concat("androidboot.fstab_suffix=",
-                                   config.userdata_format()));
+  // Once all Cuttlefish kernel versions are at least 5.15, filename encryption
+  // will not need to be set conditionally. HCTR2 will always be available.
+  // At that point fstab.cf.f2fs.cts and fstab.cf.ext4.cts can be removed.
+  std::string fstab_suffix = fmt::format("cf.{}.{}", instance.userdata_format(),
+                                         config.filename_encryption_mode());
+
+  bootconfig_args.push_back(concat("androidboot.fstab_suffix=", fstab_suffix));
 
   bootconfig_args.push_back(
       concat("androidboot.wifi_mac_prefix=", instance.wifi_mac_prefix()));
@@ -185,6 +192,12 @@ std::vector<std::string> BootconfigArgsFromConfig(
     bootconfig_args.push_back("androidboot.hypervisor.vm.supported=1");
     bootconfig_args.push_back(
         "androidboot.hypervisor.protected_vm.supported=0");
+  }
+  if (!instance.kernel_path().empty()) {
+    bootconfig_args.emplace_back("androidboot.kernel_hotswapped=1");
+  }
+  if (!instance.initramfs_path().empty()) {
+    bootconfig_args.emplace_back("androidboot.ramdisk_hotswapped=1");
   }
 
   AppendVector(&bootconfig_args, config.extra_bootconfig_args());

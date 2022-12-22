@@ -19,7 +19,6 @@
 #include <stdlib.h>
 
 #include <iostream>
-#include <memory>
 #include <sstream>
 
 #include <android-base/file.h>
@@ -27,6 +26,7 @@
 
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/subprocess.h"
+#include "host/commands/cvd/common_utils.h"
 #include "host/commands/cvd/server_constants.h"
 #include "host/libs/config/host_tools_version.h"
 
@@ -185,26 +185,9 @@ Result<void> CvdClient::StopCvdServer(bool clear) {
   return {};
 }
 
-Result<void> CvdClient::HandleCommand(std::vector<std::string> args,
-                                      std::vector<std::string> env) {
-  cvd::Request request;
-  auto command_request = request.mutable_command_request();
-  for (const std::string& arg : args) {
-    command_request->add_args(arg);
-  }
-  for (const std::string& e : env) {
-    auto eq_pos = e.find('=');
-    if (eq_pos == std::string::npos) {
-      LOG(WARNING) << "Environment var in unknown format: " << e;
-      continue;
-    }
-    (*command_request->mutable_env())[e.substr(0, eq_pos)] =
-        e.substr(eq_pos + 1);
-  }
-  std::unique_ptr<char, void (*)(void*)> cwd(getcwd(nullptr, 0), &free);
-  command_request->set_working_directory(cwd.get());
-  command_request->set_wait_behavior(cvd::WAIT_BEHAVIOR_COMPLETE);
-
+Result<void> CvdClient::HandleCommand(
+    std::vector<std::string> args, std::vector<std::string> env,
+    const std::vector<std::string>& selector_args) {
   std::optional<SharedFD> exe_fd;
   if (args.size() > 2 && android::base::Basename(args[0]) == "cvd" &&
       args[1] == "restart-server" && args[2] == "match-client") {
@@ -214,6 +197,9 @@ Result<void> CvdClient::HandleCommand(std::vector<std::string> args,
                                                        << (*exe_fd)->StrError()
                                                        << "\"");
   }
+  cvd::Request request = MakeRequest(
+      {.cmd_args = args, .env = env, .selector_args = selector_args},
+      cvd::WAIT_BEHAVIOR_COMPLETE);
   auto response = CF_EXPECT(SendRequest(request, exe_fd));
   CF_EXPECT(CheckStatus(response.status(), "HandleCommand"));
   CF_EXPECT(response.has_command_response(),
@@ -310,14 +296,14 @@ Result<void> CvdClient::HandleAcloud(std::vector<std::string>& args,
   }
 
   args[0] = "try-acloud";
-  auto attempt = HandleCommand(args, env);
+  auto attempt = HandleCommand(args, env, {});
   if (!attempt.ok()) {
     CallPythonAcloud(args);
     // no return
   }
 
   args[0] = "acloud";
-  CF_EXPECT(HandleCommand(args, env));
+  CF_EXPECT(HandleCommand(args, env, {}));
   return {};
 }
 

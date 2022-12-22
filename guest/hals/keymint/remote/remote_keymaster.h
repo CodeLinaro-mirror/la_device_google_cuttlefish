@@ -59,6 +59,8 @@ class RemoteKeymaster {
                       GenerateRkpKeyResponse* response);
   void GenerateCsr(const GenerateCsrRequest& request,
                    GenerateCsrResponse* response);
+  void GenerateCsrV2(const GenerateCsrV2Request& request,
+                     GenerateCsrV2Response* response);
   void GetKeyCharacteristics(const GetKeyCharacteristicsRequest& request,
                              GetKeyCharacteristicsResponse* response);
   void ImportKey(const ImportKeyRequest& request, ImportKeyResponse* response);
@@ -95,6 +97,9 @@ class RemoteKeymaster {
   void GenerateTimestampToken(GenerateTimestampTokenRequest& request,
                               GenerateTimestampTokenResponse* response);
   GetRootOfTrustResponse GetRootOfTrust(const GetRootOfTrustRequest& request);
+  GetHwInfoResponse GetHwInfo();
+  SetAttestationIdsResponse SetAttestationIds(
+      const SetAttestationIdsRequest& request);
 
   // CF HAL and remote sides are always compiled together, so will never
   // disagree about message versions.

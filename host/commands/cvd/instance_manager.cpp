@@ -18,11 +18,9 @@
 
 #include <map>
 #include <mutex>
-#include <optional>
 #include <thread>
 
 #include <android-base/file.h>
-#include <android-base/logging.h>
 #include <fruit/fruit.h>
 
 #include "cvd_server.pb.h"
@@ -33,89 +31,110 @@
 #include "common/libs/utils/flag_parser.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
+#include "host/commands/cvd/selector/instance_database_utils.h"
+#include "host/commands/cvd/selector/selector_constants.h"
 #include "host/commands/cvd/server_constants.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/known_paths.h"
 
 namespace cuttlefish {
 
-std::optional<std::string> GetCuttlefishConfigPath(const std::string& home) {
-  std::string home_realpath;
-  if (DirectoryExists(home)) {
-    CHECK(android::base::Realpath(home, &home_realpath));
-    static const char kSuffix[] = "/cuttlefish_assembly/cuttlefish_config.json";
-    std::string config_path = AbsolutePath(home_realpath + kSuffix);
-    if (FileExists(config_path)) {
-      return config_path;
-    }
-  }
-  return {};
+Result<std::string> InstanceManager::GetCuttlefishConfigPath(
+    const std::string& home) {
+  return selector::GetCuttlefishConfigPath(home);
 }
 
 InstanceManager::InstanceManager(InstanceLockFileManager& lock_manager)
     : lock_manager_(lock_manager) {}
 
 bool InstanceManager::HasInstanceGroups() const {
-  std::lock_guard lock(instance_groups_mutex_);
-  return !instance_groups_.empty();
+  std::lock_guard lock(instance_db_mutex_);
+  return !instance_db_.IsEmpty();
 }
 
-void InstanceManager::SetInstanceGroup(
+Result<void> InstanceManager::SetInstanceGroup(
     const InstanceManager::InstanceGroupDir& dir,
-    const InstanceManager::InstanceGroupInfo& info) {
-  std::lock_guard assemblies_lock(instance_groups_mutex_);
-  instance_groups_[dir] = info;
+    const InstanceGroupInfo& info) {
+  std::lock_guard assemblies_lock(instance_db_mutex_);
+  // for now, the group name is determined automatically by the instance_db_
+  CF_EXPECT(instance_db_.AddInstanceGroup(dir, info.host_binaries_dir));
+  auto searched_group =
+      CF_EXPECT(instance_db_.FindGroup({selector::kHomeField, dir}));
+  for (auto i : info.instances) {
+    const std::string default_instance_name = std::to_string(i);
+    instance_db_.AddInstance(searched_group.Get(), i, default_instance_name);
+  }
+  return {};
 }
 
 void InstanceManager::RemoveInstanceGroup(
     const InstanceManager::InstanceGroupDir& dir) {
-  std::lock_guard assemblies_lock(instance_groups_mutex_);
-  instance_groups_.erase(dir);
+  std::lock_guard assemblies_lock(instance_db_mutex_);
+  auto result = instance_db_.FindGroup({selector::kHomeField, dir});
+  if (!result.ok()) return;
+  auto group = *result;
+  instance_db_.RemoveInstanceGroup(group);
 }
 
-Result<InstanceManager::InstanceGroupInfo> InstanceManager::GetInstanceGroup(
+Result<InstanceManager::InstanceGroupInfo>
+InstanceManager::GetInstanceGroupInfo(
     const InstanceManager::InstanceGroupDir& dir) const {
-  std::lock_guard assemblies_lock(instance_groups_mutex_);
-  auto info_it = instance_groups_.find(dir);
-  if (info_it == instance_groups_.end()) {
-    return CF_ERR("No group dir \"" << dir << "\"");
-  } else {
-    return info_it->second;
+  std::lock_guard assemblies_lock(instance_db_mutex_);
+  auto group = CF_EXPECT(instance_db_.FindGroup({selector::kHomeField, dir}));
+  InstanceGroupInfo info;
+  info.host_binaries_dir = group.Get().HostBinariesDir();
+  const auto& instances = group.Get().Instances();
+  for (const auto& instance : instances) {
+    CF_EXPECT(instance != nullptr);
+    info.instances.insert(instance->InstanceId());
+  }
+  return {info};
+}
+
+void InstanceManager::IssueStatusCommand(
+    const SharedFD& out, const SharedFD& err,
+    const std::string& config_file_path,
+    const selector::LocalInstanceGroup& group) {
+  // Reads CuttlefishConfig::instance_names(), which must remain stable
+  // across changes to config file format (within server_constants.h major
+  // version).
+  auto config = CuttlefishConfig::GetFromFile(config_file_path);
+  if (!config) {
+    return;
+  }
+  Command command(group.HostBinariesDir() + kStatusBin);
+  command.AddParameter("--print");
+  command.AddParameter("--all_instances");
+  command.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, out);
+  command.RedirectStdIO(Subprocess::StdIOChannel::kStdErr, err);
+  command.AddEnvironmentVariable(kCuttlefishConfigEnvVarName, config_file_path);
+  if (int wait_result = command.Start().Wait(); wait_result != 0) {
+    WriteAll(err, "      (unknown instance status error)");
   }
 }
 
-cvd::Status InstanceManager::CvdFleet(const SharedFD& out,
-                                      const std::string& env_config) const {
-  std::lock_guard assemblies_lock(instance_groups_mutex_);
+Result<cvd::Status> InstanceManager::CvdFleetImpl(
+    const SharedFD& out, const SharedFD& err,
+    const std::optional<std::string>& env_config) const {
+  std::lock_guard assemblies_lock(instance_db_mutex_);
   const char _GroupDeviceInfoStart[] = "[\n";
   const char _GroupDeviceInfoSeparate[] = ",\n";
   const char _GroupDeviceInfoEnd[] = "]\n";
   WriteAll(out, _GroupDeviceInfoStart);
-  for (const auto& [group_dir, group_info] : instance_groups_) {
-    auto config_path = GetCuttlefishConfigPath(group_dir);
-    if (FileExists(env_config)) {
-      config_path = env_config;
+  auto&& instance_groups = instance_db_.InstanceGroups();
+
+  for (const auto& group : instance_groups) {
+    CF_EXPECT(group != nullptr);
+    auto config_path = env_config && FileExists(*env_config)
+                           ? *env_config
+                           : group->GetCuttlefishConfigPath();
+    if (config_path.ok()) {
+      IssueStatusCommand(out, err, *config_path, *group);
     }
-    if (config_path) {
-      // Reads CuttlefishConfig::instance_names(), which must remain stable
-      // across changes to config file format (within server_constants.h major
-      // version).
-      auto config = CuttlefishConfig::GetFromFile(*config_path);
-      if (config) {
-        Command command(group_info.host_binaries_dir + kStatusBin);
-        command.AddParameter("--print");
-        command.AddParameter("--all_instances");
-        command.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, out);
-        command.AddEnvironmentVariable(kCuttlefishConfigEnvVarName,
-                                       *config_path);
-        if (int wait_result = command.Start().Wait(); wait_result != 0) {
-          WriteAll(out, "      (unknown instance status error)");
-        }
-      }
+    if (group == *instance_groups.crbegin()) {
+      continue;
     }
-    if (group_dir != instance_groups_.rbegin()->first) {
-      WriteAll(out, _GroupDeviceInfoSeparate);
-    }
+    WriteAll(out, _GroupDeviceInfoSeparate);
   }
   WriteAll(out, _GroupDeviceInfoEnd);
   cvd::Status status;
@@ -123,39 +142,80 @@ cvd::Status InstanceManager::CvdFleet(const SharedFD& out,
   return status;
 }
 
-cvd::Status InstanceManager::CvdClear(const SharedFD& out,
-                                      const SharedFD& err) {
-  std::lock_guard lock(instance_groups_mutex_);
+Result<cvd::Status> InstanceManager::CvdFleetHelp(
+    const SharedFD& out, const SharedFD& err,
+    const std::string& host_tool_dir) const {
+  Command command(host_tool_dir + kStatusBin);
+  command.AddParameter("--help");
+  command.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, out);
+  command.RedirectStdIO(Subprocess::StdIOChannel::kStdErr, err);
+  if (int wait_result = command.Start().Wait(); wait_result != 0) {
+    WriteAll(err, "      (unknown instance status error)");
+  }
+  WriteAll(out, "\n");
   cvd::Status status;
-  for (const auto& [group_dir, group_info] : instance_groups_) {
-    auto config_path = GetCuttlefishConfigPath(group_dir);
-    if (config_path) {
-      // Stop all instances that are using this group dir.
-      Command command(group_info.host_binaries_dir + kStopBin);
-      // Delete the instance dirs.
-      command.AddParameter("--clear_instance_dirs");
-      command.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, out);
-      command.RedirectStdIO(Subprocess::StdIOChannel::kStdErr, err);
-      command.AddEnvironmentVariable(kCuttlefishConfigEnvVarName, *config_path);
-      if (int wait_result = command.Start().Wait(); wait_result != 0) {
-        WriteAll(
-            out,
-            "Warning: error stopping instances for dir \"" + group_dir +
-                "\".\nThis can happen if instances are already stopped.\n");
-      }
-      for (const auto& instance : group_info.instances) {
-        auto lock = lock_manager_.TryAcquireLock(instance);
-        if (lock.ok() && (*lock)) {
-          (*lock)->Status(InUseState::kNotInUse);
-        }
-      }
+  status.set_code(cvd::Status::OK);
+  return status;
+}
+
+Result<cvd::Status> InstanceManager::CvdFleet(
+    const SharedFD& out, const SharedFD& err,
+    const std::optional<std::string>& env_config,
+    const std::string& host_tool_dir,
+    const std::vector<std::string>& args) const {
+  bool is_help = false;
+  for (const auto& arg : args) {
+    if (arg == "--help" || arg == "-help") {
+      is_help = true;
+      break;
     }
   }
-  RemoveFile(StringFromEnv("HOME", ".") + "/cuttlefish_runtime");
-  RemoveFile(GetGlobalConfigFileLink());
-  WriteAll(out, "Stopped all known instances\n");
+  return (is_help ? CvdFleetHelp(out, err, host_tool_dir + "/bin/")
+                  : CvdFleetImpl(out, err, env_config));
+}
 
-  instance_groups_.clear();
+void InstanceManager::IssueStopCommand(
+    const SharedFD& out, const SharedFD& err,
+    const std::string& config_file_path,
+    const selector::LocalInstanceGroup& group) {
+  Command command(group.HostBinariesDir() + kStopBin);
+  command.AddParameter("--clear_instance_dirs");
+  command.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, out);
+  command.RedirectStdIO(Subprocess::StdIOChannel::kStdErr, err);
+  command.AddEnvironmentVariable(kCuttlefishConfigEnvVarName, config_file_path);
+  if (int wait_result = command.Start().Wait(); wait_result != 0) {
+    WriteAll(err,
+             "Warning: error stopping instances for dir \"" + group.HomeDir() +
+                 "\".\nThis can happen if instances are already stopped.\n");
+  }
+  for (const auto& instance : group.Instances()) {
+    auto lock = lock_manager_.TryAcquireLock(instance->InstanceId());
+    if (lock.ok() && (*lock)) {
+      (*lock)->Status(InUseState::kNotInUse);
+      continue;
+    }
+    WriteAll(err, "InstanceLockFileManager failed to acquire lock");
+  }
+}
+
+cvd::Status InstanceManager::CvdClear(const SharedFD& out,
+                                      const SharedFD& err) {
+  std::lock_guard lock(instance_db_mutex_);
+  cvd::Status status;
+  const std::string config_json_name = cpp_basename(GetGlobalConfigFileLink());
+
+  auto&& instance_groups = instance_db_.InstanceGroups();
+  for (const auto& group : instance_groups) {
+    auto config_path = group->GetCuttlefishConfigPath();
+    if (config_path.ok()) {
+      IssueStopCommand(out, err, *config_path, *group);
+    }
+    RemoveFile(group->HomeDir() + "/cuttlefish_runtime");
+    RemoveFile(group->HomeDir() + config_json_name);
+  }
+  WriteAll(err, "Stopped all known instances\n");
+
+  instance_db_.Clear();
   status.set_code(cvd::Status::OK);
   return status;
 }

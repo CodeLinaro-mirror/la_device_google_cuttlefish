@@ -25,9 +25,6 @@
 
 #include "host/libs/web/credential_source.h"
 
-using android::base::Error;
-using android::base::Result;
-
 namespace cuttlefish {
 
 std::optional<std::string> OptStringMember(const Json::Value& jn,
@@ -129,15 +126,45 @@ const Json::Value& GceInstanceDisk::AsJson() const { return data_; }
 GceNetworkInterface::GceNetworkInterface(const Json::Value& data)
     : data_(data) {}
 
+constexpr char kNetwork[] = "network";
 constexpr char kGceNetworkAccessConfigs[] = "accessConfigs";
 GceNetworkInterface GceNetworkInterface::Default() {
   Json::Value json{Json::ValueType::objectValue};
-  json["network"] = "global/networks/default";
+  json[kNetwork] = "global/networks/default";
   Json::Value accessConfig{Json::ValueType::objectValue};
   accessConfig["type"] = "ONE_TO_ONE_NAT";
   accessConfig["name"] = "External NAT";
   EnsureArrayMember(json, kGceNetworkAccessConfigs).append(accessConfig);
   return GceNetworkInterface(json);
+}
+
+std::optional<std::string> GceNetworkInterface::Network() const {
+  return OptStringMember(data_, kNetwork);
+}
+GceNetworkInterface& GceNetworkInterface::Network(
+    const std::string& network) & {
+  data_[kNetwork] = network;
+  return *this;
+}
+GceNetworkInterface GceNetworkInterface::Network(
+    const std::string& network) && {
+  data_[kNetwork] = network;
+  return *this;
+}
+
+constexpr char kSubnetwork[] = "subnetwork";
+std::optional<std::string> GceNetworkInterface::Subnetwork() const {
+  return OptStringMember(data_, kSubnetwork);
+}
+GceNetworkInterface& GceNetworkInterface::Subnetwork(
+    const std::string& subnetwork) & {
+  data_[kSubnetwork] = subnetwork;
+  return *this;
+}
+GceNetworkInterface GceNetworkInterface::Subnetwork(
+    const std::string& subnetwork) && {
+  data_[kSubnetwork] = subnetwork;
+  return *this;
 }
 
 constexpr char kGceNetworkExternalIp[] = "natIP";
@@ -300,15 +327,13 @@ class GceApi::Operation::Impl {
   }
 
   Result<bool> Run() {
-    auto initial_response = initial_request_();
-    if (!initial_response.ok()) {
-      return Error() << "Initial request failed: " << initial_response.error();
-    }
+    auto initial_response =
+        CF_EXPECT(initial_request_(), "Initial request failed: ");
 
-    auto url = OptStringMember(*initial_response, "selfLink");
+    auto url = OptStringMember(initial_response, "selfLink");
     if (!url) {
-      return Error() << "Operation " << *initial_response
-                     << " was missing `selfLink` field.";
+      return CF_ERR("Operation " << initial_response
+                                 << " was missing `selfLink` field.");
     }
     url = *url + "/wait";
     running_ = true;
@@ -330,13 +355,12 @@ class GceApi::Operation::Impl {
       LOG(DEBUG) << "Requested operation status at \"" << *url
                  << "\", received " << json;
       if (!response.HttpSuccess() || errors != Json::Value()) {
-        return Error() << "Error accessing \"" << *url
-                       << "\". Errors: " << errors
-                       << ", Warnings: " << warnings;
+        return CF_ERR("Error accessing \"" << *url << "\". Errors: " << errors
+                                           << ", Warnings: " << warnings);
       }
       if (!json.isMember("status") ||
           json["status"].type() != Json::ValueType::stringValue) {
-        return Error() << json << " \"status\" field invalid";
+        return CF_ERR(json << " \"status\" field invalid");
       }
       if (json["status"] == "DONE") {
         return true;
@@ -387,14 +411,14 @@ std::future<Result<GceInstanceInfo>> GceApi::Get(
   auto name = instance.Name();
   if (!name) {
     auto task = [json = instance.AsJson()]() -> Result<GceInstanceInfo> {
-      return Error() << "Missing a name for \"" << json << "\"";
+      return CF_ERR("Missing a name for \"" << json << "\"");
     };
     return std::async(std::launch::deferred, task);
   }
   auto zone = instance.Zone();
   if (!zone) {
     auto task = [json = instance.AsJson()]() -> Result<GceInstanceInfo> {
-      return Error() << "Missing a zone for \"" << json << "\"";
+      return CF_ERR("Missing a zone for \"" << json << "\"");
     };
     return std::async(std::launch::deferred, task);
   }
@@ -412,8 +436,8 @@ std::future<Result<GceInstanceInfo>> GceApi::Get(const std::string& zone,
     auto response =
         CF_EXPECT(http_client_.DownloadToJson(url, CF_EXPECT(Headers())));
     if (!response.HttpSuccess()) {
-      return Error() << "Failed to get instance info, received "
-                     << response.data << " with code " << response.http_code;
+      return CF_ERR("Failed to get instance info, received "
+                    << response.data << " with code " << response.http_code);
     }
     return GceInstanceInfo(response.data);
   };
@@ -424,7 +448,7 @@ GceApi::Operation GceApi::Insert(const Json::Value& request) {
   if (!request.isMember("zone") ||
       request["zone"].type() != Json::ValueType::stringValue) {
     auto task = [request]() -> Result<Json::Value> {
-      return Error() << "Missing a zone for \"" << request << "\"";
+      return CF_ERR("Missing a zone for \"" << request << "\"");
     };
     return Operation(
         std::unique_ptr<Operation::Impl>(new Operation::Impl(*this, task)));
@@ -442,8 +466,8 @@ GceApi::Operation GceApi::Insert(const Json::Value& request) {
     auto response = CF_EXPECT(
         http_client_.PostToJson(url, requestNoZone, CF_EXPECT(Headers())));
     if (!response.HttpSuccess()) {
-      return Error() << "Failed to create instance: " << response.data
-                     << ". Sent request " << requestNoZone;
+      return CF_ERR("Failed to create instance: "
+                    << response.data << ". Sent request " << requestNoZone);
     }
     return response.data;
   };
@@ -468,7 +492,7 @@ GceApi::Operation GceApi::Reset(const std::string& zone,
     auto response = CF_EXPECT(
         http_client_.PostToJson(url, Json::Value(), CF_EXPECT(Headers())));
     if (!response.HttpSuccess()) {
-      return Error() << "Failed to create instance: " << response.data;
+      return CF_ERR("Failed to create instance: " << response.data);
     }
     return response.data;
   };
@@ -480,7 +504,7 @@ GceApi::Operation GceApi::Reset(const GceInstanceInfo& instance) {
   auto name = instance.Name();
   if (!name) {
     auto task = [json = instance.AsJson()]() -> Result<Json::Value> {
-      return Error() << "Missing a name for \"" << json << "\"";
+      return CF_ERR("Missing a name for \"" << json << "\"");
     };
     return Operation(
         std::unique_ptr<Operation::Impl>(new Operation::Impl(*this, task)));
@@ -488,7 +512,7 @@ GceApi::Operation GceApi::Reset(const GceInstanceInfo& instance) {
   auto zone = instance.Zone();
   if (!zone) {
     auto task = [json = instance.AsJson()]() -> Result<Json::Value> {
-      return Error() << "Missing a zone for \"" << json << "\"";
+      return CF_ERR("Missing a zone for \"" << json << "\"");
     };
     return Operation(
         std::unique_ptr<Operation::Impl>(new Operation::Impl(*this, task)));
@@ -508,7 +532,7 @@ GceApi::Operation GceApi::Delete(const std::string& zone,
     auto response =
         CF_EXPECT(http_client_.DeleteToJson(url, CF_EXPECT(Headers())));
     if (!response.HttpSuccess()) {
-      return Error() << "Failed to delete instance: " << response.data;
+      return CF_ERR("Failed to delete instance: " << response.data);
     }
     return response.data;
   };
@@ -520,7 +544,7 @@ GceApi::Operation GceApi::Delete(const GceInstanceInfo& instance) {
   auto name = instance.Name();
   if (!name) {
     auto task = [json = instance.AsJson()]() -> Result<Json::Value> {
-      return Error() << "Missing a name for \"" << json << "\"";
+      return CF_ERR("Missing a name for \"" << json << "\"");
     };
     return Operation(
         std::unique_ptr<Operation::Impl>(new Operation::Impl(*this, task)));
@@ -528,7 +552,7 @@ GceApi::Operation GceApi::Delete(const GceInstanceInfo& instance) {
   auto zone = instance.Zone();
   if (!zone) {
     auto task = [json = instance.AsJson()]() -> Result<Json::Value> {
-      return Error() << "Missing a zone for \"" << json << "\"";
+      return CF_ERR("Missing a zone for \"" << json << "\"");
     };
     return Operation(
         std::unique_ptr<Operation::Impl>(new Operation::Impl(*this, task)));

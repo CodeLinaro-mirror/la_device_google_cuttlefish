@@ -35,6 +35,7 @@ Commands:
   clear               Stop all running devices and delete all instance and assembly directories.
   fleet               View the current fleet status.
   kill-server         Kill the cvd_server background process.
+  server-kill         Same as kill-server
   restart-server      Restart the cvd_server background process.
   status              Check and print the state of a running instance.
   host_bugreport      Capture a host bugreport, including configs, logs, and tombstones.
@@ -51,7 +52,8 @@ class CvdHelpHandler : public CvdServerHandler {
 
   Result<bool> CanHandle(const RequestWithStdio& request) const override {
     auto invocation = ParseInvocation(request.Message());
-    return invocation.command == "help";
+    return (invocation.command == "help" || invocation.command == "--help" ||
+            invocation.command == "-h");
   }
   Result<cvd::Response> Handle(const RequestWithStdio& request) override {
     std::unique_lock interrupt_lock(interruptible_);

@@ -17,11 +17,21 @@
 PRODUCT_VENDOR_PROPERTIES += \
     ro.camerax.extensions.enabled=true
 
-# Enable CameraX extension sample
+# Enable Camera Extension sample
+ifeq ($(TARGET_USE_CAMERA_ADVANCED_EXTENSION_SAMPLE),true)
+PRODUCT_PACKAGES += \
+    androidx.camera.extensions.impl.advanced advancedSample_camera_extensions.xml \
+    libencoderjpeg_jni
+else
 PRODUCT_PACKAGES += androidx.camera.extensions.impl sample_camera_extensions.xml
+endif
 
 PRODUCT_SOONG_NAMESPACES += hardware/google/camera
 PRODUCT_SOONG_NAMESPACES += hardware/google/camera/devices/EmulatedCamera
+
+# TODO(b/257379485): Enable cuttlefish build for all Camera 3A paths.
+PRODUCT_SOONG_NAMESPACES += vendor/google/camera/google_3a/libs_v4/gAF
+PRODUCT_SOONG_NAMESPACES += vendor/google/camera/google_3a/libs_v4/g3ABase
 
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.camera.concurrent.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.concurrent.xml \

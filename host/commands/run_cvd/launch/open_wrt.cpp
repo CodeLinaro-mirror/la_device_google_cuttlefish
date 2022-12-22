@@ -36,9 +36,11 @@ class OpenWrt : public CommandSource {
     constexpr auto crosvm_for_ap_socket = "ap_control.sock";
 
     CrosvmBuilder ap_cmd;
-    ap_cmd.SetBinary(config_.crosvm_binary());
+    ap_cmd.Cmd().SetExecutableAndName(config_.crosvm_binary());
+    ap_cmd.Cmd().AddParameter("run");
     ap_cmd.AddControlSocket(
-        instance_.PerInstanceInternalPath(crosvm_for_ap_socket));
+        instance_.PerInstanceInternalPath(crosvm_for_ap_socket),
+        config_.crosvm_binary());
 
     if (!config_.vhost_user_mac80211_hwsim().empty()) {
       ap_cmd.Cmd().AddParameter("--vhost-user-mac80211-hwsim=",
@@ -70,8 +72,6 @@ class OpenWrt : public CommandSource {
       ap_cmd.Cmd().AddParameter("--disable-sandbox");
     }
     ap_cmd.AddReadWriteDisk(instance_.PerInstancePath("ap_overlay.img"));
-    ap_cmd.AddReadOnlyDisk(
-        instance_.PerInstancePath("persistent_composite.img"));
 
     ap_cmd.Cmd().AddParameter("--params=\"root=" + config_.ap_image_dev_path() +
                               "\"");
