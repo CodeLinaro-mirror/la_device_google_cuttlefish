@@ -13,15 +13,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# validate number of arguments to equal 2
-if [ "$#" -ne 2 ]; then
-  echo "This script requires 2 parameters, server address and assigned base instance number"
+# validate number of arguments to equal 3
+if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
+  echo "This script requires 2 mandatory and 1 optional parameters, server address, base instance number and optionally number of instances to invoke"
   exit 1
 fi
 
 # map arguments to variables
 server=$1
 base_instance_num=$2
+if [ "$#" -eq 3 ]; then
+ num_instances=$3
+else
+ num_instances=1
+fi
 
 # set img_dir and cvd_host_tool_dir
 img_dir=${ANDROID_PRODUCT_OUT:-$PWD}
@@ -58,14 +63,21 @@ else
 fi
 
 web_ui_port=$((8443+$base_instance_num-1))
-adb_port=$((6520+$base_instance_num-1))
+adb_port_forwarding=""
 instance_id=$(uuidgen)
-echo "Web UI port: $web_ui_port"
-echo "adb port: $adb_port (adb connect 127.0.0.1:$adb_port if you want to connect to the device)"
+for instance_num in $(seq $base_instance_num $(($base_instance_num+$num_instances-1))); do
+  adb_port=$((6520+$instance_num-1))
+  echo "Device-$instance_num is using adb port $adb_port (adb connect 127.0.0.1:$adb_port if you want to connect to this device)"
+  adb_port_forwarding+="-L $adb_port:127.0.0.1:$adb_port "
+done
+
+# Web UI port is 2443 instead 1443 because there could be a running operator in this machine as well.
+echo "Web UI port: 2443"
 # sets up SSH port forwarding to the remote server for various ports and launch cvd instance
-ssh $server -L $web_ui_port:127.0.0.1:$web_ui_port \
+# TODO: remove webui ports except 1443
+ssh $server -L 2443:127.0.0.1:1443 -L $web_ui_port:127.0.0.1:$web_ui_port \
   -L 15550:127.0.0.1:15550 -L 15551:127.0.0.1:15551 -L 15552:127.0.0.1:15552 \
   -L 15553:127.0.0.1:15553 -L 15554:127.0.0.1:15554 -L 15555:127.0.0.1:15555 \
   -L 15556:127.0.0.1:15556 -L 15557:127.0.0.1:15557 -L 15558:127.0.0.1:15558 \
-  -L $adb_port:127.0.0.1:$adb_port \
-  -t "cd cvd_home && HOME=~/cvd_home bin/launch_cvd --base_instance_num=$base_instance_num"
+  $adb_port_forwarding \
+  -t "cd cvd_home && HOME=~/cvd_home bin/launch_cvd --base_instance_num=$base_instance_num --num_instances=$num_instances"

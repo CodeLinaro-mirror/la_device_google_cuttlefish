@@ -15,9 +15,8 @@
 
 #include <android-base/logging.h>
 
-#include "host/commands/metrics/host_receiver.h"
-#include "host/commands/metrics/cvd_metrics_api.h"
 #include "host/commands/metrics/events.h"
+#include "host/commands/metrics/host_receiver.h"
 #include "host/commands/metrics/metrics_configs.h"
 #include "host/commands/metrics/metrics_defs.h"
 #include "host/commands/metrics/proto/cf_metrics_protos.h"
@@ -84,7 +83,8 @@ void MetricsHostReceiver::ProcessMessage(const std::string& text) {
   } else if (text == "LockScreen") {
     rc = Clearcut::SendLockScreen(hostDev);
   } else {
-    rc = CvdMetrics::SendLaunchCommand(text);
+    LOG(ERROR) << "Message not recognized: " << text;
+    rc = MetricsExitCodes::kMetricsError;
   }
 
   if (rc != MetricsExitCodes::kSuccess) {
