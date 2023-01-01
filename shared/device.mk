@@ -254,6 +254,7 @@ ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
 PRODUCT_PACKAGES += com.google.cf.input.config
 else
 PRODUCT_COPY_FILES += \
+    device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Multitouch_Touchpad_0.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Multitouch_Touchpad_0.idc \
     device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Multitouch_Touchscreen_0.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Multitouch_Touchscreen_0.idc \
     device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Multitouch_Touchscreen_1.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Multitouch_Touchscreen_1.idc \
     device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Multitouch_Touchscreen_2.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Multitouch_Touchscreen_2.idc \
@@ -415,13 +416,17 @@ PRODUCT_PACKAGES += \
 
 # Netlink Interceptor HAL
 PRODUCT_PACKAGES += \
-    android.hardware.net.nlinterceptor-service.default
+    com.android.hardware.net.nlinterceptor
 
 #
 # Lights
 #
+LOCAL_ENABLE_LIGHT ?= true
+ifeq ($(LOCAL_ENABLE_LIGHT),true)
 PRODUCT_PACKAGES += \
     com.google.cf.light \
+
+endif
 
 #
 # KeyMint HAL
@@ -645,7 +650,6 @@ ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
 # Thread Network AIDL HAL, simulation CLI and OT daemon controller
 PRODUCT_PACKAGES += \
     com.android.hardware.threadnetwork \
-    ot-cli-ftd \
     ot-ctl
 endif # RELEASE_AIDL_USE_UNFROZEN
 

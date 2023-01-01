@@ -33,6 +33,9 @@
 
 namespace cuttlefish {
 
+template <class...>
+constexpr std::false_type CommandAlwaysFalse{};
+
 template <auto Fn, typename R, typename... Args>
 class GenericCommandSource : public CommandSource,
                              public KernelLogPipeConsumer {
@@ -64,7 +67,7 @@ class GenericCommandSource : public CommandSource,
     } else {
       //TODO: b/307808444 - 13684156136015732577 - Build Failure for boot_state_machine.o
       //TODO: b/308214228 - 350640852809607874 - Build Failure for main.o
-      //static_assert(false, "Unexpected AutoCmd return type");
+      //static_assert(CommandAlwaysFalse<R>, "Unexpected AutoCmd return type");
     }
     return {};
   }

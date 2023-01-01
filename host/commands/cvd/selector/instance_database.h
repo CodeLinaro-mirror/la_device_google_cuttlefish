@@ -75,9 +75,6 @@ class InstanceDatabase {
   Result<void> AddInstances(const std::string& group_name,
                             const std::vector<InstanceInfo>& instances);
 
-  Result<void> SetBuildId(const std::string& group_name,
-                          const std::string& build_id);
-
   /*
    *  auto group = CF_EXPEC(FindGroups(...));
    *  RemoveInstanceGroup(group)
@@ -131,6 +128,8 @@ class InstanceDatabase {
   // actual Find implementations
   Result<Set<ConstRef<LocalInstanceGroup>>> FindGroupsByHome(
       const Value& home) const;
+  Result<Set<ConstRef<LocalInstanceGroup>>> FindGroupsById(
+      const Value& id) const;
   Result<Set<ConstRef<LocalInstanceGroup>>> FindGroupsByGroupName(
       const Value& group_name) const;
   Result<Set<ConstRef<LocalInstanceGroup>>> FindGroupsByInstanceName(
