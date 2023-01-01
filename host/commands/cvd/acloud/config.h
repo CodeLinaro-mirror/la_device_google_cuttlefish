@@ -35,7 +35,11 @@ class AcloudConfig {
   // UserConfig/user_config.proto members
   std::string launch_args;
 
-  bool use_cvdr;
+  std::string project;
+
+  std::string zone;
+
+  bool use_legacy_acloud;
 
   // InternalConfig/internal_config.proto members
 

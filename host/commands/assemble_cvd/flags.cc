@@ -49,6 +49,7 @@
 #include "host/commands/assemble_cvd/display.h"
 #include "host/commands/assemble_cvd/flags_defaults.h"
 #include "host/commands/assemble_cvd/graphics_flags.h"
+#include "host/commands/assemble_cvd/misc_info.h"
 #include "host/commands/assemble_cvd/touchpad.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/display.h"
@@ -352,6 +353,9 @@ DEFINE_vec(enable_kernel_log, fmt::format("{}", CF_DEFAULTS_ENABLE_KERNEL_LOG),
 DEFINE_vec(vhost_net, fmt::format("{}", CF_DEFAULTS_VHOST_NET),
            "Enable vhost acceleration of networking");
 
+DEFINE_vec(vhost_user_vsock, fmt::format("{}", CF_DEFAULTS_VHOST_USER_VSOCK),
+           "Enable vhost-user-vsock");
+
 DEFINE_string(
     vhost_user_mac80211_hwsim, CF_DEFAULTS_VHOST_USER_MAC80211_HWSIM,
     "Unix socket path for vhost-user of mac80211_hwsim, typically served by "
@@ -481,6 +485,16 @@ std::string StrForInstance(const std::string& prefix, int num) {
   return stream.str();
 }
 
+Result<std::string> GetAndroidInfoConfig(
+    const std::string& android_info_file_path, const std::string& key) {
+  CF_EXPECT(FileExists(android_info_file_path));
+
+  std::string android_info_contents = ReadFile(android_info_file_path);
+  auto android_info_map = ParseMiscInfo(android_info_contents);
+  CF_EXPECT(android_info_map.find(key) != android_info_map.end());
+  return android_info_map[key];
+}
+
 #ifdef __ANDROID__
 Result<std::vector<GuestConfig>> ReadGuestConfig() {
   std::vector<GuestConfig> rets;
@@ -503,6 +517,8 @@ Result<std::vector<GuestConfig>> ReadGuestConfig() {
       android::base::Split(FLAGS_boot_image, ",");
   std::vector<std::string> kernel_path =
       android::base::Split(FLAGS_kernel_path, ",");
+  std::vector<std::string> system_image_dir =
+      android::base::Split(FLAGS_system_image_dir, ",");
   std::string kernel_image_path = "";
   std::string cur_boot_image;
   std::string cur_kernel_path;
@@ -585,6 +601,19 @@ Result<std::vector<GuestConfig>> ReadGuestConfig() {
         (guest_config.android_version_number != "13");
 
     unlink(ikconfig_path.c_str());
+
+    std::string instance_android_info_txt;
+    if (instance_index >= system_image_dir.size()) {
+      // in case this is the same image being launhced multiple times
+      // the same flag is used for all instances
+      instance_android_info_txt = system_image_dir[0] + "/android-info.txt";
+    } else {
+      instance_android_info_txt =
+          system_image_dir[instance_index] + "/android-info.txt";
+    }
+    auto res = GetAndroidInfoConfig(instance_android_info_txt, "gfxstream");
+    guest_config.gfxstream_supported =
+        res.ok() && res.value() == "supported";
     guest_configs.push_back(guest_config);
   }
   return guest_configs;
@@ -1028,6 +1057,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       CF_EXPECT(GET_FLAG_STR_VALUE(udp_port_range));
   std::vector<bool> vhost_net_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(
       vhost_net));
+  std::vector<bool> vhost_user_vsock_vec =
+      CF_EXPECT(GET_FLAG_BOOL_VALUE(vhost_user_vsock));
   std::vector<std::string> ril_dns_vec =
       CF_EXPECT(GET_FLAG_STR_VALUE(ril_dns));
 
@@ -1223,6 +1254,12 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_ril_dns(ril_dns_vec[instance_index]);
 
     instance.set_vhost_net(vhost_net_vec[instance_index]);
+
+    CF_EXPECT(!vhost_user_vsock_vec[instance_index] ||
+                  tmp_config_obj.vm_manager() == CrosvmManager::name(),
+              "vhost_user_vsock is available only in crosvm.");
+
+    instance.set_vhost_user_vsock(vhost_user_vsock_vec[instance_index]);
     // end of wifi, bluetooth, connectivity setup
 
     if (use_random_serial_vec[instance_index]) {
@@ -1810,7 +1847,6 @@ Result<std::vector<GuestConfig>> GetGuestConfigAndSetDefaults() {
   auto name_to_default_value = CurrentFlagsToDefaultValue();
 
   if (vm_manager_vec[0] == QemuManager::name()) {
-
     CF_EXPECT(SetDefaultFlagsForQemu(guest_configs[0].target_arch, name_to_default_value));
   } else if (vm_manager_vec[0] == CrosvmManager::name()) {
     CF_EXPECT(SetDefaultFlagsForCrosvm(guest_configs, name_to_default_value));
