@@ -44,9 +44,6 @@ class CvdCommandHandler : public CvdServerHandler {
   Result<void> Interrupt() override;
 
  private:
-  Result<cvd::Status> HandleCvdFleet(const RequestWithStdio& request,
-                                     const std::vector<std::string>& args,
-                                     const std::string& host_artifacts_path);
   InstanceManager& instance_manager_;
   SubprocessWaiter& subprocess_waiter_;
   std::mutex interruptible_;
@@ -59,8 +56,6 @@ class CvdCommandHandler : public CvdServerHandler {
 
   static constexpr char kClearBin[] =
       "clear_placeholder";  // Unused, runs CvdClear()
-  static constexpr char kFleetBin[] =
-      "fleet_placeholder";  // Unused, runs CvdFleet()
 
   static const std::map<std::string, std::string> command_to_binary_map_;
 };

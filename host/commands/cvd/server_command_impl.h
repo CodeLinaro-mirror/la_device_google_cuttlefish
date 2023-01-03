@@ -63,5 +63,31 @@ struct ConstructCommandParam {
 };
 Result<Command> ConstructCommand(const ConstructCommandParam& cmd_param);
 
+// Constructs a command for cvd whatever --help or --help-related-option
+Result<Command> ConstructCvdHelpCommand(
+    const std::string& bin_file, const Envs& envs,
+    const std::vector<std::string>& subcmd_args,
+    const RequestWithStdio& request);
+
+Envs ConvertProtoMap(
+    const google::protobuf::Map<std::string, std::string>& proto_map);
+
+std::vector<std::string> ConvertProtoArguments(
+    const google::protobuf::RepeatedPtrField<std::string>& proto_args);
+
+// e.g. cvd start --help, cvd stop --help
+bool IsHelpSubcmd(const std::vector<std::string>& args);
+
+/**
+ * Calculates absolute path based on the client's environment
+ *
+ * If the client sent a relative path like "bin/foo", it is relative
+ * to the client's working directory, not to the server's.
+ * Likewise, if the client sent a path that starts with ~, we should
+ * replace ~ with the client user's home, not the server user's.
+ */
+Result<std::string> ClientAbsolutePath(const std::string& path, const uid_t uid,
+                                       const std::string& client_pwd);
+
 }  // namespace cvd_cmd_impl
 }  // namespace cuttlefish

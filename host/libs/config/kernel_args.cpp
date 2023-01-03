@@ -45,7 +45,7 @@ std::vector<std::string> VmManagerKernelCmdline(
   if (config.vm_manager() == QemuManager::name()) {
     Arch target_arch = instance.target_arch();
     if (target_arch == Arch::Arm64 || target_arch == Arch::Arm) {
-      if (config.enable_kernel_log()) {
+      if (instance.enable_kernel_log()) {
         vm_manager_cmdline.push_back("console=hvc0");
 
         // To update the pl011 address:
@@ -54,8 +54,17 @@ std::vector<std::string> VmManagerKernelCmdline(
         // In the virt.dts file, look for a uart node
         vm_manager_cmdline.push_back("earlycon=pl011,mmio32,0x9000000");
       }
+    } else if (target_arch == Arch::RiscV64) {
+        vm_manager_cmdline.push_back("console=hvc0");
+
+        // To update the uart8250 address:
+        // $ qemu-system-riscv64 -machine virt -machine dumpdtb=virt.dtb
+        // $ dtc -O dts -o virt.dts -I dtb virt.dtb
+        // In the virt.dts file, look for a uart node
+        // Only 'mmio' mode works; mmio32 does not
+        vm_manager_cmdline.push_back("earlycon=uart8250,mmio,0x10000000");
     } else {
-      if (config.enable_kernel_log()) {
+      if (instance.enable_kernel_log()) {
         vm_manager_cmdline.push_back("console=hvc0");
 
         // To update the uart8250 address:
