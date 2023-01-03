@@ -172,9 +172,6 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     // updated soon.
     {"android.hardware.identity.", 5},
 
-    // The interface is in development (b/205884982)
-    {"android.hardware.audio.core.", 1},
-
     // Cuttlefish will use the default implementation (b/205758693)
     {"android.hardware.bluetooth.", 1},
 
@@ -188,6 +185,9 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.hardware.keymaster.", 2},
     {"android.hardware.keymaster.", 3},
     {"android.hardware.keymaster.", 4},
+
+    // Merging implementation separately
+    {"android.hardware.secure_element.", 1},
 
     // Sound trigger doesn't have a default implementation.
     {"android.hardware.soundtrigger3.", 1},
@@ -217,9 +217,6 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.hardware.automotive.occupant_awareness.", 1},
     {"android.hardware.automotive.remoteaccess.", 1},
     {"android.hardware.automotive.vehicle.", 2},
-
-    // TODO(b/250036572): Implement for the interface.
-    {"android.hardware.graphics.composer3.", 2},
 
     // The interface is in development (b/251850069)
     {"android.hardware.media.c2.", 1},

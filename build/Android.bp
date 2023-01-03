@@ -104,8 +104,10 @@ cvd_host_tools = [
 ]
 
 cvd_openwrt_images = [
-    "kernel_for_openwrt",
-    "openwrt_rootfs",
+    "openwrt_kernel_x86_64",
+    "openwrt_rootfs_x86_64",
+    "openwrt_kernel_aarch64",
+    "openwrt_rootfs_aarch64",
 ]
 
 cvd_bluetooth_config_files = [
@@ -207,9 +209,10 @@ cvd_host_seccomp_policy_aarch64 = [
 ]
 
 cvd_host_qemu_bootloader = [
-    "bootloader_qemu_x86_64",
     "bootloader_qemu_aarch64",
     "bootloader_qemu_arm",
+    "bootloader_qemu_riscv64",
+    "bootloader_qemu_x86_64",
 ]
 
 prebuilt_etc_host {

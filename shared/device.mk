@@ -35,7 +35,6 @@ BOOT_SECURITY_PATCH = $(PLATFORM_SECURITY_PATCH)
 PRODUCT_VENDOR_PROPERTIES += \
     ro.vendor.boot_security_patch=$(BOOT_SECURITY_PATCH)
 
-PRODUCT_SOONG_NAMESPACES += device/generic/goldfish-opengl # for vulkan
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish # for audio and wifi
 
 PRODUCT_SHIPPING_API_LEVEL := 34
@@ -48,8 +47,6 @@ PRODUCT_ENFORCE_MAC80211_HWSIM := true
 endif
 
 PRODUCT_SET_DEBUGFS_RESTRICTIONS := true
-
-PRODUCT_SOONG_NAMESPACES += device/generic/goldfish-opengl # for vulkan
 
 PRODUCT_FS_COMPRESSION := 1
 TARGET_RO_FILE_SYSTEM_TYPE ?= ext4
@@ -74,8 +71,8 @@ PRODUCT_PRODUCT_PROPERTIES += \
     persist.adb.tcp.port=5555 \
     ro.com.google.locationfeatures=1 \
     persist.sys.fuse.passthrough.enable=true \
-    persist.sys.fuse.bpf.enable=false \
     remote_provisioning.tee.rkp_only=1 \
+    ro.fuse.bpf.enabled=true
 
 # Until we support adb keys on user builds, and fix logcat over serial,
 # spawn adbd by default without authorization for "adb logcat"
@@ -99,7 +96,6 @@ PRODUCT_VENDOR_PROPERTIES += \
     persist.sys.zram_enabled=1 \
     ro.hardware.keystore_desede=true \
     ro.rebootescrow.device=/dev/block/pmem0 \
-    ro.vendor.hwcomposer.pmem=/dev/block/pmem1 \
     ro.incremental.enable=1 \
     debug.c2.use_dmabufheaps=1
 
@@ -157,7 +153,7 @@ PRODUCT_PACKAGES += \
     vsoc_input_service \
     metrics_helper \
 
-$(call soong_config_append,cvd,launch_configs,cvd_config_auto.json cvd_config_foldable.json cvd_config_go.json cvd_config_lily.json cvd_config_phone.json cvd_config_slim.json cvd_config_tablet.json cvd_config_tv.json cvd_config_wear.json)
+$(call soong_config_append,cvd,launch_configs,cvd_config_auto.json cvd_config_auto_md.json cvd_config_foldable.json cvd_config_go.json cvd_config_phone.json cvd_config_slim.json cvd_config_tablet.json cvd_config_tv.json cvd_config_wear.json)
 $(call soong_config_append,cvd,grub_config,grub.cfg)
 
 #
@@ -181,28 +177,6 @@ PRODUCT_PACKAGES += \
 #
 PRODUCT_PACKAGES += \
     GbaService
-
-#
-# Packages for the Vulkan implementation
-#
-ifeq ($(TARGET_VULKAN_SUPPORT),true)
-PRODUCT_PACKAGES += \
-    vulkan.ranchu \
-    libvulkan_enc
-endif
-
-# GL/Vk implementation for gfxstream
-PRODUCT_PACKAGES += \
-    libandroidemu \
-    libOpenglCodecCommon \
-    libOpenglSystemCommon \
-    libGLESv1_CM_emulation \
-    lib_renderControl_enc \
-    libEGL_emulation \
-    libGLESv2_enc \
-    libGLESv2_emulation \
-    libGLESv1_enc \
-    libGoldfishProfiler \
 
 #
 # Packages for testing
@@ -307,16 +281,6 @@ PRODUCT_PACKAGES += \
     fstab.cf.ext4.cts \
     fstab.cf.ext4.cts.vendor_ramdisk \
 
-ifeq ($(TARGET_VULKAN_SUPPORT),true)
-ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
-PRODUCT_COPY_FILES += \
-    frameworks/native/data/etc/android.hardware.vulkan.level-0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.vulkan.level.xml \
-    frameworks/native/data/etc/android.hardware.vulkan.version-1_0_3.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.vulkan.version.xml \
-    frameworks/native/data/etc/android.software.vulkan.deqp.level-2023-03-01.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.vulkan.deqp.level.xml \
-    frameworks/native/data/etc/android.software.opengles.deqp.level-2023-03-01.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.opengles.deqp.level.xml
-endif
-endif
-
 # Packages for HAL implementations
 
 #
@@ -354,30 +318,6 @@ PRODUCT_PACKAGES += \
 #
 PRODUCT_PACKAGES += \
     android.hardware.authsecret-service.example
-#
-# Hardware Composer HAL
-#
-# The device needs to avoid having both hwcomposer2.4 and hwcomposer3
-# services running at the same time so make the user manually enables
-# in order to run with --gpu_mode=drm.
-ifeq ($(TARGET_ENABLE_DRMHWCOMPOSER),true)
-DEVICE_MANIFEST_FILE += \
-    device/google/cuttlefish/shared/config/manifest_android.hardware.graphics.composer@2.4-service.xml
-PRODUCT_PACKAGES += \
-    android.hardware.graphics.composer@2.4-service \
-    hwcomposer.drm
-else
-PRODUCT_PACKAGES += \
-    android.hardware.graphics.composer3-service.ranchu
-endif
-
-#
-# Gralloc HAL
-#
-PRODUCT_PACKAGES += \
-    android.hardware.graphics.allocator-service.minigbm \
-    android.hardware.graphics.mapper@4.0-impl.minigbm \
-    mapper.minigbm
 
 #
 # Bluetooth HAL and Compatibility Bluetooth library (for older revs).
@@ -422,12 +362,15 @@ PRODUCT_PACKAGES += \
 
 #
 # Audio HAL
+# Note: aidl services are loaded, however they are not fully functional yet,
+#       and are not used by the framework, only by VTS tests.
 #
 ifndef LOCAL_AUDIO_PRODUCT_PACKAGE
 LOCAL_AUDIO_PRODUCT_PACKAGE := \
     android.hardware.audio.service \
     android.hardware.audio@7.1-impl.ranchu \
     android.hardware.audio.effect@7.0-impl \
+    android.hardware.audio.service-aidl.example \
     android.hardware.audio.effect.service-aidl.example
 DEVICE_MANIFEST_FILE += \
     device/google/cuttlefish/guest/hals/audio/effects/manifest.xml
@@ -553,20 +496,30 @@ PRODUCT_PACKAGES += \
 # KeyMint HAL
 #
 ifeq ($(LOCAL_KEYMINT_PRODUCT_PACKAGE),)
-       LOCAL_KEYMINT_PRODUCT_PACKAGE := android.hardware.security.keymint-service.remote \
-                                        RemoteProvisioner
-# Indicate that this KeyMint includes support for the ATTEST_KEY key purpose.
+    LOCAL_KEYMINT_PRODUCT_PACKAGE := android.hardware.security.keymint-service.remote
+endif
+
+ifeq ($(LOCAL_KEYMINT_PRODUCT_PACKAGE),android.hardware.security.keymint-service.rust)
+    # KeyMint HAL has been overridden to force use of the Rust reference implementation.
+    # Set the build config for secure_env to match.
+    $(call soong_config_set,secure_env,keymint_impl,rust)
+endif
+
+PRODUCT_PACKAGES += \
+    $(LOCAL_KEYMINT_PRODUCT_PACKAGE) \
+    RemoteProvisioner
+
+# Indicate that KeyMint includes support for the ATTEST_KEY key purpose.
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.keystore.app_attest_key.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.keystore.app_attest_key.xml
-endif
- PRODUCT_PACKAGES += \
-    $(LOCAL_KEYMINT_PRODUCT_PACKAGE)
 
 #
 # Dice HAL
 #
+ifneq ($(filter-out %_riscv64,$(TARGET_PRODUCT)),)
 PRODUCT_PACKAGES += \
     android.hardware.security.dice-service.non-secure-software
+endif
 
 #
 # Power and PowerStats HALs
@@ -597,6 +550,10 @@ PRODUCT_PACKAGES += \
 # USB
 PRODUCT_PACKAGES += \
     com.android.hardware.usb
+
+# USB Gadget
+PRODUCT_PACKAGES += \
+    android.hardware.usb.gadget-service.example
 
 # Vibrator HAL
 ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
@@ -690,6 +647,12 @@ PRODUCT_PACKAGES += \
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/wpa_supplicant.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/wpa_supplicant.rc
 
+# VirtWifi interface configuration
+ifeq ($(DEVICE_VIRTWIFI_PORT),)
+    DEVICE_VIRTWIFI_PORT := eth2
+endif
+PRODUCT_VENDOR_PROPERTIES += ro.vendor.virtwifi.port=${DEVICE_VIRTWIFI_PORT}
+
 # WLAN driver configuration files
 ifndef LOCAL_WPA_SUPPLICANT_OVERLAY
 LOCAL_WPA_SUPPLICANT_OVERLAY := $(LOCAL_PATH)/config/wpa_supplicant_overlay.conf
@@ -749,6 +712,9 @@ PRODUCT_VENDOR_PROPERTIES += \
 # Disable GPU-intensive background blur for widget picker
 PRODUCT_SYSTEM_PROPERTIES += \
     ro.launcher.depth.widget=0
+
+# Start fingerprint virtual HAL process
+PRODUCT_VENDOR_PROPERTIES += ro.vendor.fingerprint_virtual_hal_start=true
 
 # Vendor Dlkm Locader
 PRODUCT_PACKAGES += \

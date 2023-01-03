@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 The Android Open Source Project
+// Copyright (C) 2019 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,27 +15,20 @@
 
 #pragma once
 
-#include <gtest/gtest.h>
+#include <fruit/fruit.h>
 
-#include <vector>
+#include "host/libs/config/cuttlefish_config.h"
 
 namespace cuttlefish {
-namespace selector {
 
-// Get one unique item at a time
-class OneEachTest : public testing::TestWithParam<std::vector<unsigned>> {};
+class GrpcSocketCreator {
+ public:
+  INJECT(GrpcSocketCreator(const CuttlefishConfig::InstanceSpecific& instance));
 
-/*
- * ClaimAll, StrideBeyond1, Consecutive, Take, TakeAll, TakeRange,
- * ReclaimAll, ReclaimEmptyPool
- *
- */
-class CvdIdAllocatorTest : public testing::Test {};
+  std::string CreateGrpcSocket(const std::string& process_name);
 
-/*
- * Reclaim and Take tests
- */
-class ReclaimTest : public testing::TestWithParam<std::vector<unsigned>> {};
+ private:
+  const CuttlefishConfig::InstanceSpecific& instance_;
+};
 
-}  // namespace selector
 }  // namespace cuttlefish

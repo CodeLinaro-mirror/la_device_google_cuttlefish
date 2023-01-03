@@ -20,6 +20,8 @@ package {
 cc_library_host_static {
     name: "libcvd_selector",
     srcs: [
+        "arguments_lexer.cpp",
+        "arguments_separator.cpp",
         "creation_analyzer.cpp",
         "instance_database.cpp",
         "instance_database_impl.cpp",
@@ -28,6 +30,7 @@ cc_library_host_static {
         "instance_group_record.cpp",
         "instance_record.cpp",
         "selector_cmdline_parser.cpp",
+        "selector_constants.cpp",
         "selector_flags_parser.cpp",
         "selector_option_parser_utils.cpp",
     ],
