@@ -188,9 +188,6 @@ class CuttlefishConfig {
   void set_wmediumd_api_server_socket(const std::string& path);
   std::string wmediumd_api_server_socket() const;
 
-  void set_ap_esp_image(const std::string& otheros_ap_image);
-  std::string ap_esp_image() const;
-
   void set_ap_rootfs_image(const std::string& path);
   std::string ap_rootfs_image() const;
 
@@ -364,6 +361,14 @@ class CuttlefishConfig {
 
     std::string ap_uboot_env_image_path() const;
 
+    std::string ap_esp_image_path() const;
+
+    std::string otheros_esp_image_path() const;
+
+    std::string otheros_esp_grub_config() const;
+
+    std::string ap_esp_grub_config() const;
+
     std::string audio_server_path() const;
 
     enum class BootFlow {
@@ -524,7 +529,6 @@ class CuttlefishConfig {
     std::string new_vendor_boot_image() const;
     std::string vbmeta_image() const;
     std::string vbmeta_system_image() const;
-    std::string vbmeta_vendor_image() const;
 
     // otheros artifacts
     std::string otheros_esp_image() const;
@@ -682,7 +686,6 @@ class CuttlefishConfig {
     void set_new_vendor_boot_image(const std::string& new_vendor_boot_image);
     void set_vbmeta_image(const std::string& vbmeta_image);
     void set_vbmeta_system_image(const std::string& vbmeta_system_image);
-    void set_vbmeta_vendor_image(const std::string& vbmeta_vendor_image);
     void set_otheros_esp_image(const std::string& otheros_esp_image);
     void set_linux_kernel_path(const std::string& linux_kernel_path);
     void set_linux_initramfs_path(const std::string& linux_initramfs_path);

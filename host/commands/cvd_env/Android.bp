@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2021 The Android Open Source Project
+// Copyright (C) 2022 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,19 +17,30 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-cc_binary {
-    name: "bt_vhci_forwarder",
+cc_binary_host {
+    name: "cvd_internal_env",
     srcs: [
-        "main.cpp",
+        "main.cc",
     ],
     shared_libs: [
         "libbase",
-        "libcutils",
-        "liblog",
+        "libcuttlefish_fs",
+        "libcuttlefish_utils",
+        "libfruit",
+        "libjsoncpp",
+        "libgrpc++",
+        "libprotobuf-cpp-full",
     ],
     static_libs: [
-        "h4_packetizer_lib",
+        "libc++fs",
+        "libcuttlefish_host_config",
+        "libcuttlefish_vm_manager",
         "libgflags",
+        "grpc_cli_libs",
     ],
-    defaults: ["cuttlefish_guest_only"]
+    cflags: [
+        "-Wno-unused-parameter",
+    ],
+    cpp_std: "c++17",
+    defaults: ["cuttlefish_host", "cuttlefish_libicuuc"],
 }

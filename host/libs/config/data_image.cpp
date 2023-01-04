@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2019 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 #include "host/libs/config/data_image.h"
 
 #include <android-base/logging.h>
@@ -337,7 +352,7 @@ class InitializeEspImageImpl : public InitializeEspImage {
  protected:
   bool Setup() override {
     if (EspRequiredForAPBootFlow()) {
-      LOG(DEBUG) << "creating esp_image: " << config_.ap_esp_image();
+      LOG(DEBUG) << "creating esp_image: " << instance_.ap_esp_image_path();
       if (!BuildAPImage()) {
         return false;
       }
@@ -345,7 +360,7 @@ class InitializeEspImageImpl : public InitializeEspImage {
     const auto is_not_gem5 = config_.vm_manager() != vm_manager::Gem5Manager::name();
     const auto esp_required_for_boot_flow = EspRequiredForBootFlow();
     if (is_not_gem5 && esp_required_for_boot_flow) {
-      LOG(DEBUG) << "creating esp_image: " << instance_.otheros_esp_image();
+      LOG(DEBUG) << "creating esp_image: " << instance_.otheros_esp_image_path();
       if (!BuildOSImage()) {
         return false;
       }
@@ -367,77 +382,67 @@ class InitializeEspImageImpl : public InitializeEspImage {
   }
 
   bool BuildAPImage() {
-    auto builder = EspBuilder(config_.ap_esp_image());
-    PrepareESP(builder, CuttlefishConfig::InstanceSpecific::BootFlow::Linux);
+    auto linux = LinuxEspBuilder(instance_.ap_esp_image_path());
+    InitLinuxArgs(linux);
+    linux.Argument("instancenum", std::to_string(cuttlefish::GetInstance()));
 
-    builder.File(config_.ap_kernel_image(), "vmlinuz", /* required */ true);
+    linux.Root("/dev/vda2")
+         .Architecture(instance_.target_arch())
+         .Kernel(config_.ap_kernel_image());
 
-    return builder.Build();
+    return linux.Build();
   }
 
   bool BuildOSImage() {
-    auto builder = EspBuilder(instance_.otheros_esp_image());
+    switch (instance_.boot_flow()) {
+      case CuttlefishConfig::InstanceSpecific::BootFlow::Linux: {
+        auto linux = LinuxEspBuilder(instance_.otheros_esp_image_path());
+        InitLinuxArgs(linux);
 
-    const auto flow = instance_.boot_flow();
-    PrepareESP(builder, flow);
+        linux.Root("/dev/vda2")
+             .Architecture(instance_.target_arch())
+             .Kernel(instance_.linux_kernel_path());
 
-    switch (flow) {
-      case CuttlefishConfig::InstanceSpecific::BootFlow::Linux:
-        builder.File(instance_.linux_kernel_path(), "vmlinuz", /* required */ true);
         if (!instance_.linux_initramfs_path().empty()) {
-          builder.File(instance_.linux_initramfs_path(), "initrd.img", /* required */ true);
+          linux.Initrd(instance_.linux_initramfs_path());
         }
-        break;
-      case CuttlefishConfig::InstanceSpecific::BootFlow::Fuchsia:
-        builder.File(instance_.fuchsia_zedboot_path(), "zedboot.zbi",
-                     /* required */ true);
-        builder.File(instance_.fuchsia_multiboot_bin_path(), "multiboot.bin",
-                     /* required */ true);
-        break;
+
+        return linux.Build();
+      }
+      case CuttlefishConfig::InstanceSpecific::BootFlow::Fuchsia: {
+        auto fuchsia = FuchsiaEspBuilder(instance_.otheros_esp_image_path());
+        return fuchsia.Architecture(instance_.target_arch())
+                      .Zedboot(instance_.fuchsia_zedboot_path())
+                      .MultibootBinary(instance_.fuchsia_multiboot_bin_path())
+                      .Build();
+      }
       default:
         break;
     }
 
-    return builder.Build();
+    return true;
   }
 
-  void PrepareESP(EspBuilder& builder,
-                  const CuttlefishConfig::InstanceSpecific::BootFlow& flow) {
-    // For licensing and build reproducibility reasons, pick up the bootloaders
-    // from the host Linux distribution (if present) and pack them into the
-    // automatically generated ESP. If the user wants their own bootloaders,
-    // they can use -esp_image=/path/to/esp.img to override, so we don't need
-    // to accommodate customizations of this packing process.
+  void InitLinuxArgs(LinuxEspBuilder& linux) {
+    linux.Root("/dev/vda2");
 
-    // Currently we only support Debian based distributions, and GRUB is built
-    // for those distros to always load grub.cfg from EFI/debian/grub.cfg, and
-    // nowhere else. If you want to add support for other distros, make the
-    // extra directories below and copy the initial grub.cfg there as well
-    builder.Directory("EFI")
-        .Directory("EFI/BOOT")
-        .Directory("EFI/debian")
-        .Directory("EFI/modules");
+    linux.Argument("console", "hvc0")
+         .Argument("panic", "-1")
+         .Argument("noefi");
 
-    if (flow == CuttlefishConfig::InstanceSpecific::BootFlow::Linux ||
-        flow == CuttlefishConfig::InstanceSpecific::BootFlow::Fuchsia) {
-      auto grub_cfg = DefaultHostArtifactsPath("etc/grub/grub.cfg");
-      builder.File(grub_cfg, "EFI/debian/grub.cfg", /* required */ true);
-      switch (instance_.target_arch()) {
-        case Arch::Arm:
-        case Arch::Arm64:
-          builder.File(kBootSrcPathAA64, kBootDestPathAA64, /* required */ true);
-          // Not required for arm64 due missing it in deb package, so fuchsia is
-          // not supported for it.
-          builder.File(kMultibootModuleSrcPathAA64, kMultibootModuleDestPathAA64,
-                        /* required */ false);
-          break;
-        case Arch::X86:
-        case Arch::X86_64:
-          builder.File(kBootSrcPathIA32, kBootDestPathIA32, /* required */ true);
-          builder.File(kMultibootModuleSrcPathIA32, kMultibootModuleDestPathIA32,
-                        /* required */ true);
-          break;
-      }
+    switch (instance_.target_arch()) {
+      case Arch::Arm:
+      case Arch::Arm64:
+        linux.Argument("console", "ttyAMA0");
+        break;
+      case Arch::X86:
+      case Arch::X86_64:
+        linux.Argument("console", "ttyS0")
+             .Argument("pnpacpi", "off")
+             .Argument("acpi", "noirq")
+             .Argument("reboot", "k")
+             .Argument("noexec", "off");
+        break;
     }
   }
 

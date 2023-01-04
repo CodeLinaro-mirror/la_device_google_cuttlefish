@@ -181,14 +181,6 @@ void CuttlefishConfig::MutableInstanceSpecific::set_vbmeta_system_image(
     const std::string& vbmeta_system_image) {
   (*Dictionary())[kVbmetaSystemImage] = vbmeta_system_image;
 }
-static constexpr char kVbmetaVendorImage[] = "vbmeta_vendor_image";
-std::string CuttlefishConfig::InstanceSpecific::vbmeta_vendor_image() const {
-  return (*Dictionary())[kVbmetaVendorImage].asString();
-}
-void CuttlefishConfig::MutableInstanceSpecific::set_vbmeta_vendor_image(
-    const std::string& vbmeta_vendor_image) {
-  (*Dictionary())[kVbmetaVendorImage] = vbmeta_vendor_image;
-}
 static constexpr char kOtherosEspImage[] = "otheros_esp_image";
 std::string CuttlefishConfig::InstanceSpecific::otheros_esp_image() const {
   return (*Dictionary())[kOtherosEspImage].asString();
@@ -944,6 +936,22 @@ std::string CuttlefishConfig::InstanceSpecific::uboot_env_image_path() const {
 
 std::string CuttlefishConfig::InstanceSpecific::ap_uboot_env_image_path() const {
   return AbsolutePath(PerInstancePath("ap_uboot_env.img"));
+}
+
+std::string CuttlefishConfig::InstanceSpecific::otheros_esp_image_path() const {
+  return AbsolutePath(PerInstancePath("esp.img"));
+}
+
+std::string CuttlefishConfig::InstanceSpecific::ap_esp_image_path() const {
+  return AbsolutePath(PerInstancePath("ap_esp.img"));
+}
+
+std::string CuttlefishConfig::InstanceSpecific::otheros_esp_grub_config() const {
+  return AbsolutePath(PerInstancePath("grub.cfg"));
+}
+
+std::string CuttlefishConfig::InstanceSpecific::ap_esp_grub_config() const {
+  return AbsolutePath(PerInstancePath("ap_grub.cfg"));
 }
 
 static constexpr char kMobileBridgeName[] = "mobile_bridge_name";
