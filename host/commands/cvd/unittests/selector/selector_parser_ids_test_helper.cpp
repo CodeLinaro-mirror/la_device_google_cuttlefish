@@ -15,6 +15,9 @@
 
 #include "host/commands/cvd/unittests/selector/selector_parser_ids_test_helper.h"
 
+#include <sys/types.h>
+#include <unistd.h>
+
 #include <android-base/strings.h>
 
 #include "host/commands/cvd/selector/selector_cmdline_parser.h"
@@ -24,18 +27,25 @@ namespace cuttlefish {
 namespace selector {
 
 InstanceIdTest::InstanceIdTest() {
-  auto [input, cuttlefish_instance, ids, result] = GetParam();
-  auto cmd_args = android::base::Tokenize(input, " ");
+  const uid_t uid = getuid();
+  auto [input, cuttlefish_instance, ids, num_instances, result] = GetParam();
+  auto args = android::base::Tokenize(input, " ");
+  flag_separation_result_ = GetCommandAndSelectorArguments(args);
+  if (!flag_separation_result_.ok()) {
+    return;
+  }
+  auto [cmd_args, selector_args] = *flag_separation_result_;
   if (cuttlefish_instance) {
     envs_[kCuttlefishInstanceEnvVarName] = cuttlefish_instance.value();
   }
-  auto parse_result =
-      SelectorFlagsParser::ConductSelectFlagsParser(Args{}, cmd_args, envs_);
+  auto parse_result = SelectorFlagsParser::ConductSelectFlagsParser(
+      uid, selector_args, cmd_args, envs_);
   if (parse_result.ok()) {
     parser_ = std::move(*parse_result);
   }
   expected_ids_ = std::move(ids);
   expected_result_ = result;
+  requested_num_instances_ = num_instances;
 }
 
 }  // namespace selector

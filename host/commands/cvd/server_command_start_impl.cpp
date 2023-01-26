@@ -16,6 +16,8 @@
 
 #include "host/commands/cvd/server_command_start_impl.h"
 
+#include <sys/types.h>
+
 #include <cstdint>
 #include <cstdlib>
 
@@ -23,6 +25,7 @@
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
+#include "common/libs/utils/contains.h"
 #include "common/libs/utils/flag_parser.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/libs/config/cuttlefish_config.h"
@@ -34,8 +37,26 @@ namespace cvd_cmd_impl {
 Result<bool> CvdStartCommandHandler::CanHandle(
     const RequestWithStdio& request) const {
   auto invocation = ParseInvocation(request.Message());
-  return command_to_binary_map_.find(invocation.command) !=
-         command_to_binary_map_.end();
+  return Contains(command_to_binary_map_, invocation.command);
+}
+
+CvdStartCommandHandler::PreconditionVerification
+CvdStartCommandHandler::VerifyPrecondition(
+    const RequestWithStdio& request) const {
+  PreconditionVerification verification_result;
+  if (!request.Credentials()) {
+    verification_result.error_message =
+        "ucred is not available while it is necessary.";
+    return verification_result;
+  }
+  if (!Contains(request.Message().command_request().env(),
+                "ANDROID_HOST_OUT")) {
+    verification_result.error_message =
+        "ANDROID_HOST_OUT in client environment is invalid.";
+    return verification_result;
+  }
+  verification_result.is_ok = true;
+  return verification_result;
 }
 
 Result<cvd::Response> CvdStartCommandHandler::Handle(
@@ -45,28 +66,38 @@ Result<cvd::Response> CvdStartCommandHandler::Handle(
     return CF_ERR("Interrupted");
   }
   CF_EXPECT(CanHandle(request));
+
   cvd::Response response;
   response.mutable_command_response();
 
-  auto invocation_info_opt = ExtractInfo(command_to_binary_map_, request);
-  if (!invocation_info_opt) {
+  auto [meets_precondition, error_message] = VerifyPrecondition(request);
+  if (!meets_precondition) {
     response.mutable_status()->set_code(cvd::Status::FAILED_PRECONDITION);
-    response.mutable_status()->set_message(
-        "ANDROID_HOST_OUT in client environment is invalid.");
+    response.mutable_status()->set_message(error_message);
     return response;
   }
 
+  const uid_t uid = request.Credentials()->uid;
+
+  auto invocation_info_opt = ExtractInfo(command_to_binary_map_, request);
+  CF_EXPECT(invocation_info_opt != std::nullopt);
   auto invocation_info = std::move(*invocation_info_opt);
   const std::string bin_path =
       CF_EXPECT(UpdateInstanceDatabase(invocation_info))
           ? CF_EXPECT(MakeBinPathFromDatabase(invocation_info))
           : invocation_info.host_artifacts_path + "/bin/" + invocation_info.bin;
 
-  Command command = CF_EXPECT(ConstructCommand(
-      bin_path, invocation_info.home, invocation_info.args,
-      invocation_info.envs,
-      request.Message().command_request().working_directory(),
-      invocation_info.bin, request.In(), request.Out(), request.Err()));
+  ConstructCommandParam construct_cmd_param{
+      .bin_path = bin_path,
+      .home = invocation_info.home,
+      .args = invocation_info.args,
+      .envs = invocation_info.envs,
+      .working_dir = request.Message().command_request().working_directory(),
+      .command_name = invocation_info.bin,
+      .in = request.In(),
+      .out = request.Out(),
+      .err = request.Err()};
+  Command command = CF_EXPECT(ConstructCommand(construct_cmd_param));
 
   const bool should_wait =
       (request.Message().command_request().wait_behavior() !=
@@ -80,7 +111,7 @@ Result<cvd::Response> CvdStartCommandHandler::Handle(
 
   auto infop = CF_EXPECT(subprocess_waiter_.Wait());
   if (infop.si_code != CLD_EXITED || infop.si_status != EXIT_SUCCESS) {
-    instance_manager_.RemoveInstanceGroup(invocation_info.home);
+    instance_manager_.RemoveInstanceGroup(uid, invocation_info.home);
   }
   return ResponseFromSiginfo(infop);
 }
@@ -108,9 +139,10 @@ Result<bool> CvdStartCommandHandler::UpdateInstanceDatabase(
 
   // Track this assembly_dir in the fleet.
   InstanceManager::InstanceGroupInfo info;
-  info.host_binaries_dir = invocation_info.host_artifacts_path + "/bin/";
+  info.host_artifacts_path = invocation_info.host_artifacts_path;
   info.instances = CF_EXPECT(calculator.Calculate());
-  CF_EXPECT(instance_manager_.SetInstanceGroup(invocation_info.home, info),
+  CF_EXPECT(instance_manager_.SetInstanceGroup(invocation_info.uid,
+                                               invocation_info.home, info),
             invocation_info.home
                 << " is already taken so can't create new instance.");
   return {true};
@@ -118,9 +150,9 @@ Result<bool> CvdStartCommandHandler::UpdateInstanceDatabase(
 
 Result<std::string> CvdStartCommandHandler::MakeBinPathFromDatabase(
     const CommandInvocationInfo& invocation_info) const {
-  auto assembly_info =
-      CF_EXPECT(instance_manager_.GetInstanceGroupInfo(invocation_info.home));
-  return assembly_info.host_binaries_dir + invocation_info.bin;
+  auto assembly_info = CF_EXPECT(instance_manager_.GetInstanceGroupInfo(
+      invocation_info.uid, invocation_info.home));
+  return assembly_info.host_artifacts_path + "/bin/" + invocation_info.bin;
 }
 
 Result<void> CvdStartCommandHandler::FireCommand(Command&& command,

@@ -21,12 +21,17 @@
 #include <string>
 
 #include "common/libs/utils/collect.h"
+#include "common/libs/utils/contains.h"
 #include "common/libs/utils/result.h"
 #include "host/commands/cvd/selector/constant_reference.h"
 #include "host/commands/cvd/selector/instance_database_types.h"
 
 namespace cuttlefish {
 namespace selector {
+
+// given /a/b/c/d/e, ensures
+// all directories from /a through /a/b/c/d/e exist
+Result<void> EnsureDirectoryExistsAllTheWay(const std::string& dir);
 
 Result<std::string> GetCuttlefishConfigPath(const std::string& home);
 
@@ -46,10 +51,10 @@ bool IsValidGroupName(const std::string& token);
 bool IsValidDeviceName(const std::string& token);
 
 /**
- * Runs simple tests to see if it could potentially be a host binaries dir
+ * Runs simple tests to see if it could potentially be a host artifacts dir
  *
  */
-bool PotentiallyHostBinariesDir(const std::string& host_binaries_dir);
+bool PotentiallyHostArtifactsPath(const std::string& host_binaries_dir);
 
 /**
  * simply returns:
@@ -147,7 +152,7 @@ template <typename RetSet, typename AnyContainer>
 RetSet Intersection(const RetSet& u, AnyContainer&& v) {
   RetSet result;
   for (auto const& e : v) {
-    if (u.find(e) != u.end()) {
+    if (Contains(u, e)) {
       result.insert(e);
     }
   }

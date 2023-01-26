@@ -16,6 +16,7 @@
 
 #include "host/commands/cvd/server_command_impl.h"
 
+#include "common/libs/utils/contains.h"
 #include "common/libs/utils/files.h"
 #include "host/commands/cvd/instance_manager.h"
 #include "host/commands/cvd/server.h"
@@ -60,21 +61,25 @@ cuttlefish::cvd::Response ResponseFromSiginfo(siginfo_t infop) {
 std::optional<CommandInvocationInfo> ExtractInfo(
     const std::map<std::string, std::string>& command_to_binary_map,
     const RequestWithStdio& request) {
+  auto result_opt = request.Credentials();
+  if (!result_opt) {
+    return std::nullopt;
+  }
+  const uid_t uid = result_opt->uid;
+
   auto [command, args] = ParseInvocation(request.Message());
-  auto subcommand_bin = command_to_binary_map.find(command);
-  if (subcommand_bin == command_to_binary_map.end()) {
+  if (!Contains(command_to_binary_map, command)) {
     return std::nullopt;
   }
-  auto bin = subcommand_bin->second;
+  const auto& bin = command_to_binary_map.at(command);
   Envs envs = ConvertMap(request.Message().command_request().env());
-  auto request_home = envs.find("HOME");
-  std::string home = request_home != envs.end() ? request_home->second
-                                                : StringFromEnv("HOME", ".");
-  auto host_out_itr = envs.find("ANDROID_HOST_OUT");
-  if (host_out_itr == envs.end() || !DirectoryExists(host_out_itr->second)) {
+  std::string home =
+      Contains(envs, "HOME") ? envs.at("HOME") : StringFromEnv("HOME", ".");
+  if (!Contains(envs, "ANDROID_HOST_OUT") ||
+      !DirectoryExists(envs.at("ANDROID_HOST_OUT"))) {
     return std::nullopt;
   }
-  const auto host_artifacts_path = host_out_itr->second;
+  const auto host_artifacts_path = envs.at("ANDROID_HOST_OUT");
   // TODO(kwstephenkim): eat --base_instance_num and --num_instances
   // or --instance_nums, and override/delete kCuttlefishInstanceEnvVarName
   // in envs
@@ -82,44 +87,43 @@ std::optional<CommandInvocationInfo> ExtractInfo(
                                   .bin = bin,
                                   .home = home,
                                   .host_artifacts_path = host_artifacts_path,
+                                  .uid = uid,
                                   .args = args,
                                   .envs = envs};
+  result.envs["HOME"] = home;
   return {result};
 }
 
-Result<Command> ConstructCommand(const std::string& bin_path,
-                                 const std::string& home,
-                                 const std::vector<std::string>& args,
-                                 const Envs& envs,
-                                 const std::string& working_dir,
-                                 const std::string& command_name, SharedFD in,
-                                 SharedFD out, SharedFD err) {
-  Command command(command_name);
-  command.SetExecutable(bin_path);
-  for (const std::string& arg : args) {
+Result<Command> ConstructCommand(const ConstructCommandParam& param) {
+  Command command(param.command_name);
+  command.SetExecutable(param.bin_path);
+  for (const std::string& arg : param.args) {
     command.AddParameter(arg);
   }
   // Set CuttlefishConfig path based on assembly dir,
   // used by subcommands when locating the CuttlefishConfig.
-  if (envs.count(cuttlefish::kCuttlefishConfigEnvVarName) == 0) {
-    auto config_path = InstanceManager::GetCuttlefishConfigPath(home);
+  if (param.envs.count(cuttlefish::kCuttlefishConfigEnvVarName) == 0) {
+    auto config_path = InstanceManager::GetCuttlefishConfigPath(param.home);
     if (config_path.ok()) {
       command.AddEnvironmentVariable(cuttlefish::kCuttlefishConfigEnvVarName,
                                      *config_path);
     }
   }
-  for (auto& it : envs) {
+  for (auto& it : param.envs) {
     command.UnsetFromEnvironment(it.first);
     command.AddEnvironmentVariable(it.first, it.second);
   }
   // Redirect stdin, stdout, stderr back to the cvd client
-  command.RedirectStdIO(Subprocess::StdIOChannel::kStdIn, std::move(in));
-  command.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, std::move(out));
-  command.RedirectStdIO(Subprocess::StdIOChannel::kStdErr, std::move(err));
-  if (!working_dir.empty()) {
-    auto fd = SharedFD::Open(working_dir, O_RDONLY | O_PATH | O_DIRECTORY);
-    CF_EXPECT(fd->IsOpen(),
-              "Couldn't open \"" << working_dir << "\": " << fd->StrError());
+  command.RedirectStdIO(Subprocess::StdIOChannel::kStdIn, std::move(param.in));
+  command.RedirectStdIO(Subprocess::StdIOChannel::kStdOut,
+                        std::move(param.out));
+  command.RedirectStdIO(Subprocess::StdIOChannel::kStdErr,
+                        std::move(param.err));
+  if (!param.working_dir.empty()) {
+    auto fd =
+        SharedFD::Open(param.working_dir, O_RDONLY | O_PATH | O_DIRECTORY);
+    CF_EXPECT(fd->IsOpen(), "Couldn't open \"" << param.working_dir
+                                               << "\": " << fd->StrError());
     command.SetWorkingDirectory(fd);
   }
   return {std::move(command)};

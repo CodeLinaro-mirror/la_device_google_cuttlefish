@@ -36,7 +36,7 @@ class Gem5Manager : public VmManager {
 
   bool IsSupported() override;
   std::vector<std::string> ConfigureGraphics(
-      const CuttlefishConfig& config) override;
+      const CuttlefishConfig::InstanceSpecific& instance) override;
   std::string ConfigureBootDevices(int num_disks) override;
 
   Result<std::vector<Command>> StartCommands(
@@ -73,6 +73,9 @@ const std::string fs_mem_pci = R"CPP_STR_END(
   pci_devices.append(PciVirtIO(vio=VirtIOConsole(device=Terminal(number=4, outfile="none"))))
   pci_devices.append(PciVirtIO(vio=VirtIOConsole(device=Terminal(number=5, outfile="none"))))
   pci_devices.append(PciVirtIO(vio=VirtIOConsole(device=Terminal(number=6, outfile="none"))))
+  pci_devices.append(PciVirtIO(vio=VirtIOConsole(device=Terminal(number=7, outfile="none"))))
+  pci_devices.append(PciVirtIO(vio=VirtIOConsole(device=Terminal(number=8, outfile="none"))))
+  pci_devices.append(PciVirtIO(vio=VirtIOConsole(device=Terminal(number=9, outfile="none"))))
 
   for each_item in args.disk_image:
     disk_image = CowDiskImage()

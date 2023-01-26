@@ -145,8 +145,6 @@ BOARD_USERDATAIMAGE_PARTITION_SIZE := $(TARGET_USERDATAIMAGE_PARTITION_SIZE)
 BOARD_USERDATAIMAGE_FILE_SYSTEM_TYPE := $(TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE)
 TARGET_USERIMAGES_USE_F2FS := true
 
-BOARD_GPU_DRIVERS := virgl
-
 # Enable goldfish's encoder.
 # TODO(b/113617962) Remove this if we decide to use
 # device/generic/opengl-transport to generate the encoder
@@ -347,8 +345,13 @@ RAMDISK_KERNEL_MODULES :=       failover.ko \
                                 net_failover.ko \
                                 nd_virtio.ko \
                                 virtio-rng.ko \
+                                virtio_net.ko \
+                                virtio_dma_buf.ko \
+                                virtio-gpu.ko \
+                                virtio_input.ko \
                                 virtio_blk.ko \
                                 virtio_console.ko \
                                 virtio_pci.ko \
                                 virtio_pci_modern_dev.ko \
+                                vmw_vsock_virtio_transport.ko \
 

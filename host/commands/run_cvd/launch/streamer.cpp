@@ -100,7 +100,7 @@ class StreamerSockets : public virtual SetupFeature {
     }
     cmd.AddParameter("-keyboard_fd=", keyboard_server_);
     cmd.AddParameter("-frame_server_fd=", frames_server_);
-    if (config_.enable_audio()) {
+    if (instance_.enable_audio()) {
       cmd.AddParameter("--audio_server_fd=", audio_server_);
     }
     cmd.AddParameter("--confui_in_fd=", confui_in_fd_);
@@ -111,7 +111,7 @@ class StreamerSockets : public virtual SetupFeature {
   std::string Name() const override { return "StreamerSockets"; }
   bool Enabled() const override {
     bool is_qemu = config_.vm_manager() == vm_manager::QemuManager::name();
-    bool is_accelerated = config_.gpu_mode() != kGpuModeGuestSwiftshader;
+    bool is_accelerated = instance_.gpu_mode() != kGpuModeGuestSwiftshader;
     return !(is_qemu && is_accelerated);
   }
 
@@ -137,7 +137,7 @@ class StreamerSockets : public virtual SetupFeature {
     frames_server_ = CreateUnixInputServer(instance_.frames_socket_path());
     CF_EXPECT(frames_server_->IsOpen(), frames_server_->StrError());
     // TODO(schuffelen): Make this a separate optional feature?
-    if (config_.enable_audio()) {
+    if (instance_.enable_audio()) {
       auto path = config_.ForDefaultInstance().audio_server_path();
       audio_server_ =
           SharedFD::SocketLocalServer(path, false, SOCK_SEQPACKET, 0666);

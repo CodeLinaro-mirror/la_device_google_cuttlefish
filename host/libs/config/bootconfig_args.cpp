@@ -81,7 +81,7 @@ std::vector<std::string> BootconfigArgsFromConfig(
       vm_manager::GetVmManager(config.vm_manager(), instance.target_arch());
   bootconfig_args.push_back(
       vmm->ConfigureBootDevices(instance.virtual_disk_paths().size()));
-  AppendVector(&bootconfig_args, vmm->ConfigureGraphics(config));
+  AppendVector(&bootconfig_args, vmm->ConfigureGraphics(instance));
 
   bootconfig_args.push_back(
       concat("androidboot.serialno=", instance.serial_number()));
@@ -129,7 +129,7 @@ std::vector<std::string> BootconfigArgsFromConfig(
         concat("androidboot.vsock_touch_port=", instance.touch_server_port()));
   }
 
-  if (config.enable_vehicle_hal_grpc_server() &&
+  if (instance.enable_vehicle_hal_grpc_server() &&
       instance.vehicle_hal_server_port() &&
       FileExists(VehicleHalGrpcServerBinary())) {
     constexpr int vehicle_hal_server_cid = 2;
@@ -149,7 +149,7 @@ std::vector<std::string> BootconfigArgsFromConfig(
                instance.audiocontrol_server_port()));
   }
 
-  if (!config.enable_audio()) {
+  if (!instance.enable_audio()) {
     bootconfig_args.push_back("androidboot.audio.tinyalsa.ignore_output=true");
     bootconfig_args.push_back("androidboot.audio.tinyalsa.simulate_input=true");
   }
@@ -190,9 +190,10 @@ std::vector<std::string> BootconfigArgsFromConfig(
     bootconfig_args.push_back(
         concat("androidboot.hypervisor.version=cf-", config.vm_manager()));
     bootconfig_args.push_back("androidboot.hypervisor.vm.supported=1");
-    bootconfig_args.push_back(
-        "androidboot.hypervisor.protected_vm.supported=0");
+  } else {
+    bootconfig_args.push_back("androidboot.hypervisor.vm.supported=0");
   }
+  bootconfig_args.push_back("androidboot.hypervisor.protected_vm.supported=0");
   if (!instance.kernel_path().empty()) {
     bootconfig_args.emplace_back("androidboot.kernel_hotswapped=1");
   }

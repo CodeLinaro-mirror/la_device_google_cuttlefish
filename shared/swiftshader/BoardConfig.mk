@@ -14,4 +14,6 @@
 # limitations under the License.
 #
 
-BOARD_VENDOR_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor/swiftshader
+-include device/google/cuttlefish/shared/angle/BoardConfig.mk
+
+BOARD_VENDOR_SEPOLICY_DIRS += device/google/cuttlefish/shared/swiftshader/sepolicy

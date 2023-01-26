@@ -16,9 +16,12 @@
 
 #include "host/commands/cvd/server_command_generic_impl.h"
 
+#include <sys/types.h>
+
 #include <android-base/file.h>
 
 #include "common/libs/fs/shared_fd.h"
+#include "common/libs/utils/contains.h"
 #include "common/libs/utils/environment.h"
 #include "host/commands/cvd/command_sequence.h"
 #include "host/libs/config/cuttlefish_config.h"
@@ -30,8 +33,7 @@ namespace cvd_cmd_impl {
 Result<bool> CvdCommandHandler::CanHandle(
     const RequestWithStdio& request) const {
   auto invocation = ParseInvocation(request.Message());
-  return command_to_binary_map_.find(invocation.command) !=
-         command_to_binary_map_.end();
+  return Contains(command_to_binary_map_, invocation.command);
 }
 
 Result<void> CvdCommandHandler::Interrupt() {
@@ -48,6 +50,9 @@ Result<cvd::Response> CvdCommandHandler::Handle(
     return CF_ERR("Interrupted");
   }
   CF_EXPECT(CanHandle(request));
+  CF_EXPECT(request.Credentials() != std::nullopt);
+  const uid_t uid = request.Credentials()->uid;
+
   cvd::Response response;
   response.mutable_command_response();
 
@@ -62,7 +67,7 @@ Result<cvd::Response> CvdCommandHandler::Handle(
 
   if (invocation_info.bin == kClearBin) {
     *response.mutable_status() =
-        instance_manager_.CvdClear(request.Out(), request.Err());
+        instance_manager_.CvdClear(uid, request.Out(), request.Err());
     return response;
   }
 
@@ -75,21 +80,28 @@ Result<cvd::Response> CvdCommandHandler::Handle(
   std::string bin_path = invocation_info.bin;
   if (invocation_info.bin != kMkdirBin && invocation_info.bin != kLnBin) {
     auto assembly_info_result =
-        instance_manager_.GetInstanceGroupInfo(invocation_info.home);
+        instance_manager_.GetInstanceGroupInfo(uid, invocation_info.home);
     if (assembly_info_result.ok()) {
       auto assembly_info = assembly_info_result.value();
-      bin_path = assembly_info.host_binaries_dir + invocation_info.bin;
+      bin_path =
+          assembly_info.host_artifacts_path + "/bin/" + invocation_info.bin;
     } else {
       bin_path =
           invocation_info.host_artifacts_path + "/bin/" + invocation_info.bin;
     }
   }
 
-  Command command = CF_EXPECT(ConstructCommand(
-      bin_path, invocation_info.home, invocation_info.args,
-      invocation_info.envs,
-      request.Message().command_request().working_directory(),
-      invocation_info.bin, request.In(), request.Out(), request.Err()));
+  ConstructCommandParam construct_cmd_param{
+      .bin_path = bin_path,
+      .home = invocation_info.home,
+      .args = invocation_info.args,
+      .envs = invocation_info.envs,
+      .working_dir = request.Message().command_request().working_directory(),
+      .command_name = invocation_info.bin,
+      .in = request.In(),
+      .out = request.Out(),
+      .err = request.Err()};
+  Command command = CF_EXPECT(ConstructCommand(construct_cmd_param));
 
   SubprocessOptions options;
   if (request.Message().command_request().wait_behavior() ==
@@ -109,7 +121,7 @@ Result<cvd::Response> CvdCommandHandler::Handle(
   auto infop = CF_EXPECT(subprocess_waiter_.Wait());
 
   if (infop.si_code == CLD_EXITED && invocation_info.bin == kStopBin) {
-    instance_manager_.RemoveInstanceGroup(invocation_info.home);
+    instance_manager_.RemoveInstanceGroup(uid, invocation_info.home);
   }
 
   return ResponseFromSiginfo(infop);
@@ -118,14 +130,15 @@ Result<cvd::Response> CvdCommandHandler::Handle(
 Result<cvd::Status> CvdCommandHandler::HandleCvdFleet(
     const RequestWithStdio& request, const std::vector<std::string>& args,
     const std::string& host_artifacts_path) {
-  auto env_config = request.Message().command_request().env().find(
-      kCuttlefishConfigEnvVarName);
+  const auto& envs = request.Message().command_request().env();
   std::optional<std::string> config_path = std::nullopt;
-  if (env_config != request.Message().command_request().env().end()) {
-    config_path = env_config->second;
+  if (Contains(envs, kCuttlefishConfigEnvVarName)) {
+    config_path = envs.at(kCuttlefishConfigEnvVarName);
   }
-  return instance_manager_.CvdFleet(request.Out(), request.Err(), config_path,
-                                    host_artifacts_path, args);
+  CF_EXPECT(request.Credentials() != std::nullopt);
+  const uid_t uid = request.Credentials()->uid;
+  return instance_manager_.CvdFleet(uid, request.Out(), request.Err(),
+                                    config_path, host_artifacts_path, args);
 }
 
 const std::map<std::string, std::string>
