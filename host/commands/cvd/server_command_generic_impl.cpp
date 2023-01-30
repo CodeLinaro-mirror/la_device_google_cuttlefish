@@ -56,18 +56,20 @@ Result<cvd::Response> CvdCommandHandler::Handle(
   cvd::Response response;
   response.mutable_command_response();
 
-  auto invocation_info_opt = ExtractInfo(command_to_binary_map_, request);
-  if (!invocation_info_opt) {
+  auto [meets_precondition, error_message] = VerifyPrecondition(request);
+  if (!meets_precondition) {
     response.mutable_status()->set_code(cvd::Status::FAILED_PRECONDITION);
-    response.mutable_status()->set_message(
-        "ANDROID_HOST_OUT in client environment is invalid.");
+    response.mutable_status()->set_message(error_message);
     return response;
   }
+
+  auto invocation_info_opt = ExtractInfo(command_to_binary_map_, request);
+  CF_EXPECT(invocation_info_opt != std::nullopt);
   auto invocation_info = std::move(*invocation_info_opt);
 
   if (invocation_info.bin == kClearBin) {
     *response.mutable_status() =
-        instance_manager_.CvdClear(uid, request.Out(), request.Err());
+        instance_manager_.CvdClear(request.Out(), request.Err());
     return response;
   }
 
@@ -119,6 +121,15 @@ Result<cvd::Response> CvdCommandHandler::Handle(
   }
 
   return ResponseFromSiginfo(infop);
+}
+
+std::vector<std::string> CvdCommandHandler::CmdList() const {
+  std::vector<std::string> subcmd_list;
+  subcmd_list.reserve(command_to_binary_map_.size());
+  for (const auto& [cmd, _] : command_to_binary_map_) {
+    subcmd_list.emplace_back(cmd);
+  }
+  return subcmd_list;
 }
 
 const std::map<std::string, std::string>

@@ -49,7 +49,8 @@ endif
 PRODUCT_SET_DEBUGFS_RESTRICTIONS := true
 
 PRODUCT_FS_COMPRESSION := 1
-TARGET_RO_FILE_SYSTEM_TYPE ?= ext4
+TARGET_RO_FILE_SYSTEM_TYPE ?= erofs
+BOARD_EROFS_PCLUSTER_SIZE ?= 65536
 TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE ?= f2fs
 TARGET_USERDATAIMAGE_PARTITION_SIZE ?= 6442450944
 
@@ -60,6 +61,9 @@ TARGET_USE_BTLINUX_HAL_IMPL ?= true
 # Enable Virtual A/B
 $(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/android_t_baseline.mk)
 PRODUCT_VIRTUAL_AB_COMPRESSION_METHOD := gz
+
+PRODUCT_VENDOR_PROPERTIES += ro.virtual_ab.compression.threads=true
+PRODUCT_VENDOR_PROPERTIES += ro.virtual_ab.batch_writes=true
 
 # Enable Scoped Storage related
 $(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
@@ -121,13 +125,13 @@ PRODUCT_VENDOR_PROPERTIES += ro.cp_system_other_odex=1
 AB_OTA_POSTINSTALL_CONFIG += \
     RUN_POSTINSTALL_system=true \
     POSTINSTALL_PATH_system=system/bin/otapreopt_script \
-    FILESYSTEM_TYPE_system=ext4 \
+    FILESYSTEM_TYPE_system=erofs \
     POSTINSTALL_OPTIONAL_system=true
 
 AB_OTA_POSTINSTALL_CONFIG += \
     RUN_POSTINSTALL_vendor=true \
     POSTINSTALL_PATH_vendor=bin/checkpoint_gc \
-    FILESYSTEM_TYPE_vendor=ext4 \
+    FILESYSTEM_TYPE_vendor=erofs \
     POSTINSTALL_OPTIONAL_vendor=true
 
 # Userdata Checkpointing OTA GC
@@ -292,14 +296,15 @@ PRODUCT_PACKAGES += \
 #
 # Weaver aidl HAL
 #
-PRODUCT_PACKAGES += \
-    android.hardware.weaver-service.example
+# TODO(b/262418065) Add a real weaver implementation
 
 #
 # IR aidl HAL
 #
 PRODUCT_PACKAGES += \
-	android.hardware.ir-service.example
+	android.hardware.ir-service.example \
+	consumerir.default
+
 
 #
 # OemLock aidl HAL
@@ -516,10 +521,8 @@ PRODUCT_COPY_FILES += \
 #
 # Dice HAL
 #
-ifneq ($(filter-out %_riscv64,$(TARGET_PRODUCT)),)
 PRODUCT_PACKAGES += \
     android.hardware.security.dice-service.non-secure-software
-endif
 
 #
 # Power and PowerStats HALs
@@ -669,7 +672,7 @@ ifeq ($(PRODUCT_ENFORCE_MAC80211_HWSIM),true)
 PRODUCT_PACKAGES += \
     mac80211_create_radios \
     hostapd \
-    android.hardware.wifi@1.0-service \
+    android.hardware.wifi-service \
     init.wifi
 
 PRODUCT_VENDOR_PROPERTIES += ro.vendor.wifi_impl=mac8011_hwsim_virtio

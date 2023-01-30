@@ -42,7 +42,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.audio.effect@6.0",
     "android.hardware.automotive.audiocontrol@1.0",
     "android.hardware.automotive.audiocontrol@2.0",
-    "android.hardware.automotive.can@1.0",
+    "android.hardware.automotive.can@1.0",  // converted to AIDL, see b/170405615
     "android.hardware.automotive.evs@1.1",
     "android.hardware.automotive.sv@1.0",
     "android.hardware.automotive.vehicle@2.0",
@@ -110,6 +110,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.vibrator@1.3",
     "android.hardware.vr@1.0",
     "android.hardware.weaver@1.0",
+    "android.hardware.wifi@1.6", // Converted to AIDL (see b/205044134)
     "android.hardware.wifi.hostapd@1.3", // Converted to AIDL (see b/194806512)
     "android.hardware.wifi.supplicant@1.4", // Converted to AIDL (see b/196235436)
     "android.hardware.wifi.offload@1.0",
@@ -144,6 +145,7 @@ static const std::set<std::string> kAlwaysMissingAidl = {
     "android.media.audio.common.",
     "android.hardware.radio.",
     "android.hardware.uwb.fira_android.",
+    "android.hardware.power.stats.",
 
     // android.hardware.camera.device is an interface returned by
     // android.hardware.camera.provider.
@@ -164,12 +166,10 @@ static const std::set<std::string> kAlwaysMissingAidl = {
  * These should be accompanied by a bug and expected to be here temporarily.
  */
 static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
-    // No implementations on cuttlefish for wifi aidl hal
-    {"android.hardware.wifi.", 1},
-
     // Cuttlefish Identity Credential HAL implementation is currently
     // stuck at version 3 while RKP support is being added. Will be
     // updated soon.
+    {"android.hardware.identity.", 4},
     {"android.hardware.identity.", 5},
 
     // Cuttlefish will use the default implementation (b/205758693)
@@ -212,6 +212,7 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.frameworks.automotive.telemetry.", 2},
     {"android.hardware.automotive.audiocontrol.", 1},
     {"android.hardware.automotive.audiocontrol.", 2},
+    {"android.hardware.automotive.can.", 1},
     {"android.hardware.automotive.evs.", 1},
     {"android.hardware.broadcastradio.", 1},
     {"android.hardware.automotive.occupant_awareness.", 1},
@@ -227,6 +228,9 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
 
     // No implementation of IRadioIms yet TODO(b/250912118)
     {"android.hardware.radio.ims.media.", 1},
+
+    // Weaver needs a real implementation (b/262418065)
+    {"android.hardware.weaver.", 2},
 };
 
 static const std::set<VersionedAidlPackage> kComingSoonAidl = {
