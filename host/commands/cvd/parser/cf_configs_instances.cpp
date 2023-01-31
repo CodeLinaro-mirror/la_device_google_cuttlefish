@@ -22,6 +22,8 @@
 #include "common/libs/utils/flags_validator.h"
 #include "host/commands/cvd/parser/cf_configs_common.h"
 #include "host/commands/cvd/parser/instance/cf_boot_configs.h"
+#include "host/commands/cvd/parser/instance/cf_graphics_configs.h"
+#include "host/commands/cvd/parser/instance/cf_metrics_configs.h"
 #include "host/commands/cvd/parser/instance/cf_security_configs.h"
 #include "host/commands/cvd/parser/instance/cf_vm_configs.h"
 
@@ -39,8 +41,7 @@ static std::map<std::string, Json::ValueType> kInstanceKeyMap = {
     {"streaming", Json::ValueType::objectValue},
     {"adb", Json::ValueType::objectValue},
     {"vehicle", Json::ValueType::objectValue},
-    {"location", Json::ValueType::objectValue},
-    {"metrics", Json::ValueType::objectValue}};
+    {"location", Json::ValueType::objectValue}};
 
 Result<void> ValidateInstancesConfigs(const Json::Value& root) {
   int num_instances = root.size();
@@ -58,6 +59,10 @@ Result<void> ValidateInstancesConfigs(const Json::Value& root) {
       CF_EXPECT(ValidateSecurityConfigs(root[i]["security"]),
                 "ValidateSecurityConfigs fail");
     }
+    if (root[i].isMember("graphics")) {
+      CF_EXPECT(ValidateGraphicsConfigs(root[i]["graphics"]),
+                "ValidateGraphicsConfigs fail");
+    }
   }
   CF_EXPECT(ValidateStringConfig(root, "vm", "setupwizard_mode",
                                  ValidateStupWizardMode),
@@ -70,12 +75,18 @@ void InitInstancesConfigs(Json::Value& root) {
   InitVmConfigs(root);
   InitBootConfigs(root);
   InitSecurityConfigs(root);
+  InitGraphicsConfigs(root);
 }
 
 std::vector<std::string> GenerateInstancesFlags(const Json::Value& root) {
   std::vector<std::string> result = GenerateVmFlags(root);
-  result = MergeResults(result, GenerateBootFlags(root));
+  if (!GENERATE_MVP_FLAGS_ONLY) {
+    result = MergeResults(result, GenerateBootFlags(root));
+  }
   result = MergeResults(result, GenerateSecurityFlags(root));
+  result = MergeResults(result, GenerateGraphicsFlags(root));
+  result = MergeResults(result, GenerateMetricsFlags(root));
+
   return result;
 }
 

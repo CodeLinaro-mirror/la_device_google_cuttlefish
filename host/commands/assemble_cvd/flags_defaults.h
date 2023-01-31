@@ -29,6 +29,11 @@
 
 // Instance specific parameters
 //  VM default parameters
+#define CF_DEFAULTS_DISPLAY_DPI 320
+#define CF_DEFAULTS_DISPLAY_REFRESH_RATE 60
+#define CF_DEFAULTS_DISPLAY_WIDTH 720
+#define CF_DEFAULTS_DISPLAY_HEIGHT 1280
+#define CF_DEFAULTS_DISPLAYS_TEXTPROTO ""
 #define CF_DEFAULTS_CPUS 2
 #define CF_DEFAULTS_RESUME true
 #define CF_DEFAULTS_DAEMON false

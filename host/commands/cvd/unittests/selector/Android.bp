@@ -54,12 +54,12 @@ cc_test_host {
 cc_test_host {
     name: "cvd_selector_parser_test",
     srcs: [
-        "selector_parser_ids_test_helper.cpp",
-        "selector_parser_names_test_helper.cpp",
-        "selector_parser_substring_test_helper.cpp",
-        "test_cvd_selector_parser_ids.cpp",
-        "test_cvd_selector_parser_names.cpp",
-        "test_cvd_selector_parser_substring.cpp",
+        "parser_ids_helper.cpp",
+        "parser_ids_test.cpp",
+        "parser_names_helper.cpp",
+        "parser_names_test.cpp",
+        "parser_substring_helper.cpp",
+        "parser_substring_test.cpp",
     ],
     test_options: {
         unit_test: true,
@@ -72,6 +72,18 @@ cc_test_host {
     srcs: [
         "creation_analyzer_test_helper.cpp",
         "test_creation_analyzer.cpp",
+    ],
+    test_options: {
+        unit_test: false,
+    },
+    defaults: ["cvd_and_fetch_cvd_defaults"],
+}
+
+cc_test_host {
+    name: "cvd_client_lexer_test",
+    srcs: [
+        "client_lexer_helper.cpp",
+        "client_lexer_test.cpp",
     ],
     test_options: {
         unit_test: false,

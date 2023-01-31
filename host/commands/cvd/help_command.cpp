@@ -20,6 +20,7 @@
 
 #include "common/libs/fs/shared_buf.h"
 #include "host/commands/cvd/command_sequence.h"
+#include "host/commands/cvd/types.h"
 
 namespace cuttlefish {
 
@@ -52,8 +53,7 @@ class CvdHelpHandler : public CvdServerHandler {
 
   Result<bool> CanHandle(const RequestWithStdio& request) const override {
     auto invocation = ParseInvocation(request.Message());
-    return (invocation.command == "help" || invocation.command == "--help" ||
-            invocation.command == "-h");
+    return (invocation.command == "help");
   }
   Result<cvd::Response> Handle(const RequestWithStdio& request) override {
     std::unique_lock interrupt_lock(interruptible_);
@@ -91,6 +91,8 @@ class CvdHelpHandler : public CvdServerHandler {
     CF_EXPECT(executor_.Interrupt());
     return {};
   }
+
+  cvd_common::Args CmdList() const override { return {"help"}; }
 
  private:
   std::mutex interruptible_;

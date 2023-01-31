@@ -142,21 +142,6 @@ void CuttlefishConfig::set_vm_manager(const std::string& name) {
   (*dictionary_)[kVmManager] = name;
 }
 
-void CuttlefishConfig::SetPath(const std::string& key,
-                               const std::string& path) {
-  if (!path.empty()) {
-    (*dictionary_)[key] = AbsolutePath(path);
-  }
-}
-
-static constexpr char kCuttlefishEnvPath[] = "cuttlefish_env_path";
-void CuttlefishConfig::set_cuttlefish_env_path(const std::string& path) {
-  SetPath(kCuttlefishEnvPath, path);
-}
-std::string CuttlefishConfig::cuttlefish_env_path() const {
-  return (*dictionary_)[kCuttlefishEnvPath].asString();
-}
-
 static SecureHal StringToSecureHal(std::string mode) {
   std::transform(mode.begin(), mode.end(), mode.begin(), ::tolower);
   if (mode == "keymint") {
@@ -184,14 +169,6 @@ void CuttlefishConfig::set_secure_hals(const std::set<std::string>& hals) {
   (*dictionary_)[kSecureHals] = hals_json_obj;
 }
 
-static constexpr char kQemuBinaryDir[] = "qemu_binary_dir";
-std::string CuttlefishConfig::qemu_binary_dir() const {
-  return (*dictionary_)[kQemuBinaryDir].asString();
-}
-void CuttlefishConfig::set_qemu_binary_dir(const std::string& qemu_binary_dir) {
-  (*dictionary_)[kQemuBinaryDir] = qemu_binary_dir;
-}
-
 static constexpr char kCrosvmBinary[] = "crosvm_binary";
 std::string CuttlefishConfig::crosvm_binary() const {
   return (*dictionary_)[kCrosvmBinary].asString();
@@ -206,18 +183,6 @@ std::string CuttlefishConfig::gem5_debug_flags() const {
 }
 void CuttlefishConfig::set_gem5_debug_flags(const std::string& gem5_debug_flags) {
   (*dictionary_)[kGem5DebugFlags] = gem5_debug_flags;
-}
-
-static constexpr char kSeccompPolicyDir[] = "seccomp_policy_dir";
-void CuttlefishConfig::set_seccomp_policy_dir(const std::string& seccomp_policy_dir) {
-  if (seccomp_policy_dir.empty()) {
-    (*dictionary_)[kSeccompPolicyDir] = seccomp_policy_dir;
-    return;
-  }
-  SetPath(kSeccompPolicyDir, seccomp_policy_dir);
-}
-std::string CuttlefishConfig::seccomp_policy_dir() const {
-  return (*dictionary_)[kSeccompPolicyDir].asString();
 }
 
 static constexpr char kWebRTCCertsDir[] = "webrtc_certs_dir";
@@ -383,22 +348,6 @@ std::vector<std::string> CuttlefishConfig::extra_bootconfig_args() const {
   return bootconfig;
 }
 
-static constexpr char kRilDns[] = "ril_dns";
-void CuttlefishConfig::set_ril_dns(const std::string& ril_dns) {
-  (*dictionary_)[kRilDns] = ril_dns;
-}
-std::string CuttlefishConfig::ril_dns() const {
-  return (*dictionary_)[kRilDns].asString();
-}
-
-static constexpr char kVhostNet[] = "vhost_net";
-void CuttlefishConfig::set_vhost_net(bool vhost_net) {
-  (*dictionary_)[kVhostNet] = vhost_net;
-}
-bool CuttlefishConfig::vhost_net() const {
-  return (*dictionary_)[kVhostNet].asBool();
-}
-
 static constexpr char kVhostUserMac80211Hwsim[] = "vhost_user_mac80211_hwsim";
 void CuttlefishConfig::set_vhost_user_mac80211_hwsim(const std::string& path) {
   (*dictionary_)[kVhostUserMac80211Hwsim] = path;
@@ -516,14 +465,6 @@ void CuttlefishConfig::set_rootcanal_default_commands_file(
     const std::string& rootcanal_default_commands_file) {
   (*dictionary_)[kRootcanalDefaultCommandsFile] =
       DefaultHostArtifactsPath(rootcanal_default_commands_file);
-}
-
-static constexpr char kSmt[] = "smt";
-void CuttlefishConfig::set_smt(bool smt) {
-  (*dictionary_)[kSmt] = smt;
-}
-bool CuttlefishConfig::smt() const {
-  return (*dictionary_)[kSmt].asBool();
 }
 
 static constexpr char kBootconfigSupported[] = "bootconfig_supported";

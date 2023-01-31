@@ -13,26 +13,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "host/commands/cvd/unittests/selector/selector_parser_substring_test_helper.h"
-
-#include <sys/types.h>
-#include <unistd.h>
-
-#include <android-base/strings.h>
+#include "host/commands/cvd/unittests/selector/client_lexer_helper.h"
 
 namespace cuttlefish {
 namespace selector {
 
-SubstringTest::SubstringTest() {
-  const uid_t uid = getuid();
-  auto [input, expected] = GetParam();
-  auto selector_args = android::base::Tokenize(input, " ");
-  auto parse_result = SelectorFlagsParser::ConductSelectFlagsParser(
-      uid, selector_args, Args{}, Envs{});
-  if (parse_result.ok()) {
-    parser_ = std::move(*parse_result);
-  }
-  expected_result_ = expected;
+LexerTestBase::LexerTestBase() { Init(); }
+
+void LexerTestBase::Init() {
+  auto param = GetParam();
+  known_flags_ = param.known_flags_;
+  lex_input_ = param.lex_input_;
+  expected_tokens_ = param.expected_tokens_;
 }
 
 }  // namespace selector

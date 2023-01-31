@@ -44,19 +44,13 @@ class CvdStartCommandHandler : public CvdServerHandler {
   Result<bool> CanHandle(const RequestWithStdio& request) const;
   Result<cvd::Response> Handle(const RequestWithStdio& request) override;
   Result<void> Interrupt() override;
+  std::vector<std::string> CmdList() const override;
 
  private:
   Result<void> UpdateInstanceDatabase(
       const uid_t uid, const selector::GroupCreationInfo& group_creation_info);
   Result<void> FireCommand(Command&& command, const bool wait);
   bool HasHelpOpts(const std::vector<std::string>& args) const;
-
-  struct PreconditionVerification {
-    bool is_ok;
-    std::string error_message;
-  };
-  PreconditionVerification VerifyPrecondition(
-      const RequestWithStdio& request) const;
 
   Result<Command> ConstructCvdNonHelpCommand(
       const std::string& bin_file,
