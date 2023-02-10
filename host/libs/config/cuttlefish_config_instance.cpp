@@ -121,6 +121,14 @@ static constexpr char kNewMiscImage[] = "new_misc_image";
 std::string CuttlefishConfig::InstanceSpecific::new_misc_image() const {
   return (*Dictionary())[kNewMiscImage].asString();
 }
+static constexpr char kMiscInfoTxt[] = "misc_info_txt";
+std::string CuttlefishConfig::InstanceSpecific::misc_info_txt() const {
+  return (*Dictionary())[kMiscInfoTxt].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_misc_info_txt(
+    const std::string& misc_info) {
+  (*Dictionary())[kMiscInfoTxt] = misc_info;
+}
 void CuttlefishConfig::MutableInstanceSpecific::set_new_misc_image(
     const std::string& new_misc_image) {
   (*Dictionary())[kNewMiscImage] = new_misc_image;
@@ -304,6 +312,35 @@ void CuttlefishConfig::MutableInstanceSpecific::set_virtual_disk_paths(
     virtual_disks_json_obj.append(arg);
   }
   (*Dictionary())[kVirtualDiskPaths] = virtual_disks_json_obj;
+}
+
+static constexpr char kGuestAndroidVersion[] = "guest_android_version";
+std::string CuttlefishConfig::InstanceSpecific::guest_android_version() const {
+  return (*Dictionary())[kGuestAndroidVersion].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_guest_android_version(
+    const std::string& guest_android_version) {
+  (*Dictionary())[kGuestAndroidVersion] = guest_android_version;
+}
+
+static constexpr char kBootconfigSupported[] = "bootconfig_supported";
+bool CuttlefishConfig::InstanceSpecific::bootconfig_supported() const {
+  return (*Dictionary())[kBootconfigSupported].asBool();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_bootconfig_supported(
+    bool bootconfig_supported) {
+  (*Dictionary())[kBootconfigSupported] = bootconfig_supported;
+}
+
+static constexpr char kFilenameEncryptionMode[] = "filename_encryption_mode";
+std::string CuttlefishConfig::InstanceSpecific::filename_encryption_mode() const {
+  return (*Dictionary())[kFilenameEncryptionMode].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_filename_encryption_mode(
+    const std::string& filename_encryption_mode) {
+  auto fmt = filename_encryption_mode;
+  std::transform(fmt.begin(), fmt.end(), fmt.begin(), ::tolower);
+  (*Dictionary())[kFilenameEncryptionMode] = fmt;
 }
 
 std::string CuttlefishConfig::InstanceSpecific::kernel_log_pipe_name() const {
@@ -930,6 +967,22 @@ std::string CuttlefishConfig::InstanceSpecific::ap_uboot_env_image_path() const 
   return AbsolutePath(PerInstancePath("ap_uboot_env.img"));
 }
 
+std::string CuttlefishConfig::InstanceSpecific::otheros_esp_image_path() const {
+  return AbsolutePath(PerInstancePath("esp.img"));
+}
+
+std::string CuttlefishConfig::InstanceSpecific::ap_esp_image_path() const {
+  return AbsolutePath(PerInstancePath("ap_esp.img"));
+}
+
+std::string CuttlefishConfig::InstanceSpecific::otheros_esp_grub_config() const {
+  return AbsolutePath(PerInstancePath("grub.cfg"));
+}
+
+std::string CuttlefishConfig::InstanceSpecific::ap_esp_grub_config() const {
+  return AbsolutePath(PerInstancePath("ap_grub.cfg"));
+}
+
 static constexpr char kMobileBridgeName[] = "mobile_bridge_name";
 
 std::string CuttlefishConfig::InstanceSpecific::audio_server_path() const {
@@ -979,6 +1032,15 @@ std::string CuttlefishConfig::InstanceSpecific::wifi_tap_name() const {
 void CuttlefishConfig::MutableInstanceSpecific::set_wifi_tap_name(
     const std::string& wifi_tap_name) {
   (*Dictionary())[kWifiTapName] = wifi_tap_name;
+}
+
+static constexpr char kWifiBridgeName[] = "wifi_bridge_name";
+std::string CuttlefishConfig::InstanceSpecific::wifi_bridge_name() const {
+  return (*Dictionary())[kWifiBridgeName].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_wifi_bridge_name(
+    const std::string& wifi_bridge_name) {
+  (*Dictionary())[kWifiBridgeName] = wifi_bridge_name;
 }
 
 static constexpr char kEthernetTapName[] = "ethernet_tap_name";

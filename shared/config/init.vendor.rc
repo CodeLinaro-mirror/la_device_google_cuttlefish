@@ -43,10 +43,6 @@ on fs
     # So GceBootReporter can print to kmsg
     chmod 622 /dev/kmsg
 
-on post-fs
-    # set RLIMIT_MEMLOCK to 64MB
-    setrlimit 8 67108864 67108864
-
 on post-fs-data && property:ro.vendor.disable_rename_eth0=
     # works around framework netiface enumeration issue
     # TODO(b/202731768): Add this `start rename_eth0` command to the init.rc for rename_netiface
@@ -102,7 +98,7 @@ service vendor.dlkm_loader /vendor/bin/dlkm_loader
 service metrics_helper /vendor/bin/metrics_helper
     group system
 
-service socket_vsock_proxy /vendor/bin/socket_vsock_proxy -server=vsock -tcp_port=5555 -vsock_port=6520
+service socket_vsock_proxy /vendor/bin/socket_vsock_proxy -server_type=vsock -server_vsock_port=6520 -client_type=tcp -client_tcp_host=0.0.0.0 -client_tcp_port=5555
 
 service seriallogging /system/bin/logcat -b all -v threadtime -f /dev/hvc2 *:V
     class main

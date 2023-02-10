@@ -15,32 +15,38 @@
 
 #pragma once
 
-#include <optional>
-#include <string>
-#include <unordered_map>
-#include <vector>
-
-#include <gtest/gtest.h>
-
-#include "host/commands/cvd/selector/start_selector_parser.h"
-#include "host/commands/cvd/types.h"
+#include "common/libs/fs/shared_fd.h"
 
 namespace cuttlefish {
-namespace selector {
+namespace socket_proxy {
 
-struct SubstringTestInput {
-  std::string input_args;
-  bool expected;
+class Client {
+ public:
+  virtual SharedFD Start() = 0;
+  virtual ~Client() = default;
 };
 
-class SubstringTest : public testing::TestWithParam<SubstringTestInput> {
- protected:
-  SubstringTest();
+class TcpClient : public Client {
+ public:
+  TcpClient(std::string host, int port);
+  SharedFD Start() override;
 
-  cvd_common::Args selector_args_;
-  bool expected_result_;
-  std::optional<StartSelectorParser> parser_;
+ private:
+  std::string host_;
+  int port_;
+  int last_failure_reason_ = 0;
 };
 
-}  // namespace selector
-}  // namespace cuttlefish
+class VsockClient : public Client {
+ public:
+  VsockClient(int id, int port);
+  SharedFD Start() override;
+
+ private:
+  int id_;
+  int port_;
+  int last_failure_reason_ = 0;
+};
+
+}
+}
