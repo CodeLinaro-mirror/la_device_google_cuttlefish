@@ -65,6 +65,7 @@ DEFINE_string(super_image, CF_DEFAULTS_SUPER_IMAGE,
 DEFINE_string(misc_image, CF_DEFAULTS_MISC_IMAGE,
               "Location of the misc partition image. If the image does not "
               "exist, a blank new misc partition image is created.");
+DEFINE_string(misc_info_txt, "", "Location of the misc_info.txt file.");
 DEFINE_string(metadata_image, CF_DEFAULTS_METADATA_IMAGE,
               "Location of the metadata partition image "
               "to be generated.");
@@ -79,10 +80,6 @@ DEFINE_string(
     vbmeta_system_image, CF_DEFAULTS_VBMETA_SYSTEM_IMAGE,
     "Location of cuttlefish vbmeta_system image. If empty it is assumed to "
     "be vbmeta_system.img in the directory specified by -system_image_dir.");
-DEFINE_string(otheros_esp_image, CF_DEFAULTS_OTHEROS_ESP_IMAGE,
-              "Location of cuttlefish esp image. If the image does not exist, "
-              "and --otheros_root_image is specified, an esp partition image "
-              "is created with default bootloaders.");
 
 DEFINE_string(linux_kernel_path, CF_DEFAULTS_LINUX_KERNEL_PATH,
               "Location of linux kernel for cuttlefish otheros flow.");
@@ -132,8 +129,7 @@ Result<void> ResolveInstanceFiles() {
   std::string default_metadata_image = "";
   std::string default_super_image = "";
   std::string default_misc_image = "";
-  std::string default_ap_esp_image = "";
-  std::string default_esp_image = "";
+  std::string default_misc_info_txt = "";
   std::string default_vendor_boot_image = "";
   std::string default_vbmeta_image = "";
   std::string default_vbmeta_system_image = "";
@@ -161,8 +157,8 @@ Result<void> ResolveInstanceFiles() {
     default_metadata_image += comma_str + cur_system_image_dir + "/metadata.img";
     default_super_image += comma_str + cur_system_image_dir + "/super.img";
     default_misc_image += comma_str + cur_system_image_dir + "/misc.img";
-    default_esp_image += comma_str + cur_system_image_dir + "/esp.img";
-    default_ap_esp_image += comma_str + cur_system_image_dir + "/ap_esp.img";
+    default_misc_info_txt +=
+        comma_str + cur_system_image_dir + "/misc_info.txt";
     default_vendor_boot_image += comma_str + cur_system_image_dir + "/vendor_boot.img";
     default_vbmeta_image += comma_str + cur_system_image_dir + "/vbmeta.img";
     default_vbmeta_system_image += comma_str + cur_system_image_dir + "/vbmeta_system.img";
@@ -180,9 +176,7 @@ Result<void> ResolveInstanceFiles() {
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
   SetCommandLineOptionWithMode("misc_image", default_misc_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  SetCommandLineOptionWithMode("ap_esp_image", default_ap_esp_image.c_str(),
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  SetCommandLineOptionWithMode("otheros_esp_image", default_esp_image.c_str(),
+  SetCommandLineOptionWithMode("misc_info_txt", default_misc_info_txt.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
   SetCommandLineOptionWithMode("vendor_boot_image",
                                default_vendor_boot_image.c_str(),
@@ -202,7 +196,7 @@ std::vector<ImagePartition> linux_composite_disk_config(
 
   partitions.push_back(ImagePartition{
       .label = "linux_esp",
-      .image_file_path = AbsolutePath(instance.otheros_esp_image()),
+      .image_file_path = AbsolutePath(instance.otheros_esp_image_path()),
       .type = kEfiSystemPartition,
       .read_only = FLAGS_use_overlay,
   });
@@ -221,7 +215,7 @@ std::vector<ImagePartition> fuchsia_composite_disk_config(
 
   partitions.push_back(ImagePartition{
       .label = "fuchsia_esp",
-      .image_file_path = AbsolutePath(instance.otheros_esp_image()),
+      .image_file_path = AbsolutePath(instance.otheros_esp_image_path()),
       .type = kEfiSystemPartition,
       .read_only = FLAGS_use_overlay,
   });
@@ -325,7 +319,7 @@ std::vector<ImagePartition> GetApCompositeDiskConfig(const CuttlefishConfig& con
   if (instance.ap_boot_flow() == APBootFlow::Grub) {
     partitions.push_back(ImagePartition{
         .label = "ap_esp",
-        .image_file_path = AbsolutePath(config.ap_esp_image()),
+        .image_file_path = AbsolutePath(instance.ap_esp_image_path()),
         .read_only = FLAGS_use_overlay,
     });
   }
@@ -382,7 +376,6 @@ DiskBuilder ApCompositeDiskBuilder(const CuttlefishConfig& config,
 }
 
 std::vector<ImagePartition> persistent_composite_disk_config(
-    const CuttlefishConfig& config,
     const CuttlefishConfig::InstanceSpecific& instance) {
   std::vector<ImagePartition> partitions;
 
@@ -404,7 +397,7 @@ std::vector<ImagePartition> persistent_composite_disk_config(
             AbsolutePath(instance.factory_reset_protected_path()),
     });
   }
-  if (config.bootconfig_supported()) {
+  if (instance.bootconfig_supported()) {
     partitions.push_back(ImagePartition{
         .label = "bootconfig",
         .image_file_path = AbsolutePath(instance.persistent_bootconfig_path()),
@@ -504,7 +497,7 @@ class BootImageRepacker : public SetupFeature {
         bool success = RepackVendorBootImage(
             instance_.initramfs_path(), instance_.vendor_boot_image(),
             new_vendor_boot_image_path, config_.assembly_dir(),
-            config_.bootconfig_supported());
+            instance_.bootconfig_supported());
         if (!success) {
           LOG(ERROR) << "Failed to regenerate the vendor boot image with the "
                         "new ramdisk";
@@ -514,7 +507,7 @@ class BootImageRepacker : public SetupFeature {
           // ramdisk.
           bool success = RepackVendorBootImageWithEmptyRamdisk(
               instance_.vendor_boot_image(), new_vendor_boot_image_path,
-              config_.assembly_dir(), config_.bootconfig_supported());
+              config_.assembly_dir(), instance_.bootconfig_supported());
           if (!success) {
             LOG(ERROR) << "Failed to regenerate the vendor boot image without "
                           "a ramdisk";
@@ -640,7 +633,7 @@ class GeneratePersistentBootconfig : public SetupFeature {
     //  device is stopped (via stop_cvd). This is rarely an issue since OTA
     //  testing run on cuttlefish is done within one launch cycle of the device.
     //  If this ever becomes an issue, this code will have to be rewritten.
-    if(!config_.bootconfig_supported()) {
+    if(!instance_.bootconfig_supported()) {
       return {};
     }
     const auto bootconfig_path = instance_.persistent_bootconfig_path();
@@ -708,12 +701,10 @@ class GeneratePersistentBootconfig : public SetupFeature {
 class GeneratePersistentVbmeta : public SetupFeature {
  public:
   INJECT(GeneratePersistentVbmeta(
-      const CuttlefishConfig& config,
       const CuttlefishConfig::InstanceSpecific& instance,
       InitBootloaderEnvPartition& bootloader_env,
       GeneratePersistentBootconfig& bootconfig))
-      : config_(config),
-        instance_(instance),
+      : instance_(instance),
         bootloader_env_(bootloader_env),
         bootconfig_(bootconfig) {}
 
@@ -735,7 +726,7 @@ class GeneratePersistentVbmeta : public SetupFeature {
 
   bool Setup() override {
     if (!instance_.protected_vm()) {
-      if (!PrepareVBMetaImage(instance_.vbmeta_path(), config_.bootconfig_supported())) {
+      if (!PrepareVBMetaImage(instance_.vbmeta_path(), instance_.bootconfig_supported())) {
         return false;
       }
     }
@@ -796,7 +787,6 @@ class GeneratePersistentVbmeta : public SetupFeature {
     return true;
   }
 
-  const CuttlefishConfig& config_;
   const CuttlefishConfig::InstanceSpecific& instance_;
   InitBootloaderEnvPartition& bootloader_env_;
   GeneratePersistentBootconfig& bootconfig_;
@@ -988,7 +978,7 @@ class InitializeInstanceCompositeDisk : public SetupFeature {
     };
     auto persistent_disk_builder =
         DiskBuilder()
-            .Partitions(persistent_composite_disk_config(config_, instance_))
+            .Partitions(persistent_composite_disk_config(instance_))
             .VmManager(config_.vm_manager())
             .CrosvmPath(instance_.crosvm_binary())
             .ConfigPath(ipath("persistent_composite_disk_config.txt"))
@@ -1120,6 +1110,8 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
       android::base::Split(FLAGS_super_image, ",");
   std::vector<std::string> misc_image =
       android::base::Split(FLAGS_misc_image, ",");
+  std::vector<std::string> misc_info =
+      android::base::Split(FLAGS_misc_info_txt, ",");
   std::vector<std::string> metadata_image =
       android::base::Split(FLAGS_metadata_image, ",");
   std::vector<std::string> vendor_boot_image =
@@ -1128,8 +1120,6 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
       android::base::Split(FLAGS_vbmeta_image, ",");
   std::vector<std::string> vbmeta_system_image =
       android::base::Split(FLAGS_vbmeta_system_image, ",");
-  std::vector<std::string> otheros_esp_image =
-      android::base::Split(FLAGS_otheros_esp_image, ",");
 
   std::vector<std::string> linux_kernel_path =
       android::base::Split(FLAGS_linux_kernel_path, ",");
@@ -1180,6 +1170,11 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
       cur_misc_image = misc_image[instance_index];
     }
     instance.set_misc_image(cur_misc_image);
+    if (instance_index >= misc_info.size()) {
+      instance.set_misc_info_txt(misc_info[0]);
+    } else {
+      instance.set_misc_info_txt(misc_info[instance_index]);
+    }
     if (instance_index >= boot_image.size()) {
       cur_boot_image = boot_image[0];
     } else {
@@ -1227,11 +1222,6 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
       cur_metadata_image = metadata_image[instance_index];
     }
     instance.set_metadata_image(cur_metadata_image);
-    if (instance_index >= otheros_esp_image.size()) {
-      instance.set_otheros_esp_image(otheros_esp_image[0]);
-    } else {
-      instance.set_otheros_esp_image(otheros_esp_image[instance_index]);
-    }
     if (instance_index >= linux_kernel_path.size()) {
       instance.set_linux_kernel_path(linux_kernel_path[0]);
     } else {

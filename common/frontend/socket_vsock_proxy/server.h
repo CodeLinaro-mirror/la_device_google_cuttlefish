@@ -13,18 +13,45 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "host/commands/cvd/unittests/selector/parser_substring_helper.h"
+#pragma once
 
-#include <android-base/strings.h>
+#include "common/libs/fs/shared_fd.h"
 
 namespace cuttlefish {
-namespace selector {
+namespace socket_proxy {
 
-SubstringTest::SubstringTest() {
-  auto [input, expected] = GetParam();
-  selector_args_ = android::base::Tokenize(input, " ");
-  expected_result_ = expected;
+class Server {
+ public:
+  virtual SharedFD Start() = 0;
+  virtual ~Server() = default;
+};
+
+class TcpServer : public Server {
+ public:
+  TcpServer(int port);
+  SharedFD Start() override;
+
+ private:
+  int port_;
+};
+
+class VsockServer : public Server {
+ public:
+  VsockServer(int port);
+  SharedFD Start() override;
+
+ private:
+  int port_;
+};
+
+class DupServer : public Server {
+ public:
+  DupServer(int fd);
+  SharedFD Start() override;
+
+ private:
+  SharedFD fd_;
+};
+
 }
-
-}  // namespace selector
-}  // namespace cuttlefish
+}

@@ -380,15 +380,6 @@ void CuttlefishConfig::set_ap_kernel_image(const std::string& ap_kernel_image) {
   (*dictionary_)[kApKernelImage] = ap_kernel_image;
 }
 
-static constexpr char kApEspImage[] = "ap_esp_image";
-std::string CuttlefishConfig::ap_esp_image() const {
-  return (*dictionary_)[kApEspImage].asString();
-}
-void CuttlefishConfig::set_ap_esp_image(
-    const std::string& ap_esp_image) {
-  (*dictionary_)[kApEspImage] = ap_esp_image;
-}
-
 static constexpr char kWmediumdConfig[] = "wmediumd_config";
 void CuttlefishConfig::set_wmediumd_config(const std::string& config) {
   (*dictionary_)[kWmediumdConfig] = config;
@@ -465,25 +456,6 @@ void CuttlefishConfig::set_rootcanal_default_commands_file(
     const std::string& rootcanal_default_commands_file) {
   (*dictionary_)[kRootcanalDefaultCommandsFile] =
       DefaultHostArtifactsPath(rootcanal_default_commands_file);
-}
-
-static constexpr char kBootconfigSupported[] = "bootconfig_supported";
-bool CuttlefishConfig::bootconfig_supported() const {
-  return (*dictionary_)[kBootconfigSupported].asBool();
-}
-void CuttlefishConfig::set_bootconfig_supported(bool bootconfig_supported) {
-  (*dictionary_)[kBootconfigSupported] = bootconfig_supported;
-}
-
-static constexpr char kFilenameEncryptionMode[] = "filename_encryption_mode";
-std::string CuttlefishConfig::filename_encryption_mode() const {
-  return (*dictionary_)[kFilenameEncryptionMode].asString();
-}
-void CuttlefishConfig::set_filename_encryption_mode(
-    const std::string& filename_encryption_mode) {
-  auto fmt = filename_encryption_mode;
-  std::transform(fmt.begin(), fmt.end(), fmt.begin(), ::tolower);
-  (*dictionary_)[kFilenameEncryptionMode] = fmt;
 }
 
 /*static*/ CuttlefishConfig* CuttlefishConfig::BuildConfigImpl(

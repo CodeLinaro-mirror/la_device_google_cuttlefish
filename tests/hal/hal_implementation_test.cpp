@@ -32,6 +32,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.frameworks.vr.composer@2.0",
     "android.frameworks.automotive.display@1.0",
     "android.frameworks.stats@1.0",  // converted to AIDL, see b/177667419
+    "android.hardware.atrace@1.0", // deprecated, see b/204935495
     "android.hardware.audio@2.0",
     "android.hardware.audio@4.0",
     "android.hardware.audio@5.0",
@@ -40,6 +41,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.audio.effect@4.0",
     "android.hardware.audio.effect@5.0",
     "android.hardware.audio.effect@6.0",
+    "android.hardware.authsecret@1.0", // converted to AIDL, see b/182976659
     "android.hardware.automotive.audiocontrol@1.0",
     "android.hardware.automotive.audiocontrol@2.0",
     "android.hardware.automotive.can@1.0",  // converted to AIDL, see b/170405615
@@ -131,12 +133,20 @@ struct VersionedAidlPackage {
 
 /*
  * Always missing AIDL packages that are not served on Cuttlefish.
- * These are typically ypes-only packages.
+ * These are typically types-only packages.
  */
 static const std::set<std::string> kAlwaysMissingAidl = {
 
+    // android.frameworks.cameraservice.common is a type only package use by
+    // android.frameworks.cameraservice.device.
+    // android.frameworks.cameraservice.device is an interface returnd by
+    // android.frameworks.cameraservice.service.
+    "android.frameworks.cameraservice.common.",
+    "android.frameworks.cameraservice.device.",
+
     // types-only packages, which never expect a default implementation
     "android.hardware.audio.common.",
+    "android.hardware.audio.core.sounddose.",
     "android.hardware.biometrics.common.",
     "android.hardware.common.",
     "android.hardware.common.fmq.",
@@ -145,7 +155,7 @@ static const std::set<std::string> kAlwaysMissingAidl = {
     "android.media.audio.common.",
     "android.hardware.radio.",
     "android.hardware.uwb.fira_android.",
-    "android.hardware.power.stats.",
+    //"android.hardware.power.stats.",
 
     // android.hardware.camera.device is an interface returned by
     // android.hardware.camera.provider.
@@ -196,9 +206,13 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     // No implementation on cuttlefish for fastboot AIDL hal
     {"android.hardware.fastboot.", 1},
 
+    // No implementation on cuttlefish for power stats hal
+    {"android.hardware.power.stats.", 2},
+
     // These types are only used in TV.
-    {"android.hardware.tv.cec.", 1},
-    {"android.hardware.tv.hdmi.", 1},
+    {"android.hardware.tv.hdmi.cec.", 1},
+    {"android.hardware.tv.hdmi.earc.", 1},
+    {"android.hardware.tv.hdmi.connection.", 1},
 
     // These types are only used in Automotive.
     {"android.automotive.computepipe.registry.", 1},
@@ -448,7 +462,7 @@ TEST(Hal, AidlInterfacesImplemented) {
     if (!latestRegistered && !expectedVersions.rbegin()->second.knownMissing) {
       ADD_FAILURE() << "The latest version ("
                     << expectedVersions.rbegin()->first
-                    << ") of the package is not implemented: "
+                    << ") of the module is not implemented: "
                     << treePackage.name
                     << " which declares the following types:\n    "
                     << base::Join(treePackage.types, "\n    ");

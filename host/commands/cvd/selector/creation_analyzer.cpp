@@ -31,7 +31,6 @@
 #include "common/libs/utils/flag_parser.h"
 #include "common/libs/utils/users.h"
 #include "host/commands/cvd/selector/instance_database_utils.h"
-#include "host/commands/cvd/selector/selector_cmdline_parser.h"
 #include "host/commands/cvd/selector/selector_constants.h"
 #include "host/libs/config/cuttlefish_config.h"
 
@@ -341,7 +340,9 @@ Result<std::string> CreationAnalyzer::AnalyzeGroupName(
    * user happened to have already used the generated name, we did our best, and
    * cvd start will fail with a proper error message.
    */
-  return base_name + "_" + android::base::Join(ids, "_");
+  auto unique_suffix =
+      std::to_string(*std::min_element(ids.begin(), ids.end()));
+  return base_name + "_" + unique_suffix;
 }
 
 Result<std::string> CreationAnalyzer::AnalyzeHome() const {
