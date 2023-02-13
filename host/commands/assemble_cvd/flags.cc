@@ -753,7 +753,7 @@ Result<std::vector<bool>> GetFlagBoolValueForInstances(
     if (instance_index >= flag_vec.size()) {
       value_vec[instance_index] = CF_EXPECT(ParseBool(flag_vec[0], flag_name));
     } else {
-      if (flag_vec[instance_index] == "unset") {
+      if (flag_vec[instance_index] == "unset" || flag_vec[instance_index] == "\"unset\"") {
         std::string default_value = default_value_vec[0];
         if (instance_index < default_value_vec.size()) {
           default_value = default_value_vec[instance_index];
@@ -781,7 +781,7 @@ Result<std::vector<int>> GetFlagIntValueForInstances(
       CF_EXPECT(android::base::ParseInt(flag_vec[0].c_str(), &value_vec[instance_index]),
       "Failed to parse value \"" << flag_vec[0] << "\" for " << flag_name);
     } else {
-      if (flag_vec[instance_index] == "unset") {
+      if (flag_vec[instance_index] == "unset" || flag_vec[instance_index] == "\"unset\"") {
         std::string default_value = default_value_vec[0];
         if (instance_index < default_value_vec.size()) {
           default_value = default_value_vec[instance_index];
@@ -812,7 +812,7 @@ Result<std::vector<std::string>> GetFlagStrValueForInstances(
     if (instance_index >= flag_vec.size()) {
       value_vec[instance_index] = flag_vec[0];
     } else {
-      if (flag_vec[instance_index] == "unset") {
+      if (flag_vec[instance_index] == "unset" || flag_vec[instance_index] == "\"unset\"") {
         std::string default_value = default_value_vec[0];
         if (instance_index < default_value_vec.size()) {
           default_value = default_value_vec[instance_index];
@@ -1448,11 +1448,15 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
                                  (FLAGS_rootcanal_instance_num <= 0));
 
     if (!FLAGS_ap_rootfs_image.empty() && !FLAGS_ap_kernel_image.empty() && start_wmediumd) {
-      if (CanGenerateEsp(guest_configs[0].target_arch)) {
-        instance.set_ap_boot_flow(CuttlefishConfig::InstanceSpecific::APBootFlow::Grub);
-      } else {
-        instance.set_ap_boot_flow(CuttlefishConfig::InstanceSpecific::APBootFlow::LegacyDirect);
-      }
+      // TODO(264537774): Ubuntu grub modules / grub monoliths cannot be used to boot
+      // 64 bit kernel using 32 bit u-boot / grub.
+      // Enable this code back after making sure it works across all popular environments
+      // if (CanGenerateEsp(guest_configs[0].target_arch)) {
+      //   instance.set_ap_boot_flow(CuttlefishConfig::InstanceSpecific::APBootFlow::Grub);
+      // } else {
+      //   instance.set_ap_boot_flow(CuttlefishConfig::InstanceSpecific::APBootFlow::LegacyDirect);
+      // }
+      instance.set_ap_boot_flow(CuttlefishConfig::InstanceSpecific::APBootFlow::LegacyDirect);
     } else {
       instance.set_ap_boot_flow(CuttlefishConfig::InstanceSpecific::APBootFlow::None);
     }
