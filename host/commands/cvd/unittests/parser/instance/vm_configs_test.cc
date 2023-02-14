@@ -154,7 +154,7 @@ TEST(VmFlagsParserTest, ParseTwoInstancesMemoryFlagEmptyJson) {
       << "Invalid Json string";
   auto serialized_data = ParseCvdConfigs(json_configs);
   EXPECT_TRUE(serialized_data.ok()) << serialized_data.error().Trace();
-  EXPECT_TRUE(FindConfig(*serialized_data, "--memory_mb=0,0"))
+  EXPECT_TRUE(FindConfig(*serialized_data, "--memory_mb=2048,2048"))
       << "memory_mb flag is missing or wrongly formatted";
 }
 
@@ -187,7 +187,7 @@ TEST(VmFlagsParserTest, ParseTwoInstancesMemoryFlagPartialJson) {
       << "Invalid Json string";
   auto serialized_data = ParseCvdConfigs(json_configs);
   EXPECT_TRUE(serialized_data.ok()) << serialized_data.error().Trace();
-  EXPECT_TRUE(FindConfig(*serialized_data, "--memory_mb=0,4069"))
+  EXPECT_TRUE(FindConfig(*serialized_data, "--memory_mb=2048,4069"))
       << "memory_mb flag is missing or wrongly formatted";
 }
 
@@ -223,6 +223,87 @@ TEST(VmFlagsParserTest, ParseTwoInstancesMemoryFlagFullJson) {
   EXPECT_TRUE(serialized_data.ok()) << serialized_data.error().Trace();
   EXPECT_TRUE(FindConfig(*serialized_data, "--memory_mb=4069,8192"))
       << "memory_mb flag is missing or wrongly formatted";
+}
+
+TEST(VmFlagsParserTest, ParseTwoInstancesSdCardFlagEmptyJson) {
+  const char* test_string = R""""(
+{
+    "instances" :
+    [
+        {
+        },
+        {
+        }
+    ]
+}
+  )"""";
+
+  Json::Value json_configs;
+  std::string json_text(test_string);
+
+  EXPECT_TRUE(ParseJsonString(json_text, json_configs))
+      << "Invalid Json string";
+  auto serialized_data = ParseCvdConfigs(json_configs);
+  EXPECT_TRUE(serialized_data.ok()) << serialized_data.error().Trace();
+  EXPECT_TRUE(FindConfig(*serialized_data, "--use_sdcard=true,true"))
+      << "use_sdcard flag is missing or wrongly formatted";
+}
+
+TEST(VmFlagsParserTest, ParseTwoInstancesSdCardFlagPartialJson) {
+  const char* test_string = R""""(
+{
+    "instances" :
+    [
+        {
+        },
+        {
+            "vm": {
+                "use_sdcard": false
+            }
+        }
+    ]
+}
+  )"""";
+
+  Json::Value json_configs;
+  std::string json_text(test_string);
+
+  EXPECT_TRUE(ParseJsonString(json_text, json_configs))
+      << "Invalid Json string";
+  auto serialized_data = ParseCvdConfigs(json_configs);
+  EXPECT_TRUE(serialized_data.ok()) << serialized_data.error().Trace();
+  EXPECT_TRUE(FindConfig(*serialized_data, "--use_sdcard=true,false"))
+      << "use_sdcard flag is missing or wrongly formatted";
+}
+
+TEST(VmFlagsParserTest, ParseTwoInstancesSdCardFlagFullJson) {
+  const char* test_string = R""""(
+{
+    "instances" :
+    [
+        {
+            "vm": {
+                "use_sdcard": false
+            }
+        },
+        {
+            "vm": {
+                "use_sdcard": false
+            }
+        }
+    ]
+}
+  )"""";
+
+  Json::Value json_configs;
+  std::string json_text(test_string);
+
+  EXPECT_TRUE(ParseJsonString(json_text, json_configs))
+      << "Invalid Json string";
+  auto serialized_data = ParseCvdConfigs(json_configs);
+  EXPECT_TRUE(serialized_data.ok()) << serialized_data.error().Trace();
+  EXPECT_TRUE(FindConfig(*serialized_data, "--use_sdcard=false,false"))
+      << "use_sdcard flag is missing or wrongly formatted";
 }
 
 TEST(VmFlagsParserTest, ParseTwoInstancesVmManagerFlagEmptyJson) {

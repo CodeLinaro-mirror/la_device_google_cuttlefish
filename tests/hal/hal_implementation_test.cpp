@@ -26,6 +26,7 @@ using namespace android;
 // clang-format off
 static const std::set<std::string> kKnownMissingHidl = {
     "android.frameworks.cameraservice.device@2.1",
+    "android.frameworks.cameraservice.service@2.2", // converted to AIDL, see b/205764761
     "android.frameworks.displayservice@1.0", // deprecated, see b/141930622
     "android.frameworks.schedulerservice@1.0", // deprecated, see b/37226359
     "android.frameworks.vr.composer@1.0",
@@ -52,10 +53,12 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.biometrics.face@1.0", // converted to AIDL, see b/168730443
     "android.hardware.bluetooth.a2dp@1.0",
     "android.hardware.bluetooth.audio@2.1", // converted to AIDL, see b/203490261
+    "android.hardware.bluetooth@1.1", // converted to AIDL, see b/205758693
     "android.hardware.boot@1.2", // converted to AIDL, see b/227536004
     "android.hardware.broadcastradio@1.1",
     "android.hardware.broadcastradio@2.0",
     "android.hardware.camera.provider@2.7", // Camera converted to AIDL, b/196432585
+    "android.hardware.cas@1.2", // converted to AIDL, see b/227673974
     "android.hardware.cas.native@1.0",
     "android.hardware.configstore@1.1", // deprecated, see b/149050985, b/149050733
     "android.hardware.confirmationui@1.0", // converted to AIDL, see b/205760172
@@ -120,6 +123,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hidl.memory.token@1.0",
     "android.system.net.netd@1.1", // Converted to AIDL (see b/205764585)
     "android.system.suspend@1.0", // Converted to AIDL (see b/170260236)
+    "android.system.wifi.keystore@1.0", // Converted to AIDL (see b/205764502)
 };
 // clang-format on
 
@@ -168,7 +172,10 @@ static const std::set<std::string> kAlwaysMissingAidl = {
 
     // android.hardware.media.bufferpool2 is a HAL-less interface.
     // It could be used for buffer recycling and caching by using the interface.
-    "android.hardware.media.bufferpool2."
+    "android.hardware.media.bufferpool2.",
+
+    // Only used in android auto
+    "android.hardware.automotive.vehicle."
 };
 
 /*
@@ -181,9 +188,6 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     // updated soon.
     {"android.hardware.identity.", 4},
     {"android.hardware.identity.", 5},
-
-    // Cuttlefish will use the default implementation (b/205758693)
-    {"android.hardware.bluetooth.", 1},
 
     // No implementations on cuttlefish for omapi aidl hal
     {"android.se.omapi.", 1},
@@ -231,7 +235,6 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.hardware.broadcastradio.", 1},
     {"android.hardware.automotive.occupant_awareness.", 1},
     {"android.hardware.automotive.remoteaccess.", 1},
-    {"android.hardware.automotive.vehicle.", 2},
 
     // The interface is in development (b/251850069)
     {"android.hardware.media.c2.", 1},
@@ -304,7 +307,9 @@ static std::set<FQName> allHidlManifestInterfaces() {
     if (i.format() != vintf::HalFormat::HIDL) {
       return true;  // continue
     }
-    ret.insert(i.getFqInstance().getFqName());
+    FQName fqName;
+    CHECK(fqName.setTo(i.getFqInstance().getFqNameString()));
+    ret.insert(fqName);
     return true;  // continue
   };
   vintf::VintfObject::GetDeviceHalManifest()->forEachInstance(setInserter);
