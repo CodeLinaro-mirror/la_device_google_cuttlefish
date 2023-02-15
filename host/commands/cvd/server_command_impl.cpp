@@ -16,17 +16,29 @@
 
 #include "host/commands/cvd/server_command_impl.h"
 
+#include <array>
+
 #include "common/libs/utils/contains.h"
 #include "common/libs/utils/files.h"
+#include "common/libs/utils/flag_parser.h"
+#include "common/libs/utils/users.h"
 #include "host/commands/cvd/instance_manager.h"
 #include "host/commands/cvd/server.h"
 #include "host/libs/config/cuttlefish_config.h"
 
 namespace cuttlefish {
 namespace cvd_cmd_impl {
-namespace {
 
-Envs ConvertMap(
+std::vector<std::string> ConvertProtoArguments(
+    const google::protobuf::RepeatedPtrField<std::string>& proto_args) {
+  std::vector<std::string> args;
+  for (const auto& proto_arg : proto_args) {
+    args.emplace_back(proto_arg);
+  }
+  return args;
+}
+
+Envs ConvertProtoMap(
     const google::protobuf::Map<std::string, std::string>& proto_map) {
   Envs envs;
   for (const auto& entry : proto_map) {
@@ -34,8 +46,6 @@ Envs ConvertMap(
   }
   return envs;
 }
-
-}  // namespace
 
 cuttlefish::cvd::Response ResponseFromSiginfo(siginfo_t infop) {
   cvd::Response response;
@@ -72,7 +82,7 @@ std::optional<CommandInvocationInfo> ExtractInfo(
     return std::nullopt;
   }
   const auto& bin = command_to_binary_map.at(command);
-  Envs envs = ConvertMap(request.Message().command_request().env());
+  Envs envs = ConvertProtoMap(request.Message().command_request().env());
   std::string home =
       Contains(envs, "HOME") ? envs.at("HOME") : StringFromEnv("HOME", ".");
   if (!Contains(envs, "ANDROID_HOST_OUT") ||
@@ -127,6 +137,81 @@ Result<Command> ConstructCommand(const ConstructCommandParam& param) {
     command.SetWorkingDirectory(fd);
   }
   return {std::move(command)};
+}
+
+Result<Command> ConstructCvdHelpCommand(
+    const std::string& bin_file, const Envs& envs,
+    const std::vector<std::string>& subcmd_args,
+    const RequestWithStdio& request) {
+  const auto host_artifacts_path = envs.at("ANDROID_HOST_OUT");
+  const auto bin_path = host_artifacts_path + "/bin/" + bin_file;
+  auto client_pwd = request.Message().command_request().working_directory();
+  const auto home = (Contains(envs, "HOME") ? envs.at("HOME") : client_pwd);
+  Envs envs_copy{envs};
+  envs_copy["HOME"] = AbsolutePath(home);
+  ConstructCommandParam construct_cmd_param{.bin_path = bin_path,
+                                            .home = home,
+                                            .args = subcmd_args,
+                                            .envs = std::move(envs_copy),
+                                            .working_dir = client_pwd,
+                                            .command_name = bin_file,
+                                            .in = request.In(),
+                                            .out = request.Out(),
+                                            .err = request.Err()};
+  Command help_command = CF_EXPECT(ConstructCommand(construct_cmd_param));
+  return help_command;
+}
+
+/*
+ * From external/gflags/src, commit:
+ *  061f68cd158fa658ec0b9b2b989ed55764870047
+ *
+ */
+constexpr static std::array help_bool_opts{
+    "help", "helpfull", "helpshort", "helppackage", "helpxml", "version"};
+constexpr static std::array help_str_opts{
+    "helpon",
+    "helpmatch",
+};
+
+bool IsHelpSubcmd(const std::vector<std::string>& args) {
+  std::vector<std::string> copied_args(args);
+  std::vector<Flag> flags;
+  bool bool_value_placeholder = false;
+  std::string str_value_placeholder;
+  for (const auto bool_opt : help_bool_opts) {
+    flags.emplace_back(GflagsCompatFlag(bool_opt, bool_value_placeholder));
+  }
+  for (const auto str_opt : help_str_opts) {
+    flags.emplace_back(GflagsCompatFlag(str_opt, str_value_placeholder));
+  }
+  ParseFlags(flags, copied_args);
+  // if there was any match, some in copied_args were consumed.
+  return (args.size() != copied_args.size());
+}
+
+Result<std::string> ClientAbsolutePath(const std::string& path, const uid_t uid,
+                                       const std::string& client_pwd) {
+  if (path.empty()) {
+    return path;
+  }
+  auto first_char = *(path.cbegin());
+  if (first_char == '/') {
+    return path;
+  }
+  if (first_char == '~') {
+    auto system_wide_user_home = CF_EXPECT(SystemWideUserHome(uid));
+    auto abs_user_home = AbsolutePath(system_wide_user_home);
+    CF_EXPECT(!abs_user_home.empty());
+    return android::base::StringReplace(path, "~", abs_user_home, false);
+  }
+
+  // likely relative path
+  CF_EXPECT(!client_pwd.empty() && client_pwd[0] == '/');
+  auto prefix = (*client_pwd.rbegin() == '/') ? client_pwd : (client_pwd + "/");
+  auto result_abs_path = AbsolutePath(prefix + path);
+  CF_EXPECT(!result_abs_path.empty());
+  return result_abs_path;
 }
 
 }  // namespace cvd_cmd_impl

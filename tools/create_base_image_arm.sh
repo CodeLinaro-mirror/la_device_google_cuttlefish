@@ -20,8 +20,9 @@ set -u
 script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
 if [ -z $ANDROID_BUILD_TOP ]; then
-	echo "error: run script after 'lunch'"
-	exit 1
+	echo "error: please run script after 'lunch'"
+	export ANDROID_BUILD_TOP=$(realpath "${script_dir}"/../../../..)
+	echo "error: set ANDROID_BUILD_TOP as ${ANDROID_BUILD_TOP}"
 fi
 
 source "${ANDROID_BUILD_TOP}/external/shflags/shflags"
@@ -122,7 +123,13 @@ rm -f ${bootenv_src}
 
 IMAGE=`mktemp`
 kernel_dist_dir=$(echo ${KERNEL_DIST})
-kernel_dist_dir=$(realpath -e ${kernel_dist_dir})
+kernel_dist_dir=$(realpath ${kernel_dist_dir})
+if [ ! -d "${kernel_dist_dir}" ]; then
+    echo "error: running realpath on KERNEL_DIST fail"
+    echo KERNEL_DIST="${KERNEL_DIST}"
+    echo kernel_dist_dir="${kernel_dist_dir}"
+    exit 1
+fi
 ${ANDROID_BUILD_TOP}/kernel/tests/net/test/build_rootfs.sh \
 	-a arm64 -s bullseye-rockpi -n ${IMAGE} -r ${IMAGE}.initrd -e -g \
 	-k ${kernel_dist_dir}/Image -i ${kernel_dist_dir}/initramfs.img \
