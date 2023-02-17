@@ -51,6 +51,7 @@
 #include "host/commands/assemble_cvd/boot_config.h"
 #include "host/commands/assemble_cvd/boot_image_utils.h"
 #include "host/commands/assemble_cvd/disk_flags.h"
+#include "host/commands/assemble_cvd/display_flags.h"
 #include "host/libs/config/config_flag.h"
 #include "host/libs/config/esp.h"
 #include "host/libs/config/host_tools_version.h"
@@ -70,9 +71,9 @@ using google::FlagSettingMode::SET_FLAGS_VALUE;
 
 #define DEFINE_vec DEFINE_string
 #define DEFINE_proto DEFINE_string
-#define GET_FLAG_STR_VALUE(name) GetFlagStrValueForInstances(FLAGS_ ##name, instances_size, #name, NameToDefaultValue)
-#define GET_FLAG_INT_VALUE(name) GetFlagIntValueForInstances(FLAGS_ ##name, instances_size, #name, NameToDefaultValue)
-#define GET_FLAG_BOOL_VALUE(name) GetFlagBoolValueForInstances(FLAGS_ ##name, instances_size, #name, NameToDefaultValue)
+#define GET_FLAG_STR_VALUE(name) GetFlagStrValueForInstances(FLAGS_ ##name, instances_size, #name, name_to_default_value)
+#define GET_FLAG_INT_VALUE(name) GetFlagIntValueForInstances(FLAGS_ ##name, instances_size, #name, name_to_default_value)
+#define GET_FLAG_BOOL_VALUE(name) GetFlagBoolValueForInstances(FLAGS_ ##name, instances_size, #name, name_to_default_value)
 
 DEFINE_proto(displays_textproto, CF_DEFAULTS_DISPLAYS_TEXTPROTO,
               "Text Proto input for multi-vd multi-displays");
@@ -93,23 +94,12 @@ DEFINE_vec(gdb_port, std::to_string(CF_DEFAULTS_GDB_PORT),
              "kernel must have been built with CONFIG_RANDOMIZE_BASE "
              "disabled.");
 
-constexpr const char kDisplayHelp[] =
-    "Comma separated key=value pairs of display properties. Supported "
-    "properties:\n"
-    " 'width': required, width of the display in pixels\n"
-    " 'height': required, height of the display in pixels\n"
-    " 'dpi': optional, default 320, density of the display\n"
-    " 'refresh_rate_hz': optional, default 60, display refresh rate in Hertz\n"
-    ". Example usage: \n"
-    "--display0=width=1280,height=720\n"
-    "--display1=width=1440,height=900,dpi=480,refresh_rate_hz=30\n";
-
 // TODO(b/192495477): combine these into a single repeatable '--display' flag
 // when assemble_cvd switches to using the new flag parsing library.
-DEFINE_string(display0, CF_DEFAULTS_DISPLAY0, kDisplayHelp);
-DEFINE_string(display1, CF_DEFAULTS_DISPLAY1, kDisplayHelp);
-DEFINE_string(display2, CF_DEFAULTS_DISPLAY2, kDisplayHelp);
-DEFINE_string(display3, CF_DEFAULTS_DISPLAY3, kDisplayHelp);
+DEFINE_string(display0, CF_DEFAULTS_DISPLAY0, cuttlefish::kDisplayHelp);
+DEFINE_string(display1, CF_DEFAULTS_DISPLAY1, cuttlefish::kDisplayHelp);
+DEFINE_string(display2, CF_DEFAULTS_DISPLAY2, cuttlefish::kDisplayHelp);
+DEFINE_string(display3, CF_DEFAULTS_DISPLAY3, cuttlefish::kDisplayHelp);
 
 // TODO(b/171305898): mark these as deprecated after multi-display is fully
 // enabled.
@@ -448,60 +438,6 @@ std::string StrForInstance(const std::string& prefix, int num) {
   return stream.str();
 }
 
-std::optional<CuttlefishConfig::DisplayConfig> ParseDisplayConfig(
-    const std::string& flag) {
-  if (flag.empty()) {
-    return std::nullopt;
-  }
-
-  std::unordered_map<std::string, std::string> props;
-
-  const std::vector<std::string> pairs = android::base::Split(flag, ",");
-  for (const std::string& pair : pairs) {
-    const std::vector<std::string> keyvalue = android::base::Split(pair, "=");
-    CHECK_EQ(2, keyvalue.size()) << "Invalid display: " << flag;
-
-    const std::string& prop_key = keyvalue[0];
-    const std::string& prop_val = keyvalue[1];
-    props[prop_key] = prop_val;
-  }
-
-  CHECK(props.find("width") != props.end())
-      << "Display configuration missing 'width' in " << flag;
-  CHECK(props.find("height") != props.end())
-      << "Display configuration missing 'height' in " << flag;
-
-  int display_width;
-  CHECK(android::base::ParseInt(props["width"], &display_width))
-      << "Display configuration invalid 'width' in " << flag;
-
-  int display_height;
-  CHECK(android::base::ParseInt(props["height"], &display_height))
-      << "Display configuration invalid 'height' in " << flag;
-
-  int display_dpi = CF_DEFAULTS_DISPLAY_DPI;
-  auto display_dpi_it = props.find("dpi");
-  if (display_dpi_it != props.end()) {
-    CHECK(android::base::ParseInt(display_dpi_it->second, &display_dpi))
-        << "Display configuration invalid 'dpi' in " << flag;
-  }
-
-  int display_refresh_rate_hz = CF_DEFAULTS_DISPLAY_REFRESH_RATE;
-  auto display_refresh_rate_hz_it = props.find("refresh_rate_hz");
-  if (display_refresh_rate_hz_it != props.end()) {
-    CHECK(android::base::ParseInt(display_refresh_rate_hz_it->second,
-                                  &display_refresh_rate_hz))
-        << "Display configuration invalid 'refresh_rate_hz' in " << flag;
-  }
-
-  return CuttlefishConfig::DisplayConfig{
-      .width = display_width,
-      .height = display_height,
-      .dpi = display_dpi,
-      .refresh_rate_hz = display_refresh_rate_hz,
-  };
-}
-
 #ifdef __ANDROID__
 Result<std::vector<GuestConfig>> ReadGuestConfig() {
   std::vector<GuestConfig> rets;
@@ -579,6 +515,8 @@ Result<std::vector<GuestConfig>> ReadGuestConfig() {
       guest_config.target_arch = Arch::Arm;
     } else if (config.find("\nCONFIG_ARM64=y") != std::string::npos) {
       guest_config.target_arch = Arch::Arm64;
+    } else if (config.find("\nCONFIG_ARCH_RV64I=y") != std::string::npos) {
+      guest_config.target_arch = Arch::RiscV64;
     } else if (config.find("\nCONFIG_X86_64=y") != std::string::npos) {
       guest_config.target_arch = Arch::X86_64;
     } else if (config.find("\nCONFIG_X86=y") != std::string::npos) {
@@ -643,12 +581,12 @@ Result<std::vector<std::vector<CuttlefishConfig::DisplayConfig>>>
 
       // use same code logic from ParseDisplayConfig
       int display_dpi = CF_DEFAULTS_DISPLAY_DPI;
-      if (display.has_dpi()) {
+      if (display.dpi() != 0) {
         display_dpi = display.dpi();
       }
 
       int display_refresh_rate_hz = CF_DEFAULTS_DISPLAY_REFRESH_RATE;
-      if (display.has_refresh_rate_hertz()) {
+      if (display.refresh_rate_hertz() != 0) {
         display_refresh_rate_hz = display.refresh_rate_hertz();
       }
 
@@ -742,18 +680,18 @@ std::map<std::string, std::string> CurrentFlagsToDefaultValue() {
 
 Result<std::vector<bool>> GetFlagBoolValueForInstances(
     const std::string& flag_values, int32_t instances_size, const std::string& flag_name,
-    std::map<std::string, std::string>& NameToDefaultValue) {
+    std::map<std::string, std::string>& name_to_default_value) {
   std::vector<std::string> flag_vec = android::base::Split(flag_values, ",");
   std::vector<bool> value_vec(instances_size);
 
-  CF_EXPECT(NameToDefaultValue.find(flag_name) != NameToDefaultValue.end());
-  std::vector<std::string> default_value_vec =  android::base::Split(NameToDefaultValue[flag_name], ",");
+  CF_EXPECT(name_to_default_value.find(flag_name) != name_to_default_value.end());
+  std::vector<std::string> default_value_vec =  android::base::Split(name_to_default_value[flag_name], ",");
 
   for (int instance_index=0; instance_index<instances_size; instance_index++) {
     if (instance_index >= flag_vec.size()) {
       value_vec[instance_index] = CF_EXPECT(ParseBool(flag_vec[0], flag_name));
     } else {
-      if (flag_vec[instance_index] == "unset") {
+      if (flag_vec[instance_index] == "unset" || flag_vec[instance_index] == "\"unset\"") {
         std::string default_value = default_value_vec[0];
         if (instance_index < default_value_vec.size()) {
           default_value = default_value_vec[instance_index];
@@ -769,19 +707,19 @@ Result<std::vector<bool>> GetFlagBoolValueForInstances(
 
 Result<std::vector<int>> GetFlagIntValueForInstances(
     const std::string& flag_values, int32_t instances_size, const std::string& flag_name,
-    std::map<std::string, std::string>& NameToDefaultValue) {
+    std::map<std::string, std::string>& name_to_default_value) {
   std::vector<std::string> flag_vec = android::base::Split(flag_values, ",");
   std::vector<int> value_vec(instances_size);
 
-  CF_EXPECT(NameToDefaultValue.find(flag_name) != NameToDefaultValue.end());
-  std::vector<std::string> default_value_vec =  android::base::Split(NameToDefaultValue[flag_name], ",");
+  CF_EXPECT(name_to_default_value.find(flag_name) != name_to_default_value.end());
+  std::vector<std::string> default_value_vec =  android::base::Split(name_to_default_value[flag_name], ",");
 
   for (int instance_index=0; instance_index<instances_size; instance_index++) {
     if (instance_index >= flag_vec.size()) {
       CF_EXPECT(android::base::ParseInt(flag_vec[0].c_str(), &value_vec[instance_index]),
       "Failed to parse value \"" << flag_vec[0] << "\" for " << flag_name);
     } else {
-      if (flag_vec[instance_index] == "unset") {
+      if (flag_vec[instance_index] == "unset" || flag_vec[instance_index] == "\"unset\"") {
         std::string default_value = default_value_vec[0];
         if (instance_index < default_value_vec.size()) {
           default_value = default_value_vec[instance_index];
@@ -801,18 +739,18 @@ Result<std::vector<int>> GetFlagIntValueForInstances(
 
 Result<std::vector<std::string>> GetFlagStrValueForInstances(
     const std::string& flag_values, int32_t instances_size,
-    const std::string& flag_name, std::map<std::string, std::string>& NameToDefaultValue) {
+    const std::string& flag_name, std::map<std::string, std::string>& name_to_default_value) {
   std::vector<std::string> flag_vec = android::base::Split(flag_values, ",");
   std::vector<std::string> value_vec(instances_size);
 
-  CF_EXPECT(NameToDefaultValue.find(flag_name) != NameToDefaultValue.end());
-  std::vector<std::string> default_value_vec =  android::base::Split(NameToDefaultValue[flag_name], ",");
+  CF_EXPECT(name_to_default_value.find(flag_name) != name_to_default_value.end());
+  std::vector<std::string> default_value_vec =  android::base::Split(name_to_default_value[flag_name], ",");
 
   for (int instance_index=0; instance_index<instances_size; instance_index++) {
     if (instance_index >= flag_vec.size()) {
       value_vec[instance_index] = flag_vec[0];
     } else {
-      if (flag_vec[instance_index] == "unset") {
+      if (flag_vec[instance_index] == "unset" || flag_vec[instance_index] == "\"unset\"") {
         std::string default_value = default_value_vec[0];
         if (instance_index < default_value_vec.size()) {
           default_value = default_value_vec[instance_index];
@@ -852,11 +790,9 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
         "All instances should have same vm_manager, " << FLAGS_vm_manager);
   }
 
-  // TODO(weihsu), b/250988697: these should move to instance,
-  // currently use instance[0] to setup for all instances
-  tmp_config_obj.set_bootconfig_supported(guest_configs[0].bootconfig_supported);
-  tmp_config_obj.set_filename_encryption_mode(
-      guest_configs[0].hctr2_supported ? "hctr2" : "cts");
+  // TODO(weihsu), b/250988697: moved bootconfig_supported and hctr2_supported
+  // into each instance, but target_arch is still in todo
+  // target_arch should be in instance later
   auto vmm = GetVmManager(vm_manager_vec[0], guest_configs[0].target_arch);
   if (!vmm) {
     LOG(FATAL) << "Invalid vm_manager: " << vm_manager_vec[0];
@@ -933,7 +869,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       CF_EXPECT(InstanceNumsCalculator().FromGlobalGflags().Calculate());
 
   // get flag default values and store into map
-  auto NameToDefaultValue = CurrentFlagsToDefaultValue();
+  auto name_to_default_value = CurrentFlagsToDefaultValue();
   // old flags but vectorized for multi-device instances
   int32_t instances_size = instance_nums.size();
   std::vector<std::string> gnss_file_paths =
@@ -1084,6 +1020,9 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     auto const_instance =
         const_cast<const CuttlefishConfig&>(tmp_config_obj).ForInstance(num);
 
+    instance.set_bootconfig_supported(guest_configs[instance_index].bootconfig_supported);
+    instance.set_filename_encryption_mode(
+      guest_configs[instance_index].hctr2_supported ? "hctr2" : "cts");
     instance.set_use_allocd(use_allocd_vec[instance_index]);
     instance.set_enable_audio(enable_audio_vec[instance_index]);
     instance.set_enable_vehicle_hal_grpc_server(
@@ -1152,19 +1091,19 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
         display_configs = instances_display_configs[instance_index];
       } // else display_configs is an empty vector
     } else {
-      auto display0 = ParseDisplayConfig(FLAGS_display0);
+      auto display0 = CF_EXPECT(ParseDisplayConfig(FLAGS_display0));
       if (display0) {
         display_configs.push_back(*display0);
       }
-      auto display1 = ParseDisplayConfig(FLAGS_display1);
+      auto display1 = CF_EXPECT(ParseDisplayConfig(FLAGS_display1));
       if (display1) {
         display_configs.push_back(*display1);
       }
-      auto display2 = ParseDisplayConfig(FLAGS_display2);
+      auto display2 = CF_EXPECT(ParseDisplayConfig(FLAGS_display2));
       if (display2) {
         display_configs.push_back(*display2);
       }
-      auto display3 = ParseDisplayConfig(FLAGS_display3);
+      auto display3 = CF_EXPECT(ParseDisplayConfig(FLAGS_display3));
       if (display3) {
         display_configs.push_back(*display3);
       }
@@ -1203,6 +1142,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_data_policy(data_policy_vec[instance_index]);
 
     instance.set_mobile_bridge_name(StrForInstance("cvd-mbr-", num));
+    instance.set_wifi_bridge_name("cvd-wbr");
     instance.set_ethernet_bridge_name("cvd-ebr");
     instance.set_mobile_tap_name(iface_config.mobile_tap.name);
     instance.set_wifi_tap_name(iface_config.wireless_tap.name);
@@ -1239,17 +1179,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
         gpu_mode_vec[instance_index] != kGpuModeNone) {
       LOG(FATAL) << "Invalid gpu_mode: " << gpu_mode_vec[instance_index];
     }
-
     if (gpu_mode_vec[instance_index] == kGpuModeAuto) {
-      // TODO (263209317) Android R Cuttlefish is currently not compatible
-      // with accelerated graphics. rammuthiah@ to debug and resolve.
-      if (guest_configs[instance_index].android_version_number == "11.0.0") {
-        LOG(INFO) << "GPU auto mode: detected guest of version R at index "
-                  << instance_index
-                  << ". Accelerated rendering support is not compatible, "
-                     "enabling --gpu_mode=guest_swiftshader.";
-        instance.set_gpu_mode(kGpuModeGuestSwiftshader);
-      } else if (ShouldEnableAcceleratedRendering(graphics_availability)) {
+      if (ShouldEnableAcceleratedRendering(graphics_availability)) {
         LOG(INFO) << "GPU auto mode: detected prerequisites for accelerated "
             "rendering support.";
         if (vm_manager_vec[0] == QemuManager::name()) {
@@ -1326,7 +1257,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     }
     comma_str = ",";
 
-    if (vmm->ConfigureGraphics(const_instance).empty()) {
+    if (!vmm->ConfigureGraphics(const_instance).ok()) {
       LOG(FATAL) << "Invalid (gpu_mode=," << gpu_mode_vec[instance_index] <<
       " hwcomposer= " << hwcomposer_vec[instance_index] <<
       ") does not work with vm_manager=" << vm_manager_vec[0];
@@ -1417,10 +1348,14 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
           !FLAGS_start_webrtc_sig_server);
     }
 
+#ifndef ENFORCE_MAC80211_HWSIM
+    const bool start_wmediumd = false;
+#else
     // Start wmediumd process for the first instance if
     // vhost_user_mac80211_hwsim is not specified.
     const bool start_wmediumd =
         FLAGS_vhost_user_mac80211_hwsim.empty() && is_first_instance;
+#endif
 
     if (start_wmediumd) {
       // TODO(b/199020470) move this to the directory for shared resources
@@ -1442,24 +1377,15 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
                                  (FLAGS_rootcanal_instance_num <= 0));
 
     if (!FLAGS_ap_rootfs_image.empty() && !FLAGS_ap_kernel_image.empty() && start_wmediumd) {
-      std::string required_grub_image_path;
-      switch (guest_configs[0].target_arch) {
-        case Arch::Arm:
-        case Arch::Arm64:
-          // TODO(b/260960328) : Migrate openwrt image for arm64 into
-          // APBootFlow::Grub.
-          break;
-        case Arch::X86:
-        case Arch::X86_64:
-          required_grub_image_path = kBootSrcPathIA32;
-          break;
-      }
-
-      if (FileExists(required_grub_image_path)) {
-        instance.set_ap_boot_flow(CuttlefishConfig::InstanceSpecific::APBootFlow::Grub);
-      } else {
-        instance.set_ap_boot_flow(CuttlefishConfig::InstanceSpecific::APBootFlow::LegacyDirect);
-      }
+      // TODO(264537774): Ubuntu grub modules / grub monoliths cannot be used to boot
+      // 64 bit kernel using 32 bit u-boot / grub.
+      // Enable this code back after making sure it works across all popular environments
+      // if (CanGenerateEsp(guest_configs[0].target_arch)) {
+      //   instance.set_ap_boot_flow(CuttlefishConfig::InstanceSpecific::APBootFlow::Grub);
+      // } else {
+      //   instance.set_ap_boot_flow(CuttlefishConfig::InstanceSpecific::APBootFlow::LegacyDirect);
+      // }
+      instance.set_ap_boot_flow(CuttlefishConfig::InstanceSpecific::APBootFlow::LegacyDirect);
     } else {
       instance.set_ap_boot_flow(CuttlefishConfig::InstanceSpecific::APBootFlow::None);
     }
@@ -1495,6 +1421,10 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   // Keep the original code here to set enable_sandbox commandline flag value
   SetCommandLineOptionWithMode("enable_sandbox", default_enable_sandbox.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
+
+  // After SetCommandLineOptionWithMode,
+  // default flag values changed, need recalculate name_to_default_value
+  name_to_default_value = CurrentFlagsToDefaultValue();
   // After last SetCommandLineOptionWithMode, we could set these special flags
   enable_sandbox_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(
       enable_sandbox));
@@ -1511,7 +1441,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   return tmp_config_obj;
 }
 
-Result<void> SetDefaultFlagsForQemu(Arch target_arch, std::map<std::string, std::string>& NameToDefaultValue) {
+Result<void> SetDefaultFlagsForQemu(Arch target_arch, std::map<std::string, std::string>& name_to_default_value) {
   auto instance_nums =
       CF_EXPECT(InstanceNumsCalculator().FromGlobalGflags().Calculate());
   int32_t instances_size = instance_nums.size();
@@ -1547,6 +1477,8 @@ Result<void> SetDefaultFlagsForQemu(Arch target_arch, std::map<std::string, std:
       default_bootloader += "arm";
   } else if (target_arch == Arch::Arm64) {
       default_bootloader += "aarch64";
+  } else if (target_arch == Arch::RiscV64) {
+      default_bootloader += "riscv64";
   } else {
       default_bootloader += "x86_64";
   }
@@ -1556,9 +1488,10 @@ Result<void> SetDefaultFlagsForQemu(Arch target_arch, std::map<std::string, std:
   return {};
 }
 
+
 Result<void> SetDefaultFlagsForCrosvm(
     const std::vector<GuestConfig>& guest_configs,
-    std::map<std::string, std::string>& NameToDefaultValue) {
+    std::map<std::string, std::string>& name_to_default_value) {
   auto instance_nums =
       CF_EXPECT(InstanceNumsCalculator().FromGlobalGflags().Calculate());
   int32_t instances_size = instance_nums.size();
@@ -1667,14 +1600,11 @@ Result<std::vector<GuestConfig>> GetGuestConfigAndSetDefaults() {
   // assume all instances are using same VM manager/app/arch,
   // later that multiple instances may use different VM manager/app/arch
 
-  // Temporary add this checking to make sure all instances have same target_arch
-  // and bootconfig_supported. This checking should be removed later.
+  // Temporary add this checking to make sure all instances have same target_arch.
+  // This checking should be removed later.
   for (int instance_index = 1; instance_index < guest_configs.size(); instance_index++) {
     CF_EXPECT(guest_configs[0].target_arch == guest_configs[instance_index].target_arch,
               "all instance target_arch should be same");
-    CF_EXPECT(guest_configs[0].bootconfig_supported ==
-              guest_configs[instance_index].bootconfig_supported,
-              "all instance bootconfig_supported should be same");
   }
   if (FLAGS_vm_manager == "") {
     if (IsHostCompatible(guest_configs[0].target_arch)) {
@@ -1688,12 +1618,13 @@ Result<std::vector<GuestConfig>> GetGuestConfigAndSetDefaults() {
   std::vector<std::string> vm_manager_vec =
       android::base::Split(FLAGS_vm_manager, ",");
   // get flag default values and store into map
-  auto NameToDefaultValue = CurrentFlagsToDefaultValue();
+  auto name_to_default_value = CurrentFlagsToDefaultValue();
 
   if (vm_manager_vec[0] == QemuManager::name()) {
-    CF_EXPECT(SetDefaultFlagsForQemu(guest_configs[0].target_arch, NameToDefaultValue));
+
+    CF_EXPECT(SetDefaultFlagsForQemu(guest_configs[0].target_arch, name_to_default_value));
   } else if (vm_manager_vec[0] == CrosvmManager::name()) {
-    CF_EXPECT(SetDefaultFlagsForCrosvm(guest_configs, NameToDefaultValue));
+    CF_EXPECT(SetDefaultFlagsForCrosvm(guest_configs, name_to_default_value));
   } else if (vm_manager_vec[0] == Gem5Manager::name()) {
     // TODO: Get the other architectures working
     if (guest_configs[0].target_arch != Arch::Arm64) {
@@ -1704,6 +1635,9 @@ Result<std::vector<GuestConfig>> GetGuestConfigAndSetDefaults() {
     return CF_ERR("Unknown Virtual Machine Manager: " << FLAGS_vm_manager);
   }
   if (vm_manager_vec[0] != Gem5Manager::name()) {
+    // After SetCommandLineOptionWithMode in SetDefaultFlagsForCrosvm/Qemu,
+    // default flag values changed, need recalculate name_to_default_value
+    name_to_default_value = CurrentFlagsToDefaultValue();
     std::vector<bool> start_webrtc_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(
         start_webrtc));
     bool start_webrtc = false;

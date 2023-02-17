@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 The Android Open Source Project
+ * Copyright (C) 2022 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@
 #include <type_traits>
 #include <vector>
 
+#include <android-base/file.h>
 #include <android-base/strings.h>
 
 #include "common/libs/fs/shared_buf.h"
@@ -40,12 +41,13 @@ struct ValueFlags {
 };
 
 static const BoolFlags bool_flags{
-    .selector_flags = {selector::kDisableDefaultGroupOpt},
+    .selector_flags = {selector::SelectorFlags::kDisableDefaultGroup,
+                       selector::SelectorFlags::kAcquireFileLock},
     .cvd_driver_flags = {"clean", "help"}};
 
 static const ValueFlags value_flags{
-    .selector_flags = {selector::kDeviceNameOpt, selector::kGroupNameOpt,
-                       selector::kInstanceNameOpt, selector::kNameOpt},
+    .selector_flags = {selector::SelectorFlags::kGroupName,
+                       selector::SelectorFlags::kInstanceName},
     .cvd_driver_flags = {}};
 
 static std::unordered_set<std::string> Merge(
@@ -57,10 +59,23 @@ static std::unordered_set<std::string> Merge(
 }
 
 Result<std::unique_ptr<FrontlineParser>> FrontlineParser::Parse(
-    CvdClient& client, const cvd_common::Args& all_args,
-    const cvd_common::Envs& envs) {
+    CvdClient& client, const std::vector<std::string>& internal_cmds,
+    const cvd_common::Args& all_args_orig, const cvd_common::Envs& envs) {
+  cvd_common::Args all_args{all_args_orig};
+  CF_EXPECT(!all_args.empty());
+  // TODO(kwstephenkim): implement these ad-hoc help checking in the
+  // parser.
+  if (android::base::Basename(all_args[0]) == "cvd") {
+    if (all_args.size() == 1) {
+      all_args.emplace_back("--help");
+    }
+    if (all_args.at(1) == "-h") {
+      all_args[1] = "--help";
+    }
+  }
+
   FrontlineParser* frontline_parser =
-      new FrontlineParser(client, all_args, envs);
+      new FrontlineParser(client, internal_cmds, all_args, envs);
   CF_EXPECT(frontline_parser != nullptr,
             "Memory allocation for FrontlineParser failed.");
   CF_EXPECT(frontline_parser->Separate());
@@ -68,9 +83,13 @@ Result<std::unique_ptr<FrontlineParser>> FrontlineParser::Parse(
 }
 
 FrontlineParser::FrontlineParser(
-    CvdClient& client, const cvd_common::Args& all_args,
+    CvdClient& client, const std::vector<std::string>& internal_cmds,
+    const cvd_common::Args& all_args,
     const std::unordered_map<std::string, std::string>& envs)
-    : client_(client), all_args_(all_args), envs_{envs} {
+    : client_(client),
+      all_args_(all_args),
+      envs_{envs},
+      internal_cmds_(internal_cmds) {
   known_bool_flags_ =
       Merge(bool_flags.selector_flags, bool_flags.cvd_driver_flags);
   known_value_flags_ =
@@ -96,9 +115,7 @@ Result<cvd_common::Args> FrontlineParser::ValidSubcmdsList() {
                 << " \"subcmd\" field");
   std::string valid_subcmd_string = valid_subcmd_json["subcmd"].asString();
   auto valid_subcmds = android::base::Tokenize(valid_subcmd_string, ",");
-  cvd_common::Args cvd_client_internal_commands{"kill-server", "server-kill"};
-  std::copy(cvd_client_internal_commands.begin(),
-            cvd_client_internal_commands.end(),
+  std::copy(internal_cmds_.cbegin(), internal_cmds_.cend(),
             std::back_inserter(valid_subcmds));
   return valid_subcmds;
 }

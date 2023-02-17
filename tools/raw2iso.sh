@@ -60,8 +60,8 @@ if [[ -z "${output}" ]]; then
   usage
 fi
 
-grub_cmdline="ro net.ifnames=0 8250.nr_uarts=1 console=ttyS0 loglevel=4"
-grub_rootfs="LABEL=rootfs"
+grub_cmdline="ro net.ifnames=0 console=ttyAMA0 loglevel=4"
+grub_rootfs="LABEL=install"
 
 # Validate format of the input disk
 /sbin/sgdisk -p "${input}" | grep -q "Disk identifier (GUID)" || \
@@ -113,10 +113,18 @@ cat >"${workdir}"/install.sh << EOF
 set -e
 set -u
 SCRIPT_DIR=\$(CDPATH= cd -- "\$(dirname -- "\${0}")" && pwd -P)
+if [ "\${1#*nvme}" != "\${1}" ]; then
+  partition=p
+else
+  partition=
+fi
 sgdisk --load-backup="\${SCRIPT_DIR}"/gpt.img \${1}
-dd if="\${SCRIPT_DIR}"/esp.img of=\${1}1 bs=16M
-mkfs.ext4 -L ROOT -U \$(cat \${SCRIPT_DIR}/rootfs_uuid) \${1}2
-mount \${1}2 /media
+sgdisk --delete=2 \${1}
+sgdisk --new=2:129M:0 --typecode=2:8305 --change-name=2:rootfs --attributes=2:set:2 \${1}
+partx -v --update \${1}
+dd if="\${SCRIPT_DIR}"/esp.img of=\${1}\${partition}1 bs=16M
+mkfs.ext4 -L ROOT -U \$(cat \${SCRIPT_DIR}/rootfs_uuid) \${1}\${partition}2
+mount \${1}\${partition}2 /media
 tar -C /media -Spxf \${SCRIPT_DIR}/rootfs.tar.lz4
 umount /media
 EOF
@@ -179,8 +187,8 @@ sudo rm -rf "${mount}"/var/tmp/*
 mkdir -p "${workdir}/EFI/Boot"
 cp "${mount}/usr/lib/grub/${grub_arch}/monolithic/${grub_cd}" \
   "${workdir}/${grub_blob}"
-newfs_msdos -L SYSTEM -F 12 \
-  -m 0xf8 -o 0 -c 4 -a 4 -h 64 -u 32 -S 512 -s 4096 -C 2M \
+truncate -s 4M "${workdir}"/eltorito.img
+/sbin/mkfs.msdos -n SYSTEM -F 12 -M 0xf8 -h 0 -s 4 -g 64/32 -S 512 \
   "${workdir}"/eltorito.img >/dev/null
 mmd -i "${workdir}"/eltorito.img EFI EFI/Boot
 mcopy -o -i "${workdir}"/eltorito.img -s "${workdir}/EFI" ::
@@ -198,7 +206,7 @@ sudo chown root:root \
 rm -f "${output}"
 touch "${output}"
 sudo xorriso \
-  -as mkisofs -r -checksum_algorithm_iso sha256,sha512 -V rootfs "${mount}" \
+  -as mkisofs -r -checksum_algorithm_iso sha256,sha512 -V install "${mount}" \
   -o "${output}" -e boot/grub/eltorito.img -no-emul-boot \
   -append_partition 2 0xef "${workdir}"/eltorito.img \
   -partition_cyl_align all

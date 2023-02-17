@@ -35,6 +35,7 @@
 #include "host/commands/cvd/client.h"
 #include "host/commands/cvd/fetch/fetch_cvd.h"
 #include "host/commands/cvd/frontline_parser.h"
+#include "host/commands/cvd/reset_client_utils.h"
 #include "host/commands/cvd/server.h"
 #include "host/commands/cvd/server_constants.h"
 #include "host/commands/cvd/types.h"
@@ -97,15 +98,23 @@ Result<ParseResult> Parse(std::vector<std::string>& all_args) {
   return {result};
 }
 
+Result<void> HandleReset(CvdClient& client,
+                         const cvd_common::Envs& /* envs placeholder */) {
+  auto kill_server_result = client.StopCvdServer(/*clear=*/true);
+  if (!kill_server_result.ok()) {
+    LOG(ERROR) << "cvd kill-server returned error"
+               << kill_server_result.error().Trace();
+    LOG(ERROR) << "However, cvd reset will continue cleaning up.";
+  }
+  // cvd reset handler placeholder. identical to cvd kill-server for now.
+  CF_EXPECT(KillAllCuttlefishInstances(false));
+  return {};
+}
+
 Result<void> CvdMain(int argc, char** argv, char** envp) {
   android::base::InitLogging(argv, android::base::StderrLogger);
 
   cvd_common::Args all_args = ArgsToVec(argc, argv);
-  // TODO(kwstephenkim): handle this in the parser
-  if (android::base::Basename(all_args[0]) == "cvd" && all_args.size() > 1 &&
-      all_args.at(1) == "-h") {
-    all_args[1] = "--help";
-  }
   auto env = EnvVectorToMap(envp);
   const auto host_tool_dir =
       android::base::Dirname(android::base::GetExecutableDirectory());
@@ -134,8 +143,10 @@ Result<void> CvdMain(int argc, char** argv, char** envp) {
    */
   CF_EXPECT(client.ValidateServerVersion(host_tool_dir),
             "Unable to ensure cvd_server is running.");
-  auto frontline_parser =
-      CF_EXPECT(FrontlineParser::Parse(client, all_args, env));
+  std::vector<std::string> client_internal_commands{"kill-server",
+                                                    "server-kill", "reset"};
+  auto frontline_parser = CF_EXPECT(
+      FrontlineParser::Parse(client, client_internal_commands, all_args, env));
   CF_EXPECT(frontline_parser != nullptr);
 
   // Special case for `cvd kill-server`, handled by directly
@@ -144,6 +155,11 @@ Result<void> CvdMain(int argc, char** argv, char** envp) {
   std::string subcmd = frontline_parser->SubCmd().value_or("");
   if (Contains(kill_server_cmds, subcmd)) {
     CF_EXPECT(client.StopCvdServer(/*clear=*/true));
+    return {};
+  }
+
+  if (subcmd == "reset") {
+    CF_EXPECT(HandleReset(client, env));
     return {};
   }
 
@@ -157,19 +173,8 @@ Result<void> CvdMain(int argc, char** argv, char** envp) {
   }
 
   const auto prog_name = android::base::Basename(frontline_parser->ProgPath());
-  // Special case for `cvd version`, handled by using the version command.
-  if (prog_name == "cvd" && subcmd == "version") {
-    auto version_msg = CF_EXPECT(client.HandleVersion(host_tool_dir));
-    std::cout << version_msg;
-    return {};
-  }
-
   cvd_common::Args cmd_args{frontline_parser->ProgPath()};
   if (frontline_parser->Help()) {
-    if (frontline_parser->SubCmd() != std::nullopt) {
-      CF_EXPECT(true == false, "cvd -h, --help, or help cannot be given with "
-                                   << frontline_parser->SubCmd().value());
-    }
     subcmd = "help";
   }
   if (!subcmd.empty()) {
@@ -178,6 +183,13 @@ Result<void> CvdMain(int argc, char** argv, char** envp) {
   std::copy(frontline_parser->SubCmdArgs().begin(),
             frontline_parser->SubCmdArgs().end(), std::back_inserter(cmd_args));
   cvd_common::Args selector_args = frontline_parser->SelectorArgs();
+
+  // Special case for `cvd version`, handled by using the version command.
+  if (prog_name == "cvd" && subcmd == "version") {
+    auto version_msg = CF_EXPECT(client.HandleVersion(host_tool_dir));
+    std::cout << version_msg;
+    return {};
+  }
 
   // TODO(schuffelen): Deduplicate when calls to setenv are removed.
   CF_EXPECT(client.HandleCommand(cmd_args, env, selector_args));

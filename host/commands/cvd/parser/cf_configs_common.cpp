@@ -247,4 +247,26 @@ std::vector<std::string> MergeResults(std::vector<std::string> first_list,
   return result;
 }
 
+/**
+ * @brief This function merges two json objects and override json tree in dst
+ * with src json keys
+ *
+ * @param dst : destination json object tree(modified in place)
+ * @param src : input json object tree to be merged
+ */
+void MergeTwoJsonObjs(Json::Value& dst, const Json::Value& src) {
+  // Merge all members of src into dst
+  for (const auto& key : src.getMemberNames()) {
+    if (src[key].type() == Json::arrayValue) {
+      for (int i = 0; i < src[key].size(); i++) {
+        MergeTwoJsonObjs(dst[key][i], src[key][i]);
+      }
+    } else if (src[key].type() == Json::objectValue) {
+      MergeTwoJsonObjs(dst[key], src[key]);
+    } else {
+      dst[key] = src[key];
+    }
+  }
+}
+
 }  // namespace cuttlefish

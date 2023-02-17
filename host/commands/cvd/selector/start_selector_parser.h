@@ -24,8 +24,9 @@
 #include <unordered_set>
 #include <vector>
 
-#include "common/libs/utils/flag_parser.h"
 #include "common/libs/utils/result.h"
+#include "host/commands/cvd/selector/selector_common_parser.h"
+#include "host/commands/cvd/types.h"
 
 namespace cuttlefish {
 namespace selector {
@@ -40,69 +41,33 @@ namespace selector {
  *  1. If the numeric instance id is duplicated
  *  2. If the group name is already taken
  *
+ * How it works is, it parses the selector options that are common
+ * across operations with SelectorCommonParser first. Following that,
+ * StartSelectorParser parses start-specific selector options.
  */
 class StartSelectorParser {
  public:
   static Result<StartSelectorParser> ConductSelectFlagsParser(
-      const uid_t uid, const std::vector<std::string>& selector_args,
-      const std::vector<std::string>& cmd_args,
-      const std::unordered_map<std::string, std::string>& envs);
+      const uid_t uid, const cvd_common::Args& selector_args,
+      const cvd_common::Args& cmd_args, const cvd_common::Envs& envs);
   std::optional<std::string> GroupName() const;
   std::optional<std::vector<std::string>> PerInstanceNames() const;
-  const auto& SubstringQueries() const { return substring_queries_; }
   const std::optional<std::vector<unsigned>>& InstanceIds() const {
     return instance_ids_;
   }
   unsigned RequestedNumInstances() const { return requested_num_instances_; }
   bool IsMaybeDefaultGroup() const { return may_be_default_group_; }
+  bool MustAcquireFileLock() const { return must_acquire_file_lock_; }
 
  private:
   StartSelectorParser(const std::string& system_wide_user_home,
-                      const std::vector<std::string>& selector_args,
-                      const std::vector<std::string>& cmd_args,
-                      const std::unordered_map<std::string, std::string>& envs);
+                      const cvd_common::Args& selector_args,
+                      const cvd_common::Args& cmd_args,
+                      const cvd_common::Envs& envs,
+                      SelectorCommonParser&& common_parser);
 
-  /*
-   * Note: name may or may not be valid. A name could be a
-   * group name or a device name or an instance name, depending
-   * on the context: i.e. the operation.
-   *
-   * This succeeds only if all selector arguments can be legitimately
-   * consumed.
-   */
   Result<void> ParseOptions();
 
-  bool IsValidName(const std::string& name) const;
-  Result<std::unordered_set<std::string>> FindSubstringsToMatch();
-  struct ParsedNameFlags {
-    std::optional<std::string> group_name;
-    std::optional<std::vector<std::string>> instance_names;
-  };
-  struct NameFlagsParam {
-    std::optional<std::string> names;
-    std::optional<std::string> device_names;
-    std::optional<std::string> group_name;
-    std::optional<std::string> instance_names;
-  };
-  Result<ParsedNameFlags> HandleNameOpts(
-      const NameFlagsParam& name_flags) const;
-  /*
-   * As --name could give a device list, a group list, or a per-
-   * instance list, HandleNames() will set some of them according
-   * to the syntax.
-   */
-  Result<ParsedNameFlags> HandleNames(
-      const std::optional<std::string>& names) const;
-  struct DeviceNamesPair {
-    std::string group_name;
-    std::vector<std::string> instance_names;
-  };
-  Result<DeviceNamesPair> HandleDeviceNames(
-      const std::optional<std::string>& device_names) const;
-  Result<std::vector<std::string>> HandleInstanceNames(
-      const std::optional<std::string>& per_instance_names) const;
-  Result<std::string> HandleGroupName(
-      const std::optional<std::string>& group_name) const;
   struct InstanceIdsParams {
     std::optional<std::string> num_instances;
     std::optional<std::string> instance_nums;
@@ -162,9 +127,7 @@ class StartSelectorParser {
       const VerifyNumOfInstancesParam& params,
       const unsigned default_n_instances = 1) const;
   Result<bool> CalcMayBeDefaultGroup();
-  std::optional<std::string> group_name_;
-  std::optional<std::vector<std::string>> instance_names_;
-  std::unordered_set<std::string> substring_queries_;
+  Result<bool> CalcAcquireFileLock();
   /**
    * The following are considered, and left empty if can't be figured out.
    *
@@ -181,12 +144,14 @@ class StartSelectorParser {
   std::optional<std::vector<unsigned>> instance_ids_;
   unsigned requested_num_instances_;
   bool may_be_default_group_;
+  bool must_acquire_file_lock_;
 
   // temporarily keeps the leftover of the input cmd_args
   const std::string client_user_home_;
-  std::vector<std::string> selector_args_;
-  std::vector<std::string> cmd_args_;
-  std::unordered_map<std::string, std::string> envs_;
+  cvd_common::Args selector_args_;
+  cvd_common::Args cmd_args_;
+  cvd_common::Envs envs_;
+  SelectorCommonParser common_parser_;
 };
 
 }  // namespace selector

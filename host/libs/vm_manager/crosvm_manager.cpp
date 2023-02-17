@@ -57,62 +57,67 @@ bool CrosvmManager::IsSupported() {
 #endif
 }
 
-std::vector<std::string> CrosvmManager::ConfigureGraphics(
+Result<std::unordered_map<std::string, std::string>>
+CrosvmManager::ConfigureGraphics(
     const CuttlefishConfig::InstanceSpecific& instance) {
+  std::unordered_map<std::string, std::string> bootconfig_args;
+
   // Override the default HAL search paths in all cases. We do this because
   // the HAL search path allows for fallbacks, and fallbacks in conjunction
   // with properities lead to non-deterministic behavior while loading the
   // HALs.
   if (instance.gpu_mode() == kGpuModeGuestSwiftshader) {
-    return {
-        "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_2),
-        "androidboot.hardware.gralloc=minigbm",
-        "androidboot.hardware.hwcomposer=" + instance.hwcomposer(),
-        "androidboot.hardware.hwcomposer.display_finder_mode=drm",
-        "androidboot.hardware.egl=angle",
-        "androidboot.hardware.vulkan=pastel",
-        "androidboot.opengles.version=196609",  // OpenGL ES 3.1
-    };
+    return {{
+        {"androidboot.cpuvulkan.version", std::to_string(VK_API_VERSION_1_2)},
+        {"androidboot.hardware.gralloc", "minigbm"},
+        {"androidboot.hardware.hwcomposer", instance.hwcomposer()},
+        {"androidboot.hardware.hwcomposer.display_finder_mode", "drm"},
+        {"androidboot.hardware.egl", "angle"},
+        {"androidboot.hardware.vulkan", "pastel"},
+        {"androidboot.opengles.version", "196609"},  // OpenGL ES 3.1
+    }};
   }
 
   if (instance.gpu_mode() == kGpuModeDrmVirgl) {
-    return {
-        "androidboot.cpuvulkan.version=0",
-        "androidboot.hardware.gralloc=minigbm",
-        "androidboot.hardware.hwcomposer=ranchu",
-        "androidboot.hardware.hwcomposer.mode=client",
-        "androidboot.hardware.hwcomposer.display_finder_mode=drm",
-        "androidboot.hardware.egl=mesa",
+    return {{
+        {"androidboot.cpuvulkan.version", "0"},
+        {"androidboot.hardware.gralloc", "minigbm"},
+        {"androidboot.hardware.hwcomposer", "ranchu"},
+        {"androidboot.hardware.hwcomposer.mode", "client"},
+        {"androidboot.hardware.hwcomposer.display_finder_mode", "drm"},
+        {"androidboot.hardware.egl", "mesa"},
         // No "hardware" Vulkan support, yet
-        "androidboot.opengles.version=196608",  // OpenGL ES 3.0
-    };
+        {"androidboot.opengles.version", "196608"},  // OpenGL ES 3.0
+    }};
   }
+
   if (instance.gpu_mode() == kGpuModeGfxStream) {
     std::string gles_impl = instance.enable_gpu_angle() ? "angle" : "emulation";
-    return {
-        "androidboot.cpuvulkan.version=0",
-        "androidboot.hardware.gralloc=minigbm",
-        "androidboot.hardware.hwcomposer=" + instance.hwcomposer(),
-        "androidboot.hardware.hwcomposer.display_finder_mode=drm",
-        "androidboot.hardware.egl=" + gles_impl,
-        "androidboot.hardware.vulkan=ranchu",
-        "androidboot.hardware.gltransport=virtio-gpu-asg",
-        "androidboot.opengles.version=196608",  // OpenGL ES 3.0
-    };
+    std::string gltransport = (instance.guest_android_version() == "11.0.0")
+                                  ? "virtio-gpu-pipe"
+                                  : "virtio-gpu-asg";
+    std::string gles_version = instance.enable_gpu_angle() ? "196608" : "196609";
+    return {{
+        {"androidboot.cpuvulkan.version", "0"},
+        {"androidboot.hardware.gralloc", "minigbm"},
+        {"androidboot.hardware.hwcomposer", instance.hwcomposer()},
+        {"androidboot.hardware.hwcomposer.display_finder_mode", "drm"},
+        {"androidboot.hardware.egl", gles_impl},
+        {"androidboot.hardware.vulkan", "ranchu"},
+        {"androidboot.hardware.gltransport", gltransport},
+        {"androidboot.opengles.version", gles_version},
+    }};
   }
 
   if (instance.gpu_mode() == kGpuModeNone) {
-    // This function should probably return a result so that empty vec
-    // isn't treated as an error.
-    return {
-      "androidboot.dummy=0",
-    };
+    return {};
   }
 
-  return {};
+  return CF_ERR("Unknown GPU mode " << instance.gpu_mode());
 }
 
-std::string CrosvmManager::ConfigureBootDevices(int num_disks, bool have_gpu) {
+Result<std::unordered_map<std::string, std::string>>
+CrosvmManager::ConfigureBootDevices(int num_disks, bool have_gpu) {
   // TODO There is no way to control this assignment with crosvm (yet)
   if (HostArch() == Arch::X86_64) {
     // crosvm has an additional PCI device for an ISA bridge
@@ -122,7 +127,7 @@ std::string CrosvmManager::ConfigureBootDevices(int num_disks, bool have_gpu) {
   } else {
     // On ARM64 crosvm, block devices are on their own bridge, so we don't
     // need to calculate it, and the path is always the same
-    return "androidboot.boot_devices=10000.pci";
+    return {{{"androidboot.boot_devices", "10000.pci"}}};
   }
 }
 
@@ -148,10 +153,12 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
     crosvm_cmd.Cmd().AddParameter("--vhost-net");
   }
 
+#ifdef ENFORCE_MAC80211_HWSIM
   if (!config.vhost_user_mac80211_hwsim().empty()) {
     crosvm_cmd.Cmd().AddParameter("--vhost-user-mac80211-hwsim=",
                                   config.vhost_user_mac80211_hwsim());
   }
+#endif
 
   if (instance.protected_vm()) {
     crosvm_cmd.Cmd().AddParameter("--protected-vm");
@@ -182,7 +189,7 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
     crosvm_cmd.Cmd().AddParameter("--gpu=backend=virglrenderer",
                                   gpu_common_3d_string);
   } else if (gpu_mode == kGpuModeGfxStream) {
-    crosvm_cmd.Cmd().AddParameter("--gpu=backend=gfxstream",
+    crosvm_cmd.Cmd().AddParameter("--gpu=backend=gfxstream,gles31=true",
                                   gpu_common_3d_string, gpu_angle_string);
   }
 
@@ -249,11 +256,18 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
                                   instance.switches_socket_path());
   }
 
+  SharedFD wifi_tap;
   // GPU capture can only support named files and not file descriptors due to
   // having to pass arguments to crosvm via a wrapper script.
   if (!gpu_capture_enabled) {
     crosvm_cmd.AddTap(instance.mobile_tap_name());
     crosvm_cmd.AddTap(instance.ethernet_tap_name(), instance.ethernet_mac());
+
+    // TODO(b/199103204): remove this as well when
+    // PRODUCT_ENFORCE_MAC80211_HWSIM is removed
+#ifndef ENFORCE_MAC80211_HWSIM
+    wifi_tap = crosvm_cmd.AddTap(instance.wifi_tap_name());
+#endif
   }
 
   if (FileExists(instance.access_kregistry_path())) {
@@ -400,6 +414,27 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
 
   // This needs to be the last parameter
   crosvm_cmd.Cmd().AddParameter("--bios=", instance.bootloader());
+
+  // TODO(b/199103204): remove this as well when PRODUCT_ENFORCE_MAC80211_HWSIM
+  // is removed
+  // Only run the leases workaround if we are not using the new network
+  // bridge architecture - in that case, we have a wider DHCP address
+  // space and stale leases should be much less of an issue
+  if (!FileExists("/var/run/cuttlefish-dnsmasq-cvd-wbr.leases") &&
+      wifi_tap->IsOpen()) {
+    // TODO(schuffelen): QEMU also needs this and this is not the best place for
+    // this code. Find a better place to put it.
+    auto lease_file =
+        ForCurrentInstance("/var/run/cuttlefish-dnsmasq-cvd-wbr-") + ".leases";
+
+    std::uint8_t dhcp_server_ip[] = {
+        192, 168, 96, (std::uint8_t)(ForCurrentInstance(1) * 4 - 3)};
+    if (!ReleaseDhcpLeases(lease_file, wifi_tap, dhcp_server_ip)) {
+      LOG(ERROR)
+          << "Failed to release wifi DHCP leases. Connecting to the wifi "
+          << "network may not work.";
+    }
+  }
 
   std::vector<Command> ret;
 

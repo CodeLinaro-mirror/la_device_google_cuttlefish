@@ -24,8 +24,9 @@ namespace {
 
 class FastbootProxy : public CommandSource {
  public:
-  INJECT(FastbootProxy(const CuttlefishConfig::InstanceSpecific& instance))
-      : instance_(instance) {}
+  INJECT(FastbootProxy(const CuttlefishConfig::InstanceSpecific& instance,
+                       const FastbootConfig& fastboot_config))
+      : instance_(instance), fastboot_config_(fastboot_config) {}
 
   Result<std::vector<Command>> Commands() override {
     std::vector<Command> commands;
@@ -33,29 +34,34 @@ class FastbootProxy : public CommandSource {
                                       instance_.ethernet_bridge_name();
 
     Command tunnel(SocketVsockProxyBinary());
-    tunnel.AddParameter("--server_type=tcp");
+    tunnel.AddParameter("--server_type=", "tcp");
     tunnel.AddParameter("--server_tcp_port=", instance_.fastboot_host_port());
-    tunnel.AddParameter("--client_type=tcp");
+    tunnel.AddParameter("--client_type=", "tcp");
     tunnel.AddParameter("--client_tcp_host=", ethernet_host);
-    tunnel.AddParameter("--client_tcp_port=5554");
+    tunnel.AddParameter("--client_tcp_port=", "5554");
+    tunnel.AddParameter("--label=", "fastboot");
     commands.emplace_back(std::move(tunnel));
 
     return commands;
   }
 
   std::string Name() const override { return "FastbootProxy"; }
-  bool Enabled() const override { return true; }
+  bool Enabled() const override {
+    return instance_.boot_flow() == CuttlefishConfig::InstanceSpecific::BootFlow::Android &&
+           fastboot_config_.ProxyFastboot();
+  }
 
  private:
   bool Setup() override { return true; }
   std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
 
   const CuttlefishConfig::InstanceSpecific& instance_;
+  const FastbootConfig& fastboot_config_;
 };
 
 }  // namespace
 
-fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>>
+fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific, const FastbootConfig>>
 LaunchFastbootComponent() {
   return fruit::createComponent()
       .addMultibinding<CommandSource, FastbootProxy>()

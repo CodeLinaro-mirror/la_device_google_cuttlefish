@@ -47,9 +47,12 @@
 #include "host/commands/cvd/command_sequence.h"
 #include "host/commands/cvd/demo_multi_vd.h"
 #include "host/commands/cvd/epoll_loop.h"
-#include "host/commands/cvd/help_command.h"
-#include "host/commands/cvd/load_configs.h"
 #include "host/commands/cvd/logger.h"
+#include "host/commands/cvd/server_command/generic.h"
+#include "host/commands/cvd/server_command/load_configs.h"
+#include "host/commands/cvd/server_command/operation_to_bins_map.h"
+#include "host/commands/cvd/server_command/start.h"
+#include "host/commands/cvd/server_command/subcmd.h"
 #include "host/commands/cvd/server_constants.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/inject.h"
@@ -61,10 +64,12 @@ static constexpr int kNumThreads = 10;
 
 CvdServer::CvdServer(BuildApi& build_api, EpollPool& epoll_pool,
                      InstanceManager& instance_manager,
+                     HostToolTargetManager& host_tool_target_manager,
                      ServerLogger& server_logger)
     : build_api_(build_api),
       epoll_pool_(epoll_pool),
       instance_manager_(instance_manager),
+      host_tool_target_manager_(host_tool_target_manager),
       server_logger_(server_logger),
       running_(true) {
   std::scoped_lock lock(threads_mutex_);
@@ -95,12 +100,15 @@ fruit::Component<> CvdServer::RequestComponent(CvdServer* server) {
       .bindInstance(*server)
       .bindInstance(server->instance_manager_)
       .bindInstance(server->build_api_)
+      .bindInstance(server->host_tool_target_manager_)
       .install(AcloudCommandComponent)
       .install(CommandSequenceExecutorComponent)
       .install(cvdCommandComponent)
+      .install(cvdGenericCommandComponent)
       .install(CvdHelpComponent)
       .install(CvdRestartComponent)
       .install(cvdShutdownComponent)
+      .install(cvdStartCommandComponent)
       .install(cvdVersionComponent)
       .install(DemoMultiVdComponent)
       .install(LoadConfigsComponent);
@@ -334,30 +342,8 @@ static Result<cvd::Response> HandleCmdList(
   return response;
 }
 
-// replace cvd -h or --help into cvd help
-static RequestWithStdio ReplaceHelp(RequestWithStdio&& src_request) {
-  auto request = std::move(src_request);
-  cvd::Request modified_proto = request.Message();
-  auto& args = *modified_proto.mutable_command_request()->mutable_args();
-  if (args.size() < 2 || android::base::Basename(args.at(0)) != "cvd") {
-    return request;
-  }
-  const auto help_arg = args.at(1);
-  if (help_arg != "--help" && help_arg != "-h" && help_arg != "-help") {
-    return request;
-  }
-
-  args[1] = "help";
-  RequestWithStdio new_request(request.Client(), modified_proto,
-                               request.FileDescriptors(),
-                               request.Credentials());
-  return new_request;
-}
-
-Result<cvd::Response> CvdServer::HandleRequest(RequestWithStdio request_orig,
+Result<cvd::Response> CvdServer::HandleRequest(RequestWithStdio request,
                                                SharedFD client) {
-  RequestWithStdio request = ReplaceHelp(std::move(request_orig));
-
   fruit::Injector<> injector(RequestComponent, this);
 
   for (auto& late_injected : injector.getMultibindings<LateInjected>()) {
@@ -415,7 +401,9 @@ static fruit::Component<> ServerComponent() {
   return fruit::createComponent()
       .addMultibinding<CvdServer, CvdServer>()
       .install(BuildApiModule)
-      .install(EpollLoopComponent);
+      .install(EpollLoopComponent)
+      .install(HostToolTargetManagerComponent)
+      .install(OperationToBinsMapComponent);
 }
 
 Result<int> CvdServerMain(SharedFD server_fd, SharedFD carryover_client) {

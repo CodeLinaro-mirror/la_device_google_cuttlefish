@@ -219,12 +219,6 @@ class CuttlefishConfig {
       const std::string& rootcanal_default_commands_file);
   std::string rootcanal_default_commands_file() const;
 
-  void set_bootconfig_supported(bool bootconfig_supported);
-  bool bootconfig_supported() const;
-
-  void set_filename_encryption_mode(const std::string& userdata_format);
-  std::string filename_encryption_mode() const;
-
   // The path of an AP image in composite disk
   std::string ap_image_dev_path() const;
   void set_ap_image_dev_path(const std::string& dev_path);
@@ -293,6 +287,7 @@ class CuttlefishConfig {
     std::string fixed_location_file_path() const;
     std::string mobile_bridge_name() const;
     std::string mobile_tap_name() const;
+    std::string wifi_bridge_name() const;
     std::string wifi_tap_name() const;
     std::string ethernet_tap_name() const;
     std::string ethernet_bridge_name() const;
@@ -520,6 +515,7 @@ class CuttlefishConfig {
     std::string init_boot_image() const;
     std::string data_image() const;
     std::string super_image() const;
+    std::string new_super_image() const;
     std::string misc_image() const;
     std::string new_misc_image() const;
     std::string misc_info_txt() const;
@@ -529,6 +525,8 @@ class CuttlefishConfig {
     std::string new_vendor_boot_image() const;
     std::string vbmeta_image() const;
     std::string vbmeta_system_image() const;
+    std::string vbmeta_vendor_dlkm_image() const;
+    std::string new_vbmeta_vendor_dlkm_image() const;
 
     // otheros artifacts
     std::string otheros_esp_image() const;
@@ -550,6 +548,8 @@ class CuttlefishConfig {
     std::string initramfs_path() const;
     std::string kernel_path() const;
     std::string guest_android_version() const;
+    bool bootconfig_supported() const;
+    std::string filename_encryption_mode() const;
   };
 
   // A view into an existing CuttlefishConfig object for a particular instance.
@@ -580,6 +580,7 @@ class CuttlefishConfig {
     void set_camera_server_port(int camera_server_port);
     void set_mobile_bridge_name(const std::string& mobile_bridge_name);
     void set_mobile_tap_name(const std::string& mobile_tap_name);
+    void set_wifi_bridge_name(const std::string& wifi_bridge_name);
     void set_wifi_tap_name(const std::string& wifi_tap_name);
     void set_ethernet_tap_name(const std::string& ethernet_tap_name);
     void set_ethernet_bridge_name(const std::string& set_ethernet_bridge_name);
@@ -678,6 +679,7 @@ class CuttlefishConfig {
     void set_init_boot_image(const std::string& init_boot_image);
     void set_data_image(const std::string& data_image);
     void set_super_image(const std::string& super_image);
+    void set_new_super_image(const std::string& super_image);
     void set_misc_image(const std::string& misc_image);
     void set_new_misc_image(const std::string& new_misc_image);
     void set_misc_info_txt(const std::string& misc_image);
@@ -687,6 +689,10 @@ class CuttlefishConfig {
     void set_new_vendor_boot_image(const std::string& new_vendor_boot_image);
     void set_vbmeta_image(const std::string& vbmeta_image);
     void set_vbmeta_system_image(const std::string& vbmeta_system_image);
+    void set_vbmeta_vendor_dlkm_image(
+        const std::string& vbmeta_vendor_dlkm_image);
+    void set_new_vbmeta_vendor_dlkm_image(
+        const std::string& vbmeta_vendor_dlkm_image);
     void set_otheros_esp_image(const std::string& otheros_esp_image);
     void set_linux_kernel_path(const std::string& linux_kernel_path);
     void set_linux_initramfs_path(const std::string& linux_initramfs_path);
@@ -701,6 +707,8 @@ class CuttlefishConfig {
     void set_initramfs_path(const std::string& initramfs_path);
     void set_kernel_path(const std::string& kernel_path);
     void set_guest_android_version(const std::string& guest_android_version);
+    void set_bootconfig_supported(bool bootconfig_supported);
+    void set_filename_encryption_mode(const std::string& userdata_format);
 
    private:
     void SetPath(const std::string& key, const std::string& path);

@@ -69,8 +69,11 @@ cvd_host_tools = [
     "cvd_status",
     "cvd_test_gce_driver",
     "cvdremote",
+    "e2fsdroid",
     "extract-ikconfig",
     "extract-vmlinux",
+    "fastboot",
+    "fec",
     "fsck.f2fs",
     "gnss_grpc_proxy",
     "health",
@@ -89,6 +92,8 @@ cvd_host_tools = [
     "mkbootfs",
     "mkbootimg",
     "mkenvimage_slim",
+    "mke2fs",
+    "mkuserimg_mke2fs",
     "modem_simulator",
     "ms-tpm-20-ref",
     "mcopy",
@@ -106,8 +111,10 @@ cvd_host_tools = [
     "cvd_send_sms",
     "cvd_update_location",
     "cvd_import_locations",
+    "simg2img",
     "socket_vsock_proxy",
     "stop_cvd",
+    "test_cvd_load_parser",
     "tombstone_receiver",
     "toybox",
     "unpack_bootimg",
@@ -227,9 +234,10 @@ cvd_host_seccomp_policy_aarch64 = [
 cvd_host_bootloader = [
     "bootloader_crosvm_x86_64",
     "bootloader_crosvm_aarch64",
-    "bootloader_qemu_x86_64",
     "bootloader_qemu_aarch64",
     "bootloader_qemu_arm",
+    "bootloader_qemu_riscv64",
+    "bootloader_qemu_x86_64",
 ]
 
 prebuilt_etc_host {

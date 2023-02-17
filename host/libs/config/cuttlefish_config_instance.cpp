@@ -109,6 +109,14 @@ void CuttlefishConfig::MutableInstanceSpecific::set_super_image(
     const std::string& super_image) {
   (*Dictionary())[kSuperImage] = super_image;
 }
+static constexpr char kNewSuperImage[] = "new_super_image";
+std::string CuttlefishConfig::InstanceSpecific::new_super_image() const {
+  return (*Dictionary())[kNewSuperImage].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_new_super_image(
+    const std::string& super_image) {
+  (*Dictionary())[kNewSuperImage] = super_image;
+}
 static constexpr char kMiscImage[] = "misc_image";
 std::string CuttlefishConfig::InstanceSpecific::misc_image() const {
   return (*Dictionary())[kMiscImage].asString();
@@ -180,6 +188,25 @@ std::string CuttlefishConfig::InstanceSpecific::vbmeta_system_image() const {
 void CuttlefishConfig::MutableInstanceSpecific::set_vbmeta_system_image(
     const std::string& vbmeta_system_image) {
   (*Dictionary())[kVbmetaSystemImage] = vbmeta_system_image;
+}
+static constexpr char kVbmetaVendorDlkmImage[] = "vbmeta_vendor_dlkm_image";
+std::string CuttlefishConfig::InstanceSpecific::vbmeta_vendor_dlkm_image()
+    const {
+  return (*Dictionary())[kVbmetaVendorDlkmImage].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_vbmeta_vendor_dlkm_image(
+    const std::string& image) {
+  (*Dictionary())[kVbmetaVendorDlkmImage] = image;
+}
+static constexpr char kNewVbmetaVendorDlkmImage[] =
+    "new_vbmeta_vendor_dlkm_image";
+std::string CuttlefishConfig::InstanceSpecific::new_vbmeta_vendor_dlkm_image()
+    const {
+  return (*Dictionary())[kNewVbmetaVendorDlkmImage].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::
+    set_new_vbmeta_vendor_dlkm_image(const std::string& image) {
+  (*Dictionary())[kNewVbmetaVendorDlkmImage] = image;
 }
 static constexpr char kOtherosEspImage[] = "otheros_esp_image";
 std::string CuttlefishConfig::InstanceSpecific::otheros_esp_image() const {
@@ -321,6 +348,26 @@ std::string CuttlefishConfig::InstanceSpecific::guest_android_version() const {
 void CuttlefishConfig::MutableInstanceSpecific::set_guest_android_version(
     const std::string& guest_android_version) {
   (*Dictionary())[kGuestAndroidVersion] = guest_android_version;
+}
+
+static constexpr char kBootconfigSupported[] = "bootconfig_supported";
+bool CuttlefishConfig::InstanceSpecific::bootconfig_supported() const {
+  return (*Dictionary())[kBootconfigSupported].asBool();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_bootconfig_supported(
+    bool bootconfig_supported) {
+  (*Dictionary())[kBootconfigSupported] = bootconfig_supported;
+}
+
+static constexpr char kFilenameEncryptionMode[] = "filename_encryption_mode";
+std::string CuttlefishConfig::InstanceSpecific::filename_encryption_mode() const {
+  return (*Dictionary())[kFilenameEncryptionMode].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_filename_encryption_mode(
+    const std::string& filename_encryption_mode) {
+  auto fmt = filename_encryption_mode;
+  std::transform(fmt.begin(), fmt.end(), fmt.begin(), ::tolower);
+  (*Dictionary())[kFilenameEncryptionMode] = fmt;
 }
 
 std::string CuttlefishConfig::InstanceSpecific::kernel_log_pipe_name() const {
@@ -853,7 +900,8 @@ std::string CuttlefishConfig::InstanceSpecific::console_dev() const {
     // console can't be used since uboot doesn't support it.
     console_dev = "hvc1";
   } else {
-    // crosvm ARM does not support ttyAMA. ttyAMA is a part of ARM arch.
+    // QEMU and Gem5 emulate pl011 on ARM/ARM64, but QEMU and crosvm on other
+    // architectures emulate ns16550a/uart8250 instead.
     Arch target = target_arch();
     if ((target == Arch::Arm64 || target == Arch::Arm) &&
         config_->vm_manager() != vm_manager::CrosvmManager::name()) {
@@ -1012,6 +1060,15 @@ std::string CuttlefishConfig::InstanceSpecific::wifi_tap_name() const {
 void CuttlefishConfig::MutableInstanceSpecific::set_wifi_tap_name(
     const std::string& wifi_tap_name) {
   (*Dictionary())[kWifiTapName] = wifi_tap_name;
+}
+
+static constexpr char kWifiBridgeName[] = "wifi_bridge_name";
+std::string CuttlefishConfig::InstanceSpecific::wifi_bridge_name() const {
+  return (*Dictionary())[kWifiBridgeName].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_wifi_bridge_name(
+    const std::string& wifi_bridge_name) {
+  (*Dictionary())[kWifiBridgeName] = wifi_bridge_name;
 }
 
 static constexpr char kEthernetTapName[] = "ethernet_tap_name";

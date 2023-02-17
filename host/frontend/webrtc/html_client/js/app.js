@@ -16,6 +16,15 @@
 
 'use strict';
 
+// Set the theme as soon as possible.
+const params = new URLSearchParams(location.search);
+let theme = params.get('theme');
+if (theme === 'light') {
+  document.querySelector('body').classList.add('light-theme');
+} else if (theme === 'dark') {
+  document.querySelector('body').classList.add('dark-theme');
+}
+
 async function ConnectDevice(deviceId, serverConnector) {
   console.debug('Connect: ' + deviceId);
   // Prepare messages in case of connection failure
@@ -436,9 +445,11 @@ class DeviceControlApp {
     this.#getControlPanelButtons().forEach(b => b.disabled = true);
   }
 
-  #getControlPanelButtons(f) {
-    return [...document.querySelectorAll(
-        '#control-panel-default-buttons button')];
+  #getControlPanelButtons() {
+    return [
+      ...document.querySelectorAll('#control-panel-default-buttons button'),
+      ...document.querySelectorAll('#control-panel-custom-buttons button'),
+    ];
   }
 
   #takePhoto() {
@@ -708,11 +719,14 @@ class DeviceControlApp {
 
   #initializeAdb() {
     init_adb(
-        this.#deviceConnection, () => this.#showAdbConnected(),
+        this.#deviceConnection, () => this.#onAdbConnected(),
         () => this.#showAdbError());
   }
 
-  #showAdbConnected() {
+  #onAdbConnected() {
+    if (this.#adbConnected) {
+       return;
+    }
     // Screen changed messages are not reported until after boot has completed.
     // Certain default adb buttons change screen state, so wait for boot
     // completion before enabling these buttons.
