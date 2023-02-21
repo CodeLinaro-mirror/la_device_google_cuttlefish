@@ -181,6 +181,15 @@ void CuttlefishConfig::MutableInstanceSpecific::set_vbmeta_system_image(
     const std::string& vbmeta_system_image) {
   (*Dictionary())[kVbmetaSystemImage] = vbmeta_system_image;
 }
+static constexpr char kVbmetaVendorDlkmImage[] = "vbmeta_vendor_dlkm_image";
+std::string CuttlefishConfig::InstanceSpecific::vbmeta_vendor_dlkm_image()
+    const {
+  return (*Dictionary())[kVbmetaVendorDlkmImage].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_vbmeta_vendor_dlkm_image(
+    const std::string& image) {
+  (*Dictionary())[kVbmetaVendorDlkmImage] = image;
+}
 static constexpr char kOtherosEspImage[] = "otheros_esp_image";
 std::string CuttlefishConfig::InstanceSpecific::otheros_esp_image() const {
   return (*Dictionary())[kOtherosEspImage].asString();
@@ -873,7 +882,8 @@ std::string CuttlefishConfig::InstanceSpecific::console_dev() const {
     // console can't be used since uboot doesn't support it.
     console_dev = "hvc1";
   } else {
-    // crosvm ARM does not support ttyAMA. ttyAMA is a part of ARM arch.
+    // QEMU and Gem5 emulate pl011 on ARM/ARM64, but QEMU and crosvm on other
+    // architectures emulate ns16550a/uart8250 instead.
     Arch target = target_arch();
     if ((target == Arch::Arm64 || target == Arch::Arm) &&
         config_->vm_manager() != vm_manager::CrosvmManager::name()) {

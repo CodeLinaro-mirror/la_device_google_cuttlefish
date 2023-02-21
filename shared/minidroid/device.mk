@@ -24,7 +24,6 @@ $(call soong_config_append,cvd,launch_configs,cvd_config_minidroid.json)
 
 PRODUCT_SYSTEM_PROPERTIES += \
     service.adb.listen_addrs=vsock:5555 \
-    apexd.payload_metadata.path=/dev/block/by-name/payload-metadata
 
 VENDOR_SECURITY_PATCH := $(PLATFORM_SECURITY_PATCH)
 BOOT_SECURITY_PATCH := $(PLATFORM_SECURITY_PATCH)
@@ -74,6 +73,12 @@ PRODUCT_PACKAGES += \
     strace \
     toolbox \
     toybox \
+
+# Test Binder RPC services
+PRODUCT_PACKAGES += \
+    minidroid_sd \
+    server_minidroid \
+    client_minidroid \
 
 # Additional packages
 PRODUCT_PACKAGES += \
