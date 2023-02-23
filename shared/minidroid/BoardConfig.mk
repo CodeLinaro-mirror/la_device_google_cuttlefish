@@ -96,6 +96,7 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/dtb.img:dtb.img \
     device/google/cuttlefish/required_images:required_images \
 
+BOARD_BOOTLOADER_IN_UPDATE_PACKAGE := true
 BOARD_RAMDISK_USE_LZ4 := true
 
 BOARD_KERNEL_CMDLINE += printk.devkmsg=on
@@ -130,6 +131,7 @@ BOARD_GOOGLE_SYSTEM_DYNAMIC_PARTITIONS_SIZE := 268435456
 BOARD_SUPER_PARTITION_SIZE := 269484032
 BOARD_SUPER_PARTITION_GROUPS := google_system_dynamic_partitions
 BOARD_BUILD_SUPER_IMAGE_BY_DEFAULT := true
+BOARD_SUPER_IMAGE_IN_UPDATE_PACKAGE := true
 
 TARGET_SKIP_OTA_PACKAGE := true
 TARGET_SKIP_OTATOOLS_PACKAGE := true
