@@ -60,11 +60,27 @@ PRODUCT_PACKAGES += \
     debuggerd \
     linker \
     servicemanager \
+    service \
     tombstoned \
     tombstone_transmit.microdroid \
     cgroups.json \
     task_profiles.json \
     public.libraries.android.txt \
+    logcat \
+    logd \
+
+# Packages included only for eng or userdebug builds
+# su needed for logpersist.* commands
+PRODUCT_PACKAGES_DEBUG += \
+    logpersist.start \
+    su \
+
+# Start logcatd by default and keep up to 30 rotated files around in userdebug/eng builds
+ifneq (,$(filter userdebug eng, $(TARGET_BUILD_VARIANT)))
+PRODUCT_PROPERTY_OVERRIDES += \
+  logd.logpersistd=logcatd \
+  logd.logpersistd.size=30
+endif
 
 # Shell and utilities
 PRODUCT_PACKAGES += \
@@ -79,6 +95,7 @@ PRODUCT_PACKAGES += \
     minidroid_sd \
     server_minidroid \
     client_minidroid \
+    client_minidroid_rust \
 
 # Additional packages
 PRODUCT_PACKAGES += \
