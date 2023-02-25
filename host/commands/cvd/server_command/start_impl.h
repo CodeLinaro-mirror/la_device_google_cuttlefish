@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 The Android Open Source Project
+ * Copyright (C) 2023 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,30 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #pragma once
 
-#include <stdint.h>
-#include <optional>
 #include <string>
 
+#include "common/libs/utils/result.h"
+
 namespace cuttlefish {
+namespace cvd_start_impl {
 
-struct IfaceData {
-  std::string name;
-  uint32_t session_id;
-  uint32_t resource_id;
-};
+Result<std::string> ExtractBuildId(const std::string& home_dir);
 
-struct IfaceConfig {
-  IfaceData mobile_tap;
-  IfaceData bridged_wireless_tap;
-  IfaceData non_bridged_wireless_tap;
-  IfaceData ethernet_tap;
-};
-
-IfaceConfig DefaultNetworkInterfaces(int num);
-
-// Acquires interfaces from the resource allocator daemon.
-std::optional<IfaceConfig> AllocateNetworkInterfaces();
-
-} // namespace cuttlefish
+}  // namespace cvd_start_impl
+}  // namespace cuttlefish

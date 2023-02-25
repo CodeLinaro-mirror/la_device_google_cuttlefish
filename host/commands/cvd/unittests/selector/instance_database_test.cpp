@@ -195,10 +195,10 @@ TEST_F(CvdInstanceDatabaseTest, AddInstances) {
   }
   const auto& instances = kitty_group->Get().Instances();
 
-  ASSERT_TRUE(db.AddInstance(*kitty_group, 1, "yumi").ok());
-  ASSERT_FALSE(db.AddInstance(*kitty_group, 3, "yumi").ok());
-  ASSERT_FALSE(db.AddInstance(*kitty_group, 1, "tiger").ok());
-  ASSERT_TRUE(db.AddInstance(*kitty_group, 3, "tiger").ok());
+  ASSERT_TRUE(db.AddInstance("yah_ong", 1, "yumi").ok());
+  ASSERT_FALSE(db.AddInstance("yah_ong", 3, "yumi").ok());
+  ASSERT_FALSE(db.AddInstance("yah_ong", 1, "tiger").ok());
+  ASSERT_TRUE(db.AddInstance("yah_ong", 3, "tiger").ok());
   for (auto const& instance_unique_ptr : instances) {
     ASSERT_TRUE(instance_unique_ptr->PerInstanceName() == "yumi" ||
                 instance_unique_ptr->PerInstanceName() == "tiger");
@@ -216,8 +216,8 @@ TEST_F(CvdInstanceDatabaseTest, AddInstancesInvalid) {
                  << " group was not found";
   }
 
-  ASSERT_FALSE(db.AddInstance(*kitty_group, 1, "!yumi").ok());
-  ASSERT_FALSE(db.AddInstance(*kitty_group, 7, "ti ger").ok());
+  ASSERT_FALSE(db.AddInstance("yah_ong", 1, "!yumi").ok());
+  ASSERT_FALSE(db.AddInstance("yah_ong", 7, "ti ger").ok());
 }
 
 TEST_F(CvdInstanceDatabaseTest, FindByInstanceId) {
@@ -240,8 +240,8 @@ TEST_F(CvdInstanceDatabaseTest, FindByInstanceId) {
     GTEST_SKIP() << "miau or nyah group"
                  << " group was not found";
   }
-  if (!AddInstances(*miau_group, miau_group_instance_id_name_pairs) ||
-      !AddInstances(*nyah_group, nyah_group_instance_id_name_pairs)) {
+  if (!AddInstances("miau", miau_group_instance_id_name_pairs) ||
+      !AddInstances("nyah", nyah_group_instance_id_name_pairs)) {
     GTEST_SKIP() << Error().msg;
   }
   // The end of set up
@@ -282,8 +282,8 @@ TEST_F(CvdInstanceDatabaseTest, FindByPerInstanceName) {
     GTEST_SKIP() << "miau or nyah "
                  << " group was not found";
   }
-  if (!AddInstances(*miau_group, miau_group_instance_id_name_pairs) ||
-      !AddInstances(*nyah_group, nyah_group_instance_id_name_pairs)) {
+  if (!AddInstances("miau", miau_group_instance_id_name_pairs) ||
+      !AddInstances("nyah", nyah_group_instance_id_name_pairs)) {
     GTEST_SKIP() << Error().msg;
   }
   // end of set up
@@ -315,7 +315,7 @@ TEST_F(CvdInstanceDatabaseTest, FindInstancesByGroupName) {
   if (!nyah_group.ok()) {
     GTEST_SKIP() << "nyah group was not found";
   }
-  if (!AddInstances(*nyah_group, nyah_group_instance_id_name_pairs)) {
+  if (!AddInstances("nyah", nyah_group_instance_id_name_pairs)) {
     GTEST_SKIP() << Error().msg;
   }
   // end of set up
@@ -349,8 +349,8 @@ TEST_F(CvdInstanceDatabaseTest, FindGroupByPerInstanceName) {
     GTEST_SKIP() << "miau or nyah "
                  << " group was not found";
   }
-  if (!AddInstances(*miau_group, miau_group_instance_id_name_pairs) ||
-      !AddInstances(*nyah_group, nyah_group_instance_id_name_pairs)) {
+  if (!AddInstances("miau", miau_group_instance_id_name_pairs) ||
+      !AddInstances("nyah", nyah_group_instance_id_name_pairs)) {
     GTEST_SKIP() << Error().msg;
   }
   // end of set up
@@ -370,6 +370,29 @@ TEST_F(CvdInstanceDatabaseTest, FindGroupByPerInstanceName) {
   ASSERT_TRUE(result_invalid->empty())
       << "result_invalid should be empty but with size: "
       << result_invalid->size();
+}
+
+TEST_F(CvdInstanceDatabaseTest, AddInstancesTogether) {
+  // starting set up
+  if (!SetUpOk() || !AddGroups({"miau"})) {
+    GTEST_SKIP() << Error().msg;
+  }
+  auto& db = GetDb();
+  std::vector<InstanceDatabase::InstanceInfo> miau_group_instance_id_name_pairs{
+      {1, "8"}, {10, "tv_instance"}};
+  auto miau_group = db.FindGroup({kHomeField, Workspace() + "/" + "miau"});
+  if (!miau_group.ok()) {
+    GTEST_SKIP() << "miau group was not found";
+  }
+
+  auto add_result = db.AddInstances("miau", miau_group_instance_id_name_pairs);
+  ASSERT_TRUE(add_result.ok()) << add_result.error().Trace();
+
+  auto result_8 = db.FindInstance({kInstanceNameField, "8"});
+  auto result_tv = db.FindInstance({kInstanceNameField, "tv_instance"});
+
+  ASSERT_TRUE(result_8.ok()) << result_8.error().Trace();
+  ASSERT_TRUE(result_tv.ok()) << result_tv.error().Trace();
 }
 
 }  // namespace selector
