@@ -49,6 +49,9 @@
 #include "host/commands/cvd/epoll_loop.h"
 #include "host/commands/cvd/load_configs.h"
 #include "host/commands/cvd/logger.h"
+#include "host/commands/cvd/server_command/generic.h"
+#include "host/commands/cvd/server_command/operation_to_bins_map.h"
+#include "host/commands/cvd/server_command/start.h"
 #include "host/commands/cvd/server_command/subcmd.h"
 #include "host/commands/cvd/server_constants.h"
 #include "host/libs/config/cuttlefish_config.h"
@@ -61,10 +64,12 @@ static constexpr int kNumThreads = 10;
 
 CvdServer::CvdServer(BuildApi& build_api, EpollPool& epoll_pool,
                      InstanceManager& instance_manager,
+                     HostToolTargetManager& host_tool_target_manager,
                      ServerLogger& server_logger)
     : build_api_(build_api),
       epoll_pool_(epoll_pool),
       instance_manager_(instance_manager),
+      host_tool_target_manager_(host_tool_target_manager),
       server_logger_(server_logger),
       running_(true) {
   std::scoped_lock lock(threads_mutex_);
@@ -95,12 +100,15 @@ fruit::Component<> CvdServer::RequestComponent(CvdServer* server) {
       .bindInstance(*server)
       .bindInstance(server->instance_manager_)
       .bindInstance(server->build_api_)
+      .bindInstance(server->host_tool_target_manager_)
       .install(AcloudCommandComponent)
       .install(CommandSequenceExecutorComponent)
       .install(cvdCommandComponent)
+      .install(cvdGenericCommandComponent)
       .install(CvdHelpComponent)
       .install(CvdRestartComponent)
       .install(cvdShutdownComponent)
+      .install(cvdStartCommandComponent)
       .install(cvdVersionComponent)
       .install(DemoMultiVdComponent)
       .install(LoadConfigsComponent);
@@ -393,7 +401,9 @@ static fruit::Component<> ServerComponent() {
   return fruit::createComponent()
       .addMultibinding<CvdServer, CvdServer>()
       .install(BuildApiModule)
-      .install(EpollLoopComponent);
+      .install(EpollLoopComponent)
+      .install(HostToolTargetManagerComponent)
+      .install(OperationToBinsMapComponent);
 }
 
 Result<int> CvdServerMain(SharedFD server_fd, SharedFD carryover_client) {

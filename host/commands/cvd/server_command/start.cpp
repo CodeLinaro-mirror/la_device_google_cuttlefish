@@ -18,10 +18,13 @@
 
 #include <sys/types.h>
 
+#include <array>
 #include <cstdint>
 #include <cstdlib>
+#include <iostream>
 #include <map>
 #include <mutex>
+#include <sstream>
 #include <string>
 
 #include <android-base/parseint.h>
@@ -30,8 +33,11 @@
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/contains.h"
+#include "common/libs/utils/files.h"
+#include "common/libs/utils/flag_parser.h"
 #include "common/libs/utils/result.h"
 #include "cvd_server.pb.h"
+#include "host/commands/cvd/common_utils.h"
 #include "host/commands/cvd/server_command/server_handler.h"
 #include "host/commands/cvd/server_command/subprocess_waiter.h"
 #include "host/commands/cvd/server_command/utils.h"
@@ -42,10 +48,12 @@ namespace cuttlefish {
 
 class CvdStartCommandHandler : public CvdServerHandler {
  public:
-  INJECT(CvdStartCommandHandler(InstanceManager& instance_manager,
-                                SubprocessWaiter& subprocess_waiter))
+  INJECT(CvdStartCommandHandler(
+      InstanceManager& instance_manager, SubprocessWaiter& subprocess_waiter,
+      HostToolTargetManager& host_tool_target_manager))
       : instance_manager_(instance_manager),
-        subprocess_waiter_(subprocess_waiter) {}
+        subprocess_waiter_(subprocess_waiter),
+        host_tool_target_manager_(host_tool_target_manager) {}
 
   Result<bool> CanHandle(const RequestWithStdio& request) const;
   Result<cvd::Response> Handle(const RequestWithStdio& request) override;
@@ -65,32 +73,147 @@ class CvdStartCommandHandler : public CvdServerHandler {
 
   // call this only if !is_help
   Result<selector::GroupCreationInfo> GetGroupCreationInfo(
-      const std::string& subcmd, const cvd_common::Args& subcmd_args,
-      const cvd_common::Envs& envs, const RequestWithStdio& request);
+      const std::string& start_bin, const std::string& subcmd,
+      const cvd_common::Args& subcmd_args, const cvd_common::Envs& envs,
+      const RequestWithStdio& request);
 
   Result<cvd::Response> FillOutNewInstanceInfo(
       cvd::Response&& response,
       const selector::GroupCreationInfo& group_creation_info);
 
+  struct UpdatedArgsAndEnvs {
+    cvd_common::Args args;
+    cvd_common::Envs envs;
+  };
+  Result<UpdatedArgsAndEnvs> UpdateInstanceArgsAndEnvs(
+      cvd_common::Args&& args, cvd_common::Envs&& envs,
+      const std::vector<selector::PerInstanceInfo>& instances,
+      const std::string& artifacts_path, const std::string& start_bin);
+
+  static Result<std::vector<std::string>> UpdateWebrtcDeviceId(
+      std::vector<std::string>&& args, const std::string& group_name,
+      const std::vector<selector::PerInstanceInfo>& per_instance_info);
+
+  Result<selector::GroupCreationInfo> UpdateArgsAndEnvs(
+      selector::GroupCreationInfo&& old_group_info,
+      const std::string& start_bin);
+
+  Result<std::string> FindStartBin(const std::string& android_host_out);
+
   InstanceManager& instance_manager_;
   SubprocessWaiter& subprocess_waiter_;
+  HostToolTargetManager& host_tool_target_manager_;
   std::mutex interruptible_;
   bool interrupted_ = false;
 
-  static constexpr char kStartBin[] = "cvd_internal_start";
-  static const std::map<std::string, std::string> command_to_binary_map_;
+  static const std::array<std::string, 2> supported_commands_;
 };
 
 Result<bool> CvdStartCommandHandler::CanHandle(
     const RequestWithStdio& request) const {
   auto invocation = ParseInvocation(request.Message());
-  return Contains(command_to_binary_map_, invocation.command);
+  return Contains(supported_commands_, invocation.command);
+}
+
+Result<CvdStartCommandHandler::UpdatedArgsAndEnvs>
+CvdStartCommandHandler::UpdateInstanceArgsAndEnvs(
+    cvd_common::Args&& args, cvd_common::Envs&& envs,
+    const std::vector<selector::PerInstanceInfo>& instances,
+    const std::string& artifacts_path, const std::string& start_bin) {
+  std::vector<unsigned> ids;
+  ids.reserve(instances.size());
+  for (const auto& instance : instances) {
+    ids.emplace_back(instance.instance_id_);
+  }
+
+  cvd_common::Args new_args{std::move(args)};
+  std::string old_instance_nums;
+  std::string old_num_instances;
+  std::string old_base_instance_num;
+
+  std::vector<Flag> instance_id_flags{
+      GflagsCompatFlag("instance_nums", old_instance_nums),
+      GflagsCompatFlag("num_instances", old_num_instances),
+      GflagsCompatFlag("base_instance_num", old_base_instance_num)};
+  // discard old ones
+  ParseFlags(instance_id_flags, new_args);
+
+  auto check_flag = [artifacts_path, start_bin,
+                     this](const std::string& flag_name) -> Result<void> {
+    CF_EXPECT(
+        host_tool_target_manager_.ReadFlag({.artifacts_path = artifacts_path,
+                                            .op = "start",
+                                            .flag_name = flag_name}));
+    return {};
+  };
+  auto max = *(std::max_element(ids.cbegin(), ids.cend()));
+  auto min = *(std::min_element(ids.cbegin(), ids.cend()));
+
+  const bool is_consecutive = ((max - min) == (ids.size() - 1));
+  const bool is_sorted = std::is_sorted(ids.begin(), ids.end());
+
+  if (!is_consecutive || !is_sorted) {
+    std::string flag_value = android::base::Join(ids, ",");
+    CF_EXPECT(check_flag("instance_nums"));
+    new_args.emplace_back("--instance_nums=" + flag_value);
+    return UpdatedArgsAndEnvs{.args = std::move(new_args),
+                              .envs = std::move(envs)};
+  }
+
+  // sorted and consecutive, so let's use old flags
+  // like --num_instances and --base_instance_num
+  if (ids.size() > 1) {
+    CF_EXPECT(check_flag("num_instances"),
+              "--num_instances is not supported but multi-tenancy requested.");
+    new_args.emplace_back("--num_instances=" + std::to_string(ids.size()));
+  }
+  cvd_common::Envs new_envs{std::move(envs)};
+  if (check_flag("base_instance_num").ok()) {
+    new_args.emplace_back("--base_instance_num=" + std::to_string(min));
+  }
+  new_envs[kCuttlefishInstanceEnvVarName] = std::to_string(min);
+  return UpdatedArgsAndEnvs{.args = std::move(new_args),
+                            .envs = std::move(new_envs)};
+}
+
+/*
+ * Adds --webrtc_device_id when necessary to cmd_args_
+ */
+Result<std::vector<std::string>> CvdStartCommandHandler::UpdateWebrtcDeviceId(
+    std::vector<std::string>&& args, const std::string& group_name,
+    const std::vector<selector::PerInstanceInfo>& per_instance_info) {
+  std::vector<std::string> new_args{std::move(args)};
+  std::string flag_value;
+  std::vector<Flag> webrtc_device_id_flag{
+      GflagsCompatFlag("webrtc_device_id", flag_value)};
+  std::vector<std::string> copied_args{new_args};
+  CF_EXPECT(ParseFlags(webrtc_device_id_flag, copied_args));
+
+  if (!flag_value.empty()) {
+    return new_args;
+  }
+
+  CF_EXPECT(!group_name.empty());
+  std::vector<std::string> device_name_list;
+  device_name_list.reserve(per_instance_info.size());
+  for (const auto& instance : per_instance_info) {
+    const auto& per_instance_name = instance.per_instance_name_;
+    std::string device_name{group_name};
+    device_name.append("-").append(per_instance_name);
+    device_name_list.emplace_back(device_name);
+  }
+  // take --webrtc_device_id flag away
+  new_args = std::move(copied_args);
+  new_args.emplace_back("--webrtc_device_id=" +
+                        android::base::Join(device_name_list, ","));
+  return new_args;
 }
 
 Result<Command> CvdStartCommandHandler::ConstructCvdNonHelpCommand(
     const std::string& bin_file, const selector::GroupCreationInfo& group_info,
     const RequestWithStdio& request) {
-  const auto bin_path = group_info.host_artifacts_path + "/bin/" + bin_file;
+  auto bin_path = group_info.host_artifacts_path;
+  bin_path.append("/bin/").append(bin_file);
   CF_EXPECT(!group_info.home.empty());
   ConstructCommandParam construct_cmd_param{
       .bin_path = bin_path,
@@ -109,8 +232,9 @@ Result<Command> CvdStartCommandHandler::ConstructCvdNonHelpCommand(
 // call this only if !is_help
 Result<selector::GroupCreationInfo>
 CvdStartCommandHandler::GetGroupCreationInfo(
-    const std::string& subcmd, const std::vector<std::string>& subcmd_args,
-    const cvd_common::Envs& envs, const RequestWithStdio& request) {
+    const std::string& start_bin, const std::string& subcmd,
+    const std::vector<std::string>& subcmd_args, const cvd_common::Envs& envs,
+    const RequestWithStdio& request) {
   using CreationAnalyzerParam =
       selector::CreationAnalyzer::CreationAnalyzerParam;
   const auto& selector_opts =
@@ -121,7 +245,90 @@ CvdStartCommandHandler::GetGroupCreationInfo(
   auto cred = CF_EXPECT(request.Credentials());
   auto group_creation_info =
       CF_EXPECT(instance_manager_.Analyze(subcmd, analyzer_param, cred));
+  auto final_group_creation_info =
+      CF_EXPECT(UpdateArgsAndEnvs(std::move(group_creation_info), start_bin));
+  return final_group_creation_info;
+}
+
+Result<selector::GroupCreationInfo> CvdStartCommandHandler::UpdateArgsAndEnvs(
+    selector::GroupCreationInfo&& old_group_info,
+    const std::string& start_bin) {
+  selector::GroupCreationInfo group_creation_info = std::move(old_group_info);
+  // update instance related-flags, envs
+  const auto& instances = group_creation_info.instances;
+  const auto& host_artifacts_path = group_creation_info.host_artifacts_path;
+  auto [new_args, new_envs] = CF_EXPECT(UpdateInstanceArgsAndEnvs(
+      std::move(group_creation_info.args), std::move(group_creation_info.envs),
+      instances, host_artifacts_path, start_bin));
+  group_creation_info.args = std::move(new_args);
+  group_creation_info.envs = std::move(new_envs);
+
+  auto webrtc_device_id_flag = host_tool_target_manager_.ReadFlag(
+      {.artifacts_path = group_creation_info.host_artifacts_path,
+       .op = "start",
+       .flag_name = "webrtc_device_id"});
+  if (webrtc_device_id_flag.ok()) {
+    group_creation_info.args = CF_EXPECT(UpdateWebrtcDeviceId(
+        std::move(group_creation_info.args), group_creation_info.group_name,
+        group_creation_info.instances));
+  }
+
+  group_creation_info.envs["HOME"] = group_creation_info.home;
+  group_creation_info.envs[kAndroidHostOut] =
+      group_creation_info.host_artifacts_path;
+  /* b/253644566
+   *
+   * Old branches used kAndroidSoongHostOut instead of kAndroidHostOut
+   */
+  group_creation_info.envs[kAndroidSoongHostOut] =
+      group_creation_info.host_artifacts_path;
+  group_creation_info.envs[kCvdMarkEnv] = "true";
   return group_creation_info;
+}
+
+static std::ostream& operator<<(std::ostream& out, const cvd_common::Args& v) {
+  if (v.empty()) {
+    return out;
+  }
+  for (int i = 0; i < v.size() - 1; i++) {
+    out << v.at(i) << " ";
+  }
+  out << v.back();
+  return out;
+}
+
+static void ShowLaunchCommand(const std::string& bin,
+                              const cvd_common::Args& args,
+                              const cvd_common::Envs& envs) {
+  std::stringstream ss;
+  std::vector<std::string> interesting_env_names{"HOME",
+                                                 kAndroidHostOut,
+                                                 kAndroidSoongHostOut,
+                                                 "ANDROID_PRODUCT_OUT",
+                                                 kCuttlefishInstanceEnvVarName,
+                                                 kCuttlefishConfigEnvVarName};
+  for (const auto& interesting_env_name : interesting_env_names) {
+    if (Contains(envs, interesting_env_name)) {
+      ss << interesting_env_name << "=\"" << envs.at(interesting_env_name)
+         << "\" ";
+    }
+  }
+  ss << " " << bin << " " << args;
+  LOG(ERROR) << "launcher command: " << ss.str();
+}
+
+static void ShowLaunchCommand(const std::string& bin,
+                              selector::GroupCreationInfo& group_info) {
+  ShowLaunchCommand(bin, group_info.args, group_info.envs);
+}
+
+Result<std::string> CvdStartCommandHandler::FindStartBin(
+    const std::string& android_host_out) {
+  auto start_bin = CF_EXPECT(host_tool_target_manager_.ExecBaseName({
+      .artifacts_path = android_host_out,
+      .op = "start",
+  }));
+  return start_bin;
 }
 
 Result<cvd::Response> CvdStartCommandHandler::Handle(
@@ -152,18 +359,20 @@ Result<cvd::Response> CvdStartCommandHandler::Handle(
     auto client_pwd = request.Message().command_request().working_directory();
     envs["HOME"] = CF_EXPECT(ClientAbsolutePath(envs["HOME"], uid, client_pwd));
   }
+  CF_EXPECT(Contains(envs, kAndroidHostOut));
+  const auto bin = CF_EXPECT(FindStartBin(envs.at(kAndroidHostOut)));
 
   // update DB if not help
   // collect group creation infos
   auto [subcmd, subcmd_args] = ParseInvocation(request.Message());
-  CF_EXPECT(subcmd == "start", "subcmd should be start but is " << subcmd);
+  CF_EXPECT(Contains(supported_commands_, subcmd),
+            "subcmd should be start but is " << subcmd);
   const bool is_help = HasHelpOpts(subcmd_args);
-  const auto bin = command_to_binary_map_.at(subcmd);
 
   std::optional<selector::GroupCreationInfo> group_creation_info;
   if (!is_help) {
-    group_creation_info =
-        CF_EXPECT(GetGroupCreationInfo(subcmd, subcmd_args, envs, request));
+    group_creation_info = CF_EXPECT(
+        GetGroupCreationInfo(bin, subcmd, subcmd_args, envs, request));
     CF_EXPECT(UpdateInstanceDatabase(uid, *group_creation_info));
     response = CF_EXPECT(
         FillOutNewInstanceInfo(std::move(response), *group_creation_info));
@@ -174,11 +383,19 @@ Result<cvd::Response> CvdStartCommandHandler::Handle(
           ? CF_EXPECT(ConstructCvdHelpCommand(bin, envs, subcmd_args, request))
           : CF_EXPECT(
                 ConstructCvdNonHelpCommand(bin, *group_creation_info, request));
+
   if (!is_help) {
     CF_EXPECT(
         group_creation_info != std::nullopt,
         "group_creation_info should be nullopt only when --help is given.");
   }
+
+  if (is_help) {
+    ShowLaunchCommand(command.Executable(), subcmd_args, envs);
+  } else {
+    ShowLaunchCommand(command.Executable(), *group_creation_info);
+  }
+
   const bool should_wait =
       (request.Message().command_request().wait_behavior() !=
        cvd::WAIT_BEHAVIOR_START);
@@ -258,20 +475,18 @@ bool CvdStartCommandHandler::HasHelpOpts(
 
 std::vector<std::string> CvdStartCommandHandler::CmdList() const {
   std::vector<std::string> subcmd_list;
-  subcmd_list.reserve(command_to_binary_map_.size());
-  for (const auto& [cmd, _] : command_to_binary_map_) {
+  subcmd_list.reserve(supported_commands_.size());
+  for (const auto& cmd : supported_commands_) {
     subcmd_list.emplace_back(cmd);
   }
   return subcmd_list;
 }
 
-const std::map<std::string, std::string>
-    CvdStartCommandHandler::command_to_binary_map_ = {
-        {"start", kStartBin},
-        {"launch_cvd", kStartBin},
-};
+const std::array<std::string, 2> CvdStartCommandHandler::supported_commands_{
+    "start", "launch_cvd"};
 
-fruit::Component<fruit::Required<InstanceManager, SubprocessWaiter>>
+fruit::Component<
+    fruit::Required<InstanceManager, SubprocessWaiter, HostToolTargetManager>>
 cvdStartCommandComponent() {
   return fruit::createComponent()
       .addMultibinding<CvdServerHandler, CvdStartCommandHandler>();

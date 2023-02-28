@@ -18,6 +18,7 @@
 
 #include <optional>
 #include <vector>
+#include <sys/stat.h>
 
 #include <android-base/strings.h>
 #include <android-base/parseint.h>
@@ -26,10 +27,12 @@
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
+#include "common/libs/utils/files.h"
 #include "common/libs/utils/flag_parser.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/commands/cvd/command_sequence.h"
+#include "host/commands/cvd/common_utils.h"
 #include "host/commands/cvd/instance_lock.h"
 #include "host/commands/cvd/selector/selector_constants.h"
 #include "host/commands/cvd/server_client.h"
@@ -45,6 +48,34 @@ struct ConvertedAcloudCreateCommand {
   InstanceLockFile lock;
   std::vector<RequestWithStdio> requests;
 };
+
+// Image names to search
+const std::vector<std::string> _KERNEL_IMAGE_NAMES =
+  {"kernel", "bzImage", "Image"};
+const std::vector<std::string> _INITRAMFS_IMAGE_NAME =
+  {"initramfs.img"};
+const std::vector<std::string> _BOOT_IMAGE_NAME =
+  {"boot.img"};
+const std::vector<std::string> _VENDOR_BOOT_IMAGE_NAME =
+  {"vendor_boot.img"};
+
+/**
+ * Find a image file through the input path and pattern.
+ *
+ * If it finds the file, return the path string.
+ * If it can't find the file, return empty string.
+ */
+std::string FindImage(const std::string& search_path,
+                      const std::vector<std::string>& pattern) {
+  const std::string& search_path_extend = search_path + "/";
+  for (const auto& name : pattern) {
+    const std::string image = search_path_extend + name;
+    if (FileExists(image)) {
+      return image;
+    }
+  }
+  return "";
+}
 
 /**
  * Split a string into arguments based on shell tokenization rules.
@@ -108,6 +139,16 @@ class ConvertAcloudCreateCommand {
             .Alias({FlagAliasMode::kFlagConsumesFollowing, "--flavor"})
             .Setter([&flavor](const FlagMatch& m) {
               flavor = m.value;
+              return true;
+            }));
+
+    std::optional<std::string> local_kernel_image;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--local-kernel-image"})
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--local-boot-image"})
+            .Setter([&local_kernel_image](const FlagMatch& m) {
+              local_kernel_image = m.value;
               return true;
             }));
 
@@ -242,8 +283,6 @@ class ConvertAcloudCreateCommand {
     auto dir = TempDir() + "/acloud_cvd_temp/local-instance-" +
                std::to_string(lock->Instance());
 
-    static constexpr char kAndroidHostOut[] = "ANDROID_HOST_OUT";
-
     auto host_artifacts_path = request_command.env().find(kAndroidHostOut);
     CF_EXPECT(host_artifacts_path != request_command.env().end(),
               "Missing " << kAndroidHostOut);
@@ -328,6 +367,53 @@ class ConvertAcloudCreateCommand {
     if (flavor) {
       start_command.add_args("-config");
       start_command.add_args(flavor.value());
+    }
+    if (local_kernel_image) {
+      // kernel image has 1st priority than boot image
+      struct stat statbuf;
+      std::string local_boot_image = "";
+      std::string vendor_boot_image = "";
+      std::string kernel_image = "";
+      std::string initramfs_image = "";
+      if (stat(local_kernel_image.value().c_str(), &statbuf) == 0) {
+        if(statbuf.st_mode & S_IFDIR) {
+          // it's a directory, deal with kernel image case first
+          kernel_image = FindImage(local_kernel_image.value(),
+                                   _KERNEL_IMAGE_NAMES);
+          initramfs_image = FindImage(local_kernel_image.value(),
+                                      _INITRAMFS_IMAGE_NAME);
+          // This is the original python acloud behavior, it
+          // expects both kernel and initramfs files, however,
+          // there are some very old kernels that are built without
+          // an initramfs.img file,
+          // e.g. aosp_kernel-common-android-4.14-stable
+          if(kernel_image != "" && initramfs_image != "") {
+            start_command.add_args("-kernel_path");
+            start_command.add_args(kernel_image);
+            start_command.add_args("-initramfs_path");
+            start_command.add_args(initramfs_image);
+          } else {
+            // boot.img case
+            // adding boot.img and vendor_boot.img to the path
+            local_boot_image = FindImage(local_kernel_image.value(),
+                                         _BOOT_IMAGE_NAME);
+            vendor_boot_image = FindImage(local_kernel_image.value(),
+                                          _VENDOR_BOOT_IMAGE_NAME);
+            start_command.add_args("-boot_image");
+            start_command.add_args(local_boot_image);
+            // vendor boot image may not exist
+            if (vendor_boot_image != "") {
+              start_command.add_args("-vendor_boot_image");
+              start_command.add_args(vendor_boot_image);
+            }
+          }
+        } else if(statbuf.st_mode & S_IFREG) {
+          // it's a file which directly points to boot.img
+          local_boot_image = local_kernel_image.value();
+          start_command.add_args("-boot_image");
+          start_command.add_args(local_boot_image);
+        }
+      }
     }
     if (launch_args) {
       for (const auto& arg : CF_EXPECT(BashTokenize(*launch_args))) {
