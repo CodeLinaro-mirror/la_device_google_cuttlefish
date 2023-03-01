@@ -121,6 +121,14 @@ static constexpr char kNewMiscImage[] = "new_misc_image";
 std::string CuttlefishConfig::InstanceSpecific::new_misc_image() const {
   return (*Dictionary())[kNewMiscImage].asString();
 }
+static constexpr char kMiscInfoTxt[] = "misc_info_txt";
+std::string CuttlefishConfig::InstanceSpecific::misc_info_txt() const {
+  return (*Dictionary())[kMiscInfoTxt].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_misc_info_txt(
+    const std::string& misc_info) {
+  (*Dictionary())[kMiscInfoTxt] = misc_info;
+}
 void CuttlefishConfig::MutableInstanceSpecific::set_new_misc_image(
     const std::string& new_misc_image) {
   (*Dictionary())[kNewMiscImage] = new_misc_image;
@@ -304,6 +312,35 @@ void CuttlefishConfig::MutableInstanceSpecific::set_virtual_disk_paths(
     virtual_disks_json_obj.append(arg);
   }
   (*Dictionary())[kVirtualDiskPaths] = virtual_disks_json_obj;
+}
+
+static constexpr char kGuestAndroidVersion[] = "guest_android_version";
+std::string CuttlefishConfig::InstanceSpecific::guest_android_version() const {
+  return (*Dictionary())[kGuestAndroidVersion].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_guest_android_version(
+    const std::string& guest_android_version) {
+  (*Dictionary())[kGuestAndroidVersion] = guest_android_version;
+}
+
+static constexpr char kBootconfigSupported[] = "bootconfig_supported";
+bool CuttlefishConfig::InstanceSpecific::bootconfig_supported() const {
+  return (*Dictionary())[kBootconfigSupported].asBool();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_bootconfig_supported(
+    bool bootconfig_supported) {
+  (*Dictionary())[kBootconfigSupported] = bootconfig_supported;
+}
+
+static constexpr char kFilenameEncryptionMode[] = "filename_encryption_mode";
+std::string CuttlefishConfig::InstanceSpecific::filename_encryption_mode() const {
+  return (*Dictionary())[kFilenameEncryptionMode].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_filename_encryption_mode(
+    const std::string& filename_encryption_mode) {
+  auto fmt = filename_encryption_mode;
+  std::transform(fmt.begin(), fmt.end(), fmt.begin(), ::tolower);
+  (*Dictionary())[kFilenameEncryptionMode] = fmt;
 }
 
 std::string CuttlefishConfig::InstanceSpecific::kernel_log_pipe_name() const {
@@ -705,6 +742,68 @@ void CuttlefishConfig::MutableInstanceSpecific::set_grpc_socket_path(
   (*Dictionary())[kGrpcConfig] = socket_path;
 }
 
+static constexpr char kSmt[] = "smt";
+void CuttlefishConfig::MutableInstanceSpecific::set_smt(bool smt) {
+  (*Dictionary())[kSmt] = smt;
+}
+bool CuttlefishConfig::InstanceSpecific::smt() const {
+  return (*Dictionary())[kSmt].asBool();
+}
+
+static constexpr char kCrosvmBinary[] = "crosvm_binary";
+std::string CuttlefishConfig::InstanceSpecific::crosvm_binary() const {
+  return (*Dictionary())[kCrosvmBinary].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_crosvm_binary(
+    const std::string& crosvm_binary) {
+  (*Dictionary())[kCrosvmBinary] = crosvm_binary;
+}
+
+void CuttlefishConfig::MutableInstanceSpecific::SetPath(
+    const std::string& key, const std::string& path) {
+  if (!path.empty()) {
+    (*Dictionary())[key] = AbsolutePath(path);
+  }
+}
+
+static constexpr char kSeccompPolicyDir[] = "seccomp_policy_dir";
+void CuttlefishConfig::MutableInstanceSpecific::set_seccomp_policy_dir(
+    const std::string& seccomp_policy_dir) {
+  if (seccomp_policy_dir.empty()) {
+    (*Dictionary())[kSeccompPolicyDir] = seccomp_policy_dir;
+    return;
+  }
+  SetPath(kSeccompPolicyDir, seccomp_policy_dir);
+}
+std::string CuttlefishConfig::InstanceSpecific::seccomp_policy_dir() const {
+  return (*Dictionary())[kSeccompPolicyDir].asString();
+}
+
+static constexpr char kQemuBinaryDir[] = "qemu_binary_dir";
+std::string CuttlefishConfig::InstanceSpecific::qemu_binary_dir() const {
+  return (*Dictionary())[kQemuBinaryDir].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_qemu_binary_dir(
+    const std::string& qemu_binary_dir) {
+  (*Dictionary())[kQemuBinaryDir] = qemu_binary_dir;
+}
+
+static constexpr char kVhostNet[] = "vhost_net";
+void CuttlefishConfig::MutableInstanceSpecific::set_vhost_net(bool vhost_net) {
+  (*Dictionary())[kVhostNet] = vhost_net;
+}
+bool CuttlefishConfig::InstanceSpecific::vhost_net() const {
+  return (*Dictionary())[kVhostNet].asBool();
+}
+
+static constexpr char kRilDns[] = "ril_dns";
+void CuttlefishConfig::MutableInstanceSpecific::set_ril_dns(const std::string& ril_dns) {
+  (*Dictionary())[kRilDns] = ril_dns;
+}
+std::string CuttlefishConfig::InstanceSpecific::ril_dns() const {
+  return (*Dictionary())[kRilDns].asString();
+}
+
 static constexpr char kDisplayConfigs[] = "display_configs";
 static constexpr char kXRes[] = "x_res";
 static constexpr char kYRes[] = "y_res";
@@ -774,8 +873,7 @@ std::string CuttlefishConfig::InstanceSpecific::console_dev() const {
     // console can't be used since uboot doesn't support it.
     console_dev = "hvc1";
   } else {
-    // QEMU and Gem5 emulate pl011 on ARM/ARM64, but QEMU and crosvm on other
-    // architectures emulate ns16550a/uart8250 instead.
+    // crosvm ARM does not support ttyAMA. ttyAMA is a part of ARM arch.
     Arch target = target_arch();
     if ((target == Arch::Arm64 || target == Arch::Arm) &&
         config_->vm_manager() != vm_manager::CrosvmManager::name()) {
@@ -869,6 +967,22 @@ std::string CuttlefishConfig::InstanceSpecific::ap_uboot_env_image_path() const 
   return AbsolutePath(PerInstancePath("ap_uboot_env.img"));
 }
 
+std::string CuttlefishConfig::InstanceSpecific::otheros_esp_image_path() const {
+  return AbsolutePath(PerInstancePath("esp.img"));
+}
+
+std::string CuttlefishConfig::InstanceSpecific::ap_esp_image_path() const {
+  return AbsolutePath(PerInstancePath("ap_esp.img"));
+}
+
+std::string CuttlefishConfig::InstanceSpecific::otheros_esp_grub_config() const {
+  return AbsolutePath(PerInstancePath("grub.cfg"));
+}
+
+std::string CuttlefishConfig::InstanceSpecific::ap_esp_grub_config() const {
+  return AbsolutePath(PerInstancePath("ap_grub.cfg"));
+}
+
 static constexpr char kMobileBridgeName[] = "mobile_bridge_name";
 
 std::string CuttlefishConfig::InstanceSpecific::audio_server_path() const {
@@ -920,6 +1034,15 @@ void CuttlefishConfig::MutableInstanceSpecific::set_wifi_tap_name(
   (*Dictionary())[kWifiTapName] = wifi_tap_name;
 }
 
+static constexpr char kWifiBridgeName[] = "wifi_bridge_name";
+std::string CuttlefishConfig::InstanceSpecific::wifi_bridge_name() const {
+  return (*Dictionary())[kWifiBridgeName].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_wifi_bridge_name(
+    const std::string& wifi_bridge_name) {
+  (*Dictionary())[kWifiBridgeName] = wifi_bridge_name;
+}
+
 static constexpr char kEthernetTapName[] = "ethernet_tap_name";
 std::string CuttlefishConfig::InstanceSpecific::ethernet_tap_name() const {
   return (*Dictionary())[kEthernetTapName].asString();
@@ -927,6 +1050,33 @@ std::string CuttlefishConfig::InstanceSpecific::ethernet_tap_name() const {
 void CuttlefishConfig::MutableInstanceSpecific::set_ethernet_tap_name(
     const std::string& ethernet_tap_name) {
   (*Dictionary())[kEthernetTapName] = ethernet_tap_name;
+}
+
+static constexpr char kEthernetBridgeName[] = "ethernet_bridge_name";
+std::string CuttlefishConfig::InstanceSpecific::ethernet_bridge_name() const {
+  return (*Dictionary())[kEthernetBridgeName].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_ethernet_bridge_name(
+    const std::string& ethernet_bridge_name) {
+  (*Dictionary())[kEthernetBridgeName] = ethernet_bridge_name;
+}
+
+static constexpr char kEthernetMac[] = "ethernet_mac";
+std::string CuttlefishConfig::InstanceSpecific::ethernet_mac() const {
+  return (*Dictionary())[kEthernetMac].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_ethernet_mac(
+    const std::string& mac) {
+  (*Dictionary())[kEthernetMac] = mac;
+}
+
+static constexpr char kEthernetIPV6[] = "ethernet_ipv6";
+std::string CuttlefishConfig::InstanceSpecific::ethernet_ipv6() const {
+  return (*Dictionary())[kEthernetIPV6].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_ethernet_ipv6(
+    const std::string& ip) {
+  (*Dictionary())[kEthernetIPV6] = ip;
 }
 
 static constexpr char kUseAllocd[] = "use_allocd";
@@ -970,6 +1120,14 @@ int CuttlefishConfig::InstanceSpecific::adb_host_port() const {
 }
 void CuttlefishConfig::MutableInstanceSpecific::set_adb_host_port(int port) {
   (*Dictionary())[kHostPort] = port;
+}
+
+static constexpr char kFastbootHostPort[] = "fastboot_host_port";
+int CuttlefishConfig::InstanceSpecific::fastboot_host_port() const {
+  return (*Dictionary())[kFastbootHostPort].asInt();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_fastboot_host_port(int port) {
+  (*Dictionary())[kFastbootHostPort] = port;
 }
 
 static constexpr char kModemSimulatorId[] = "modem_simulator_host_id";

@@ -26,6 +26,7 @@
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/result.h"
 #include "host/commands/cvd/instance_manager.h"
+#include "host/commands/cvd/types.h"
 
 namespace cuttlefish {
 namespace {
@@ -58,7 +59,7 @@ class CvdShutdownHandler : public CvdServerHandler {
 
     if (request.Message().shutdown_request().clear()) {
       *response.mutable_status() =
-          instance_manager_.CvdClear(uid, request.Out(), request.Err());
+          instance_manager_.CvdClear(request.Out(), request.Err());
       if (response.status().code() != cvd::Status::OK) {
         return response;
       }
@@ -84,6 +85,9 @@ class CvdShutdownHandler : public CvdServerHandler {
   }
 
   Result<void> Interrupt() override { return CF_ERR("Can't interrupt"); }
+
+  // For now, shutdown isn't done by cvd shutdown.
+  cvd_common::Args CmdList() const override { return {}; }
 
  private:
   CvdServer& server_;

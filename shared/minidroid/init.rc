@@ -17,15 +17,20 @@ on early-init
 
 # If VM is debuggable, send logs to outside ot the VM via the serial console.
 # If non-debuggable, logs are internally consumed at /dev/null
-on early-init && property:ro.boot.microdroid.app_debuggable=1
+on early-init && property:ro.boot.microdroid.debuggable=1
     setprop ro.log.file_logger.path /dev/hvc2
 
-on early-init && property:ro.boot.microdroid.app_debuggable=0
+on early-init && property:ro.boot.microdroid.debuggable=0
     setprop ro.log.file_logger.path /dev/null
 
 on init
     mkdir /mnt/apk 0755 system system
     mkdir /mnt/extra-apk 0755 root root
+
+    # create an empty ld.config.txt before running any non-static exectuables
+    # (apexd and linkerconfig) to suppress "ld.config.txt not found" warnings.
+    write /linkerconfig/ld.config.txt \#
+    chmod 644 /linkerconfig/ld.config.txt
 
     # TODO: minidroid does not use microdroid_manager. If/when this is fixed
     # align this change and others related to microdroid_manager back to the

@@ -107,23 +107,14 @@ class CuttlefishConfig {
     int refresh_rate_hz;
   };
 
-  void set_cuttlefish_env_path(const std::string& path);
-  std::string cuttlefish_env_path() const;
-
   void set_secure_hals(const std::set<std::string>& hals);
   std::set<SecureHal> secure_hals() const;
-
-  void set_qemu_binary_dir(const std::string& qemu_binary_dir);
-  std::string qemu_binary_dir() const;
 
   void set_crosvm_binary(const std::string& crosvm_binary);
   std::string crosvm_binary() const;
 
   void set_gem5_debug_flags(const std::string& gem5_debug_flags);
   std::string gem5_debug_flags() const;
-
-  void set_seccomp_policy_dir(const std::string& seccomp_policy_dir);
-  std::string seccomp_policy_dir() const;
 
   void set_enable_host_bluetooth(bool enable_host_bluetooth);
   bool enable_host_bluetooth() const;
@@ -188,24 +179,14 @@ class CuttlefishConfig {
   void set_sig_server_strict(bool strict);
   bool sig_server_strict() const;
 
-  // The dns address of mobile network (RIL)
-  void set_ril_dns(const std::string& ril_dns);
-  std::string ril_dns() const;
-
   void set_host_tools_version(const std::map<std::string, uint32_t>&);
   std::map<std::string, uint32_t> host_tools_version() const;
-
-  void set_vhost_net(bool vhost_net);
-  bool vhost_net() const;
 
   void set_vhost_user_mac80211_hwsim(const std::string& path);
   std::string vhost_user_mac80211_hwsim() const;
 
   void set_wmediumd_api_server_socket(const std::string& path);
   std::string wmediumd_api_server_socket() const;
-
-  void set_ap_esp_image(const std::string& otheros_ap_image);
-  std::string ap_esp_image() const;
 
   void set_ap_rootfs_image(const std::string& path);
   std::string ap_rootfs_image() const;
@@ -237,15 +218,6 @@ class CuttlefishConfig {
   void set_rootcanal_default_commands_file(
       const std::string& rootcanal_default_commands_file);
   std::string rootcanal_default_commands_file() const;
-
-  void set_smt(bool smt);
-  bool smt() const;
-
-  void set_bootconfig_supported(bool bootconfig_supported);
-  bool bootconfig_supported() const;
-
-  void set_filename_encryption_mode(const std::string& userdata_format);
-  std::string filename_encryption_mode() const;
 
   // The path of an AP image in composite disk
   std::string ap_image_dev_path() const;
@@ -300,6 +272,8 @@ class CuttlefishConfig {
     int audiocontrol_server_port() const;
     // Port number to connect to the adb server on the host
     int adb_host_port() const;
+    // Port number to connect to the fastboot server on the host
+    int fastboot_host_port() const;
     // Device-specific ID to distinguish modem simulators. Must be 4 digits.
     int modem_simulator_host_id() const;
     // Port number to connect to the gnss grpc proxy server on the host
@@ -313,8 +287,12 @@ class CuttlefishConfig {
     std::string fixed_location_file_path() const;
     std::string mobile_bridge_name() const;
     std::string mobile_tap_name() const;
+    std::string wifi_bridge_name() const;
     std::string wifi_tap_name() const;
     std::string ethernet_tap_name() const;
+    std::string ethernet_bridge_name() const;
+    std::string ethernet_mac() const;
+    std::string ethernet_ipv6() const;
     uint32_t session_id() const;
     bool use_allocd() const;
     int vsock_guest_cid() const;
@@ -377,6 +355,14 @@ class CuttlefishConfig {
     std::string uboot_env_image_path() const;
 
     std::string ap_uboot_env_image_path() const;
+
+    std::string ap_esp_image_path() const;
+
+    std::string otheros_esp_image_path() const;
+
+    std::string otheros_esp_grub_config() const;
+
+    std::string ap_esp_grub_config() const;
 
     std::string audio_server_path() const;
 
@@ -491,6 +477,10 @@ class CuttlefishConfig {
 
     // Kernel and bootloader logging
     bool enable_kernel_log() const;
+    bool vhost_net() const;
+
+    // The dns address of mobile network (RIL)
+    std::string ril_dns() const;
 
     bool enable_webrtc() const;
     std::string webrtc_assets_dir() const;
@@ -500,6 +490,11 @@ class CuttlefishConfig {
 
     // The range of UDP ports available for webrtc sessions.
     std::pair<uint16_t, uint16_t> webrtc_udp_port_range() const;
+
+    bool smt() const;
+    std::string crosvm_binary() const;
+    std::string seccomp_policy_dir() const;
+    std::string qemu_binary_dir() const;
 
     // Configuration flags for a minimal device
     bool enable_minimal_mode() const;
@@ -522,6 +517,7 @@ class CuttlefishConfig {
     std::string super_image() const;
     std::string misc_image() const;
     std::string new_misc_image() const;
+    std::string misc_info_txt() const;
     std::string metadata_image() const;
     std::string new_metadata_image() const;
     std::string vendor_boot_image() const;
@@ -548,6 +544,9 @@ class CuttlefishConfig {
     std::string bootloader() const;
     std::string initramfs_path() const;
     std::string kernel_path() const;
+    std::string guest_android_version() const;
+    bool bootconfig_supported() const;
+    std::string filename_encryption_mode() const;
   };
 
   // A view into an existing CuttlefishConfig object for a particular instance.
@@ -574,11 +573,16 @@ class CuttlefishConfig {
     void set_adb_host_port(int adb_host_port);
     void set_modem_simulator_host_id(int modem_simulator_id);
     void set_adb_ip_and_port(const std::string& ip_port);
+    void set_fastboot_host_port(int fastboot_host_port);
     void set_camera_server_port(int camera_server_port);
     void set_mobile_bridge_name(const std::string& mobile_bridge_name);
     void set_mobile_tap_name(const std::string& mobile_tap_name);
+    void set_wifi_bridge_name(const std::string& wifi_bridge_name);
     void set_wifi_tap_name(const std::string& wifi_tap_name);
     void set_ethernet_tap_name(const std::string& ethernet_tap_name);
+    void set_ethernet_bridge_name(const std::string& set_ethernet_bridge_name);
+    void set_ethernet_mac(const std::string& mac);
+    void set_ethernet_ipv6(const std::string& ip);
     void set_session_id(uint32_t session_id);
     void set_use_allocd(bool use_allocd);
     void set_vsock_guest_cid(int vsock_guest_cid);
@@ -643,6 +647,16 @@ class CuttlefishConfig {
     // The range of UDP ports available for webrtc sessions.
     void set_webrtc_udp_port_range(std::pair<uint16_t, uint16_t> range);
 
+    void set_smt(bool smt);
+    void set_crosvm_binary(const std::string& crosvm_binary);
+    void set_seccomp_policy_dir(const std::string& seccomp_policy_dir);
+    void set_qemu_binary_dir(const std::string& qemu_binary_dir);
+
+    void set_vhost_net(bool vhost_net);
+
+    // The dns address of mobile network (RIL)
+    void set_ril_dns(const std::string& ril_dns);
+
     // Configuration flags for a minimal device
     void set_enable_minimal_mode(bool enable_minimal_mode);
     void set_enable_modem_simulator(bool enable_modem_simulator);
@@ -664,6 +678,7 @@ class CuttlefishConfig {
     void set_super_image(const std::string& super_image);
     void set_misc_image(const std::string& misc_image);
     void set_new_misc_image(const std::string& new_misc_image);
+    void set_misc_info_txt(const std::string& misc_image);
     void set_metadata_image(const std::string& metadata_image);
     void set_new_metadata_image(const std::string& new_metadata_image);
     void set_vendor_boot_image(const std::string& vendor_boot_image);
@@ -683,12 +698,17 @@ class CuttlefishConfig {
     void set_bootloader(const std::string& bootloader);
     void set_initramfs_path(const std::string& initramfs_path);
     void set_kernel_path(const std::string& kernel_path);
+    void set_guest_android_version(const std::string& guest_android_version);
+    void set_bootconfig_supported(bool bootconfig_supported);
+    void set_filename_encryption_mode(const std::string& userdata_format);
+
+   private:
+    void SetPath(const std::string& key, const std::string& path);
   };
 
  private:
   std::unique_ptr<Json::Value> dictionary_;
 
-  void SetPath(const std::string& key, const std::string& path);
   bool LoadFromFile(const char* file);
   static CuttlefishConfig* BuildConfigImpl(const std::string& path);
 

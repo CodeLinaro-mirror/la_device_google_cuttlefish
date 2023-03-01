@@ -134,17 +134,17 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
 
   CrosvmBuilder crosvm_cmd;
 
-  crosvm_cmd.ApplyProcessRestarter(config.crosvm_binary(),
+  crosvm_cmd.ApplyProcessRestarter(instance.crosvm_binary(),
                                    kCrosvmVmResetExitCode);
   crosvm_cmd.Cmd().AddParameter("run");
   crosvm_cmd.AddControlSocket(GetControlSocketPath(instance, crosvm_socket),
-                              config.crosvm_binary());
+                              instance.crosvm_binary());
 
-  if (!config.smt()) {
+  if (!instance.smt()) {
     crosvm_cmd.Cmd().AddParameter("--no-smt");
   }
 
-  if (config.vhost_net()) {
+  if (instance.vhost_net()) {
     crosvm_cmd.Cmd().AddParameter("--vhost-net");
   }
 
@@ -256,7 +256,7 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
   // having to pass arguments to crosvm via a wrapper script.
   if (!gpu_capture_enabled) {
     crosvm_cmd.AddTap(instance.mobile_tap_name());
-    crosvm_cmd.AddTap(instance.ethernet_tap_name());
+    crosvm_cmd.AddTap(instance.ethernet_tap_name(), instance.ethernet_mac());
 
     // TODO(b/199103204): remove this as well when
     // PRODUCT_ENFORCE_MAC80211_HWSIM is removed
@@ -276,16 +276,16 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
   }
 
   if (instance.enable_sandbox()) {
-    const bool seccomp_exists = DirectoryExists(config.seccomp_policy_dir());
+    const bool seccomp_exists = DirectoryExists(instance.seccomp_policy_dir());
     const std::string& var_empty_dir = kCrosvmVarEmptyDir;
     const bool var_empty_available = DirectoryExists(var_empty_dir);
     CF_EXPECT(var_empty_available && seccomp_exists,
               var_empty_dir << " is not an existing, empty directory."
                             << "seccomp-policy-dir, "
-                            << config.seccomp_policy_dir()
+                            << instance.seccomp_policy_dir()
                             << " does not exist");
     crosvm_cmd.Cmd().AddParameter("--seccomp-policy-dir=",
-                                  config.seccomp_policy_dir());
+                                  instance.seccomp_policy_dir());
   } else {
     crosvm_cmd.Cmd().AddParameter("--disable-sandbox");
   }

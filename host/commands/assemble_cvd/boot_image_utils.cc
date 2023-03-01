@@ -21,6 +21,7 @@
 #include <unistd.h>
 
 #include <fstream>
+#include <regex>
 #include <sstream>
 
 #include <android-base/logging.h>
@@ -404,5 +405,34 @@ void RepackGem5BootImage(const std::string& initrd_path,
   // Append bootconfig trailer
   final_rd << "#BOOTCONFIG\n";
   final_rd.close();
+}
+
+Result<std::string> ReadAndroidVersionFromBootImage(
+    const std::string& boot_image_path) {
+  // temp dir path length is chosen to be larger than sun_path_length (108)
+  char tmp_dir[200];
+  sprintf(tmp_dir, "%s/XXXXXX", StringFromEnv("TEMP", "/tmp").c_str());
+  char* unpack_dir = mkdtemp(tmp_dir);
+  if (!unpack_dir) {
+    return CF_ERR("boot image unpack dir could not be created");
+  }
+  bool unpack_status = UnpackBootImage(boot_image_path, unpack_dir);
+  if (!unpack_status) {
+    RecursivelyRemoveDirectory(unpack_dir);
+    return CF_ERR("\"" + boot_image_path + "\" boot image unpack into \"" +
+                  unpack_dir + "\" failed");
+  }
+
+  // dirty hack to read out boot params
+  size_t dir_path_len = strlen(tmp_dir);
+  std::string boot_params = ReadFile(strcat(unpack_dir, "/boot_params"));
+  unpack_dir[dir_path_len] = '\0';
+
+  RecursivelyRemoveDirectory(unpack_dir);
+  std::string os_version = ExtractValue(boot_params, "os version: ");
+  CF_EXPECT(os_version != "", "Could not extract os version from \"" + boot_image_path + "\"");
+  std::regex re("[1-9][0-9]*.[0-9]+.[0-9]+");
+  CF_EXPECT(std::regex_match(os_version, re), "Version string is not a valid version \"" + os_version + "\"");
+  return os_version;
 }
 } // namespace cuttlefish

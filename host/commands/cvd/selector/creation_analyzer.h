@@ -28,7 +28,7 @@
 #include "common/libs/utils/unique_resource_allocator.h"
 #include "host/commands/cvd/instance_lock.h"
 #include "host/commands/cvd/selector/instance_database.h"
-#include "host/commands/cvd/selector/selector_cmdline_parser.h"
+#include "host/commands/cvd/selector/start_selector_parser.h"
 
 namespace cuttlefish {
 namespace selector {
@@ -72,11 +72,8 @@ struct GroupCreationInfo {
  *
  * Group name:
  *  if --group_name or --device_name is given, find the group name there
- *  if --name is given and when it is a group name (i.e. --name=<one token>
- *  and that one token is an eligible group name, and the operation is for
- *  a group -- e.g. start), use the "name" as a group name
  *  if a group name is not given, automatically generate:
- *   default_prefix + "_" + android::base::Join(instance_ids, "_")
+ *   default_prefix + "_" + one_of_ids
  *
  * Per-instance name:
  *  When not given, use std::string(id) as the per instance name of each
@@ -108,7 +105,7 @@ class CreationAnalyzer {
   using IdAllocator = UniqueResourceAllocator<unsigned>;
 
   CreationAnalyzer(const CreationAnalyzerParam& param, const ucred& credential,
-                   SelectorFlagsParser&& selector_options_parser,
+                   StartSelectorParser&& selector_options_parser,
                    const InstanceDatabase& instance_database,
                    InstanceLockFileManager& instance_lock_file_manager);
 
@@ -163,7 +160,7 @@ class CreationAnalyzer {
   std::string group_name_;
 
   // internal, temporary
-  SelectorFlagsParser selector_options_parser_;
+  StartSelectorParser selector_options_parser_;
   const InstanceDatabase& instance_database_;
   InstanceLockFileManager& instance_file_lock_manager_;
 };

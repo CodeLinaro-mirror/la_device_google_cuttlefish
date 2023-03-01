@@ -26,12 +26,14 @@ using namespace android;
 // clang-format off
 static const std::set<std::string> kKnownMissingHidl = {
     "android.frameworks.cameraservice.device@2.1",
+    "android.frameworks.cameraservice.service@2.2", // converted to AIDL, see b/205764761
     "android.frameworks.displayservice@1.0", // deprecated, see b/141930622
     "android.frameworks.schedulerservice@1.0", // deprecated, see b/37226359
     "android.frameworks.vr.composer@1.0",
     "android.frameworks.vr.composer@2.0",
     "android.frameworks.automotive.display@1.0",
     "android.frameworks.stats@1.0",  // converted to AIDL, see b/177667419
+    "android.hardware.atrace@1.0", // deprecated, see b/204935495
     "android.hardware.audio@2.0",
     "android.hardware.audio@4.0",
     "android.hardware.audio@5.0",
@@ -40,9 +42,10 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.audio.effect@4.0",
     "android.hardware.audio.effect@5.0",
     "android.hardware.audio.effect@6.0",
+    "android.hardware.authsecret@1.0", // converted to AIDL, see b/182976659
     "android.hardware.automotive.audiocontrol@1.0",
     "android.hardware.automotive.audiocontrol@2.0",
-    "android.hardware.automotive.can@1.0",
+    "android.hardware.automotive.can@1.0",  // converted to AIDL, see b/170405615
     "android.hardware.automotive.evs@1.1",
     "android.hardware.automotive.sv@1.0",
     "android.hardware.automotive.vehicle@2.0",
@@ -50,10 +53,12 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.biometrics.face@1.0", // converted to AIDL, see b/168730443
     "android.hardware.bluetooth.a2dp@1.0",
     "android.hardware.bluetooth.audio@2.1", // converted to AIDL, see b/203490261
+    "android.hardware.bluetooth@1.1", // converted to AIDL, see b/205758693
     "android.hardware.boot@1.2", // converted to AIDL, see b/227536004
     "android.hardware.broadcastradio@1.1",
     "android.hardware.broadcastradio@2.0",
     "android.hardware.camera.provider@2.7", // Camera converted to AIDL, b/196432585
+    "android.hardware.cas@1.2", // converted to AIDL, see b/227673974
     "android.hardware.cas.native@1.0",
     "android.hardware.configstore@1.1", // deprecated, see b/149050985, b/149050733
     "android.hardware.confirmationui@1.0", // converted to AIDL, see b/205760172
@@ -110,6 +115,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.vibrator@1.3",
     "android.hardware.vr@1.0",
     "android.hardware.weaver@1.0",
+    "android.hardware.wifi@1.6", // Converted to AIDL (see b/205044134)
     "android.hardware.wifi.hostapd@1.3", // Converted to AIDL (see b/194806512)
     "android.hardware.wifi.supplicant@1.4", // Converted to AIDL (see b/196235436)
     "android.hardware.wifi.offload@1.0",
@@ -117,6 +123,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hidl.memory.token@1.0",
     "android.system.net.netd@1.1", // Converted to AIDL (see b/205764585)
     "android.system.suspend@1.0", // Converted to AIDL (see b/170260236)
+    "android.system.wifi.keystore@1.0", // Converted to AIDL (see b/205764502)
 };
 // clang-format on
 
@@ -130,12 +137,20 @@ struct VersionedAidlPackage {
 
 /*
  * Always missing AIDL packages that are not served on Cuttlefish.
- * These are typically ypes-only packages.
+ * These are typically types-only packages.
  */
 static const std::set<std::string> kAlwaysMissingAidl = {
 
+    // android.frameworks.cameraservice.common is a type only package use by
+    // android.frameworks.cameraservice.device.
+    // android.frameworks.cameraservice.device is an interface returnd by
+    // android.frameworks.cameraservice.service.
+    "android.frameworks.cameraservice.common.",
+    "android.frameworks.cameraservice.device.",
+
     // types-only packages, which never expect a default implementation
     "android.hardware.audio.common.",
+    "android.hardware.audio.core.sounddose.",
     "android.hardware.biometrics.common.",
     "android.hardware.common.",
     "android.hardware.common.fmq.",
@@ -144,6 +159,7 @@ static const std::set<std::string> kAlwaysMissingAidl = {
     "android.media.audio.common.",
     "android.hardware.radio.",
     "android.hardware.uwb.fira_android.",
+    //"android.hardware.power.stats.",
 
     // android.hardware.camera.device is an interface returned by
     // android.hardware.camera.provider.
@@ -156,7 +172,10 @@ static const std::set<std::string> kAlwaysMissingAidl = {
 
     // android.hardware.media.bufferpool2 is a HAL-less interface.
     // It could be used for buffer recycling and caching by using the interface.
-    "android.hardware.media.bufferpool2."
+    "android.hardware.media.bufferpool2.",
+
+    // Only used in android auto
+    "android.hardware.automotive.vehicle."
 };
 
 /*
@@ -164,16 +183,11 @@ static const std::set<std::string> kAlwaysMissingAidl = {
  * These should be accompanied by a bug and expected to be here temporarily.
  */
 static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
-    // No implementations on cuttlefish for wifi aidl hal
-    {"android.hardware.wifi.", 1},
-
     // Cuttlefish Identity Credential HAL implementation is currently
     // stuck at version 3 while RKP support is being added. Will be
     // updated soon.
+    {"android.hardware.identity.", 4},
     {"android.hardware.identity.", 5},
-
-    // Cuttlefish will use the default implementation (b/205758693)
-    {"android.hardware.bluetooth.", 1},
 
     // No implementations on cuttlefish for omapi aidl hal
     {"android.se.omapi.", 1},
@@ -196,9 +210,13 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     // No implementation on cuttlefish for fastboot AIDL hal
     {"android.hardware.fastboot.", 1},
 
+    // No implementation on cuttlefish for power stats hal
+    {"android.hardware.power.stats.", 2},
+
     // These types are only used in TV.
-    {"android.hardware.tv.cec.", 1},
-    {"android.hardware.tv.hdmi.", 1},
+    {"android.hardware.tv.hdmi.cec.", 1},
+    {"android.hardware.tv.hdmi.earc.", 1},
+    {"android.hardware.tv.hdmi.connection.", 1},
 
     // These types are only used in Automotive.
     {"android.automotive.computepipe.registry.", 1},
@@ -212,11 +230,11 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.frameworks.automotive.telemetry.", 2},
     {"android.hardware.automotive.audiocontrol.", 1},
     {"android.hardware.automotive.audiocontrol.", 2},
+    {"android.hardware.automotive.can.", 1},
     {"android.hardware.automotive.evs.", 1},
     {"android.hardware.broadcastradio.", 1},
     {"android.hardware.automotive.occupant_awareness.", 1},
     {"android.hardware.automotive.remoteaccess.", 1},
-    {"android.hardware.automotive.vehicle.", 2},
 
     // The interface is in development (b/251850069)
     {"android.hardware.media.c2.", 1},
@@ -227,6 +245,9 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
 
     // No implementation of IRadioIms yet TODO(b/250912118)
     {"android.hardware.radio.ims.media.", 1},
+
+    // Weaver needs a real implementation (b/262418065)
+    {"android.hardware.weaver.", 2},
 };
 
 static const std::set<VersionedAidlPackage> kComingSoonAidl = {
@@ -286,7 +307,9 @@ static std::set<FQName> allHidlManifestInterfaces() {
     if (i.format() != vintf::HalFormat::HIDL) {
       return true;  // continue
     }
-    ret.insert(i.getFqInstance().getFqName());
+    FQName fqName;
+    CHECK(fqName.setTo(i.getFqInstance().getFqNameString()));
+    ret.insert(fqName);
     return true;  // continue
   };
   vintf::VintfObject::GetDeviceHalManifest()->forEachInstance(setInserter);
@@ -444,7 +467,7 @@ TEST(Hal, AidlInterfacesImplemented) {
     if (!latestRegistered && !expectedVersions.rbegin()->second.knownMissing) {
       ADD_FAILURE() << "The latest version ("
                     << expectedVersions.rbegin()->first
-                    << ") of the package is not implemented: "
+                    << ") of the module is not implemented: "
                     << treePackage.name
                     << " which declares the following types:\n    "
                     << base::Join(treePackage.types, "\n    ");

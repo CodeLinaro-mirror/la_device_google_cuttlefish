@@ -1,0 +1,389 @@
+/*
+ * Copyright (C) 2022 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include "host/commands/cvd/selector/start_selector_parser.h"
+
+#include <unistd.h>
+
+#include <sstream>
+#include <string_view>
+
+#include <android-base/parseint.h>
+#include <android-base/strings.h>
+
+#include "common/libs/utils/contains.h"
+#include "common/libs/utils/users.h"
+#include "host/commands/cvd/selector/instance_database_utils.h"
+#include "host/commands/cvd/selector/selector_constants.h"
+#include "host/commands/cvd/selector/selector_option_parser_utils.h"
+#include "host/commands/cvd/types.h"
+#include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/config/instance_nums.h"
+
+namespace cuttlefish {
+namespace selector {
+
+static bool Unique(const std::vector<unsigned>& v) {
+  std::unordered_set<unsigned> hash_set(v.begin(), v.end());
+  return v.size() == hash_set.size();
+}
+
+static Result<unsigned> ParseNaturalNumber(const std::string& token) {
+  std::int32_t value;
+  CF_EXPECT(android::base::ParseInt(token, &value));
+  CF_EXPECT(value > 0);
+  return static_cast<unsigned>(value);
+}
+
+Result<StartSelectorParser> StartSelectorParser::ConductSelectFlagsParser(
+    const uid_t uid, const std::vector<std::string>& selector_args,
+    const std::vector<std::string>& cmd_args,
+    const std::unordered_map<std::string, std::string>& envs) {
+  const std::string system_wide_home = CF_EXPECT(SystemWideUserHome(uid));
+  StartSelectorParser parser(system_wide_home, selector_args, cmd_args, envs);
+  CF_EXPECT(parser.ParseOptions(), "selector option flag parsing failed.");
+  return {std::move(parser)};
+}
+
+StartSelectorParser::StartSelectorParser(
+    const std::string& system_wide_user_home,
+    const std::vector<std::string>& selector_args,
+    const std::vector<std::string>& cmd_args,
+    const std::unordered_map<std::string, std::string>& envs)
+    : client_user_home_{system_wide_user_home},
+      selector_args_(selector_args),
+      cmd_args_(cmd_args),
+      envs_(envs) {}
+
+std::optional<std::string> StartSelectorParser::GroupName() const {
+  return group_name_;
+}
+
+std::optional<std::vector<std::string>> StartSelectorParser::PerInstanceNames()
+    const {
+  return instance_names_;
+}
+
+Result<std::vector<std::string>> StartSelectorParser::HandleInstanceNames(
+    const std::optional<std::string>& per_instance_names) const {
+  CF_EXPECT(per_instance_names && !per_instance_names.value().empty());
+
+  auto instance_names =
+      CF_EXPECT(SeparateButWithNoEmptyToken(per_instance_names.value(), ","));
+  for (const auto& instance_name : instance_names) {
+    CF_EXPECT(IsValidInstanceName(instance_name));
+  }
+  std::unordered_set<std::string> duplication_check{instance_names.cbegin(),
+                                                    instance_names.cend()};
+  CF_EXPECT(duplication_check.size() == instance_names.size());
+  return instance_names;
+}
+
+Result<std::string> StartSelectorParser::HandleGroupName(
+    const std::optional<std::string>& group_name) const {
+  CF_EXPECT(group_name && !group_name.value().empty());
+  CF_EXPECT(IsValidGroupName(group_name.value()));
+  return {group_name.value()};
+}
+
+Result<StartSelectorParser::DeviceNamesPair>
+StartSelectorParser::HandleDeviceNames(
+    const std::optional<std::string>& device_names) const {
+  CF_EXPECT(device_names && !device_names.value().empty());
+
+  auto device_name_list =
+      CF_EXPECT(SeparateButWithNoEmptyToken(device_names.value(), ","));
+  std::unordered_set<std::string> group_names;
+  std::vector<std::string> instance_names;
+  for (const auto& device_name : device_name_list) {
+    CF_EXPECT(IsValidDeviceName(device_name));
+    auto [group, instance] = CF_EXPECT(SplitDeviceName(device_name));
+    CF_EXPECT(IsValidGroupName(group) && IsValidInstanceName(instance));
+    group_names.insert(group);
+    instance_names.emplace_back(instance);
+  }
+  CF_EXPECT(group_names.size() <= 1, "Group names in --device_name options"
+                                         << " must be same across devices.");
+  const auto group_name = *(group_names.cbegin());
+  std::optional<std::string> joined_instance_names =
+      android::base::Join(instance_names, ",");
+  return {DeviceNamesPair{.group_name = group_name,
+                          .instance_names = std::move(CF_EXPECT(
+                              HandleInstanceNames(joined_instance_names)))}};
+}
+
+Result<StartSelectorParser::ParsedNameFlags>
+StartSelectorParser::HandleNameOpts(const NameFlagsParam& name_flags) const {
+  const std::optional<std::string>& device_names = name_flags.device_names;
+  const std::optional<std::string>& group_name = name_flags.group_name;
+  const std::optional<std::string>& instance_names = name_flags.instance_names;
+
+  CF_EXPECT(VerifyNameOptions(
+      VerifyNameOptionsParam{.device_name = device_names,
+                             .group_name = group_name,
+                             .per_instance_name = instance_names}));
+
+  if (device_names) {
+    auto device_names_pair = CF_EXPECT(HandleDeviceNames(device_names));
+    return {ParsedNameFlags{
+        .group_name = std::move(device_names_pair.group_name),
+        .instance_names = std::move(device_names_pair.instance_names)}};
+  }
+
+  std::optional<std::string> group_name_output;
+  std::optional<std::vector<std::string>> instance_names_output;
+  if (group_name) {
+    group_name_output = CF_EXPECT(HandleGroupName(group_name));
+  }
+
+  if (instance_names) {
+    instance_names_output =
+        std::move(CF_EXPECT(HandleInstanceNames(instance_names)));
+  }
+  return {ParsedNameFlags{.group_name = std::move(group_name_output),
+                          .instance_names = std::move(instance_names_output)}};
+}
+
+namespace {
+
+std::optional<unsigned> TryFromCuttlefishInstance(
+    const cvd_common::Envs& envs) {
+  if (!Contains(envs, kCuttlefishInstanceEnvVarName)) {
+    return std::nullopt;
+  }
+  const auto cuttlefish_instance = envs.at(kCuttlefishInstanceEnvVarName);
+  if (cuttlefish_instance.empty()) {
+    return std::nullopt;
+  }
+  auto parsed = ParseNaturalNumber(cuttlefish_instance);
+  return parsed.ok() ? std::optional(*parsed) : std::nullopt;
+}
+
+std::optional<unsigned> TryFromUser(const cvd_common::Envs& envs) {
+  if (!Contains(envs, "USER")) {
+    return std::nullopt;
+  }
+  std::string_view user{envs.at("USER")};
+  if (user.empty() || !android::base::ConsumePrefix(&user, kVsocUserPrefix)) {
+    return std::nullopt;
+  }
+  const auto& vsoc_num = user;
+  auto vsoc_id = ParseNaturalNumber(vsoc_num.data());
+  return vsoc_id.ok() ? std::optional(*vsoc_id) : std::nullopt;
+}
+
+}  // namespace
+
+std::optional<std::vector<unsigned>>
+StartSelectorParser::InstanceFromEnvironment(
+    const InstanceFromEnvParam& params) {
+  const auto& cuttlefish_instance_env = params.cuttlefish_instance_env;
+  const auto& vsoc_suffix = params.vsoc_suffix;
+  const auto& num_instances = params.num_instances;
+
+  // see the logic in cuttlefish::InstanceFromEnvironment()
+  // defined in host/libs/config/cuttlefish_config.cpp
+  std::vector<unsigned> nums;
+  std::optional<unsigned> base;
+  if (cuttlefish_instance_env) {
+    base = *cuttlefish_instance_env;
+  }
+  if (!base && vsoc_suffix) {
+    base = *vsoc_suffix;
+  }
+  if (!base) {
+    return std::nullopt;
+  }
+  // this is guaranteed by the caller
+  // assert(num_instances != std::nullopt);
+  for (unsigned i = 0; i != *num_instances; i++) {
+    nums.emplace_back(base.value() + i);
+  }
+  return nums;
+}
+
+Result<unsigned> StartSelectorParser::VerifyNumOfInstances(
+    const VerifyNumOfInstancesParam& params,
+    const unsigned default_n_instances) const {
+  const auto& num_instances_flag = params.num_instances_flag;
+  const auto& instance_names = params.instance_names;
+  const auto& instance_nums_flag = params.instance_nums_flag;
+
+  std::optional<unsigned> num_instances;
+  if (num_instances_flag) {
+    num_instances = CF_EXPECT(ParseNaturalNumber(*num_instances_flag));
+  }
+  if (instance_names && !instance_names->empty()) {
+    auto implied_n_instances = instance_names->size();
+    if (num_instances) {
+      CF_EXPECT_EQ(*num_instances, static_cast<unsigned>(implied_n_instances),
+                   "The number of instances requested by --num_instances "
+                       << " are not the same as what is implied by "
+                       << " --device_name/--instance_name.");
+    }
+    num_instances = implied_n_instances;
+  }
+  if (instance_nums_flag) {
+    std::vector<std::string> tokens =
+        android::base::Split(*instance_nums_flag, ",");
+    for (const auto& t : tokens) {
+      CF_EXPECT(ParseNaturalNumber(t), t << " must be a natural number");
+    }
+    if (!num_instances) {
+      num_instances = tokens.size();
+    }
+    CF_EXPECT_EQ(*num_instances, tokens.size(),
+                 "All information for the number of instances must match.");
+  }
+  return num_instances.value_or(default_n_instances);
+}
+
+static Result<std::vector<unsigned>> ParseInstanceNums(
+    const std::string& instance_nums_flag) {
+  std::vector<unsigned> nums;
+  std::vector<std::string> tokens =
+      android::base::Split(instance_nums_flag, ",");
+  for (const auto& t : tokens) {
+    unsigned num =
+        CF_EXPECT(ParseNaturalNumber(t), t << " must be a natural number");
+    nums.emplace_back(num);
+  }
+  CF_EXPECT(Unique(nums), "--instance_nums include duplicated numbers");
+  return nums;
+}
+
+Result<StartSelectorParser::ParsedInstanceIdsOpt>
+StartSelectorParser::HandleInstanceIds(
+    const InstanceIdsParams& instance_id_params) {
+  const auto& instance_nums = instance_id_params.instance_nums;
+  const auto& base_instance_num = instance_id_params.base_instance_num;
+  const auto& cuttlefish_instance_env =
+      instance_id_params.cuttlefish_instance_env;
+  const auto& vsoc_suffix = instance_id_params.vsoc_suffix;
+
+  // calculate and/or verify the number of instances
+  unsigned num_instances =
+      CF_EXPECT(VerifyNumOfInstances(VerifyNumOfInstancesParam{
+          .num_instances_flag = instance_id_params.num_instances,
+          .instance_names = instance_names_,
+          .instance_nums_flag = instance_nums}));
+
+  if (!instance_nums && !base_instance_num) {
+    // num_instances is given. if non-std::nullopt is returned,
+    // the base is also figured out. If base can't be figured out,
+    // std::nullopt is returned.
+    auto instance_ids = InstanceFromEnvironment(
+        {.cuttlefish_instance_env = cuttlefish_instance_env,
+         .vsoc_suffix = vsoc_suffix,
+         .num_instances = num_instances});
+    if (instance_ids) {
+      return ParsedInstanceIdsOpt(*instance_ids);
+    }
+    // the return value, n_instances is the "desired/requested" instances
+    // When instance_ids set isn't figured out, n_instances is not meant to
+    // be always zero; it could be any natural number.
+    return ParsedInstanceIdsOpt(num_instances);
+  }
+
+  InstanceNumsCalculator calculator;
+  calculator.NumInstances(static_cast<std::int32_t>(num_instances));
+  if (instance_nums) {
+    CF_EXPECT(base_instance_num == std::nullopt,
+              "-base_instance_num and -instance_nums are mutually exclusive.");
+    std::vector<unsigned> parsed_nums =
+        CF_EXPECT(ParseInstanceNums(*instance_nums));
+    return ParsedInstanceIdsOpt(parsed_nums);
+  }
+  if (base_instance_num) {
+    unsigned base = CF_EXPECT(ParseNaturalNumber(*base_instance_num));
+    calculator.BaseInstanceNum(static_cast<std::int32_t>(base));
+  }
+  auto instance_ids = std::move(CF_EXPECT(calculator.CalculateFromFlags()));
+  CF_EXPECT(!instance_ids.empty(),
+            "CalculateFromFlags() must be called when --num_instances or "
+                << "--base_instance_num is given, and must not return an "
+                << "empty set");
+  auto instance_ids_vector =
+      std::vector<unsigned>{instance_ids.begin(), instance_ids.end()};
+  return ParsedInstanceIdsOpt{instance_ids_vector};
+}
+
+Result<bool> StartSelectorParser::CalcMayBeDefaultGroup() {
+  std::optional<bool> disable_default_group;
+  CF_EXPECT(FilterSelectorFlag(selector_args_, kDisableDefaultGroupOpt,
+                               disable_default_group));
+  if (disable_default_group && disable_default_group.value()) {
+    // never be a default group
+    return false;
+  }
+  if (Contains(envs_, "HOME") && envs_.at("HOME") != client_user_home_) {
+    return false;
+  }
+  return selector_args_.empty();
+}
+
+Result<void> StartSelectorParser::ParseOptions() {
+  may_be_default_group_ = CF_EXPECT(CalcMayBeDefaultGroup());
+
+  // Handling name-related options
+  std::optional<std::string> device_name;
+  std::optional<std::string> group_name;
+  std::optional<std::string> instance_name;
+
+  std::unordered_map<std::string, std::optional<std::string>> key_optional_map =
+      {
+          {kDeviceNameOpt, std::optional<std::string>{}},
+          {kGroupNameOpt, std::optional<std::string>{}},
+          {kInstanceNameOpt, std::optional<std::string>{}},
+      };
+
+  for (auto& [flag_name, value] : key_optional_map) {
+    // value is set to std::nullopt if parsing failed or no flag_name flag is
+    // given.
+    CF_EXPECT(FilterSelectorFlag(selector_args_, flag_name, value));
+  }
+
+  NameFlagsParam name_flags_param{
+      .device_names = key_optional_map[kDeviceNameOpt],
+      .group_name = key_optional_map[kGroupNameOpt],
+      .instance_names = key_optional_map[kInstanceNameOpt]};
+  auto parsed_name_flags = CF_EXPECT(HandleNameOpts(name_flags_param));
+  group_name_ = parsed_name_flags.group_name;
+  instance_names_ = parsed_name_flags.instance_names;
+
+  std::optional<std::string> num_instances;
+  std::optional<std::string> instance_nums;
+  std::optional<std::string> base_instance_num;
+  // set num_instances as std::nullptr or the value of --num_instances
+  FilterSelectorFlag(cmd_args_, "num_instances", num_instances);
+  FilterSelectorFlag(cmd_args_, "instance_nums", instance_nums);
+  FilterSelectorFlag(cmd_args_, "base_instance_num", base_instance_num);
+
+  InstanceIdsParams instance_nums_param{
+      .num_instances = std::move(num_instances),
+      .instance_nums = std::move(instance_nums),
+      .base_instance_num = std::move(base_instance_num),
+      .cuttlefish_instance_env = TryFromCuttlefishInstance(envs_),
+      .vsoc_suffix = TryFromUser(envs_)};
+  auto parsed_ids = CF_EXPECT(HandleInstanceIds(instance_nums_param));
+  requested_num_instances_ = parsed_ids.GetNumOfInstances();
+  instance_ids_ = std::move(parsed_ids.GetInstanceIds());
+
+  return {};
+}
+
+}  // namespace selector
+}  // namespace cuttlefish

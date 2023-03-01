@@ -42,6 +42,8 @@ struct HalServiceError(String);
 struct FileChannel(std::fs::File);
 
 impl kmr_hal::SerializedChannel for FileChannel {
+    const MAX_SIZE: usize = kmr_wire::DEFAULT_MAX_SIZE;
+
     fn execute(&mut self, serialized_req: &[u8]) -> binder::Result<Vec<u8>> {
         kmr_hal::write_msg(&mut self.0, serialized_req)?;
         kmr_hal::read_msg(&mut self.0)
@@ -179,26 +181,24 @@ fn attestation_id_info() -> kmr_wire::AttestationIdInfo {
         serial: prop("ro.serialno"),
         manufacturer: prop("ro.product.manufacturer"),
         model: prop("ro.product.model"),
-        imei: b"IMEI unavailable".to_vec(),
-        meid: b"MEID unavailable".to_vec(),
+        // Currently modem_simulator always returns one fixed value. See `handleGetIMEI` in
+        // device/google/cuttlefish/host/commands/modem_simulator/misc_service.cpp for more details.
+        // TODO(b/263188546): Use device-specific IMEI values when available.
+        imei: b"867400022047199".to_vec(),
+        imei2: vec![],
+        meid: vec![],
     }
 }
 
 /// Get boot information based on system properties.
 fn get_boot_info() -> kmr_wire::SetBootInfoRequest {
     // No access to a verified boot key.
-    let verified_boot_key = [0; 32];
+    let verified_boot_key = vec![0; 32];
     let vbmeta_digest = get_property("ro.boot.vbmeta.digest").unwrap_or_else(|_| "00".repeat(32));
-    let verified_boot_hash: [u8; 32] = hex::decode(&vbmeta_digest)
-        .unwrap_or_else(|_e| {
-            error!("failed to parse hex data in '{}'", vbmeta_digest);
-            vec![0; 32]
-        })
-        .try_into()
-        .unwrap_or_else(|_e| {
-            error!("hex data '{}' not 32 bytes worth", vbmeta_digest);
-            [0; 32]
-        });
+    let verified_boot_hash = hex::decode(&vbmeta_digest).unwrap_or_else(|_e| {
+        error!("failed to parse hex data in '{}'", vbmeta_digest);
+        vec![0; 32]
+    });
     let device_boot_locked = match get_property("ro.boot.vbmeta.device_state")
         .unwrap_or_else(|_| "no-prop".to_string())
         .as_str()

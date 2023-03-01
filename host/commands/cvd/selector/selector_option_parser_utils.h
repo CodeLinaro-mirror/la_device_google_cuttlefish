@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "common/libs/utils/result.h"
+#include "host/commands/cvd/selector/instance_database_utils.h"
 
 namespace cuttlefish {
 namespace selector {
@@ -50,27 +51,21 @@ Result<void> FilterSelectorFlag(std::vector<std::string>& args,
 }
 
 struct VerifyNameOptionsParam {
-  std::optional<std::string> name;
   std::optional<std::string> device_name;
   std::optional<std::string> group_name;
   std::optional<std::string> per_instance_name;
 };
 
 /*
- * There are valid combinations of --name, --device_name, --group_name, and
+ * There are valid combinations of --device_name, --group_name, and
  * --instance_name, let alone the syntax of each.
  *
- * --name and --device_name respectively should be given without any of the
- * other three. --group_name and --instance_name could be given together.
+ * --device_name respectively should be given without any of the
+ * other two. --group_name and --instance_name could be given together.
  *
- * It is allowed that none of those four options is given.
+ * It is allowed that none of those three options is given.
  */
 Result<void> VerifyNameOptions(const VerifyNameOptionsParam& param);
-
-struct DeviceName {
-  std::string group_name;
-  std::string per_instance_name;
-};
 
 Result<DeviceName> SplitDeviceName(const std::string& device_name);
 

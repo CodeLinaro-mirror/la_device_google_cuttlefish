@@ -49,7 +49,7 @@ endif
 PRODUCT_SET_DEBUGFS_RESTRICTIONS := true
 
 PRODUCT_FS_COMPRESSION := 1
-TARGET_RO_FILE_SYSTEM_TYPE ?= ext4
+TARGET_RO_FILE_SYSTEM_TYPE ?= erofs
 TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE ?= f2fs
 TARGET_USERDATAIMAGE_PARTITION_SIZE ?= 6442450944
 
@@ -61,6 +61,9 @@ TARGET_USE_BTLINUX_HAL_IMPL ?= true
 $(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/android_t_baseline.mk)
 PRODUCT_VIRTUAL_AB_COMPRESSION_METHOD := gz
 
+PRODUCT_VENDOR_PROPERTIES += ro.virtual_ab.compression.threads=true
+PRODUCT_VENDOR_PROPERTIES += ro.virtual_ab.batch_writes=true
+
 # Enable Scoped Storage related
 $(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
 
@@ -68,6 +71,7 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
 # partition, instead of the vendor partition, and do not need vendor
 # sepolicy
 PRODUCT_PRODUCT_PROPERTIES += \
+    persist.device_config.remote_key_provisioning_native.enable_rkpd=true \
     persist.adb.tcp.port=5555 \
     ro.com.google.locationfeatures=1 \
     persist.sys.fuse.passthrough.enable=true \
@@ -121,13 +125,13 @@ PRODUCT_VENDOR_PROPERTIES += ro.cp_system_other_odex=1
 AB_OTA_POSTINSTALL_CONFIG += \
     RUN_POSTINSTALL_system=true \
     POSTINSTALL_PATH_system=system/bin/otapreopt_script \
-    FILESYSTEM_TYPE_system=ext4 \
+    FILESYSTEM_TYPE_system=erofs \
     POSTINSTALL_OPTIONAL_system=true
 
 AB_OTA_POSTINSTALL_CONFIG += \
     RUN_POSTINSTALL_vendor=true \
     POSTINSTALL_PATH_vendor=bin/checkpoint_gc \
-    FILESYSTEM_TYPE_vendor=ext4 \
+    FILESYSTEM_TYPE_vendor=erofs \
     POSTINSTALL_OPTIONAL_vendor=true
 
 # Userdata Checkpointing OTA GC
@@ -253,7 +257,6 @@ PRODUCT_COPY_FILES += \
     hardware/interfaces/audio/aidl/default/audio_effects_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects_config.xml \
     frameworks/av/media/libstagefright/data/media_codecs_google_audio.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_audio.xml \
     frameworks/av/media/libstagefright/data/media_codecs_google_telephony.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_telephony.xml \
-    frameworks/av/services/audiopolicy/config/a2dp_in_audio_policy_configuration_7_0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/a2dp_in_audio_policy_configuration_7_0.xml \
     frameworks/av/services/audiopolicy/config/bluetooth_audio_policy_configuration_7_0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/bluetooth_audio_policy_configuration_7_0.xml \
     frameworks/av/services/audiopolicy/config/r_submix_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/r_submix_audio_policy_configuration.xml \
     frameworks/av/services/audiopolicy/config/audio_policy_volumes.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy_volumes.xml \
@@ -284,34 +287,23 @@ PRODUCT_PACKAGES += \
 # Packages for HAL implementations
 
 #
-# Atrace HAL
-#
-PRODUCT_PACKAGES += \
-    android.hardware.atrace@1.0-service
-
-#
 # Weaver aidl HAL
 #
-PRODUCT_PACKAGES += \
-    android.hardware.weaver-service.example
+# TODO(b/262418065) Add a real weaver implementation
 
 #
 # IR aidl HAL
 #
 PRODUCT_PACKAGES += \
-	android.hardware.ir-service.example
+	android.hardware.ir-service.example \
+	consumerir.default
+
 
 #
 # OemLock aidl HAL
 #
 PRODUCT_PACKAGES += \
     android.hardware.oemlock-service.example
-
-#
-# Authsecret HAL
-#
-PRODUCT_PACKAGES += \
-    android.hardware.authsecret@1.0-service
 
 #
 # Authsecret AIDL HAL
@@ -323,26 +315,13 @@ PRODUCT_PACKAGES += \
 # Bluetooth HAL and Compatibility Bluetooth library (for older revs).
 #
 ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
-ifeq ($(LOCAL_BLUETOOTH_PRODUCT_PACKAGE),)
-ifeq ($(TARGET_ENABLE_HOST_BLUETOOTH_EMULATION),true)
-ifeq ($(TARGET_USE_BTLINUX_HAL_IMPL),true)
-    LOCAL_BLUETOOTH_PRODUCT_PACKAGE := android.hardware.bluetooth@1.1-service.btlinux
-else
-    LOCAL_BLUETOOTH_PRODUCT_PACKAGE := android.hardware.bluetooth@1.1-service.remote
-endif
-else
-    LOCAL_BLUETOOTH_PRODUCT_PACKAGE := android.hardware.bluetooth@1.1-service.sim
-endif
-    DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/config/manifest_android.hardware.bluetooth@1.1-service.xml
-endif
-
 PRODUCT_COPY_FILES +=\
     frameworks/native/data/etc/android.hardware.bluetooth.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.bluetooth.xml \
     frameworks/native/data/etc/android.hardware.bluetooth_le.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.bluetooth_le.xml
 
-PRODUCT_PACKAGES += $(LOCAL_BLUETOOTH_PRODUCT_PACKAGE)
-
-PRODUCT_PACKAGES += android.hardware.bluetooth.audio@2.1-impl  bt_vhci_forwarder
+PRODUCT_PACKAGES += \
+    android.hardware.bluetooth-service.default \
+    bt_vhci_forwarder
 
 # Bluetooth initialization configuration is copied to the init folder here instead of being added
 # as an init_rc attribute of the bt_vhci_forward binary.  The bt_vhci_forward binary is used by
@@ -351,7 +330,7 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/guest/commands/bt_vhci_forwarder/bt_vhci_forwarder.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/bt_vhci_forwarder.rc
 
 else
-PRODUCT_PACKAGES += com.google.cf.bt android.hardware.bluetooth.audio@2.1-impl
+PRODUCT_PACKAGES += com.google.cf.bt
 endif
 
 #
@@ -516,10 +495,8 @@ PRODUCT_COPY_FILES += \
 #
 # Dice HAL
 #
-ifneq ($(filter-out %_riscv64,$(TARGET_PRODUCT)),)
 PRODUCT_PACKAGES += \
     android.hardware.security.dice-service.non-secure-software
-endif
 
 #
 # Power and PowerStats HALs
@@ -532,6 +509,12 @@ PRODUCT_PACKAGES += \
     android.hardware.power.stats-service.example \
 
 endif
+
+#
+# Tetheroffload HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.tetheroffload-service.example
 
 #
 # Thermal HAL
@@ -669,7 +652,7 @@ ifeq ($(PRODUCT_ENFORCE_MAC80211_HWSIM),true)
 PRODUCT_PACKAGES += \
     mac80211_create_radios \
     hostapd \
-    android.hardware.wifi@1.0-service \
+    android.hardware.wifi-service \
     init.wifi
 
 PRODUCT_VENDOR_PROPERTIES += ro.vendor.wifi_impl=mac8011_hwsim_virtio

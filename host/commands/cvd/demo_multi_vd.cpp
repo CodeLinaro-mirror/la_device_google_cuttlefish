@@ -17,6 +17,7 @@
 
 #include <chrono>
 #include <mutex>
+#include <sstream>
 #include <string>
 
 #include <fruit/fruit.h>
@@ -28,24 +29,43 @@
 #include "common/libs/utils/flag_parser.h"
 #include "common/libs/utils/result.h"
 #include "host/commands/cvd/command_sequence.h"
+#include "host/commands/cvd/instance_lock.h"
 #include "host/commands/cvd/server.h"
-#include "instance_lock.h"
-#include "server_client.h"
+#include "host/commands/cvd/server_client.h"
+#include "host/commands/cvd/types.h"
 
 namespace cuttlefish {
+namespace {
+
+template <typename... Args>
+cvd::Request CreateCommandRequest(
+    const google::protobuf::Map<std::string, std::string>& envs,
+    Args&&... args) {
+  cvd::Request request;
+  auto& cmd_request = *request.mutable_command_request();
+  (cmd_request.add_args(std::forward<Args>(args)), ...);
+  *cmd_request.mutable_env() = envs;
+  return request;
+}
+
+std::vector<cvd::Request> AppendRequestVectors(
+    std::vector<cvd::Request>&& dest, std::vector<cvd::Request>&& src) {
+  auto merged = std::move(dest);
+  for (auto& request : src) {
+    merged.emplace_back(std::move(request));
+  }
+  return merged;
+}
 
 struct DemoCommandSequence {
   std::vector<InstanceLockFile> instance_locks;
   std::vector<RequestWithStdio> requests;
 };
 
-static constexpr char kParentDir[] = "/tmp/cvd/";
-
 /** Returns a `Flag` object that accepts comma-separated unsigned integers. */
 template <typename T>
-static Flag DeviceSpecificUintFlag(const std::string& name,
-                                   std::vector<T>& values,
-                                   const RequestWithStdio& request) {
+Flag DeviceSpecificUintFlag(const std::string& name, std::vector<T>& values,
+                            const RequestWithStdio& request) {
   return GflagsCompatFlag(name).Setter(
       [&request, &values](const FlagMatch& match) {
         auto parsed_values = android::base::Tokenize(match.value, ", ");
@@ -63,8 +83,8 @@ static Flag DeviceSpecificUintFlag(const std::string& name,
 }
 
 /** Returns a `Flag` object that accepts comma-separated strings. */
-static Flag DeviceSpecificStringFlag(const std::string& name,
-                                     std::vector<std::string>& values) {
+Flag DeviceSpecificStringFlag(const std::string& name,
+                              std::vector<std::string>& values) {
   return GflagsCompatFlag(name).Setter([&values](const FlagMatch& match) {
     auto parsed_values = android::base::Tokenize(match.value, ", ");
     for (auto& parsed_value : parsed_values) {
@@ -73,6 +93,15 @@ static Flag DeviceSpecificStringFlag(const std::string& name,
     return true;
   });
 }
+
+std::string ParentDir(const uid_t uid) {
+  constexpr char kParentDirPrefix[] = "/tmp/cvd/";
+  std::stringstream ss;
+  ss << kParentDirPrefix << uid << "/";
+  return ss.str();
+}
+
+}  // namespace
 
 class SerialLaunchCommand : public CvdServerHandler {
  public:
@@ -106,6 +135,7 @@ class SerialLaunchCommand : public CvdServerHandler {
     response.mutable_command_response();
     return response;
   }
+
   Result<void> Interrupt() override {
     std::scoped_lock interrupt_lock(interrupt_mutex_);
     interrupted_ = true;
@@ -113,9 +143,12 @@ class SerialLaunchCommand : public CvdServerHandler {
     return {};
   }
 
+  cvd_common::Args CmdList() const override { return {"experimental"}; }
+
   Result<DemoCommandSequence> CreateCommandSequence(
       const RequestWithStdio& request) {
     const auto& client_env = request.Message().command_request().env();
+    const auto client_uid = CF_EXPECT(request.Credentials()).uid;
 
     std::vector<Flag> flags;
 
@@ -169,7 +202,8 @@ class SerialLaunchCommand : public CvdServerHandler {
     auto& device_flag = flags.emplace_back();
     device_flag.Alias({FlagAliasMode::kFlagPrefix, "--device="});
     device_flag.Alias({FlagAliasMode::kFlagConsumesFollowing, "--device"});
-    device_flag.Setter([this, time, &devices, &request](const FlagMatch& mat) {
+    device_flag.Setter([this, time, client_uid, &devices,
+                        &request](const FlagMatch& mat) {
       auto lock = lock_file_manager_.TryAcquireUnusedLock();
       if (!lock.ok()) {
         WriteAll(request.Err(), lock.error().Message());
@@ -180,8 +214,8 @@ class SerialLaunchCommand : public CvdServerHandler {
         return false;
       }
       int num = (*lock)->Instance();
-      std::string home_dir =
-          kParentDir + std::to_string(time) + "_" + std::to_string(num) + "/";
+      std::string home_dir = ParentDir(client_uid) + std::to_string(time) +
+                             "_" + std::to_string(num) + "/";
       devices.emplace_back(Device{
           .build = mat.value,
           .home_dir = std::move(home_dir),
@@ -232,13 +266,11 @@ class SerialLaunchCommand : public CvdServerHandler {
 
     std::vector<cvd::Request> req_protos;
 
-    if (!DirectoryExists(kParentDir)) {
-      auto& mkdir_parent = *req_protos.emplace_back().mutable_command_request();
-      *mkdir_parent.mutable_env() = client_env;
-      mkdir_parent.add_args("cvd");
-      mkdir_parent.add_args("mkdir");
-      mkdir_parent.add_args(kParentDir);
-    }
+    auto mkdir_ancestors_requests =
+        CF_EXPECT(CreateMkdirCommandRequestRecursively(client_env,
+                                                       ParentDir(client_uid)));
+    req_protos = AppendRequestVectors(std::move(req_protos),
+                                      std::move(mkdir_ancestors_requests));
 
     bool is_first = true;
 
@@ -335,6 +367,30 @@ class SerialLaunchCommand : public CvdServerHandler {
   }
 
  private:
+  Result<std::vector<cvd::Request>> CreateMkdirCommandRequestRecursively(
+      const google::protobuf::Map<std::string, std::string>& client_env,
+      const std::string& path) {
+    std::vector<cvd::Request> output;
+    CF_EXPECT(!path.empty() && path.at(0) == '/',
+              "Only absolute path is supported.");
+    if (path == "/") {
+      return output;
+    }
+    std::string path_exclude_root = path.substr(1);
+    std::vector<std::string> tokens =
+        android::base::Tokenize(path_exclude_root, "/");
+    std::string current_dir = "/";
+    for (int i = 0; i < tokens.size(); i++) {
+      current_dir.append(tokens[i]);
+      if (!DirectoryExists(current_dir)) {
+        output.emplace_back(
+            CreateCommandRequest(client_env, "cvd", "mkdir", current_dir));
+      }
+      current_dir.append("/");
+    }
+    return output;
+  }
+
   CommandSequenceExecutor& executor_;
   InstanceLockFileManager& lock_file_manager_;
 
@@ -354,6 +410,7 @@ class SerialPreset : public CvdServerHandler {
            invocation.arguments.size() >= 1 &&
            Presets().count(invocation.arguments[0]) > 0;
   }
+
   Result<cvd::Response> Handle(const RequestWithStdio& request) override {
     std::unique_lock interrupt_lock(interrupt_mutex_);
     if (interrupted_) {
@@ -391,12 +448,15 @@ class SerialPreset : public CvdServerHandler {
     response.mutable_command_response();
     return response;
   }
+
   Result<void> Interrupt() override {
     std::scoped_lock interrupt_lock(interrupt_mutex_);
     interrupted_ = true;
     CF_EXPECT(executor_.Interrupt());
     return {};
   }
+
+  cvd_common::Args CmdList() const override { return {"experimental"}; }
 
  private:
   CommandSequenceExecutor& executor_;
