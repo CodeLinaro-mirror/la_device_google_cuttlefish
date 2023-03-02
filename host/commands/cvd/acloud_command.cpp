@@ -279,6 +279,34 @@ class ConvertAcloudCreateCommand {
               return true;
             }));
 
+    std::optional<std::string> ota_build_id;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--ota-build-id"})
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--ota_build_id"})
+            .Setter([&ota_build_id](const FlagMatch& m) {
+              ota_build_id = m.value;
+              return true;
+            }));
+    std::optional<std::string> ota_build_target;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--ota-build-target"})
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--ota_build_target"})
+            .Setter([&ota_build_target](const FlagMatch& m) {
+              ota_build_target = m.value;
+              return true;
+            }));
+    std::optional<std::string> ota_branch;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--ota-branch"})
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--ota_branch"})
+            .Setter([&ota_branch](const FlagMatch& m) {
+              ota_branch = m.value;
+              return true;
+            }));
+
     std::optional<std::string> launch_args;
     flags.emplace_back(
         Flag()
@@ -349,13 +377,10 @@ class ConvertAcloudCreateCommand {
 
     CF_EXPECT(local_instance_set == true,
               "Only '--local-instance' is supported");
-    std::optional<InstanceLockFile> lock;
-    if (local_instance.has_value()) {
-      // TODO(schuffelen): Block here if it can be interruptible
-      lock = CF_EXPECT(lock_file_manager_.TryAcquireLock(*local_instance));
-    } else {
-      lock = CF_EXPECT(lock_file_manager_.TryAcquireUnusedLock());
-    }
+    std::optional<InstanceLockFile> lock =
+        local_instance.has_value()
+            ? CF_EXPECT(lock_file_manager_.TryAcquireLock(*local_instance))
+            : CF_EXPECT(lock_file_manager_.TryAcquireUnusedLock());
     CF_EXPECT(lock.has_value(), "Could not acquire instance lock");
     CF_EXPECT(CF_EXPECT(lock->Status()) == InUseState::kNotInUse);
 
@@ -389,6 +414,8 @@ class ConvertAcloudCreateCommand {
                 "--local-image incompatible with --bootloader-* flags");
       CF_EXPECT(!(boot_branch || boot_build_target || boot_build_id || boot_artifact),
                 "--local-image incompatible with --boot-* flags");
+      CF_EXPECT(!(ota_branch || ota_build_target || ota_build_id),
+                "--local-image incompatible with --ota-* flags");
       cvd::Request& ln_request = request_protos.emplace_back();
       auto& ln_command = *ln_request.mutable_command_request();
       ln_command.add_args("cvd");
@@ -484,6 +511,18 @@ class ConvertAcloudCreateCommand {
         auto target = boot_artifact.value_or("");
         fetch_command.add_args(target);
         fetch_command_str_ += (target);
+      }
+      if (ota_branch || ota_build_id || ota_build_target) {
+        fetch_command.add_args("--otatools_build");
+        fetch_command_str_ += " --otatools_build=";
+        auto target = ota_build_target.value_or("");
+        if (target != "") {
+          target = "/" + target;
+        }
+        auto build =
+            ota_build_id.value_or(ota_branch.value_or(""));
+        fetch_command.add_args(build + target);
+        fetch_command_str_ += (build + target);
       }
       if (kernel_branch || kernel_build_id || kernel_build_target) {
         fetch_command.add_args("--kernel_build");
