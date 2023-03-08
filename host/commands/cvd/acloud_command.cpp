@@ -16,10 +16,14 @@
 
 #include "host/commands/cvd/acloud_command.h"
 
-#include <optional>
-#include <vector>
+#include <stdio.h>
 #include <sys/stat.h>
 
+#include <fstream>
+#include <optional>
+#include <vector>
+
+#include <android-base/file.h>
 #include <android-base/strings.h>
 #include <android-base/parseint.h>
 
@@ -101,7 +105,8 @@ Result<std::vector<std::string>> BashTokenize(const std::string& str) {
 class ConvertAcloudCreateCommand {
  public:
   INJECT(ConvertAcloudCreateCommand(InstanceLockFileManager& lock_file_manager))
-      : lock_file_manager_(lock_file_manager) {}
+      : fetch_cvd_args_file_(""), fetch_command_str_(""),
+      lock_file_manager_(lock_file_manager) {}
 
   Result<ConvertedAcloudCreateCommand> Convert(
       const RequestWithStdio& request) {
@@ -152,6 +157,15 @@ class ConvertAcloudCreateCommand {
               return true;
             }));
 
+    std::optional<std::string> image_download_dir;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--image-download-dir"})
+            .Setter([&image_download_dir](const FlagMatch& m) {
+              image_download_dir = m.value;
+              return true;
+            }));
+
     bool verbose = false;
     flags.emplace_back(Flag()
                            .Alias({FlagAliasMode::kFlagExact, "-v"})
@@ -197,6 +211,99 @@ class ConvertAcloudCreateCommand {
             .Alias({FlagAliasMode::kFlagConsumesFollowing, "--build_target"})
             .Setter([&build_target](const FlagMatch& m) {
               build_target = m.value;
+              return true;
+            }));
+
+    std::optional<std::string> bootloader_build_id;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--bootloader-build-id"})
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--bootloader_build_id"})
+            .Setter([&bootloader_build_id](const FlagMatch& m) {
+              bootloader_build_id = m.value;
+              return true;
+            }));
+    std::optional<std::string> bootloader_build_target;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--bootloader-build-target"})
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--bootloader_build_target"})
+            .Setter([&bootloader_build_target](const FlagMatch& m) {
+              bootloader_build_target = m.value;
+              return true;
+            }));
+    std::optional<std::string> bootloader_branch;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--bootloader-branch"})
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--bootloader_branch"})
+            .Setter([&bootloader_branch](const FlagMatch& m) {
+              bootloader_branch = m.value;
+              return true;
+            }));
+
+    std::optional<std::string> boot_build_id;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--boot-build-id"})
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--boot_build_id"})
+            .Setter([&boot_build_id](const FlagMatch& m) {
+              boot_build_id = m.value;
+              return true;
+            }));
+    std::optional<std::string> boot_build_target;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--boot-build-target"})
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--boot_build_target"})
+            .Setter([&boot_build_target](const FlagMatch& m) {
+              boot_build_target = m.value;
+              return true;
+            }));
+    std::optional<std::string> boot_branch;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--boot-branch"})
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--boot_branch"})
+            .Setter([&boot_branch](const FlagMatch& m) {
+              boot_branch = m.value;
+              return true;
+            }));
+    std::optional<std::string> boot_artifact;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--boot-artifact"})
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--boot_artifact"})
+            .Setter([&boot_artifact](const FlagMatch& m) {
+              boot_artifact = m.value;
+              return true;
+            }));
+
+    std::optional<std::string> ota_build_id;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--ota-build-id"})
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--ota_build_id"})
+            .Setter([&ota_build_id](const FlagMatch& m) {
+              ota_build_id = m.value;
+              return true;
+            }));
+    std::optional<std::string> ota_build_target;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--ota-build-target"})
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--ota_build_target"})
+            .Setter([&ota_build_target](const FlagMatch& m) {
+              ota_build_target = m.value;
+              return true;
+            }));
+    std::optional<std::string> ota_branch;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--ota-branch"})
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--ota_branch"})
+            .Setter([&ota_branch](const FlagMatch& m) {
+              ota_branch = m.value;
               return true;
             }));
 
@@ -270,36 +377,45 @@ class ConvertAcloudCreateCommand {
 
     CF_EXPECT(local_instance_set == true,
               "Only '--local-instance' is supported");
-    std::optional<InstanceLockFile> lock;
-    if (local_instance.has_value()) {
-      // TODO(schuffelen): Block here if it can be interruptible
-      lock = CF_EXPECT(lock_file_manager_.TryAcquireLock(*local_instance));
-    } else {
-      lock = CF_EXPECT(lock_file_manager_.TryAcquireUnusedLock());
-    }
+    std::optional<InstanceLockFile> lock =
+        local_instance.has_value()
+            ? CF_EXPECT(lock_file_manager_.TryAcquireLock(*local_instance))
+            : CF_EXPECT(lock_file_manager_.TryAcquireUnusedLock());
     CF_EXPECT(lock.has_value(), "Could not acquire instance lock");
     CF_EXPECT(CF_EXPECT(lock->Status()) == InUseState::kNotInUse);
 
-    auto dir = TempDir() + "/acloud_cvd_temp/local-instance-" +
+    auto device_workspace = TempDir() + "/acloud_cvd_temp/local-instance-" +
                std::to_string(lock->Instance());
+    auto host_dir = TempDir() + "/acloud_image_artifacts/";
+    if (image_download_dir) {
+      host_dir = image_download_dir.value() + "/acloud_image_artifacts/";
+    }
 
     auto host_artifacts_path = request_command.env().find(kAndroidHostOut);
     CF_EXPECT(host_artifacts_path != request_command.env().end(),
               "Missing " << kAndroidHostOut);
 
     std::vector<cvd::Request> request_protos;
+    cvd::Request& mkdir_request = request_protos.emplace_back();
+    auto& mkdir_command = *mkdir_request.mutable_command_request();
+    mkdir_command.add_args("cvd");
+    mkdir_command.add_args("mkdir");
+    mkdir_command.add_args("-p");
+    mkdir_command.add_args(device_workspace);
+    auto& mkdir_env = *mkdir_command.mutable_env();
+    mkdir_env[kAndroidHostOut] = host_artifacts_path->second;
+
+    // remove existing symlink host_bins, b/268599652#comment6
+    remove((device_workspace + "/host_bins").c_str());
     if (local_image) {
       CF_EXPECT(!(system_branch || system_build_target || system_build_id),
                 "--local-image incompatible with --system-* flags");
-      cvd::Request& mkdir_request = request_protos.emplace_back();
-      auto& mkdir_command = *mkdir_request.mutable_command_request();
-      mkdir_command.add_args("cvd");
-      mkdir_command.add_args("mkdir");
-      mkdir_command.add_args("-p");
-      mkdir_command.add_args(dir);
-      auto& mkdir_env = *mkdir_command.mutable_env();
-      mkdir_env[kAndroidHostOut] = host_artifacts_path->second;
-
+      CF_EXPECT(!(bootloader_branch || bootloader_build_target || bootloader_build_id),
+                "--local-image incompatible with --bootloader-* flags");
+      CF_EXPECT(!(boot_branch || boot_build_target || boot_build_id || boot_artifact),
+                "--local-image incompatible with --boot-* flags");
+      CF_EXPECT(!(ota_branch || ota_build_target || ota_build_id),
+                "--local-image incompatible with --ota-* flags");
       cvd::Request& ln_request = request_protos.emplace_back();
       auto& ln_command = *ln_request.mutable_command_request();
       ln_command.add_args("cvd");
@@ -307,24 +423,53 @@ class ConvertAcloudCreateCommand {
       ln_command.add_args("-f");
       ln_command.add_args("-s");
       ln_command.add_args(host_artifacts_path->second);
-      ln_command.add_args(dir + "/host_bins");
+      ln_command.add_args(device_workspace + "/host_bins");
       auto& ln_env = *ln_command.mutable_env();
       ln_env[kAndroidHostOut] = host_artifacts_path->second;
     } else {
+      if (!DirectoryExists(host_dir)) {
+        // fetch/download directory doesn't exist, create directory
+        cvd::Request& mkdir_request = request_protos.emplace_back();
+        auto& mkdir_command = *mkdir_request.mutable_command_request();
+        mkdir_command.add_args("cvd");
+        mkdir_command.add_args("mkdir");
+        mkdir_command.add_args("-p");
+        mkdir_command.add_args(host_dir);
+        auto& mkdir_env = *mkdir_command.mutable_env();
+        mkdir_env[kAndroidHostOut] = host_artifacts_path->second;
+      }
+      if (branch || build_id || build_target) {
+        auto target = build_target ? *build_target : "";
+        auto build = build_id.value_or(branch.value_or("aosp-master"));
+        host_dir += (build + target);
+      } else {
+        host_dir += "aosp-master";
+      }
+      // TODO(weihsu): if we fetch default ID such as aosp-master,
+      // cvd fetch will fetch the latest release. There is a potential
+      // issue that two different fetch with same default ID may
+      // download different releases.
+      // Eventually, we should match python acloud behavior to translate
+      // default ID (aosp-master) to real ID to solve this issue.
+
       cvd::Request& fetch_request = request_protos.emplace_back();
       auto& fetch_command = *fetch_request.mutable_command_request();
       fetch_command.add_args("cvd");
       fetch_command.add_args("fetch");
       fetch_command.add_args("--directory");
-      fetch_command.add_args(dir);
+      fetch_command.add_args(host_dir);
+      fetch_command_str_ = "";
       if (branch || build_id || build_target) {
         fetch_command.add_args("--default_build");
+        fetch_command_str_ += "--default_build=";
         auto target = build_target ? "/" + *build_target : "";
         auto build = build_id.value_or(branch.value_or("aosp-master"));
         fetch_command.add_args(build + target);
+        fetch_command_str_ += (build + target);
       }
       if (system_branch || system_build_id || system_build_target) {
         fetch_command.add_args("--system_build");
+        fetch_command_str_ += " --system_build=";
         auto target = system_build_target.value_or(build_target.value_or(""));
         if (target != "") {
           target = "/" + target;
@@ -332,16 +477,79 @@ class ConvertAcloudCreateCommand {
         auto build =
             system_build_id.value_or(system_branch.value_or("aosp-master"));
         fetch_command.add_args(build + target);
+        fetch_command_str_ += (build + target);
+      }
+      if (bootloader_branch || bootloader_build_id || bootloader_build_target) {
+        fetch_command.add_args("--bootloader_build");
+        fetch_command_str_ += " --bootloader_build=";
+        auto target = bootloader_build_target.value_or("");
+        if (target != "") {
+          target = "/" + target;
+        }
+        auto build =
+            bootloader_build_id.value_or(bootloader_branch.value_or("aosp_u-boot-mainline"));
+        fetch_command.add_args(build + target);
+        fetch_command_str_ += (build + target);
+      }
+      if (boot_branch || boot_build_id || boot_build_target) {
+        fetch_command.add_args("--boot_build");
+        fetch_command_str_ += " --boot_build=";
+        auto target = boot_build_target.value_or("");
+        if (target != "") {
+          target = "/" + target;
+        }
+        auto build =
+            boot_build_id.value_or(boot_branch.value_or("aosp-master"));
+        fetch_command.add_args(build + target);
+        fetch_command_str_ += (build + target);
+      }
+      if (boot_artifact) {
+        CF_EXPECT(boot_branch || boot_build_target || boot_build_id,
+                "--boot-artifact must combine with other --boot-* flags");
+        fetch_command.add_args("--boot_artifact");
+        fetch_command_str_ += " --boot_artifact=";
+        auto target = boot_artifact.value_or("");
+        fetch_command.add_args(target);
+        fetch_command_str_ += (target);
+      }
+      if (ota_branch || ota_build_id || ota_build_target) {
+        fetch_command.add_args("--otatools_build");
+        fetch_command_str_ += " --otatools_build=";
+        auto target = ota_build_target.value_or("");
+        if (target != "") {
+          target = "/" + target;
+        }
+        auto build =
+            ota_build_id.value_or(ota_branch.value_or(""));
+        fetch_command.add_args(build + target);
+        fetch_command_str_ += (build + target);
       }
       if (kernel_branch || kernel_build_id || kernel_build_target) {
         fetch_command.add_args("--kernel_build");
+        fetch_command_str_ += " --kernel_build=";
         auto target = kernel_build_target.value_or("kernel_virt_x86_64");
         auto build = kernel_build_id.value_or(
             branch.value_or("aosp_kernel-common-android-mainline"));
         fetch_command.add_args(build + "/" + target);
+        fetch_command_str_ += (build + "/" + target);
       }
       auto& fetch_env = *fetch_command.mutable_env();
       fetch_env[kAndroidHostOut] = host_artifacts_path->second;
+
+      fetch_cvd_args_file_ = host_dir + "/fetch-cvd-args.txt";
+      if (FileExists(fetch_cvd_args_file_)) {
+        // file exists
+        std::string read_str;
+        using android::base::ReadFileToString;
+        CF_EXPECT(ReadFileToString(fetch_cvd_args_file_.c_str(),
+                                   &read_str,
+                                   /* follow_symlinks */ true));
+        if (read_str == fetch_command_str_) {
+          // same fetch cvd command, reuse original dir
+          fetch_command_str_ = "";
+          request_protos.pop_back();
+        }
+      }
 
       cvd::Request& ln_request = request_protos.emplace_back();
       auto& ln_command = *ln_request.mutable_command_request();
@@ -349,8 +557,8 @@ class ConvertAcloudCreateCommand {
       ln_command.add_args("ln");
       ln_command.add_args("-f");
       ln_command.add_args("-s");
-      ln_command.add_args(dir);
-      ln_command.add_args(dir + "/host_bins");
+      ln_command.add_args(host_dir);
+      ln_command.add_args(device_workspace + "/host_bins");
       auto& ln_env = *ln_command.mutable_env();
       ln_env[kAndroidHostOut] = host_artifacts_path->second;
     }
@@ -368,6 +576,7 @@ class ConvertAcloudCreateCommand {
       start_command.add_args("-config");
       start_command.add_args(flavor.value());
     }
+
     if (local_kernel_image) {
       // kernel image has 1st priority than boot image
       struct stat statbuf;
@@ -415,13 +624,15 @@ class ConvertAcloudCreateCommand {
         }
       }
     }
+
     if (launch_args) {
       for (const auto& arg : CF_EXPECT(BashTokenize(*launch_args))) {
         start_command.add_args(arg);
       }
     }
     start_command.mutable_selector_opts()->add_args(
-        std::string("--") + selector::kAcquireFileLockOpt + "=false");
+        std::string("--") + selector::SelectorFlags::kAcquireFileLock +
+        "=false");
     static constexpr char kAndroidProductOut[] = "ANDROID_PRODUCT_OUT";
     auto& start_env = *start_command.mutable_env();
     if (local_image) {
@@ -432,12 +643,12 @@ class ConvertAcloudCreateCommand {
                 "Missing " << kAndroidProductOut);
       start_env[kAndroidProductOut] = product_out->second;
     } else {
-      start_env[kAndroidHostOut] = dir;
-      start_env[kAndroidProductOut] = dir;
+      start_env[kAndroidHostOut] = host_dir;
+      start_env[kAndroidProductOut] = host_dir;
     }
     start_env[kCuttlefishInstanceEnvVarName] = std::to_string(lock->Instance());
-    start_env["HOME"] = dir;
-    *start_command.mutable_working_directory() = dir;
+    start_env["HOME"] = device_workspace;
+    *start_command.mutable_working_directory() = device_workspace;
 
     std::vector<SharedFD> fds;
     if (verbose) {
@@ -458,6 +669,9 @@ class ConvertAcloudCreateCommand {
     return ret;
   }
 
+ public:
+  std::string fetch_cvd_args_file_;
+  std::string fetch_command_str_;
  private:
   InstanceLockFileManager& lock_file_manager_;
 };
@@ -521,6 +735,13 @@ class AcloudCommand : public CvdServerHandler {
     CF_EXPECT(executor_.Execute(converted.requests, request.Err()));
 
     CF_EXPECT(converted.lock.Status(InUseState::kInUse));
+
+    if (converter_.fetch_command_str_ != "") {
+      // has cvd fetch command, update the fetch cvd command file
+      using android::base::WriteStringToFile;
+      CF_EXPECT(WriteStringToFile(converter_.fetch_command_str_,
+                                  converter_.fetch_cvd_args_file_), true);
+    }
 
     cvd::Response response;
     response.mutable_command_response();

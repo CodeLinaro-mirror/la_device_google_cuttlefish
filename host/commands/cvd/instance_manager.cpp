@@ -79,11 +79,24 @@ Result<InstanceManager::GroupCreationInfo> InstanceManager::Analyze(
     const std::string& sub_cmd, const CreationAnalyzerParam& param,
     const ucred& credential) {
   const uid_t uid = credential.uid;
+  std::unique_lock lock(instance_db_mutex_);
   auto& instance_db = GetInstanceDB(uid);
+  lock.unlock();
 
   auto group_creation_info = CF_EXPECT(CreationAnalyzer::Analyze(
       sub_cmd, param, credential, instance_db, lock_manager_));
   return {group_creation_info};
+}
+
+Result<InstanceManager::LocalInstanceGroup> InstanceManager::SelectGroup(
+    const cvd_common::Args& selector_args, const cvd_common::Envs& envs,
+    const uid_t uid) {
+  std::unique_lock lock(instance_db_mutex_);
+  auto& instance_db = GetInstanceDB(uid);
+  lock.unlock();
+  auto group =
+      CF_EXPECT(GroupSelector::Select(selector_args, uid, instance_db, envs));
+  return {group};
 }
 
 bool InstanceManager::HasInstanceGroups(const uid_t uid) {
@@ -105,24 +118,37 @@ Result<void> InstanceManager::SetInstanceGroup(
   auto new_group = CF_EXPECT(
       instance_db.AddInstanceGroup(group_name, home_dir, host_artifacts_path));
 
+  using InstanceInfo = selector::InstanceDatabase::InstanceInfo;
+  std::vector<InstanceInfo> instances_info;
   for (const auto& instance : per_instance_info) {
-    auto result = instance_db.AddInstance(
-        new_group.Get(), instance.instance_id_, instance.per_instance_name_);
-    if (!result.ok()) {
-      /*
-       * The way InstanceManager uses the database is that it adds an empty
-       * group, gets an handle, and add instances to it. Thus, failing to adding
-       * an instance to the group does not always mean that the instance group
-       * addition fails. It is up to the caller. In this case, however, failing
-       * to add an instance to a new group means failing to create an instance
-       * group itself. Thus, we should remove the new instance group from the
-       * database.
-       *
-       */
-      instance_db.RemoveInstanceGroup(new_group.Get());
-      CF_EXPECT(result.ok(), result.error().Trace());
-    }
+    InstanceInfo info{.name = instance.per_instance_name_,
+                      .id = instance.instance_id_};
+    instances_info.push_back(info);
   }
+  auto result = instance_db.AddInstances(group_name, instances_info);
+  if (!result.ok()) {
+    /*
+     * The way InstanceManager uses the database is that it adds an empty
+     * group, gets an handle, and add instances to it. Thus, failing to adding
+     * an instance to the group does not always mean that the instance group
+     * addition fails. It is up to the caller. In this case, however, failing
+     * to add an instance to a new group means failing to create an instance
+     * group itself. Thus, we should remove the new instance group from the
+     * database.
+     *
+     */
+    instance_db.RemoveInstanceGroup(new_group.Get());
+    return CF_ERR(result.error().Trace());
+  }
+  return {};
+}
+
+Result<void> InstanceManager::SetBuildId(const uid_t uid,
+                                         const std::string& group_name,
+                                         const std::string& build_id) {
+  std::lock_guard assemblies_lock(instance_db_mutex_);
+  auto& instance_db = GetInstanceDB(uid);
+  CF_EXPECT(instance_db.SetBuildId(group_name, build_id));
   return {};
 }
 
@@ -321,6 +347,12 @@ cvd::Status InstanceManager::CvdClear(const SharedFD& out,
   WriteAll(err, "Stopped all known instances\n");
   status.set_code(cvd::Status::OK);
   return status;
+}
+
+Result<std::optional<InstanceLockFile>> InstanceManager::TryAcquireLock(
+    int instance_num) {
+  std::lock_guard lock(instance_db_mutex_);
+  return CF_EXPECT(lock_manager_.TryAcquireLock(instance_num));
 }
 
 }  // namespace cuttlefish

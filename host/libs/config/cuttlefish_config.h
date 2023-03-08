@@ -51,6 +51,11 @@ constexpr char kWifiConnectedMessage[] =
     "VIRTUAL_DEVICE_NETWORK_WIFI_CONNECTED";
 constexpr char kEthernetConnectedMessage[] =
     "VIRTUAL_DEVICE_NETWORK_ETHERNET_CONNECTED";
+// TODO(b/131864854): Replace this with a string less likely to change
+constexpr char kAdbdStartedMessage[] =
+    "init: starting service 'adbd'...";
+constexpr char kFastbootdStartedMessage[] =
+    "init: starting service 'fastbootd'...";
 constexpr char kScreenChangedMessage[] = "VIRTUAL_DEVICE_SCREEN_CHANGED";
 constexpr char kDisplayPowerModeChangedMessage[] =
     "VIRTUAL_DEVICE_DISPLAY_POWER_MODE_CHANGED";
@@ -289,6 +294,7 @@ class CuttlefishConfig {
     std::string mobile_tap_name() const;
     std::string wifi_bridge_name() const;
     std::string wifi_tap_name() const;
+    bool use_bridged_wifi_tap() const;
     std::string ethernet_tap_name() const;
     std::string ethernet_bridge_name() const;
     std::string ethernet_mac() const;
@@ -515,6 +521,7 @@ class CuttlefishConfig {
     std::string init_boot_image() const;
     std::string data_image() const;
     std::string super_image() const;
+    std::string new_super_image() const;
     std::string misc_image() const;
     std::string new_misc_image() const;
     std::string misc_info_txt() const;
@@ -581,6 +588,7 @@ class CuttlefishConfig {
     void set_mobile_tap_name(const std::string& mobile_tap_name);
     void set_wifi_bridge_name(const std::string& wifi_bridge_name);
     void set_wifi_tap_name(const std::string& wifi_tap_name);
+    void set_use_bridged_wifi_tap(bool use_bridged_wifi_tap);
     void set_ethernet_tap_name(const std::string& ethernet_tap_name);
     void set_ethernet_bridge_name(const std::string& set_ethernet_bridge_name);
     void set_ethernet_mac(const std::string& mac);
@@ -678,6 +686,7 @@ class CuttlefishConfig {
     void set_init_boot_image(const std::string& init_boot_image);
     void set_data_image(const std::string& data_image);
     void set_super_image(const std::string& super_image);
+    void set_new_super_image(const std::string& super_image);
     void set_misc_image(const std::string& misc_image);
     void set_new_misc_image(const std::string& new_misc_image);
     void set_misc_info_txt(const std::string& misc_image);
