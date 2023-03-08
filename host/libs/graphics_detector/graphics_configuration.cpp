@@ -59,7 +59,9 @@ AngleFeatures GetNeededAngleFeaturesBasedOnQuirks(
     const RenderingMode mode, const GraphicsAvailability& /*availability*/) {
   AngleFeatures features = {};
   switch (mode) {
-    case RenderingMode::kGfxstream: {
+    case RenderingMode::kGfxstream:
+      break;
+    case RenderingMode::kGfxstreamGuestAngle: {
       // TODO: Handle Nvidia YUV quirk.
       break;
     }
@@ -77,8 +79,11 @@ Result<RenderingMode> GetRenderingMode(const std::string& mode) {
   if (mode == std::string(kGpuModeDrmVirgl)) {
     return RenderingMode::kVirglRenderer;
   }
-  if (mode == std::string(kGpuModeGfxStream)) {
+  if (mode == std::string(kGpuModeGfxstream)) {
     return RenderingMode::kGfxstream;
+  }
+  if (mode == std::string(kGpuModeGfxstreamGuestAngle)) {
+    return RenderingMode::kGfxstreamGuestAngle;
   }
   if (mode == std::string(kGpuModeGuestSwiftshader)) {
     return RenderingMode::kGuestSwiftShader;
