@@ -19,7 +19,6 @@ import static com.google.common.truth.Truth.assertThat;
 
 import android.platform.test.annotations.LargeTest;
 
-import com.android.compatibility.common.tradefed.build.CompatibilityBuildHelper;
 import com.android.cuttlefish.tests.utils.CuttlefishHostTest;
 import com.android.tradefed.device.DeviceNotAvailableException;
 import com.android.tradefed.device.ITestDevice;
@@ -36,6 +35,7 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.MapDifference;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Range;
+import com.google.common.truth.Correspondence;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -43,6 +43,7 @@ import java.io.FileNotFoundException;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -71,20 +72,17 @@ public class CuttlefishDisplayHotplugTest extends CuttlefishHostTest {
 
     private static final String CVD_BINARY_BASENAME = "cvd";
 
-    private CommandResult runCvdCommand(String... command) throws FileNotFoundException {
+    private CommandResult runCvdCommand(Collection<String> commandArgs) throws FileNotFoundException {
         String cvdBinary = runner.getHostBinaryPath(CVD_BINARY_BASENAME);
 
-        ArrayList<String> fullCommand = new ArrayList<String>(Arrays.asList(command));
+        List<String> fullCommand = new ArrayList<String>(commandArgs);
         fullCommand.add(0, cvdBinary);
         return runner.run(DEFAULT_TIMEOUT_MS, fullCommand.toArray(new String[0]));
     }
 
-    private File getApk(String fileName) throws FileNotFoundException {
-        CompatibilityBuildHelper buildHelper = new CompatibilityBuildHelper(getBuild());
-        return buildHelper.getTestFile(fileName);
-    }
-
     private static final String HELPER_APP_APK = "CuttlefishDisplayHotplugHelperApp.apk";
+
+    private static final String HELPER_APP_PKG = "com.android.cuttlefish.displayhotplughelper";
 
     private static final String HELPER_APP_ACTIVITY = "com.android.cuttlefish.displayhotplughelper/.DisplayHotplugHelperApp";
 
@@ -98,16 +96,13 @@ public class CuttlefishDisplayHotplugTest extends CuttlefishHostTest {
 
     @Before
     public void setUp() throws Exception {
-        getDevice().uninstallPackage(HELPER_APP_APK);
-        String[] options = {AbiUtils.createAbiFlag(getAbi().getName())};
-
-        String installError = getDevice().installPackage(getApk(HELPER_APP_APK), false, options);
-        assertThat(installError).isNull();
+        getDevice().uninstallPackage(HELPER_APP_PKG);
+        installPackage(HELPER_APP_APK);
     }
 
     @After
     public void tearDown() throws Exception {
-        getDevice().uninstallPackage(HELPER_APP_APK);
+        getDevice().uninstallPackage(HELPER_APP_PKG);
     }
 
     /**
@@ -263,9 +258,7 @@ public class CuttlefishDisplayHotplugTest extends CuttlefishHostTest {
     }
 
     public Map<Integer, HostDisplayInfo> getHostDisplays() throws FileNotFoundException {
-        CommandResult listDisplaysResult =
-            runCvdCommand("display",
-                          "list");
+        CommandResult listDisplaysResult = runCvdCommand(Lists.newArrayList("display", "list"));
         if (!CommandStatus.SUCCESS.equals(listDisplaysResult.getStatus())) {
             throw new IllegalStateException(
                     String.format("Failed to run list displays command:%s\n%s",
@@ -275,13 +268,35 @@ public class CuttlefishDisplayHotplugTest extends CuttlefishHostTest {
         return parseHostDisplayInfos(listDisplaysResult.getStdout());
     }
 
-    public void addDisplay(int width, int height) throws FileNotFoundException {
-        CommandResult addDisplayResult =
-            runCvdCommand("display",
-                          "add",
-                          String.format("--width=%d", width),
-                          String.format("--height=%d", height));
+    @AutoValue
+    public static abstract class AddDisplayParams {
+        static AddDisplayParams create(int width, int height) {
+            return new AutoValue_CuttlefishDisplayHotplugTest_AddDisplayParams(width, height);
+        }
 
+        abstract int width();
+        abstract int height();
+    }
+
+    /* As supported by `cvd display add` */
+    private static final int MAX_ADD_DISPLAYS = 4;
+
+    public void addDisplays(List<AddDisplayParams> params) throws FileNotFoundException {
+        if (params.size() > MAX_ADD_DISPLAYS) {
+            throw new IllegalArgumentException(
+                "`cvd display add` only supports adding up to " + MAX_ADD_DISPLAYS +
+                " at once but was requested to add " + params.size() + " displays.");
+        }
+
+        List<String> addDisplaysCommand = Lists.newArrayList("display", "add");
+        for (int i = 0; i < params.size(); i++) {
+            AddDisplayParams display = params.get(i);
+
+            addDisplaysCommand.add(String.format(
+                "--display%d=width=%d,height=%d", i, display.width(), display.height()));
+        }
+
+        CommandResult addDisplayResult = runCvdCommand(addDisplaysCommand);
         if (!CommandStatus.SUCCESS.equals(addDisplayResult.getStatus())) {
             throw new IllegalStateException(
                     String.format("Failed to run add display command:%s\n%s",
@@ -290,11 +305,17 @@ public class CuttlefishDisplayHotplugTest extends CuttlefishHostTest {
         }
     }
 
-    public void removeDisplay(int displayId) throws FileNotFoundException {
-        CommandResult removeDisplayResult =
-            runCvdCommand("display",
-                          "remove",
-                          String.valueOf(displayId));
+    public void addDisplay(int width, int height) throws FileNotFoundException {
+        addDisplays(List.of(AddDisplayParams.create(width, height)));
+    }
+
+    public void removeDisplays(List<Integer> displayIds) throws FileNotFoundException {
+        List<String> removeDisplaysCommand = Lists.newArrayList("display", "remove");
+        for (Integer displayId : displayIds) {
+            removeDisplaysCommand.add(displayId.toString());
+        }
+
+        CommandResult removeDisplayResult = runCvdCommand(removeDisplaysCommand);
         if (!CommandStatus.SUCCESS.equals(removeDisplayResult.getStatus())) {
             throw new IllegalStateException(
                     String.format("Failed to run remove display command:%s\n%s",
@@ -303,7 +324,23 @@ public class CuttlefishDisplayHotplugTest extends CuttlefishHostTest {
         }
     }
 
-    private void doOneConnectAndDisconnectCycle() throws Exception {
+    public void removeDisplay(int displayId) throws FileNotFoundException {
+        removeDisplays(List.of(displayId));
+    }
+
+    Correspondence<GuestDisplayInfo, AddDisplayParams> GUEST_DISPLAY_MATCHES =
+        Correspondence.from((GuestDisplayInfo lhs, AddDisplayParams rhs) -> {
+            return lhs.width() == rhs.width() &&
+                   lhs.height() == rhs.height();
+        }, "matches the display info of");
+
+    Correspondence<HostDisplayInfo, AddDisplayParams> HOST_DISPLAY_MATCHES =
+        Correspondence.from((HostDisplayInfo lhs, AddDisplayParams rhs) -> {
+            return lhs.width() == rhs.width() &&
+                   lhs.height() == rhs.height();
+        }, "matches the display info of");
+
+    private void doOneConnectAndDisconnectCycle(List<AddDisplayParams> params) throws Exception {
         // Check which displays Crosvm is aware of originally.
         Map<Integer, HostDisplayInfo> originalHostDisplays = getHostDisplays();
         assertThat(originalHostDisplays).isNotNull();
@@ -314,58 +351,75 @@ public class CuttlefishDisplayHotplugTest extends CuttlefishHostTest {
         assertThat(originalGuestDisplays).isNotNull();
         assertThat(originalGuestDisplays).isNotEmpty();
 
-        addDisplay(600, 500);
+        // Perform the hotplug connect.
+        addDisplays(params);
 
         // Check that Crosvm is aware of the new display.
-        Map<Integer, HostDisplayInfo> addedHostDisplays = getHostDisplays();
-        assertThat(addedHostDisplays).isNotNull();
+        Map<Integer, HostDisplayInfo> afterAddHostDisplays = getHostDisplays();
+        assertThat(afterAddHostDisplays).isNotNull();
 
         MapDifference<Integer, HostDisplayInfo> addedHostDisplaysDiff =
-            Maps.difference(addedHostDisplays, originalHostDisplays);
-        assertThat(addedHostDisplaysDiff.entriesOnlyOnLeft()).hasSize(1);
+            Maps.difference(afterAddHostDisplays, originalHostDisplays);
+        assertThat(addedHostDisplaysDiff.entriesOnlyOnLeft()).hasSize(params.size());
         assertThat(addedHostDisplaysDiff.entriesOnlyOnRight()).isEmpty();
 
-        HostDisplayInfo addedHostDisplay = addedHostDisplaysDiff.entriesOnlyOnLeft().values().iterator().next();
-        assertThat(addedHostDisplay.width()).isEqualTo(600);
-        assertThat(addedHostDisplay.height()).isEqualTo(500);
+        Map<Integer, HostDisplayInfo> addedHostDisplays =
+            addedHostDisplaysDiff.entriesOnlyOnLeft();
+        assertThat(addedHostDisplays.values())
+            .comparingElementsUsing(HOST_DISPLAY_MATCHES)
+            .containsExactlyElementsIn(params);
 
         // Check that SurfaceFlinger and DisplayManager are aware of the new display.
-        Map<Integer, GuestDisplayInfo> addedGuestDisplays = getGuestDisplays();
-        assertThat(addedGuestDisplays).isNotNull();
+        Map<Integer, GuestDisplayInfo> afterAddGuestDisplays = getGuestDisplays();
+        assertThat(afterAddGuestDisplays).isNotNull();
 
         MapDifference<Integer, GuestDisplayInfo> addedGuestDisplaysDiff =
-            Maps.difference(addedGuestDisplays, originalGuestDisplays);
-        assertThat(addedGuestDisplaysDiff.entriesOnlyOnLeft()).hasSize(1);
+            Maps.difference(afterAddGuestDisplays, originalGuestDisplays);
+        assertThat(addedGuestDisplaysDiff.entriesOnlyOnLeft()).hasSize(params.size());
         assertThat(addedGuestDisplaysDiff.entriesOnlyOnRight()).isEmpty();
 
-        GuestDisplayInfo addedGuestDisplay = addedGuestDisplaysDiff.entriesOnlyOnLeft().values().iterator().next();
-        assertThat(addedGuestDisplay.width()).isEqualTo(600);
-        assertThat(addedGuestDisplay.height()).isEqualTo(500);
+        Map<Integer, GuestDisplayInfo> addedGuestDisplays =
+            addedGuestDisplaysDiff.entriesOnlyOnLeft();
+        assertThat(addedGuestDisplays.values())
+            .comparingElementsUsing(GUEST_DISPLAY_MATCHES)
+            .containsExactlyElementsIn(params);
 
-        removeDisplay(addedHostDisplay.id());
+        // Perform the hotplug disconnect.
+        List<Integer> addedHostDisplayIds = new ArrayList<Integer>();
+        for (HostDisplayInfo addedHostDisplay : addedHostDisplays.values()) {
+            addedHostDisplayIds.add(addedHostDisplay.id());
+        }
+        removeDisplays(addedHostDisplayIds);
 
         // Check that Crosvm does not show the removed display.
-        Map<Integer, HostDisplayInfo> removedHostDisplays = getHostDisplays();
-        assertThat(removedHostDisplays).isNotNull();
+        Map<Integer, HostDisplayInfo> afterRemoveHostDisplays = getHostDisplays();
+        assertThat(afterRemoveHostDisplays).isNotNull();
 
         MapDifference<Integer, HostDisplayInfo> removedHostDisplaysDiff =
-            Maps.difference(removedHostDisplays, originalHostDisplays);
-        assertThat(removedHostDisplaysDiff.entriesOnlyOnLeft()).isEmpty();
-        assertThat(removedHostDisplaysDiff.entriesOnlyOnRight()).isEmpty();
+            Maps.difference(afterRemoveHostDisplays, originalHostDisplays);
+        assertThat(removedHostDisplaysDiff.entriesDiffering()).isEmpty();
 
         // Check that SurfaceFlinger and DisplayManager do not show the removed display.
-        Map<Integer, GuestDisplayInfo> removedGuestDisplays = getGuestDisplays();
-        assertThat(removedGuestDisplays).isNotNull();
+        Map<Integer, GuestDisplayInfo> afterRemoveGuestDisplays = getGuestDisplays();
+        assertThat(afterRemoveGuestDisplays).isNotNull();
 
         MapDifference<Integer, GuestDisplayInfo> removedGuestDisplaysDiff =
-            Maps.difference(removedGuestDisplays, originalGuestDisplays);
-        assertThat(removedGuestDisplaysDiff.entriesOnlyOnLeft()).isEmpty();
-        assertThat(removedGuestDisplaysDiff.entriesOnlyOnRight()).isEmpty();
+            Maps.difference(afterRemoveGuestDisplays, originalGuestDisplays);
+        assertThat(removedGuestDisplaysDiff.entriesDiffering()).isEmpty();
     }
 
     @Test
     public void testDisplayHotplug() throws Exception {
-        doOneConnectAndDisconnectCycle();
+        doOneConnectAndDisconnectCycle(
+            List.of(AddDisplayParams.create(600, 500)));
+    }
+
+    @Test
+    public void testDisplayHotplugMultipleDisplays() throws Exception {
+        doOneConnectAndDisconnectCycle(
+            List.of(
+                AddDisplayParams.create(1920, 1080),
+                AddDisplayParams.create(1280, 720)));
     }
 
     @AutoValue
@@ -426,14 +480,16 @@ public class CuttlefishDisplayHotplugTest extends CuttlefishHostTest {
     @Test
     @LargeTest
     public void testDisplayHotplugDoesNotLeakMemory() throws Exception {
+        List<AddDisplayParams> toAdd = List.of(AddDisplayParams.create(600, 500));
+
         // Warm up to potentially reach any steady state memory usage.
         for (int i = 0; i < 50; i++) {
-            doOneConnectAndDisconnectCycle();
+            doOneConnectAndDisconnectCycle(toAdd);
         }
 
         MemoryInfo original = getMemoryInfo();
         for (int i = 0; i <= 500; i++) {
-            doOneConnectAndDisconnectCycle();
+            doOneConnectAndDisconnectCycle(toAdd);
 
             if (i % 100 == 0) {
                 doCheckForLeaks(original);

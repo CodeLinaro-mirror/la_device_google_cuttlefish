@@ -47,10 +47,12 @@ class LocalInstanceGroup {
   const std::string& GroupName() const { return group_name_; }
   const std::string& HomeDir() const { return home_dir_; }
   const std::string& HostArtifactsPath() const { return host_artifacts_path_; }
+  const std::optional<std::string>& BuildId() const { return build_id_; }
   Result<std::string> GetCuttlefishConfigPath() const;
   const Set<std::unique_ptr<LocalInstance>>& Instances() const {
     return instances_;
   }
+
   /**
    * return error if instance id of instance is taken AND that taken id
    * belongs to this group
@@ -58,7 +60,7 @@ class LocalInstanceGroup {
   Result<void> AddInstance(const unsigned instance_id,
                            const std::string& instance_name);
   bool HasInstance(const unsigned instance_id) const;
-
+  void SetBuildId(const std::string& build_id);
   Result<Set<ConstRef<LocalInstance>>> FindById(const unsigned id) const;
   /**
    * Find by per-instance name.
@@ -69,6 +71,9 @@ class LocalInstanceGroup {
    */
   Result<Set<ConstRef<LocalInstance>>> FindByInstanceName(
       const std::string& instance_name) const;
+
+  // returns all instances in the dedicated data type
+  Result<Set<ConstRef<LocalInstance>>> FindAllInstances() const;
 
  private:
   LocalInstanceGroup(const std::string& group_name, const std::string& home_dir,
@@ -82,6 +87,9 @@ class LocalInstanceGroup {
   // for now, "cvd", which is "cvd-".remove_suffix(1)
   std::string internal_group_name_;
   std::string group_name_;
+  // This will be initialized after the LocalInstanceGroup is created,
+  // which is also after the device completes the boot.
+  std::optional<std::string> build_id_;
   Set<std::unique_ptr<LocalInstance>> instances_;
 
   /*
@@ -90,6 +98,7 @@ class LocalInstanceGroup {
    * To create InstanceRecords, we should create InstanceGroup first.
    */
   FRIEND_TEST(CvdInstanceRecordUnitTest, Fields);
+  FRIEND_TEST(CvdInstanceRecordUnitTest, Copy);
 
   friend class CvdInstanceGroupUnitTest;
   friend class CvdInstanceGroupSearchUnitTest;

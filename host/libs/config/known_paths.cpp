@@ -52,9 +52,15 @@ std::string ModemSimulatorBinary() {
   return HostBinaryPath("modem_simulator");
 }
 
+std::string OpenwrtControlServerBinary() {
+  return HostBinaryPath("openwrt_control_server");
+}
+
 std::string RootCanalBinary() {
   return HostBinaryPath("root-canal");
 }
+
+std::string EchoServerBinary() { return HostBinaryPath("echo_server"); }
 
 std::string SocketVsockProxyBinary() {
   return HostBinaryPath("socket_vsock_proxy");

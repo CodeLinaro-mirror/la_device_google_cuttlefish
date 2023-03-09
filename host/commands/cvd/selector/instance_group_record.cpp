@@ -35,6 +35,7 @@ LocalInstanceGroup::LocalInstanceGroup(const LocalInstanceGroup& src)
       host_artifacts_path_{src.host_artifacts_path_},
       internal_group_name_{src.internal_group_name_},
       group_name_{src.group_name_},
+      build_id_{src.build_id_},
       instances_{CopyInstances(src.instances_)} {}
 
 LocalInstanceGroup& LocalInstanceGroup::operator=(
@@ -46,6 +47,7 @@ LocalInstanceGroup& LocalInstanceGroup::operator=(
   host_artifacts_path_ = src.host_artifacts_path_;
   internal_group_name_ = src.internal_group_name_;
   group_name_ = src.group_name_;
+  build_id_ = src.build_id_;
   instances_ = CopyInstances(src.instances_);
   return *this;
 }
@@ -102,6 +104,18 @@ Result<Set<ConstRef<LocalInstance>>> LocalInstanceGroup::FindByInstanceName(
                    GenerateTooManyInstancesErrorMsg(1, kInstanceNameField));
 }
 
+Result<Set<ConstRef<LocalInstance>>> LocalInstanceGroup::FindAllInstances()
+    const {
+  auto subset = CollectToSet<LocalInstance>(
+      instances_, [](const std::unique_ptr<LocalInstance>& instance) {
+        if (instance) {
+          return true;
+        }
+        return false;
+      });
+  return subset;
+}
+
 bool LocalInstanceGroup::HasInstance(const unsigned instance_id) const {
   for (const auto& instance : instances_) {
     if (!instance) {
@@ -112,6 +126,10 @@ bool LocalInstanceGroup::HasInstance(const unsigned instance_id) const {
     }
   }
   return false;
+}
+
+void LocalInstanceGroup::SetBuildId(const std::string& build_id) {
+  build_id_ = build_id;
 }
 
 }  // namespace selector
