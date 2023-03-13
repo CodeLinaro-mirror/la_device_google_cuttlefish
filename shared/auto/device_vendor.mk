@@ -14,7 +14,6 @@
 # limitations under the License.
 #
 
-DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/auto/manifest.xml
 PRODUCT_MANIFEST_FILES += device/google/cuttlefish/shared/config/product_manifest.xml
 SYSTEM_EXT_MANIFEST_FILES += device/google/cuttlefish/shared/config/system_ext_manifest.xml
 
@@ -88,9 +87,8 @@ ifeq ($(LOCAL_AUDIOCONTROL_HAL_PRODUCT_PACKAGE),)
 endif
 PRODUCT_PACKAGES += $(LOCAL_AUDIOCONTROL_HAL_PRODUCT_PACKAGE)
 
-# TODO(b/261041693): Update this to use AIDL instead after protocan is updated.
 # CAN bus HAL
-PRODUCT_PACKAGES += android.hardware.automotive.can@1.0-service
+PRODUCT_PACKAGES += android.hardware.automotive.can-service
 PRODUCT_PACKAGES_DEBUG += canhalctrl \
     canhaldump \
     canhalsend
@@ -120,7 +118,7 @@ endif
 ifeq ($(ENABLE_SAMPLE_EVS_APP), true)
 PRODUCT_PACKAGES += evs_app
 PRODUCT_COPY_FILES += \
-    device/google/cuttlefish/shared/auto/evs/evs_app_config.json:$(TARGET_COPY_OUT_SYSTEM)/etc/automotive/evs/config_override.json
+    device/google/cuttlefish/shared/auto/evs/evs_app_config.json:$(TARGET_COPY_OUT_VENDOR)/etc/automotive/evs/config_override.json
 include packages/services/Car/cpp/evs/apps/sepolicy/evsapp.mk
 endif
 

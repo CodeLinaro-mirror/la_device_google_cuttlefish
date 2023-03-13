@@ -579,6 +579,8 @@ Result<std::vector<GuestConfig>> ReadGuestConfig() {
       guest_config.target_arch = Arch::Arm;
     } else if (config.find("\nCONFIG_ARM64=y") != std::string::npos) {
       guest_config.target_arch = Arch::Arm64;
+    } else if (config.find("\nCONFIG_ARCH_RV64I=y") != std::string::npos) {
+      guest_config.target_arch = Arch::RiscV64;
     } else if (config.find("\nCONFIG_X86_64=y") != std::string::npos) {
       guest_config.target_arch = Arch::X86_64;
     } else if (config.find("\nCONFIG_X86=y") != std::string::npos) {
@@ -1241,17 +1243,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
         gpu_mode_vec[instance_index] != kGpuModeNone) {
       LOG(FATAL) << "Invalid gpu_mode: " << gpu_mode_vec[instance_index];
     }
-
     if (gpu_mode_vec[instance_index] == kGpuModeAuto) {
-      // TODO (263209317) Android R Cuttlefish is currently not compatible
-      // with accelerated graphics. rammuthiah@ to debug and resolve.
-      if (guest_configs[instance_index].android_version_number == "11.0.0") {
-        LOG(INFO) << "GPU auto mode: detected guest of version R at index "
-                  << instance_index
-                  << ". Accelerated rendering support is not compatible, "
-                     "enabling --gpu_mode=guest_swiftshader.";
-        instance.set_gpu_mode(kGpuModeGuestSwiftshader);
-      } else if (ShouldEnableAcceleratedRendering(graphics_availability)) {
+      if (ShouldEnableAcceleratedRendering(graphics_availability)) {
         LOG(INFO) << "GPU auto mode: detected prerequisites for accelerated "
             "rendering support.";
         if (vm_manager_vec[0] == QemuManager::name()) {
@@ -1548,6 +1541,8 @@ Result<void> SetDefaultFlagsForQemu(Arch target_arch, std::map<std::string, std:
       default_bootloader += "arm";
   } else if (target_arch == Arch::Arm64) {
       default_bootloader += "aarch64";
+  } else if (target_arch == Arch::RiscV64) {
+      default_bootloader += "riscv64";
   } else {
       default_bootloader += "x86_64";
   }

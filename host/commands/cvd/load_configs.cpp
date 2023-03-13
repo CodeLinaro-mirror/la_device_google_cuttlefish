@@ -31,6 +31,7 @@
 #include "host/commands/cvd/selector/selector_constants.h"
 #include "host/commands/cvd/server.h"
 #include "host/commands/cvd/server_client.h"
+#include "host/commands/cvd/server_command/utils.h"
 #include "host/commands/cvd/types.h"
 
 namespace cuttlefish {
@@ -90,40 +91,39 @@ class LoadConfigsCommand : public CvdServerHandler {
 
     if (help) {
       std::stringstream help_msg_stream;
-      help_msg_stream << "Usage: cvd " << kLoadSubCmd;
+      help_msg_stream << "Usage: cvd " << kLoadSubCmd << std::endl;
       const auto help_msg = help_msg_stream.str();
       CF_EXPECT(WriteAll(request.Out(), help_msg) == help_msg.size());
       return {};
     }
 
-    std::vector<std::string> serialized_data;
     Json::Value json_configs =
         CF_EXPECT(ParseJsonFile(config_path), "parsing input file failed");
 
-    serialized_data =
+    auto cvd_flags =
         CF_EXPECT(ParseCvdConfigs(json_configs), "parsing json configs failed");
 
     DemoCommandSequence ret;
 
     std::vector<cvd::Request> req_protos;
 
-    auto& launch_phone = *req_protos.emplace_back().mutable_command_request();
-    launch_phone.set_working_directory(
+    auto& launch_cmd = *req_protos.emplace_back().mutable_command_request();
+    launch_cmd.set_working_directory(
         request.Message().command_request().working_directory());
-    *launch_phone.mutable_env() = request.Message().command_request().env();
+    *launch_cmd.mutable_env() = request.Message().command_request().env();
 
-    /* cvd load will always crate instances in deamon mode (to be independent of
-     terminal) and will enable reporting automatically(to run automatically
+    /* cvd load will always create instances in deamon mode (to be independent
+     of terminal) and will enable reporting automatically (to run automatically
      without question during launch)
      */
-    launch_phone.add_args("cvd");
-    launch_phone.add_args("start");
-    launch_phone.add_args("--daemon");
-    for (auto& parsed_flag : serialized_data) {
-      launch_phone.add_args(parsed_flag);
+    launch_cmd.add_args("cvd");
+    launch_cmd.add_args("start");
+    launch_cmd.add_args("--daemon");
+    for (auto& parsed_flag : cvd_flags.launch_cvd_flags) {
+      launch_cmd.add_args(parsed_flag);
     }
 
-    launch_phone.mutable_selector_opts()->add_args(
+    launch_cmd.mutable_selector_opts()->add_args(
         std::string("--") + selector::kDisableDefaultGroupOpt);
 
     /*Verbose is disabled by default*/

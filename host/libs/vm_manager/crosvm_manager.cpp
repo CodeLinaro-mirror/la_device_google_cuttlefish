@@ -89,6 +89,10 @@ std::vector<std::string> CrosvmManager::ConfigureGraphics(
   }
   if (instance.gpu_mode() == kGpuModeGfxStream) {
     std::string gles_impl = instance.enable_gpu_angle() ? "angle" : "emulation";
+    std::string gltransport = (instance.guest_android_version() == "11.0.0")
+                                  ? "virtio-gpu-pipe"
+                                  : "virtio-gpu-asg";
+    std::string gles_version = instance.enable_gpu_angle() ? "196608" : "196609";
     return {
         "androidboot.cpuvulkan.version=0",
         "androidboot.hardware.gralloc=minigbm",
@@ -96,8 +100,8 @@ std::vector<std::string> CrosvmManager::ConfigureGraphics(
         "androidboot.hardware.hwcomposer.display_finder_mode=drm",
         "androidboot.hardware.egl=" + gles_impl,
         "androidboot.hardware.vulkan=ranchu",
-        "androidboot.hardware.gltransport=virtio-gpu-asg",
-        "androidboot.opengles.version=196608",  // OpenGL ES 3.0
+        "androidboot.hardware.gltransport=" + gltransport,
+        "androidboot.opengles.version=" + gles_version,
     };
   }
 
@@ -184,7 +188,7 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
     crosvm_cmd.Cmd().AddParameter("--gpu=backend=virglrenderer",
                                   gpu_common_3d_string);
   } else if (gpu_mode == kGpuModeGfxStream) {
-    crosvm_cmd.Cmd().AddParameter("--gpu=backend=gfxstream",
+    crosvm_cmd.Cmd().AddParameter("--gpu=backend=gfxstream,gles31=true",
                                   gpu_common_3d_string, gpu_angle_string);
   }
 

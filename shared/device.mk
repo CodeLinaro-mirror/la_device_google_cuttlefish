@@ -71,7 +71,8 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
 # partition, instead of the vendor partition, and do not need vendor
 # sepolicy
 PRODUCT_PRODUCT_PROPERTIES += \
-    persist.device_config.remote_key_provisioning_native.enable_rkpd=true \
+    remote_provisioning.enable_rkpd=true \
+    remote_provisioning.hostname=remoteprovisioning.googleapis.com \
     persist.adb.tcp.port=5555 \
     ro.com.google.locationfeatures=1 \
     persist.sys.fuse.passthrough.enable=true \
@@ -206,7 +207,8 @@ endif
 #
 # Common manifest for all targets
 #
-DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/config/manifest.xml
+LOCAL_DEVICE_FCM_MANIFEST_FILE ?= device/google/cuttlefish/shared/config/manifest.xml
+DEVICE_MANIFEST_FILE += $(LOCAL_DEVICE_FCM_MANIFEST_FILE)
 
 #
 # General files
@@ -258,11 +260,13 @@ PRODUCT_COPY_FILES += \
     frameworks/av/media/libstagefright/data/media_codecs_google_audio.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_audio.xml \
     frameworks/av/media/libstagefright/data/media_codecs_google_telephony.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_telephony.xml \
     frameworks/av/services/audiopolicy/config/bluetooth_audio_policy_configuration_7_0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/bluetooth_audio_policy_configuration_7_0.xml \
+    frameworks/av/services/audiopolicy/config/usb_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/usb_audio_policy_configuration.xml \
     frameworks/av/services/audiopolicy/config/r_submix_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/r_submix_audio_policy_configuration.xml \
     frameworks/av/services/audiopolicy/config/audio_policy_volumes.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy_volumes.xml \
     frameworks/av/services/audiopolicy/config/default_volume_tables.xml:$(TARGET_COPY_OUT_VENDOR)/etc/default_volume_tables.xml \
     frameworks/av/services/audiopolicy/config/surround_sound_configuration_5_0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/surround_sound_configuration_5_0.xml \
     device/google/cuttlefish/shared/config/task_profiles.json:$(TARGET_COPY_OUT_VENDOR)/etc/task_profiles.json \
+    frameworks/native/data/etc/android.software.credentials.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.credentials.xml \
 
 ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
 PRODUCT_PACKAGES += com.google.cf.input.config
@@ -350,7 +354,24 @@ LOCAL_AUDIO_PRODUCT_PACKAGE := \
     android.hardware.audio@7.1-impl.ranchu \
     android.hardware.audio.effect@7.0-impl \
     android.hardware.audio.service-aidl.example \
-    android.hardware.audio.effect.service-aidl.example
+    android.hardware.audio.effect.service-aidl.example \
+    libaecsw \
+    libagcsw \
+    libbassboostsw \
+    libbundleaidl \
+    libdownmixaidl \
+    libdynamicsprocessingaidl \
+    libenvreverbsw \
+    libequalizersw \
+    libhapticgeneratoraidl \
+    libloudnessenhanceraidl \
+    libnssw \
+    libpresetreverbsw \
+    libreverbaidl \
+    libtinyxml2 \
+    libvirtualizersw \
+    libvisualizeraidl \
+    libvolumesw
 DEVICE_MANIFEST_FILE += \
     device/google/cuttlefish/guest/hals/audio/effects/manifest.xml
 endif
@@ -495,8 +516,10 @@ PRODUCT_COPY_FILES += \
 #
 # Dice HAL
 #
+ifneq ($(filter-out %_riscv64,$(TARGET_PRODUCT)),)
 PRODUCT_PACKAGES += \
     android.hardware.security.dice-service.non-secure-software
+endif
 
 #
 # Power and PowerStats HALs
@@ -519,8 +542,8 @@ PRODUCT_PACKAGES += \
 #
 # Thermal HAL
 #
-PRODUCT_PACKAGES += \
-    android.hardware.thermal-service.example
+LOCAL_THERMAL_HAL_PRODUCT_PACKAGE ?= android.hardware.thermal-service.example
+PRODUCT_PACKAGES += $(LOCAL_THERMAL_HAL_PRODUCT_PACKAGE)
 
 #
 # NeuralNetworks HAL

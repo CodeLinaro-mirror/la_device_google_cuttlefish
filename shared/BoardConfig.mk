@@ -40,9 +40,17 @@ RAMDISK_KERNEL_MODULES := \
     virtio_input.ko \
     virtio_net.ko \
     virtio_pci.ko \
-    virtio_pci_modern_dev.ko \
     virtio-rng.ko \
     vmw_vsock_virtio_transport.ko \
+
+ifneq ($(filter-out 5.4 5.10,$(TARGET_KERNEL_USE)),)
+ifneq ($(filter-out 5.15,$(TARGET_KERNEL_USE)),)
+# GKI >5.15 will have and require virtio_pci_legacy_dev.ko
+RAMDISK_KERNEL_MODULES += virtio_pci_legacy_dev.ko
+endif
+# GKI >5.10 will have and require virtio_pci_modern_dev.ko
+RAMDISK_KERNEL_MODULES += virtio_pci_modern_dev.ko
+endif
 
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES := \
     $(patsubst %,$(KERNEL_MODULES_PATH)/%,$(RAMDISK_KERNEL_MODULES))
@@ -59,7 +67,9 @@ TARGET_NO_BOOTLOADER := $(__TARGET_NO_BOOTLOADER)
 BOARD_VENDOR_KERNEL_MODULES_BLOCKLIST_FILE := \
     device/google/cuttlefish/shared/modules.blocklist
 
+ifndef TARGET_BOOTLOADER_BOARD_NAME
 TARGET_BOOTLOADER_BOARD_NAME := cutf
+endif
 
 BOARD_SYSTEMIMAGE_FILE_SYSTEM_TYPE := $(TARGET_RO_FILE_SYSTEM_TYPE)
 
@@ -136,6 +146,15 @@ BOARD_AVB_INIT_BOOT_KEY_PATH := external/avb/test/data/testkey_rsa4096.pem
 BOARD_AVB_INIT_BOOT_ALGORITHM := SHA256_RSA4096
 BOARD_AVB_INIT_BOOT_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
 BOARD_AVB_INIT_BOOT_ROLLBACK_INDEX_LOCATION := 3
+
+# Enabled chained vbmeta for vendor_dlkm
+BOARD_AVB_VBMETA_CUSTOM_PARTITIONS := vendor_dlkm
+BOARD_AVB_VBMETA_VENDOR_DLKM := vendor_dlkm
+BOARD_AVB_VBMETA_VENDOR_DLKM_KEY_PATH := external/avb/test/data/testkey_rsa4096.pem
+BOARD_AVB_VBMETA_VENDOR_DLKM_ALGORITHM := SHA256_RSA4096
+BOARD_AVB_VBMETA_VENDOR_DLKM_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
+BOARD_AVB_VBMETA_VENDOR_DLKM_ROLLBACK_INDEX_LOCATION := 4
+
 
 # Using sha256 for dm-verity partitions. b/178983355
 # system, system_other, product.
@@ -336,6 +355,9 @@ AB_OTA_UPDATER := true
 ifneq ($(PRODUCT_BUILD_VENDOR_IMAGE), false)
 AB_OTA_PARTITIONS += vendor
 AB_OTA_PARTITIONS += vendor_dlkm
+ifneq ($(BOARD_AVB_VBMETA_VENDOR_DLKM),)
+AB_OTA_PARTITIONS += vbmeta_vendor_dlkm
+endif
 endif
 
 ifneq ($(PRODUCT_BUILD_BOOT_IMAGE), false)
