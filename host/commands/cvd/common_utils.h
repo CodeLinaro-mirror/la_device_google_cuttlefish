@@ -20,11 +20,19 @@
 #include <unordered_map>
 #include <vector>
 
+#include "common/libs/utils/result.h"
 #include "cvd_server.pb.h"
 
-#include "common/libs/utils/result.h"
-
 namespace cuttlefish {
+
+// utility struct for std::variant uses
+template <typename... Ts>
+struct Overload : Ts... {
+  using Ts::operator()...;
+};
+
+template <typename... Ts>
+Overload(Ts...) -> Overload<Ts...>;
 
 struct MakeRequestParam {
   std::vector<std::string> cmd_args;
