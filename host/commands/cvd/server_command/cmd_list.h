@@ -13,29 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #pragma once
 
-#include <string>
+#include <fruit/fruit.h>
 
-#include "common/libs/utils/result.h"
-#include "host/libs/graphics_detector/graphics_detector.h"
+#include "host/commands/cvd/command_sequence.h"
 
 namespace cuttlefish {
 
-enum class RenderingMode {
-  kNone,
-  kGuestSwiftShader,
-  kGfxstream,
-  kGfxstreamGuestAngle,
-  kVirglRenderer,
-};
-Result<RenderingMode> GetRenderingMode(const std::string& mode);
-
-struct AngleFeatureOverrides {
-  std::string angle_feature_overrides_enabled;
-  std::string angle_feature_overrides_disabled;
-};
-Result<AngleFeatureOverrides> GetNeededAngleFeatures(
-    RenderingMode mode, const GraphicsAvailability& availability);
+fruit::Component<fruit::Required<CommandSequenceExecutor>>
+CvdCmdlistComponent();
 
 }  // namespace cuttlefish
