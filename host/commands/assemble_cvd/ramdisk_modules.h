@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 The Android Open Source Project
+ * Copyright (C) 2023 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,16 +14,12 @@
  * limitations under the License.
  */
 
-namespace cuttlefish {
-namespace cvd {
+#pragma once
+#include <set>
 
-// Major version uprevs are backwards incompatible.
-// Minor version uprevs are backwards compatible within major version.
-constexpr int kVersionMajor = 1;
-constexpr int kVersionMinor = 2;
-
-// Pathname of the abstract cvd_server socket.
-constexpr char kServerSocketPath[] = "cvd_server";
-
-}  // namespace cvd
-}  // namespace cuttlefish
+static constexpr auto RAMDISK_MODULES = {
+    "failover.ko",   "nd_virtio.ko",      "net_failover.ko",
+    "virtio_blk.ko", "virtio_console.ko", "virtio_dma_buf.ko",
+    "virtio-gpu.ko", "virtio_input.ko",   "virtio_net.ko",
+    "virtio_pci.ko", "virtio-rng.ko",     "vmw_vsock_virtio_transport.ko",
+};

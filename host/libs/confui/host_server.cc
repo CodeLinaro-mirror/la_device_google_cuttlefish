@@ -62,23 +62,14 @@ static std::unique_ptr<ConfUiMessage> WrapWithSecureFlag(
   }
 }
 
-HostServer& HostServer::Get(HostModeCtrl& host_mode_ctrl,
-                            ConfUiRenderer& host_renderer,
-                            SharedFD from_guest_fd, SharedFD to_guest_fd) {
-  static HostServer host_server{host_mode_ctrl, host_renderer,
-                                std::move(from_guest_fd),
-                                std::move(to_guest_fd)};
-  return host_server;
-}
-
 HostServer::HostServer(HostModeCtrl& host_mode_ctrl,
-                       ConfUiRenderer& host_renderer, SharedFD from_guest_fd,
-                       SharedFD to_guest_fd)
+                       ConfUiRenderer& host_renderer,
+                       const PipeConnectionPair& fd_pair)
     : display_num_(0),
       host_renderer_{host_renderer},
       host_mode_ctrl_(host_mode_ctrl),
-      from_guest_fifo_fd_(std::move(from_guest_fd)),
-      to_guest_fifo_fd_(std::move(to_guest_fd)) {
+      from_guest_fifo_fd_(fd_pair.from_guest_),
+      to_guest_fifo_fd_(fd_pair.to_guest_) {
   const size_t max_elements = 20;
   auto ignore_new =
       [](ThreadSafeQueue<std::unique_ptr<ConfUiMessage>>::QueueImpl*) {
@@ -179,13 +170,6 @@ void HostServer::UserAbortEvent() {
   SendUserSelection(input);
 }
 
-bool HostServer::IsConfUiActive() {
-  if (!curr_session_) {
-    return false;
-  }
-  return curr_session_->IsConfUiActive();
-}
-
 // read the comments in the header file
 [[noreturn]] void HostServer::MainLoop() {
   while (true) {
@@ -220,6 +204,9 @@ bool HostServer::IsConfUiActive() {
       auto [x, y] = touch_event.GetLocation();
       const bool is_confirm = curr_session_->IsConfirm(x, y);
       const bool is_cancel = curr_session_->IsCancel(x, y);
+      ConfUiLog(INFO) << "Touch at [" << x << ", " << y << "] was "
+                      << (is_cancel ? "CANCEL"
+                                    : (is_confirm ? "CONFIRM" : "INVALID"));
       if (!is_confirm && !is_cancel) {
         // ignore, take the next input
         continue;

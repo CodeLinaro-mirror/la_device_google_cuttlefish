@@ -172,15 +172,15 @@ int main(int argc, char** argv) {
   // create confirmation UI service, giving host_mode_ctrl and
   // screen_connector
   // keep this singleton object alive until the webRTC process ends
-  auto confui_to_guest_fd = cuttlefish::SharedFD::Dup(FLAGS_confui_in_fd);
+  cuttlefish::confui::PipeConnectionPair conf_ui_comm_fd_pair{
+      .from_guest_ = cuttlefish::SharedFD::Dup(FLAGS_confui_out_fd),
+      .to_guest_ = cuttlefish::SharedFD::Dup(FLAGS_confui_in_fd)};
   close(FLAGS_confui_in_fd);
-  auto confui_from_guest_fd = cuttlefish::SharedFD::Dup(FLAGS_confui_out_fd);
   close(FLAGS_confui_out_fd);
-
-  auto& host_confui_server = cuttlefish::confui::HostServer::Get(
-      host_mode_ctrl, conf_ui_renderer, confui_from_guest_fd,
-      confui_to_guest_fd);
-
+  cuttlefish::confui::HostServer host_confui_server(
+      host_mode_ctrl, conf_ui_renderer, conf_ui_comm_fd_pair);
+  cuttlefish::confui::HostVirtualInput confui_virtual_input(host_confui_server,
+                                                            host_mode_ctrl);
   StreamerConfig streamer_config;
 
   streamer_config.device_id = instance.webrtc_device_id();
@@ -202,7 +202,7 @@ int main(int argc, char** argv) {
 
   KernelLogEventsHandler kernel_logs_event_handler(kernel_log_events_client);
   auto observer_factory = std::make_shared<CfConnectionObserverFactory>(
-      input_sockets, &kernel_logs_event_handler, host_confui_server);
+      input_sockets, &kernel_logs_event_handler, confui_virtual_input);
 
   auto streamer = Streamer::Create(streamer_config, observer_factory);
   CHECK(streamer) << "Could not create streamer";
