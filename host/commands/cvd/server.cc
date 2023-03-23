@@ -48,10 +48,12 @@
 #include "host/commands/cvd/epoll_loop.h"
 #include "host/commands/cvd/logger.h"
 #include "host/commands/cvd/server_command/cmd_list.h"
+#include "host/commands/cvd/server_command/crosvm.h"
 #include "host/commands/cvd/server_command/generic.h"
 #include "host/commands/cvd/server_command/handler_proxy.h"
 #include "host/commands/cvd/server_command/load_configs.h"
 #include "host/commands/cvd/server_command/operation_to_bins_map.h"
+#include "host/commands/cvd/server_command/reset.h"
 #include "host/commands/cvd/server_command/start.h"
 #include "host/commands/cvd/server_command/subcmd.h"
 #include "host/commands/cvd/server_constants.h"
@@ -105,10 +107,12 @@ fruit::Component<> CvdServer::RequestComponent(CvdServer* server) {
       .install(AcloudCommandComponent)
       .install(CvdCmdlistComponent)
       .install(CommandSequenceExecutorComponent)
+      .install(CvdCrosVmComponent)
       .install(cvdCommandComponent)
       .install(cvdGenericCommandComponent)
       .install(CvdHandlerProxyComponent)
       .install(CvdHelpComponent)
+      .install(CvdResetComponent)
       .install(CvdRestartComponent)
       .install(cvdShutdownComponent)
       .install(cvdStartCommandComponent)
