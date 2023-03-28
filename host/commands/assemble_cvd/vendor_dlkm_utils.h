@@ -1,4 +1,5 @@
-// Copyright (C) 2022 The Android Open Source Project
+//
+// Copyright (C) 2023 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,22 +13,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#pragma once
 
-package {
-    default_applicable_licenses: ["Android-Apache-2.0"],
-}
+#include <string>
 
-cc_binary_host {
-    name: "process_restarter",
-    defaults: ["cuttlefish_host",],
-    srcs: ["main.cc",],
-    shared_libs: [
-        "libbase",
-        "libcuttlefish_utils",
-        "libgflags",
-        "libjsoncpp",
-    ],
-    static_libs: [
-        "libcuttlefish_host_config",
-    ],
-}
+namespace cuttlefish {
+
+bool RepackSuperWithVendorDLKM(const std::string& superimg_path,
+                               const std::string& vendor_dlkm_path);
+
+bool BuildVendorDLKM(const std::string& src_dir, const bool is_erofs,
+                     const std::string& output_image);
+
+bool RebuildVbmetaVendor(const std::string& vendor_dlkm_img,
+                         const std::string& vbmeta_path);
+
+}  // namespace cuttlefish

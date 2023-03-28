@@ -92,7 +92,6 @@ CrosvmManager::ConfigureGraphics(
              instance.gpu_mode() == kGpuModeGfxstreamGuestAngle) {
     const bool uses_angle = instance.gpu_mode() == kGpuModeGfxstreamGuestAngle;
     const std::string gles_impl = uses_angle ? "angle" : "emulation";
-    const std::string gles_version = uses_angle ? "196608" : "196609";
     const std::string gltransport =
         (instance.guest_android_version() == "11.0.0") ? "virtio-gpu-pipe"
                                                        : "virtio-gpu-asg";
@@ -104,7 +103,7 @@ CrosvmManager::ConfigureGraphics(
         {"androidboot.hardware.egl", gles_impl},
         {"androidboot.hardware.vulkan", "ranchu"},
         {"androidboot.hardware.gltransport", gltransport},
-        {"androidboot.opengles.version", gles_version},
+        {"androidboot.opengles.version", "196609"},  // OpenGL ES 3.1
     };
   } else if (instance.gpu_mode() == kGpuModeNone) {
     return {};
@@ -268,13 +267,13 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
   // GPU capture can only support named files and not file descriptors due to
   // having to pass arguments to crosvm via a wrapper script.
   if (!gpu_capture_enabled) {
-    crosvm_cmd.AddTap(instance.mobile_tap_name());
+    crosvm_cmd.AddTap(instance.mobile_tap_name(), instance.mobile_mac());
     crosvm_cmd.AddTap(instance.ethernet_tap_name(), instance.ethernet_mac());
 
     // TODO(b/199103204): remove this as well when
     // PRODUCT_ENFORCE_MAC80211_HWSIM is removed
 #ifndef ENFORCE_MAC80211_HWSIM
-    wifi_tap = crosvm_cmd.AddTap(instance.wifi_tap_name());
+    wifi_tap = crosvm_cmd.AddTap(instance.wifi_tap_name(), instance.wifi_mac());
 #endif
   }
 
