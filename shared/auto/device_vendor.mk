@@ -93,6 +93,11 @@ PRODUCT_PACKAGES_DEBUG += canhalctrl \
     canhaldump \
     canhalsend
 
+# Occupant Awareness HAL
+PRODUCT_PACKAGES += android.hardware.automotive.occupant_awareness@1.0-service
+include packages/services/Car/car_product/occupant_awareness/OccupantAwareness.mk
+BOARD_SEPOLICY_DIRS += packages/services/Car/car_product/occupant_awareness/sepolicy
+
 # EVS
 # By default, we enable EvsManager, a sample EVS app, and a mock EVS HAL implementation.
 # If you want to use your own EVS HAL implementation, please set ENABLE_MOCK_EVSHAL as false
@@ -108,8 +113,10 @@ ENABLE_CARTELEMETRY_SERVICE ?= true
 
 ifeq ($(ENABLE_MOCK_EVSHAL), true)
 CUSTOMIZE_EVS_SERVICE_PARAMETER := true
-PRODUCT_PACKAGES += android.hardware.automotive.evs@1.1-service \
-    android.frameworks.automotive.display@1.0-service
+PRODUCT_PACKAGES += \
+    android.hardware.automotive.evs-aidl-default-service \
+    cardisplayproxyd
+
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/auto/evs/init.evs.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.evs.rc
 BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy/evs
