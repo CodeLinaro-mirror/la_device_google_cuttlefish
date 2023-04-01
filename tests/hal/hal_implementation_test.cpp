@@ -28,11 +28,11 @@ using namespace android;
 
 // clang-format off
 static const std::set<std::string> kAutomotiveOnlyHidl = {
-    "android.frameworks.automotive.display@1.0",
     "android.hardware.automotive.evs@1.1",
 };
 
 static const std::set<std::string> kKnownMissingHidl = {
+    "android.frameworks.automotive.display@1.0", // converted to AIDL, see b/170401743
     "android.frameworks.cameraservice.device@2.1",
     "android.frameworks.cameraservice.service@2.2", // converted to AIDL, see b/205764761
     "android.frameworks.displayservice@1.0", // deprecated, see b/141930622
@@ -159,6 +159,7 @@ static const std::set<std::string> kAutomotiveOnlyAidl = {
     "android.hardware.automotive.audiocontrol",
     "android.hardware.automotive.can",
     "android.hardware.broadcastradio",
+    "android.hardware.automotive.occupant_awareness",
     "android.hardware.automotive.remoteaccess",
     "android.hardware.automotive.vehicle",
 };
@@ -232,7 +233,6 @@ static const std::vector<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.frameworks.automotive.powerpolicy.", 2, 274160980},
     {"android.hardware.automotive.evs.", 2, 274162534},
     {"android.hardware.automotive.ivn.", 1, 274139217},
-    {"android.hardware.automotive.occupant_awareness.", 1, 0},
 };
 
 // AOSP packages which are never considered
@@ -356,18 +356,22 @@ static std::set<std::string> getMissingHidl() {
     const DeviceType type = getDeviceType();
     switch (type) {
       case DeviceType::AUTOMOTIVE:
+        LOG(INFO) << "Determined this is an Automotive device";
         break;
       case DeviceType::TV:
         missingHidl.insert(kAutomotiveOnlyHidl.begin(),
                            kAutomotiveOnlyHidl.end());
+        LOG(INFO) << "Determined this is a TV device";
         break;
       case DeviceType::WATCH:
         missingHidl.insert(kAutomotiveOnlyHidl.begin(),
                            kAutomotiveOnlyHidl.end());
+        LOG(INFO) << "Determined this is a Wear device";
         break;
       case DeviceType::PHONE:
         missingHidl.insert(kAutomotiveOnlyHidl.begin(),
                            kAutomotiveOnlyHidl.end());
+        LOG(INFO) << "Determined this is a Phone device";
         break;
       case DeviceType::UNKNOWN:
         CHECK(false) << "getDeviceType return UNKNOWN type.";
