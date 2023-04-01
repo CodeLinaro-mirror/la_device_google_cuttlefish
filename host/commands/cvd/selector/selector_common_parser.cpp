@@ -32,42 +32,40 @@ Result<SelectorCommonParser> SelectorCommonParser::Parse(
     const uid_t client_uid, cvd_common::Args& selector_args,
     const cvd_common::Envs& envs) {
   std::string system_wide_home = CF_EXPECT(SystemWideUserHome(client_uid));
-  SelectorCommonParser parser(system_wide_home, selector_args, envs);
-  CF_EXPECT(parser.ParseOptions());
+  SelectorCommonParser parser(system_wide_home, envs);
+  CF_EXPECT(parser.ParseOptions(selector_args));
   return std::move(parser);
 }
 
 SelectorCommonParser::SelectorCommonParser(const std::string& client_user_home,
-                                           cvd_common::Args& selector_args,
                                            const cvd_common::Envs& envs)
-    : client_user_home_(client_user_home),
-      selector_args_{std::addressof(selector_args)},
-      envs_{std::addressof(envs)} {}
+    : client_user_home_(client_user_home), envs_{envs} {}
 
 Result<bool> SelectorCommonParser::HomeOverridden() const {
-  return Contains(*envs_, "HOME") && (client_user_home_ != envs_->at("HOME"));
+  return Contains(envs_, "HOME") && (client_user_home_ != envs_.at("HOME"));
 }
 
-Result<void> SelectorCommonParser::ParseOptions() {
-  // Handling name-related options
-  std::optional<std::string> group_name;
-  std::optional<std::string> instance_name;
-
-  std::unordered_map<std::string, std::optional<std::string>> key_optional_map =
-      {
-          {kGroupNameOpt, std::optional<std::string>{}},
-          {kInstanceNameOpt, std::optional<std::string>{}},
-      };
-
-  for (auto& [flag_name, value] : key_optional_map) {
-    // value is set to std::nullopt if parsing failed or no flag_name flag is
-    // given.
-    CF_EXPECT(FilterSelectorFlag(*selector_args_, flag_name, value));
+std::optional<std::string> SelectorCommonParser::Home() const {
+  if (Contains(envs_, "HOME")) {
+    return envs_.at("HOME");
   }
+  return std::nullopt;
+}
 
-  NameFlagsParam name_flags_param{
-      .group_name = key_optional_map[kGroupNameOpt],
-      .instance_names = key_optional_map[kInstanceNameOpt]};
+Result<void> SelectorCommonParser::ParseOptions(
+    cvd_common::Args& selector_args) {
+  // Handling name-related options
+  auto group_name_flag =
+      CF_EXPECT(SelectorFlags::Get().GetFlag(SelectorFlags::kGroupName));
+  auto instance_name_flag =
+      CF_EXPECT(SelectorFlags::Get().GetFlag(SelectorFlags::kInstanceName));
+  std::optional<std::string> group_name_opt;
+  CF_EXPECT(group_name_flag.FilterFlag(selector_args, group_name_opt));
+  std::optional<std::string> instance_name_opt;
+  CF_EXPECT(instance_name_flag.FilterFlag(selector_args, instance_name_opt));
+
+  NameFlagsParam name_flags_param{.group_name = group_name_opt,
+                                  .instance_names = instance_name_opt};
   auto parsed_name_flags = CF_EXPECT(HandleNameOpts(name_flags_param));
   group_name_ = parsed_name_flags.group_name;
   instance_names_ = parsed_name_flags.instance_names;

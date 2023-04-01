@@ -109,6 +109,14 @@ void CuttlefishConfig::MutableInstanceSpecific::set_super_image(
     const std::string& super_image) {
   (*Dictionary())[kSuperImage] = super_image;
 }
+static constexpr char kNewSuperImage[] = "new_super_image";
+std::string CuttlefishConfig::InstanceSpecific::new_super_image() const {
+  return (*Dictionary())[kNewSuperImage].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_new_super_image(
+    const std::string& super_image) {
+  (*Dictionary())[kNewSuperImage] = super_image;
+}
 static constexpr char kMiscImage[] = "misc_image";
 std::string CuttlefishConfig::InstanceSpecific::misc_image() const {
   return (*Dictionary())[kMiscImage].asString();
@@ -591,6 +599,30 @@ void CuttlefishConfig::MutableInstanceSpecific::set_gpu_mode(const std::string& 
   (*Dictionary())[kGpuMode] = name;
 }
 
+static constexpr char kGpuAngleFeatureOverridesEnabled[] =
+    "gpu_angle_feature_overrides_enabled";
+std::string
+CuttlefishConfig::InstanceSpecific::gpu_angle_feature_overrides_enabled()
+    const {
+  return (*Dictionary())[kGpuAngleFeatureOverridesEnabled].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::
+    set_gpu_angle_feature_overrides_enabled(const std::string& overrides) {
+  (*Dictionary())[kGpuAngleFeatureOverridesEnabled] = overrides;
+}
+
+static constexpr char kGpuAngleFeatureOverridesDisabled[] =
+    "gpu_angle_feature_overrides_disabled";
+std::string
+CuttlefishConfig::InstanceSpecific::gpu_angle_feature_overrides_disabled()
+    const {
+  return (*Dictionary())[kGpuAngleFeatureOverridesDisabled].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::
+    set_gpu_angle_feature_overrides_disabled(const std::string& overrides) {
+  (*Dictionary())[kGpuAngleFeatureOverridesDisabled] = overrides;
+}
+
 static constexpr char kGpuCaptureBinary[] = "gpu_capture_binary";
 std::string CuttlefishConfig::InstanceSpecific::gpu_capture_binary() const {
   return (*Dictionary())[kGpuCaptureBinary].asString();
@@ -621,14 +653,6 @@ void CuttlefishConfig::MutableInstanceSpecific::set_enable_gpu_udmabuf(const boo
 }
 bool CuttlefishConfig::InstanceSpecific::enable_gpu_udmabuf() const {
   return (*Dictionary())[kEnableGpuUdmabuf].asBool();
-}
-
-static constexpr char kEnableGpuAngle[] = "enable_gpu_angle";
-void CuttlefishConfig::MutableInstanceSpecific::set_enable_gpu_angle(const bool enable_gpu_angle) {
-  (*Dictionary())[kEnableGpuAngle] = enable_gpu_angle;
-}
-bool CuttlefishConfig::InstanceSpecific::enable_gpu_angle() const {
-  return (*Dictionary())[kEnableGpuAngle].asBool();
 }
 
 static constexpr char kEnableAudio[] = "enable_audio";
@@ -1061,6 +1085,15 @@ std::string CuttlefishConfig::InstanceSpecific::wifi_bridge_name() const {
 void CuttlefishConfig::MutableInstanceSpecific::set_wifi_bridge_name(
     const std::string& wifi_bridge_name) {
   (*Dictionary())[kWifiBridgeName] = wifi_bridge_name;
+}
+
+static constexpr char kUseBridgedWifiTap[] = "use_bridged_wifi_tap";
+bool CuttlefishConfig::InstanceSpecific::use_bridged_wifi_tap() const {
+  return (*Dictionary())[kUseBridgedWifiTap].asBool();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_use_bridged_wifi_tap(
+    bool use_bridged_wifi_tap) {
+  (*Dictionary())[kUseBridgedWifiTap] = use_bridged_wifi_tap;
 }
 
 static constexpr char kEthernetTapName[] = "ethernet_tap_name";

@@ -39,6 +39,7 @@
 #include "cvd_server.pb.h"
 #include "host/commands/cvd/common_utils.h"
 #include "host/commands/cvd/server_command/server_handler.h"
+#include "host/commands/cvd/server_command/start_impl.h"
 #include "host/commands/cvd/server_command/subprocess_waiter.h"
 #include "host/commands/cvd/server_command/utils.h"
 #include "host/commands/cvd/types.h"
@@ -100,6 +101,11 @@ class CvdStartCommandHandler : public CvdServerHandler {
 
   Result<std::string> FindStartBin(const std::string& android_host_out);
 
+  Result<void> SetBuildId(const uid_t uid, const std::string& group_name,
+                          const std::string& home);
+
+  void MarkLockfilesInUse(selector::GroupCreationInfo& group_info);
+
   InstanceManager& instance_manager_;
   SubprocessWaiter& subprocess_waiter_;
   HostToolTargetManager& host_tool_target_manager_;
@@ -108,6 +114,20 @@ class CvdStartCommandHandler : public CvdServerHandler {
 
   static const std::array<std::string, 2> supported_commands_;
 };
+
+void CvdStartCommandHandler::MarkLockfilesInUse(
+    selector::GroupCreationInfo& group_info) {
+  auto& instances = group_info.instances;
+  for (auto& instance : instances) {
+    if (!instance.instance_file_lock_) {
+      continue;
+    }
+    auto result = instance.instance_file_lock_->Status(InUseState::kInUse);
+    if (!result.ok()) {
+      LOG(ERROR) << result.error().Message();
+    }
+  }
+}
 
 Result<bool> CvdStartCommandHandler::CanHandle(
     const RequestWithStdio& request) const {
@@ -403,8 +423,17 @@ Result<cvd::Response> CvdStartCommandHandler::Handle(
   if (!should_wait) {
     response.mutable_status()->set_code(cvd::Status::OK);
     if (!is_help) {
+      /* TODO(kwstephenkim): make build ID available for non-blocking start
+       *
+       * For now, cvd start is waiting for launch_cvd. Thus, the control does
+       * not yet reach here. However, if it does, kernel.log might not be
+       * ready to read yet at this point, so SetBuildId() can't be called.
+       *
+       * This should be resolved.
+       */
       response = CF_EXPECT(
           FillOutNewInstanceInfo(std::move(response), *group_creation_info));
+      MarkLockfilesInUse(*group_creation_info);
     }
     return response;
   }
@@ -416,14 +445,37 @@ Result<cvd::Response> CvdStartCommandHandler::Handle(
       instance_manager_.RemoveInstanceGroup(uid, group_creation_info->home);
     }
   }
+
   auto final_response = ResponseFromSiginfo(infop);
   if (is_help || !final_response.has_status() ||
       final_response.status().code() != cvd::Status::OK) {
     return final_response;
   }
+  MarkLockfilesInUse(*group_creation_info);
+
+  if (!is_help) {
+    auto set_build_id_result = SetBuildId(uid, group_creation_info->group_name,
+                                          group_creation_info->home);
+    if (!set_build_id_result.ok()) {
+      LOG(ERROR) << "Failed to set a build Id for "
+                 << group_creation_info->group_name << " but will continue.";
+      LOG(ERROR) << "The error message was : "
+                 << set_build_id_result.error().Trace();
+    }
+  }
+
   // group_creation_info is nullopt only if is_help is false
   return FillOutNewInstanceInfo(std::move(final_response),
                                 *group_creation_info);
+}
+
+Result<void> CvdStartCommandHandler::SetBuildId(const uid_t uid,
+                                                const std::string& group_name,
+                                                const std::string& home) {
+  // build id can't be found before this point
+  const auto build_id = CF_EXPECT(cvd_start_impl::ExtractBuildId(home));
+  CF_EXPECT(instance_manager_.SetBuildId(uid, group_name, build_id));
+  return {};
 }
 
 Result<void> CvdStartCommandHandler::Interrupt() {

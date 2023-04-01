@@ -245,24 +245,96 @@ StartSelectorParser::HandleInstanceIds(
 }
 
 Result<bool> StartSelectorParser::CalcMayBeDefaultGroup() {
-  std::optional<bool> disable_default_group;
-  CF_EXPECT(FilterSelectorFlag(selector_args_, kDisableDefaultGroupOpt,
-                               disable_default_group));
-  if (disable_default_group && disable_default_group.value()) {
-    // never be a default group
+  auto disable_default_group_flag = CF_EXPECT(
+      SelectorFlags::Get().GetFlag(SelectorFlags::kDisableDefaultGroup));
+  std::optional<bool> flag_value = false;
+  CF_EXPECT(
+      disable_default_group_flag.FilterFlag(selector_args_, flag_value).ok());
+  if (flag_value && *flag_value) {
     return false;
   }
+  /*
+   * --disable_default_group instructs that the default group
+   * should be disabled anyway. If not given, the logic to determine
+   * whether this group is the default one or not is:
+   *  If HOME is not overridden and no selector options, then
+   *   the default group
+   *  Or, not a default group
+   *
+   */
   if (CF_EXPECT(common_parser_.HomeOverridden())) {
     return false;
   }
   return !common_parser_.HasDeviceSelectOption();
 }
 
+static bool IsTrue(const std::string& value) {
+  std::unordered_set<std::string> true_strings = {"y", "yes", "true"};
+  std::string value_in_lower_case = value;
+  /*
+   * https://en.cppreference.com/w/cpp/string/byte/tolower
+   *
+   * char should be converted to unsigned char first.
+   */
+  std::transform(value_in_lower_case.begin(), value_in_lower_case.end(),
+                 value_in_lower_case.begin(),
+                 [](unsigned char c) { return std::tolower(c); });
+  return Contains(true_strings, value_in_lower_case);
+}
+
+static bool IsFalse(const std::string& value) {
+  std::unordered_set<std::string> true_strings = {"n", "no", "false"};
+  std::string value_in_lower_case = value;
+  /*
+   * https://en.cppreference.com/w/cpp/string/byte/tolower
+   *
+   * char should be converted to unsigned char first.
+   */
+  std::transform(value_in_lower_case.begin(), value_in_lower_case.end(),
+                 value_in_lower_case.begin(),
+                 [](unsigned char c) { return std::tolower(c); });
+  return Contains(true_strings, value_in_lower_case);
+}
+
+static std::optional<std::string> GetAcquireFileLockEnvValue(
+    const cvd_common::Envs& envs) {
+  if (!Contains(envs, SelectorFlags::kAcquireFileLockEnv)) {
+    return std::nullopt;
+  }
+  auto env_value = envs.at(SelectorFlags::kAcquireFileLockEnv);
+  if (env_value.empty()) {
+    return std::nullopt;
+  }
+  return env_value;
+}
+
 Result<bool> StartSelectorParser::CalcAcquireFileLock() {
-  std::optional<bool> must_acquire_file_lock_flag;
-  CF_EXPECT(FilterSelectorFlag(selector_args_, kAcquireFileLockOpt,
-                               must_acquire_file_lock_flag));
-  return !must_acquire_file_lock_flag || must_acquire_file_lock_flag.value();
+  // if the flag is set, flag has the highest priority
+  auto must_acquire_file_lock_flag =
+      CF_EXPECT(SelectorFlags::Get().GetFlag(SelectorFlags::kAcquireFileLock));
+  std::optional<bool> value_opt;
+  CF_EXPECT(must_acquire_file_lock_flag.FilterFlag(selector_args_, value_opt));
+  if (value_opt) {
+    return *value_opt;
+  }
+  // flag is not set. see if there is the environment variable set
+  auto env_value_opt = GetAcquireFileLockEnvValue(envs_);
+  if (env_value_opt) {
+    auto value_string = *env_value_opt;
+    if (IsTrue(value_string)) {
+      return true;
+    }
+    if (IsFalse(value_string)) {
+      return false;
+    }
+    return CF_ERR("In \"" << SelectorFlags::kAcquireFileLockEnv << "="
+                          << value_string << ",\" \"" << value_string
+                          << "\" is an invalid value. Try true or false.");
+  }
+  // nothing set, falls back to the default value of the flag
+  auto default_value =
+      CF_EXPECT(must_acquire_file_lock_flag.DefaultValue<bool>());
+  return default_value;
 }
 
 Result<void> StartSelectorParser::ParseOptions() {

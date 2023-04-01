@@ -24,6 +24,8 @@
 #include <android-base/file.h>
 #include <google/protobuf/text_format.h>
 
+#include "common/libs/fs/shared_buf.h"
+#include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/commands/cvd/common_utils.h"
@@ -75,7 +77,7 @@ cvd::Version CvdClient::GetClientVersion() {
   client_version.set_major(cvd::kVersionMajor);
   client_version.set_minor(cvd::kVersionMinor);
   client_version.set_build(android::build::GetBuildNumber());
-  client_version.set_crc32(FileCrc("/proc/self/exe"));
+  client_version.set_crc32(FileCrc(kServerExecPath));
   return client_version;
 }
 
@@ -126,7 +128,7 @@ Result<void> CvdClient::ValidateServerVersion(
                  << ") does not match server version ("
                  << server_version.build() << std::endl;
   }
-  auto self_crc32 = FileCrc("/proc/self/exe");
+  auto self_crc32 = FileCrc(kServerExecPath);
   if (server_version.crc32() != self_crc32) {
     LOG(VERBOSE) << "cvd_server client checksum (" << self_crc32
                  << ") doesn't match server checksum ("
@@ -195,11 +197,10 @@ Result<cvd::Response> CvdClient::HandleCommand(
   std::optional<SharedFD> exe_fd;
   if (args.size() > 2 && android::base::Basename(args[0]) == "cvd" &&
       args[1] == "restart-server" && args[2] == "match-client") {
-    constexpr char kSelf[] = "/proc/self/exe";
-    exe_fd = SharedFD::Open(kSelf, O_RDONLY);
-    CF_EXPECT((*exe_fd)->IsOpen(), "Failed to open \"" << kSelf << "\": \""
-                                                       << (*exe_fd)->StrError()
-                                                       << "\"");
+    exe_fd = SharedFD::Open(kServerExecPath, O_RDONLY);
+    CF_EXPECT((*exe_fd)->IsOpen(), "Failed to open \""
+                                       << kServerExecPath << "\": \""
+                                       << (*exe_fd)->StrError() << "\"");
   }
   cvd::Request request = MakeRequest(
       {.cmd_args = args, .env = env, .selector_args = selector_args},
@@ -267,7 +268,7 @@ Result<void> CvdClient::StartCvdServer(const std::string& host_tool_directory) {
   // TODO(b/196114111): Investigate fully "daemonizing" the cvd_server.
   CF_EXPECT(setenv("ANDROID_HOST_OUT", host_tool_directory.c_str(),
                    /*overwrite=*/true) == 0);
-  Command command("/proc/self/exe");
+  Command command(kServerExecPath);
   command.AddParameter("-INTERNAL_server_fd=", server_fd);
   SubprocessOptions options;
   options.ExitWithParent(false);
@@ -331,6 +332,46 @@ Result<std::string> CvdClient::HandleVersion(
             "converting client version to string failed");
   result << "Client version:" << std::endl << std::endl << output << std::endl;
   return {result.str()};
+}
+
+Result<Json::Value> CvdClient::ListSubcommands(const cvd_common::Envs& envs) {
+  cvd_common::Args args{"cvd", "cmd-list"};
+  SharedFD read_pipe, write_pipe;
+  CF_EXPECT(cuttlefish::SharedFD::Pipe(&read_pipe, &write_pipe),
+            "Unable to create shutdown pipe: " << strerror(errno));
+  OverrideFd new_control_fd{.stdout_override_fd = write_pipe};
+  CF_EXPECT(
+      HandleCommand(args, envs, std::vector<std::string>{}, new_control_fd));
+
+  write_pipe->Close();
+  const int kChunkSize = 512;
+  char buf[kChunkSize + 1] = {0};
+  std::stringstream ss;
+  do {
+    auto n_read = ReadExact(read_pipe, buf, kChunkSize);
+    CF_EXPECT(n_read >= 0 && (n_read <= kChunkSize));
+    if (n_read == 0) {
+      break;
+    }
+    buf[n_read] = 0;  // null-terminate the C-style string
+    ss << buf;
+    if (n_read < sizeof(buf) - 1) {
+      break;
+    }
+  } while (true);
+  auto json_output = CF_EXPECT(ParseJson(ss.str()));
+  return json_output;
+}
+
+Result<cvd_common::Args> CvdClient::ValidSubcmdsList(
+    const cvd_common::Envs& envs) {
+  auto valid_subcmd_json = CF_EXPECT(ListSubcommands(envs));
+  CF_EXPECT(valid_subcmd_json.isMember("subcmd"),
+            "Server returned the list of subcommands in Json but it is missing "
+                << " \"subcmd\" field");
+  std::string valid_subcmd_string = valid_subcmd_json["subcmd"].asString();
+  auto valid_subcmds = android::base::Tokenize(valid_subcmd_string, ",");
+  return valid_subcmds;
 }
 
 }  // end of namespace cuttlefish

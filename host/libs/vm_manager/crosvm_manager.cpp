@@ -57,66 +57,75 @@ bool CrosvmManager::IsSupported() {
 #endif
 }
 
-std::vector<std::string> CrosvmManager::ConfigureGraphics(
+Result<std::unordered_map<std::string, std::string>>
+CrosvmManager::ConfigureGraphics(
     const CuttlefishConfig::InstanceSpecific& instance) {
   // Override the default HAL search paths in all cases. We do this because
   // the HAL search path allows for fallbacks, and fallbacks in conjunction
   // with properities lead to non-deterministic behavior while loading the
   // HALs.
+
+  std::unordered_map<std::string, std::string> bootconfig_args;
+
   if (instance.gpu_mode() == kGpuModeGuestSwiftshader) {
-    return {
-        "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_2),
-        "androidboot.hardware.gralloc=minigbm",
-        "androidboot.hardware.hwcomposer=" + instance.hwcomposer(),
-        "androidboot.hardware.hwcomposer.display_finder_mode=drm",
-        "androidboot.hardware.egl=angle",
-        "androidboot.hardware.vulkan=pastel",
-        "androidboot.opengles.version=196609",  // OpenGL ES 3.1
+    bootconfig_args = {
+        {"androidboot.cpuvulkan.version", std::to_string(VK_API_VERSION_1_2)},
+        {"androidboot.hardware.gralloc", "minigbm"},
+        {"androidboot.hardware.hwcomposer", instance.hwcomposer()},
+        {"androidboot.hardware.hwcomposer.display_finder_mode", "drm"},
+        {"androidboot.hardware.egl", "angle"},
+        {"androidboot.hardware.vulkan", "pastel"},
+        {"androidboot.opengles.version", "196609"},  // OpenGL ES 3.1
     };
-  }
-
-  if (instance.gpu_mode() == kGpuModeDrmVirgl) {
-    return {
-        "androidboot.cpuvulkan.version=0",
-        "androidboot.hardware.gralloc=minigbm",
-        "androidboot.hardware.hwcomposer=ranchu",
-        "androidboot.hardware.hwcomposer.mode=client",
-        "androidboot.hardware.hwcomposer.display_finder_mode=drm",
-        "androidboot.hardware.egl=mesa",
+  } else if (instance.gpu_mode() == kGpuModeDrmVirgl) {
+    bootconfig_args = {
+        {"androidboot.cpuvulkan.version", "0"},
+        {"androidboot.hardware.gralloc", "minigbm"},
+        {"androidboot.hardware.hwcomposer", "ranchu"},
+        {"androidboot.hardware.hwcomposer.mode", "client"},
+        {"androidboot.hardware.hwcomposer.display_finder_mode", "drm"},
+        {"androidboot.hardware.egl", "mesa"},
         // No "hardware" Vulkan support, yet
-        "androidboot.opengles.version=196608",  // OpenGL ES 3.0
+        {"androidboot.opengles.version", "196608"},  // OpenGL ES 3.0
     };
-  }
-  if (instance.gpu_mode() == kGpuModeGfxStream) {
-    std::string gles_impl = instance.enable_gpu_angle() ? "angle" : "emulation";
-    std::string gltransport = (instance.guest_android_version() == "11.0.0")
-                                  ? "virtio-gpu-pipe"
-                                  : "virtio-gpu-asg";
-    std::string gles_version = instance.enable_gpu_angle() ? "196608" : "196609";
-    return {
-        "androidboot.cpuvulkan.version=0",
-        "androidboot.hardware.gralloc=minigbm",
-        "androidboot.hardware.hwcomposer=" + instance.hwcomposer(),
-        "androidboot.hardware.hwcomposer.display_finder_mode=drm",
-        "androidboot.hardware.egl=" + gles_impl,
-        "androidboot.hardware.vulkan=ranchu",
-        "androidboot.hardware.gltransport=" + gltransport,
-        "androidboot.opengles.version=" + gles_version,
+  } else if (instance.gpu_mode() == kGpuModeGfxstream ||
+             instance.gpu_mode() == kGpuModeGfxstreamGuestAngle) {
+    const bool uses_angle = instance.gpu_mode() == kGpuModeGfxstreamGuestAngle;
+    const std::string gles_impl = uses_angle ? "angle" : "emulation";
+    const std::string gles_version = uses_angle ? "196608" : "196609";
+    const std::string gltransport =
+        (instance.guest_android_version() == "11.0.0") ? "virtio-gpu-pipe"
+                                                       : "virtio-gpu-asg";
+    bootconfig_args = {
+        {"androidboot.cpuvulkan.version", "0"},
+        {"androidboot.hardware.gralloc", "minigbm"},
+        {"androidboot.hardware.hwcomposer", instance.hwcomposer()},
+        {"androidboot.hardware.hwcomposer.display_finder_mode", "drm"},
+        {"androidboot.hardware.egl", gles_impl},
+        {"androidboot.hardware.vulkan", "ranchu"},
+        {"androidboot.hardware.gltransport", gltransport},
+        {"androidboot.opengles.version", gles_version},
     };
-  }
-
-  if (instance.gpu_mode() == kGpuModeNone) {
-    // This function should probably return a result so that empty vec
-    // isn't treated as an error.
-    return {
-      "androidboot.dummy=0",
-    };
+  } else if (instance.gpu_mode() == kGpuModeNone) {
+    return {};
+  } else {
+    return CF_ERR("Unknown GPU mode " << instance.gpu_mode());
   }
 
-  return {};
+  if (!instance.gpu_angle_feature_overrides_enabled().empty()) {
+    bootconfig_args["androidboot.hardware.angle_feature_overrides_enabled"] =
+        instance.gpu_angle_feature_overrides_enabled();
+  }
+  if (!instance.gpu_angle_feature_overrides_disabled().empty()) {
+    bootconfig_args["androidboot.hardware.angle_feature_overrides_disabled"] =
+        instance.gpu_angle_feature_overrides_disabled();
+  }
+
+  return bootconfig_args;
 }
 
-std::string CrosvmManager::ConfigureBootDevices(int num_disks, bool have_gpu) {
+Result<std::unordered_map<std::string, std::string>>
+CrosvmManager::ConfigureBootDevices(int num_disks, bool have_gpu) {
   // TODO There is no way to control this assignment with crosvm (yet)
   if (HostArch() == Arch::X86_64) {
     // crosvm has an additional PCI device for an ISA bridge
@@ -126,7 +135,7 @@ std::string CrosvmManager::ConfigureBootDevices(int num_disks, bool have_gpu) {
   } else {
     // On ARM64 crosvm, block devices are on their own bridge, so we don't
     // need to calculate it, and the path is always the same
-    return "androidboot.boot_devices=10000.pci";
+    return {{{"androidboot.boot_devices", "10000.pci"}}};
   }
 }
 
@@ -143,7 +152,6 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
   crosvm_cmd.Cmd().AddParameter("run");
   crosvm_cmd.AddControlSocket(GetControlSocketPath(instance, crosvm_socket),
                               instance.crosvm_binary());
-
   if (!instance.smt()) {
     crosvm_cmd.Cmd().AddParameter("--no-smt");
   }
@@ -172,7 +180,7 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
   const auto gpu_mode = instance.gpu_mode();
 
   const std::string gpu_angle_string =
-      instance.enable_gpu_angle() ? ",angle=true" : "";
+      gpu_mode == kGpuModeGfxstreamGuestAngle ? ",angle=true" : "";
   // 256MB so it is small enough for a 32-bit kernel.
   const std::string gpu_pci_bar_size = ",pci-bar-size=268435456";
   const std::string gpu_udmabuf_string =
@@ -187,7 +195,8 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
   } else if (gpu_mode == kGpuModeDrmVirgl) {
     crosvm_cmd.Cmd().AddParameter("--gpu=backend=virglrenderer",
                                   gpu_common_3d_string);
-  } else if (gpu_mode == kGpuModeGfxStream) {
+  } else if (gpu_mode == kGpuModeGfxstream ||
+             gpu_mode == kGpuModeGfxstreamGuestAngle) {
     crosvm_cmd.Cmd().AddParameter("--gpu=backend=gfxstream,gles31=true",
                                   gpu_common_3d_string, gpu_angle_string);
   }
@@ -353,6 +362,17 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
   Command crosvm_log_tee_cmd(HostBinaryPath("log_tee"));
   crosvm_log_tee_cmd.AddParameter("--process_name=crosvm");
   crosvm_log_tee_cmd.AddParameter("--log_fd_in=", crosvm_logs);
+  crosvm_log_tee_cmd.SetStopper([](Subprocess* proc) {
+    // Ask nicely so that log_tee gets a chance to process all the logs.
+    int rval = kill(proc->pid(), SIGINT);
+    if (rval != 0) {
+      LOG(ERROR) << "Failed to stop log_tee nicely, attempting to KILL";
+      return KillSubprocess(proc) == StopperResult::kStopSuccess
+                 ? StopperResult::kStopCrash
+                 : StopperResult::kStopFailure;
+    }
+    return StopperResult::kStopSuccess;
+  });
 
   // Serial port for logcat, redirected to a pipe
   crosvm_cmd.AddHvcReadOnly(instance.logcat_pipe_name());
@@ -437,6 +457,10 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
 
   std::vector<Command> ret;
 
+  // log_tee must be added before crosvm_cmd to ensure all of crosvm's logs are
+  // captured during shutdown. Processes are stopped in reverse order.
+  ret.push_back(std::move(crosvm_log_tee_cmd));
+
   if (gpu_capture_enabled) {
     const std::string gpu_capture_basename =
         cpp_basename(instance.gpu_capture_binary());
@@ -494,7 +518,6 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
     ret.push_back(std::move(crosvm_cmd.Cmd()));
   }
 
-  ret.push_back(std::move(crosvm_log_tee_cmd));
   return ret;
 }
 

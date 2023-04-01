@@ -54,8 +54,6 @@ TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE ?= f2fs
 TARGET_USERDATAIMAGE_PARTITION_SIZE ?= 6442450944
 
 TARGET_VULKAN_SUPPORT ?= true
-TARGET_ENABLE_HOST_BLUETOOTH_EMULATION ?= true
-TARGET_USE_BTLINUX_HAL_IMPL ?= true
 
 # Enable Virtual A/B
 $(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/android_t_baseline.mk)
@@ -72,7 +70,7 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
 # sepolicy
 PRODUCT_PRODUCT_PROPERTIES += \
     remote_provisioning.enable_rkpd=true \
-    remote_provisioning.hostname=remoteprovisioning.googleapis.com \
+    remote_provisioning.hostname=autopush-remoteprovisioning.sandbox.googleapis.com \
     persist.adb.tcp.port=5555 \
     ro.com.google.locationfeatures=1 \
     persist.sys.fuse.passthrough.enable=true \
@@ -356,16 +354,19 @@ LOCAL_AUDIO_PRODUCT_PACKAGE := \
     android.hardware.audio.service-aidl.example \
     android.hardware.audio.effect.service-aidl.example \
     libaecsw \
-    libagcsw \
+    libagc1sw \
+    libagc2sw \
     libbassboostsw \
     libbundleaidl \
     libdownmixaidl \
     libdynamicsprocessingaidl \
     libenvreverbsw \
     libequalizersw \
+    libextensioneffect \
     libhapticgeneratoraidl \
     libloudnessenhanceraidl \
     libnssw \
+    libpreprocessingaidl \
     libpresetreverbsw \
     libreverbaidl \
     libtinyxml2 \

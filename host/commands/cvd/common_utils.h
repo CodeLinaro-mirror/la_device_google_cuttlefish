@@ -20,11 +20,19 @@
 #include <unordered_map>
 #include <vector>
 
+#include "common/libs/utils/result.h"
 #include "cvd_server.pb.h"
 
-#include "common/libs/utils/result.h"
-
 namespace cuttlefish {
+
+// utility struct for std::variant uses
+template <typename... Ts>
+struct Overload : Ts... {
+  using Ts::operator()...;
+};
+
+template <typename... Ts>
+Overload(Ts...) -> Overload<Ts...>;
 
 struct MakeRequestParam {
   std::vector<std::string> cmd_args;
@@ -39,6 +47,8 @@ cvd::Request MakeRequest(
 // name of environment variable to mark the launch_cvd initiated by the cvd
 // server
 static constexpr char kCvdMarkEnv[] = "_STARTED_BY_CVD_SERVER_";
+
+constexpr char kServerExecPath[] = "/proc/self/exe";
 
 constexpr char kStatusBin[] = "cvd_internal_status";
 // The name of environment variable that points to the host out directory
