@@ -1,11 +1,10 @@
-//
-// Copyright (C) 2021 The Android Open Source Project
+// Copyright 2023 Google Inc. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//      http://www.apache.org/licenses/LICENSE-2.0
+//    http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,27 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-cc_binary {
-    name: "bt_connector",
+android_library {
+    name: "CFSatelliteService-core",
     srcs: [
-        "main.cpp",
-    ],
-    shared_libs: [
-        "libext2_blkid",
-        "libbase",
-        "libcuttlefish_fs",
-        "libjsoncpp",
-        "liblog",
-        "libcuttlefish_utils",
+        "src/**/*.java",
     ],
     static_libs: [
-        "libcuttlefish_host_config",
-        "libgflags",
+        "android-support-annotations",
     ],
-    defaults: ["cuttlefish_buildhost_only"]
+    libs: [
+        "telephony-common",
+    ],
+}
+
+android_app {
+    name: "CFSatelliteService",
+    system_ext_specific: true,
+    platform_apis: true,
+    manifest: "AndroidManifest.xml",
+    static_libs: [
+        "CFSatelliteService-core",
+    ],
+    owner: "google",
+    privileged: true,
+    certificate: "platform",
 }
