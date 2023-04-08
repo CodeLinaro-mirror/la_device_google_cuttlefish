@@ -16,13 +16,18 @@
 
 #pragma once
 
+#include <atomic>
+
 #include <fruit/fruit.h>
 
 #include "host/commands/cvd/command_sequence.h"
 
 namespace cuttlefish {
 
-fruit::Component<fruit::Required<CommandSequenceExecutor>>
-AcloudCommandComponent();
+struct AcloudTranslatorOptOut {};
 
+fruit::Component<fruit::Required<
+    CommandSequenceExecutor,
+    fruit::Annotated<AcloudTranslatorOptOut, std::atomic<bool>>>>
+AcloudCommandComponent();
 }

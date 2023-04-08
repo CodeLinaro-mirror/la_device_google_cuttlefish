@@ -23,7 +23,6 @@
 #include <sstream>
 
 #include <android-base/file.h>
-#include <cvd_server.pb.h>
 #include <fruit/fruit.h>
 
 #include "common/libs/fs/shared_buf.h"
@@ -33,6 +32,7 @@
 #include "common/libs/utils/flag_parser.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
+#include "cvd_server.pb.h"
 #include "host/commands/cvd/common_utils.h"
 #include "host/commands/cvd/selector/instance_database_utils.h"
 #include "host/commands/cvd/selector/selector_constants.h"
@@ -90,12 +90,35 @@ Result<InstanceManager::GroupCreationInfo> InstanceManager::Analyze(
 Result<InstanceManager::LocalInstanceGroup> InstanceManager::SelectGroup(
     const cvd_common::Args& selector_args, const cvd_common::Envs& envs,
     const uid_t uid) {
+  return SelectGroup(selector_args, {}, envs, uid);
+}
+
+Result<InstanceManager::LocalInstanceGroup> InstanceManager::SelectGroup(
+    const cvd_common::Args& selector_args, const Queries& extra_queries,
+    const cvd_common::Envs& envs, const uid_t uid) {
   std::unique_lock lock(instance_db_mutex_);
   auto& instance_db = GetInstanceDB(uid);
-  lock.unlock();
-  auto group =
-      CF_EXPECT(GroupSelector::Select(selector_args, uid, instance_db, envs));
-  return {group};
+  auto group_selector = CF_EXPECT(
+      GroupSelector::GetSelector(selector_args, extra_queries, envs, uid));
+  auto group = CF_EXPECT(group_selector.FindGroup(instance_db));
+  return group;
+}
+
+Result<InstanceManager::LocalInstance::Copy> InstanceManager::SelectInstance(
+    const cvd_common::Args& selector_args, const cvd_common::Envs& envs,
+    const uid_t uid) {
+  return SelectInstance(selector_args, {}, envs, uid);
+}
+
+Result<InstanceManager::LocalInstance::Copy> InstanceManager::SelectInstance(
+    const cvd_common::Args& selector_args, const Queries& extra_queries,
+    const cvd_common::Envs& envs, const uid_t uid) {
+  std::unique_lock lock(instance_db_mutex_);
+  auto& instance_db = GetInstanceDB(uid);
+  auto instance_selector = CF_EXPECT(
+      InstanceSelector::GetSelector(selector_args, extra_queries, envs, uid));
+  auto instance_copy = CF_EXPECT(instance_selector.FindInstance(instance_db));
+  return instance_copy;
 }
 
 bool InstanceManager::HasInstanceGroups(const uid_t uid) {
@@ -112,10 +135,14 @@ Result<void> InstanceManager::SetInstanceGroup(
   const auto group_name = group_info.group_name;
   const auto home_dir = group_info.home;
   const auto host_artifacts_path = group_info.host_artifacts_path;
+  const auto product_out_path = group_info.product_out_path;
   const auto& per_instance_info = group_info.instances;
 
   auto new_group = CF_EXPECT(
-      instance_db.AddInstanceGroup(group_name, home_dir, host_artifacts_path));
+      instance_db.AddInstanceGroup({.group_name = group_name,
+                                    .home_dir = home_dir,
+                                    .host_artifacts_path = host_artifacts_path,
+                                    .product_out_path = product_out_path}));
 
   using InstanceInfo = selector::InstanceDatabase::InstanceInfo;
   std::vector<InstanceInfo> instances_info;

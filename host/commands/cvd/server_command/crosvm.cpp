@@ -28,6 +28,7 @@
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/utils/contains.h"
 #include "common/libs/utils/subprocess.h"
+#include "host/commands/cvd/flag.h"
 #include "host/commands/cvd/selector/instance_group_record.h"
 #include "host/commands/cvd/selector/instance_record.h"
 #include "host/commands/cvd/selector/selector_constants.h"
@@ -50,99 +51,30 @@ class CvdCrosVmCommandHandler : public CvdServerHandler {
     return Contains(crosvm_operations_, invocation.command);
   }
 
-  Result<selector::LocalInstance::Copy> NarrowDownToInstance(
-      const selector::LocalInstanceGroup& group,
-      cvd_common::Args selector_opts) const {
-    auto& instances = group.Instances();
-    CF_EXPECT(!instances.empty(),
-              "The group " << group.GroupName() << " does not have instance.");
-    if (group.Instances().size() == 1) {
-      auto& instance_uniq_ptr = *(instances.begin());
-      CF_EXPECT(instance_uniq_ptr != nullptr);
-      return instance_uniq_ptr->GetCopy();
-    }
-
-    auto selector_flags = selector::SelectorFlags::New();
-    auto instance_name_flag =
-        CF_EXPECT(selector_flags.GetFlag("instance_name"));
-    std::optional<std::string> instance_name_flag_value;
-    CF_EXPECT(
-        instance_name_flag.FilterFlag(selector_opts, instance_name_flag_value));
-    CF_EXPECT(
-        instance_name_flag_value != std::nullopt,
-        "Cannot pin point the instance with in the \"" << group.GroupName());
-
-    auto name_tokens = android::base::Tokenize(*instance_name_flag_value, ",");
-    CF_EXPECT_EQ(name_tokens.size(), 1,
-                 "Too many or little instance names are given.");
-    for (const auto& instance : instances) {
-      if (instance && instance->PerInstanceName() == name_tokens.front()) {
-        return instance->GetCopy();
-      }
-    }
-    return CF_ERR("Instance named "
-                  << name_tokens.front() << " is not found in "
-                  << " the group named " << group.GroupName());
-  }
-
   Result<cvd::Response> Handle(const RequestWithStdio& request) override {
-    // TODO(kwstephenkim): implement "--help"
     std::unique_lock interrupt_lock(interruptible_);
     CF_EXPECT(!interrupted_, "Interrupted");
     CF_EXPECT(CanHandle(request));
     CF_EXPECT(VerifyPrecondition(request));
     const uid_t uid = request.Credentials()->uid;
-
     cvd_common::Envs envs =
         cvd_common::ConvertToEnvs(request.Message().command_request().env());
-    const auto& selector_opts =
-        request.Message().command_request().selector_opts();
-    const auto selector_args = cvd_common::ConvertToArgs(selector_opts.args());
-
-    auto instance_group =
-        CF_EXPECT(instance_manager_.SelectGroup(selector_args, envs, uid));
-    // Unfortunately, for now, cvd selector always returns the instance group
-    // that the individual device might belong to
-    const auto instance =
-        CF_EXPECT(NarrowDownToInstance(instance_group, selector_args));
-    const auto instance_id = instance.InstanceId();
-    auto home = instance_group.HomeDir();
-    const auto socket_file_path =
-        ConcatToString(home, "/cuttlefish_runtime.", instance_id,
-                       "/internal/"
-                       "crosvm_control.sock");
-
-    auto android_host_out = instance_group.HostArtifactsPath();
-    auto crosvm_bin_path = ConcatToString(android_host_out, "/bin/crosvm");
 
     auto [crosvm_op, subcmd_args] = ParseInvocation(request.Message());
+    /*
+     * crosvm suspend/resume/snapshot support --help only. Not --helpxml, etc.
+     *
+     * Otherwise, IsHelpSubcmd() should be used here instead.
+     */
+    auto help_flag = CvdFlag("help", false);
+    cvd_common::Args subcmd_args_copy{subcmd_args};
+    auto help_parse_result = help_flag.CalculateFlag(subcmd_args_copy);
+    bool is_help = help_parse_result.ok() && (*help_parse_result);
 
-    std::stringstream crosvm_cmd;
-    crosvm_cmd << crosvm_bin_path << " " << crosvm_op << " ";
-    for (const auto& arg : subcmd_args) {
-      crosvm_cmd << arg << " ";
-    }
-    crosvm_cmd << socket_file_path << std::endl;
-    WriteAll(request.Err(), crosvm_cmd.str());
-
-    cvd_common::Args crosvm_args{crosvm_op};
-    crosvm_args.insert(crosvm_args.end(), subcmd_args.begin(),
-                       subcmd_args.end());
-    crosvm_args.push_back(socket_file_path);
-    envs["HOME"] = home;
-    envs[kAndroidHostOut] = android_host_out;
-    envs[kAndroidSoongHostOut] = android_host_out;
-    ConstructCommandParam construct_cmd_param{
-        .bin_path = crosvm_bin_path,
-        .home = home,
-        .args = crosvm_args,
-        .envs = envs,
-        .working_dir = request.Message().command_request().working_directory(),
-        .command_name = "crosvm",
-        .in = request.In(),
-        .out = request.Out(),
-        .err = request.Err()};
-    Command command = CF_EXPECT(ConstructCommand(construct_cmd_param));
+    Command command =
+        is_help ? CF_EXPECT(HelpCommand(request, crosvm_op, subcmd_args, envs))
+                : CF_EXPECT(NonHelpCommand(request, uid, crosvm_op, subcmd_args,
+                                           envs));
     SubprocessOptions options;
     CF_EXPECT(subprocess_waiter_.Setup(command.Start(options)));
     interrupt_lock.unlock();
@@ -168,6 +100,54 @@ class CvdCrosVmCommandHandler : public CvdServerHandler {
     CF_EXPECT(verification.is_ok == true, verification.error_message);
     return {};
   }
+
+  Result<Command> HelpCommand(const RequestWithStdio& request,
+                              const std::string& crosvm_op,
+                              const cvd_common::Args& subcmd_args,
+                              cvd_common::Envs envs) {
+    CF_EXPECT(Contains(envs, kAndroidHostOut));
+    cvd_common::Args crosvm_args{crosvm_op};
+    crosvm_args.insert(crosvm_args.end(), subcmd_args.begin(),
+                       subcmd_args.end());
+    return CF_EXPECT(
+        ConstructCvdHelpCommand("crosvm", envs, crosvm_args, request));
+  }
+
+  Result<Command> NonHelpCommand(const RequestWithStdio& request,
+                                 const uid_t uid, const std::string& crosvm_op,
+                                 const cvd_common::Args& subcmd_args,
+                                 const cvd_common::Envs& envs) {
+    const auto& selector_opts =
+        request.Message().command_request().selector_opts();
+    const auto selector_args = cvd_common::ConvertToArgs(selector_opts.args());
+
+    auto instance =
+        CF_EXPECT(instance_manager_.SelectInstance(selector_args, envs, uid));
+    const auto& instance_group = instance.ParentGroup();
+    const auto instance_id = instance.InstanceId();
+    auto home = instance_group.HomeDir();
+    const auto socket_file_path =
+        ConcatToString(home, "/cuttlefish_runtime.", instance_id,
+                       "/internal/"
+                       "crosvm_control.sock");
+
+    auto android_host_out = instance_group.HostArtifactsPath();
+    auto crosvm_bin_path = ConcatToString(android_host_out, "/bin/crosvm");
+
+    cvd_common::Args crosvm_args{crosvm_op};
+    crosvm_args.insert(crosvm_args.end(), subcmd_args.begin(),
+                       subcmd_args.end());
+    crosvm_args.push_back(socket_file_path);
+    return CF_EXPECT(
+        ConstructCvdGenericNonHelpCommand({.bin_file = "crosvm",
+                                           .envs = envs,
+                                           .cmd_args = std::move(crosvm_args),
+                                           .android_host_out = android_host_out,
+                                           .home = home,
+                                           .verbose = true},
+                                          request));
+  }
+
   InstanceManager& instance_manager_;
   SubprocessWaiter& subprocess_waiter_;
   std::mutex interruptible_;
