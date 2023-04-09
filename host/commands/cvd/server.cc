@@ -28,6 +28,7 @@
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
+#include <android-base/strings.h>
 #include <fruit/fruit.h>
 
 #include "cvd_server.pb.h"
@@ -49,6 +50,8 @@
 #include "host/commands/cvd/logger.h"
 #include "host/commands/cvd/server_command/cmd_list.h"
 #include "host/commands/cvd/server_command/crosvm.h"
+#include "host/commands/cvd/server_command/display.h"
+#include "host/commands/cvd/server_command/env.h"
 #include "host/commands/cvd/server_command/generic.h"
 #include "host/commands/cvd/server_command/handler_proxy.h"
 #include "host/commands/cvd/server_command/load_configs.h"
@@ -74,7 +77,8 @@ CvdServer::CvdServer(BuildApi& build_api, EpollPool& epoll_pool,
       instance_manager_(instance_manager),
       host_tool_target_manager_(host_tool_target_manager),
       server_logger_(server_logger),
-      running_(true) {
+      running_(true),
+      optout_(false) {
   std::scoped_lock lock(threads_mutex_);
   for (auto i = 0; i < kNumThreads; i++) {
     threads_.emplace_back([this]() {
@@ -104,18 +108,23 @@ fruit::Component<> CvdServer::RequestComponent(CvdServer* server) {
       .bindInstance(server->instance_manager_)
       .bindInstance(server->build_api_)
       .bindInstance(server->host_tool_target_manager_)
+      .bindInstance<
+          fruit::Annotated<AcloudTranslatorOptOut, std::atomic<bool>>>(
+          server->optout_)
       .install(AcloudCommandComponent)
       .install(CvdCmdlistComponent)
       .install(CommandSequenceExecutorComponent)
       .install(CvdCrosVmComponent)
       .install(cvdCommandComponent)
+      .install(CvdDisplayComponent)
+      .install(CvdEnvComponent)
       .install(cvdGenericCommandComponent)
       .install(CvdHandlerProxyComponent)
       .install(CvdHelpComponent)
       .install(CvdResetComponent)
       .install(CvdRestartComponent)
       .install(cvdShutdownComponent)
-      .install(cvdStartCommandComponent)
+      .install(CvdStartCommandComponent)
       .install(cvdVersionComponent)
       .install(DemoMultiVdComponent)
       .install(LoadConfigsComponent);
@@ -303,8 +312,64 @@ Result<void> CvdServer::HandleMessage(EpollEvent event) {
   return {};
 }
 
-Result<cvd::Response> CvdServer::HandleRequest(RequestWithStdio request,
+// convert HOME, ANDROID_HOST_OUT, ANDROID_SOONG_HOST_OUT
+// and ANDROID_PRODUCT_OUT into absolute paths if any.
+static Result<RequestWithStdio> ConvertDirPathToAbsolute(
+    const RequestWithStdio& request) {
+  if (request.Message().contents_case() !=
+      cvd::Request::ContentsCase::kCommandRequest) {
+    return request;
+  }
+  if (request.Message().command_request().env().empty()) {
+    return request;
+  }
+  auto envs =
+      cvd_common::ConvertToEnvs(request.Message().command_request().env());
+  std::unordered_set<std::string> interested_envs{
+      kAndroidHostOut, kAndroidSoongHostOut, "HOME", kAndroidProductOut};
+  const auto& current_dir =
+      request.Message().command_request().working_directory();
+
+  // make sure that "~" is not included
+  for (const auto& key : interested_envs) {
+    if (!Contains(envs, key)) {
+      continue;
+    }
+    const auto& dir = envs.at(key);
+    CF_EXPECT(dir != "~" && !android::base::StartsWith(dir, "~/"),
+              "The " << key << " directory should not start with ~");
+  }
+
+  for (const auto& key : interested_envs) {
+    if (!Contains(envs, key)) {
+      continue;
+    }
+    const auto dir = envs.at(key);
+    envs[key] =
+        CF_EXPECT(EmulateAbsolutePath({.current_working_dir = current_dir,
+                                       .home_dir = std::nullopt,  // unused
+                                       .path_to_convert = dir,
+                                       .follow_symlink = false}));
+  }
+
+  auto cmd_args =
+      cvd_common::ConvertToArgs(request.Message().command_request().args());
+  auto selector_args = cvd_common::ConvertToArgs(
+      request.Message().command_request().selector_opts().args());
+  RequestWithStdio new_request(
+      request.Client(),
+      MakeRequest({.cmd_args = std::move(cmd_args),
+                   .selector_args = std::move(selector_args),
+                   .env = std::move(envs),
+                   .working_dir = current_dir},
+                  request.Message().command_request().wait_behavior()),
+      request.FileDescriptors(), request.Credentials());
+  return new_request;
+}
+
+Result<cvd::Response> CvdServer::HandleRequest(RequestWithStdio orig_request,
                                                SharedFD client) {
+  auto request = CF_EXPECT(ConvertDirPathToAbsolute(orig_request));
   fruit::Injector<> injector(RequestComponent, this);
 
   for (auto& late_injected : injector.getMultibindings<LateInjected>()) {

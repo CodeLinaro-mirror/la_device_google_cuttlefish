@@ -52,12 +52,12 @@ namespace cuttlefish {
 
 class CvdStartCommandHandler : public CvdServerHandler {
  public:
-  INJECT(CvdStartCommandHandler(
-      InstanceManager& instance_manager, SubprocessWaiter& subprocess_waiter,
-      HostToolTargetManager& host_tool_target_manager))
+  INJECT(CvdStartCommandHandler(InstanceManager& instance_manager,
+                                HostToolTargetManager& host_tool_target_manager,
+                                CommandSequenceExecutor& command_executor))
       : instance_manager_(instance_manager),
-        subprocess_waiter_(subprocess_waiter),
-        host_tool_target_manager_(host_tool_target_manager) {}
+        host_tool_target_manager_(host_tool_target_manager),
+        command_executor_(command_executor) {}
 
   Result<bool> CanHandle(const RequestWithStdio& request) const;
   Result<cvd::Response> Handle(const RequestWithStdio& request) override;
@@ -123,14 +123,120 @@ class CvdStartCommandHandler : public CvdServerHandler {
   Result<cvd::Response> HandleDaemon(
       std::optional<selector::GroupCreationInfo>& group_creation_info,
       const uid_t uid);
+  Result<void> AcloudCompatActions(
+      const selector::GroupCreationInfo& group_creation_info,
+      const RequestWithStdio& request);
+
   InstanceManager& instance_manager_;
-  SubprocessWaiter& subprocess_waiter_;
+  SubprocessWaiter subprocess_waiter_;
   HostToolTargetManager& host_tool_target_manager_;
+  CommandSequenceExecutor& command_executor_;
   std::mutex interruptible_;
   bool interrupted_ = false;
 
   static const std::array<std::string, 2> supported_commands_;
 };
+
+Result<void> CvdStartCommandHandler::AcloudCompatActions(
+    const selector::GroupCreationInfo& group_creation_info,
+    const RequestWithStdio& request) {
+  std::unique_lock interrupt_lock(interruptible_);
+  CF_EXPECT(!interrupted_, "Interrupted");
+  // rm -fr "TempDir()/acloud_cvd_temp/local-instance-<i>"
+  std::string acloud_compat_home_prefix =
+      TempDir() + "/acloud_cvd_temp/local-instance-";
+  std::vector<std::string> acloud_compat_homes;
+  acloud_compat_homes.reserve(group_creation_info.instances.size());
+  for (const auto instance : group_creation_info.instances) {
+    acloud_compat_homes.push_back(
+        ConcatToString(acloud_compat_home_prefix, instance.instance_id_));
+  }
+  for (const auto acloud_compat_home : acloud_compat_homes) {
+    bool result_id = false;
+    std::stringstream acloud_compat_home_stream;
+    if (!FileExists(acloud_compat_home)) {
+      continue;
+    }
+    if (!DirectoryExists(acloud_compat_home, /*follow_symlinks=*/false)) {
+      // cvd created a symbolic link
+      result_id = RemoveFile(acloud_compat_home);
+    } else {
+      // acloud created a directory
+      // rm -fr isn't supporetd by TreeHugger, so if we fork-and-exec to
+      // literally run "rm -fr", the presubmit testing may fail if ever this
+      // code is tested in the future.
+      result_id = RecursivelyRemoveDirectory(acloud_compat_home);
+    }
+    if (!result_id) {
+      LOG(ERROR) << "Removing " << acloud_compat_home << " failed.";
+      continue;
+    }
+  }
+
+  // ln -f -s  [target] [symlink]
+  // 1. mkdir -p home
+  // 2. ln -f -s android_host_out home/host_bins
+  // 3. for each i in ids,
+  //     ln -f -s home /tmp/acloud_cvd_temp/local-instance-<i>
+  std::vector<MakeRequestForm> request_forms;
+  const cvd_common::Envs& common_envs = group_creation_info.envs;
+
+  const std::string& home_dir = group_creation_info.home;
+  const std::string client_pwd =
+      request.Message().command_request().working_directory();
+  request_forms.push_back(
+      {.working_dir = client_pwd,
+       .cmd_args = cvd_common::Args{"mkdir", "-p", home_dir},
+       .env = common_envs,
+       .selector_args = cvd_common::Args{}});
+  const std::string& android_host_out = group_creation_info.host_artifacts_path;
+  request_forms.push_back(
+      {.working_dir = client_pwd,
+       .cmd_args = cvd_common::Args{"ln", "-f", "-s", android_host_out,
+                                    home_dir + "/host_bins"},
+       .env = common_envs,
+       .selector_args = cvd_common::Args{}});
+  /* TODO(weihsu@): cvd acloud delete/list must handle multi-tenancy gracefully
+   *
+   * acloud delete just calls, for all instances in a group,
+   *  /tmp/acloud_cvd_temp/local-instance-<i>/host_bins/stop_cvd
+   *
+   * That isn't necessary. Not desirable. Cvd acloud should read the instance
+   * manager's in-memory data structure, and call stop_cvd once for the entire
+   * group.
+   *
+   * Likewise, acloud list simply shows all instances in a flattened way. The
+   * user has no clue about an instance group. Cvd acloud should show the
+   * hierarchy.
+   *
+   * For now, we create the symbolic links so that it is compatible with acloud
+   * in Python.
+   */
+  for (const auto& acloud_compat_home : acloud_compat_homes) {
+    request_forms.push_back({
+        .working_dir = client_pwd,
+        .cmd_args =
+            cvd_common::Args{"ln", "-f", "-s", home_dir, acloud_compat_home},
+        .env = common_envs,
+        .selector_args = cvd_common::Args{},
+    });
+  }
+  std::vector<cvd::Request> request_protos;
+  for (const auto& request_form : request_forms) {
+    request_protos.emplace_back(MakeRequest(request_form));
+  }
+  std::vector<RequestWithStdio> new_requests;
+  auto dev_null = SharedFD::Open("/dev/null", O_RDWR);
+  CF_EXPECT(dev_null->IsOpen(), dev_null->StrError());
+  std::vector<SharedFD> dev_null_fds = {dev_null, dev_null, dev_null};
+  for (auto& request_proto : request_protos) {
+    new_requests.emplace_back(request.Client(), request_proto, dev_null_fds,
+                              request.Credentials());
+  }
+  interrupt_lock.unlock();
+  CF_EXPECT(command_executor_.Execute(new_requests, dev_null));
+  return {};
+}
 
 void CvdStartCommandHandler::MarkLockfiles(
     selector::GroupCreationInfo& group_info, const InUseState state) {
@@ -313,6 +419,8 @@ Result<selector::GroupCreationInfo> CvdStartCommandHandler::UpdateArgsAndEnvs(
   group_creation_info.envs["HOME"] = group_creation_info.home;
   group_creation_info.envs[kAndroidHostOut] =
       group_creation_info.host_artifacts_path;
+  group_creation_info.envs[kAndroidProductOut] =
+      group_creation_info.product_out_path;
   /* b/253644566
    *
    * Old branches used kAndroidSoongHostOut instead of kAndroidHostOut
@@ -456,11 +564,31 @@ Result<cvd::Response> CvdStartCommandHandler::Handle(
   cvd_common::Envs envs =
       cvd_common::ConvertToEnvs(request.Message().command_request().env());
   if (Contains(envs, "HOME")) {
-    // As the end-user may override HOME, this could be a relative path
-    // to client's pwd, or may include "~" which is the client's actual
-    // home directory.
-    auto client_pwd = request.Message().command_request().working_directory();
-    envs["HOME"] = CF_EXPECT(ClientAbsolutePath(envs["HOME"], uid, client_pwd));
+    if (envs.at("HOME").empty()) {
+      envs.erase("HOME");
+    } else {
+      // As the end-user may override HOME, this could be a relative path
+      // to client's pwd, or may include "~" which is the client's actual
+      // home directory.
+      auto client_pwd = request.Message().command_request().working_directory();
+      const auto given_home_dir = envs.at("HOME");
+      /*
+       * Imagine this scenario:
+       *   client$ export HOME=/tmp/new/dir
+       *   client$ HOME="~/subdir" cvd start
+       *
+       * The value of ~ isn't sent to the server. The server can't figure that
+       * out as it might be overridden before the cvd start command.
+       */
+      CF_EXPECT(!android::base::StartsWith(given_home_dir, "~") &&
+                    !android::base::StartsWith(given_home_dir, "~/"),
+                "The HOME directory should not start with ~");
+      envs["HOME"] = CF_EXPECT(
+          EmulateAbsolutePath({.current_working_dir = client_pwd,
+                               .home_dir = CF_EXPECT(SystemWideUserHome(uid)),
+                               .path_to_convert = given_home_dir,
+                               .follow_symlink = false}));
+    }
   }
   CF_EXPECT(Contains(envs, kAndroidHostOut));
   const auto bin = CF_EXPECT(FindStartBin(envs.at(kAndroidHostOut)));
@@ -510,6 +638,14 @@ Result<cvd::Response> CvdStartCommandHandler::Handle(
     return ResponseFromSiginfo(infop);
   }
 
+  // make acquire interrupt_lock inside.
+  auto acloud_compat_action_result =
+      AcloudCompatActions(*group_creation_info, request);
+  if (!acloud_compat_action_result.ok()) {
+    LOG(ERROR) << acloud_compat_action_result.error().Trace();
+    LOG(ERROR) << "AcloudCompatActions() failed"
+               << " but continue as they are minor errors.";
+  }
   LOG(ERROR) << "Daemon mode is " << (is_daemon ? "set" : "unset");
   return is_daemon ? HandleDaemon(group_creation_info, uid)
                    : HandleNoDaemon(group_creation_info, uid);
@@ -644,6 +780,11 @@ Result<void> CvdStartCommandHandler::SetBuildId(const uid_t uid,
 Result<void> CvdStartCommandHandler::Interrupt() {
   std::scoped_lock interrupt_lock(interruptible_);
   interrupted_ = true;
+  auto result = command_executor_.Interrupt();
+  if (!result.ok()) {
+    LOG(ERROR) << "Failed to interrupt CommandExecutor"
+               << result.error().Message();
+  }
   CF_EXPECT(subprocess_waiter_.Interrupt());
   return {};
 }
@@ -700,9 +841,9 @@ std::vector<std::string> CvdStartCommandHandler::CmdList() const {
 const std::array<std::string, 2> CvdStartCommandHandler::supported_commands_{
     "start", "launch_cvd"};
 
-fruit::Component<
-    fruit::Required<InstanceManager, SubprocessWaiter, HostToolTargetManager>>
-cvdStartCommandComponent() {
+fruit::Component<fruit::Required<InstanceManager, HostToolTargetManager,
+                                 CommandSequenceExecutor>>
+CvdStartCommandComponent() {
   return fruit::createComponent()
       .addMultibinding<CvdServerHandler, CvdStartCommandHandler>();
 }
