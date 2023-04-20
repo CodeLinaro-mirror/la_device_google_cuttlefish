@@ -56,6 +56,7 @@
 #include "host/commands/cvd/server_command/handler_proxy.h"
 #include "host/commands/cvd/server_command/load_configs.h"
 #include "host/commands/cvd/server_command/operation_to_bins_map.h"
+#include "host/commands/cvd/server_command/power.h"
 #include "host/commands/cvd/server_command/reset.h"
 #include "host/commands/cvd/server_command/start.h"
 #include "host/commands/cvd/server_command/subcmd.h"
@@ -116,6 +117,7 @@ fruit::Component<> CvdServer::RequestComponent(CvdServer* server) {
       .install(CommandSequenceExecutorComponent)
       .install(CvdCrosVmComponent)
       .install(cvdCommandComponent)
+      .install(CvdDevicePowerComponent)
       .install(CvdDisplayComponent)
       .install(CvdEnvComponent)
       .install(cvdGenericCommandComponent)
@@ -195,7 +197,7 @@ Result<void> CvdServer::Exec(SharedFD new_exe, SharedFD client_fd) {
   android::base::unique_fd client_dup{client_fd->UNMANAGED_Dup()};
   CF_EXPECT(client_dup.get() >= 0, "dup: \"" << server_fd_->StrError() << "\"");
   std::vector<std::string> argv_str = {
-      "cvd_server",
+      kServerExecPath,
       "-INTERNAL_server_fd=" + std::to_string(server_dup.get()),
       "-INTERNAL_carryover_client_fd=" + std::to_string(client_dup.get()),
   };
@@ -367,8 +369,17 @@ static Result<RequestWithStdio> ConvertDirPathToAbsolute(
   return new_request;
 }
 
+static Result<void> VerifyUser(const RequestWithStdio& request) {
+  CF_EXPECT(request.Credentials(),
+            "ucred is not available while it is necessary.");
+  const uid_t client_uid = request.Credentials()->uid;
+  CF_EXPECT_EQ(client_uid, getuid(), "Cvd server process is one per user.");
+  return {};
+}
+
 Result<cvd::Response> CvdServer::HandleRequest(RequestWithStdio orig_request,
                                                SharedFD client) {
+  CF_EXPECT(VerifyUser(orig_request));
   auto request = CF_EXPECT(ConvertDirPathToAbsolute(orig_request));
   fruit::Injector<> injector(RequestComponent, this);
 

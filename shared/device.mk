@@ -37,7 +37,7 @@ PRODUCT_VENDOR_PROPERTIES += \
 
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish # for audio and wifi
 
-PRODUCT_SHIPPING_API_LEVEL := 34
+PRODUCT_SHIPPING_API_LEVEL := 35
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
 
@@ -662,6 +662,9 @@ endif
 # UWB HAL
 PRODUCT_PACKAGES += \
     android.hardware.uwb-service
+PRODUCT_COPY_FILES += \
+    device/google/cuttlefish/guest/hals/uwb/uwb-service.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/uwb-service.rc
+
 
 # Host packages to install
 PRODUCT_HOST_PACKAGES += socket_vsock_proxy

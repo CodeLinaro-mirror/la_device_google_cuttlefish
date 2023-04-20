@@ -35,6 +35,10 @@ namespace cuttlefish {
 
 fruit::Component<fruit::Required<const CuttlefishConfig,
                                  const CuttlefishConfig::InstanceSpecific>>
+UwbConnectorComponent();
+
+fruit::Component<fruit::Required<const CuttlefishConfig,
+                                 const CuttlefishConfig::InstanceSpecific>>
 BluetoothConnectorComponent();
 
 fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>,
@@ -71,6 +75,11 @@ fruit::Component<
                     const CuttlefishConfig::InstanceSpecific, LogTeeCreator>>
 RootCanalComponent();
 
+fruit::Component<
+    fruit::Required<const CuttlefishConfig,
+                    const CuttlefishConfig::InstanceSpecific, LogTeeCreator>>
+PicaComponent();
+
 fruit::Component<fruit::Required<GrpcSocketCreator>> EchoServerComponent();
 
 fruit::Component<fruit::Required<const CuttlefishConfig,
@@ -88,9 +97,9 @@ TombstoneReceiverComponent();
 fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>>
 VehicleHalServerComponent();
 
-fruit::Component<
-    fruit::Required<const CuttlefishConfig,
-                    const CuttlefishConfig::InstanceSpecific, LogTeeCreator>>
+fruit::Component<fruit::Required<const CuttlefishConfig,
+                                 const CuttlefishConfig::InstanceSpecific,
+                                 LogTeeCreator, GrpcSocketCreator>>
 WmediumdServerComponent();
 
 fruit::Component<fruit::Required<const CuttlefishConfig,
