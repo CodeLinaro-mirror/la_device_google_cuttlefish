@@ -29,6 +29,7 @@
 #include "common/libs/utils/tee_logging.h"
 #include "host/commands/assemble_cvd/clean.h"
 #include "host/commands/assemble_cvd/disk_flags.h"
+#include "host/commands/assemble_cvd/display.h"
 #include "host/commands/assemble_cvd/flag_feature.h"
 #include "host/commands/assemble_cvd/flags.h"
 #include "host/commands/assemble_cvd/flags_defaults.h"
@@ -233,6 +234,7 @@ Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
       preserving.insert("NVChip");
       preserving.insert("gatekeeper_secure");
       preserving.insert("gatekeeper_insecure");
+      preserving.insert("keymint_secure_deletion_data");
       preserving.insert("modem_nvram.json");
       preserving.insert("recording");
       preserving.insert("persistent_composite_disk_config.txt");
@@ -335,6 +337,9 @@ fruit::Component<> FlagsComponent() {
       .install(AdbConfigComponent)
       .install(AdbConfigFlagComponent)
       .install(AdbConfigFragmentComponent)
+      .install(DisplaysConfigsComponent)
+      .install(DisplaysConfigsFlagComponent)
+      .install(DisplaysConfigsFragmentComponent)
       .install(FastbootConfigComponent)
       .install(FastbootConfigFlagComponent)
       .install(FastbootConfigFragmentComponent)
