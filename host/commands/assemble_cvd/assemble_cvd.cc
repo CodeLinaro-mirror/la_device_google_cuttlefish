@@ -48,13 +48,8 @@ namespace {
 
 std::string kFetcherConfigFile = "fetcher_config.json";
 
-struct LocatedFetcherConfig {
+FetcherConfig FindFetcherConfig(const std::vector<std::string>& files) {
   FetcherConfig fetcher_config;
-  std::optional<std::string> working_dir;
-};
-
-LocatedFetcherConfig FindFetcherConfig(const std::vector<std::string>& files) {
-  LocatedFetcherConfig located_fetcher_config;
   for (const auto& file : files) {
     if (android::base::EndsWith(file, kFetcherConfigFile)) {
       std::string home_directory = StringFromEnv("HOME", CurrentDirectory());
@@ -64,17 +59,16 @@ LocatedFetcherConfig FindFetcherConfig(const std::vector<std::string>& files) {
         LOG(INFO) << "Found " << fetcher_file << " in HOME directory ('"
                   << home_directory << "') and not current working directory";
 
-        located_fetcher_config.working_dir = home_directory;
         fetcher_file = home_directory + "/" + fetcher_file;
       }
 
-      if (located_fetcher_config.fetcher_config.LoadFromFile(fetcher_file)) {
-        return located_fetcher_config;
+      if (fetcher_config.LoadFromFile(fetcher_file)) {
+        return fetcher_config;
       }
       LOG(ERROR) << "Could not load fetcher config file.";
     }
   }
-  return located_fetcher_config;
+  return fetcher_config;
 }
 
 std::string GetLegacyConfigFilePath(const CuttlefishConfig& config) {
@@ -258,23 +252,15 @@ int AssembleCvdMain(int argc, char** argv) {
   }
   std::vector<std::string> input_files = android::base::Split(input_files_str, "\n");
 
-  LocatedFetcherConfig located_fetcher_config = FindFetcherConfig(input_files);
-  if (located_fetcher_config.working_dir) {
-    LOG(INFO) << "Changing current working dircetory to '"
-              << *located_fetcher_config.working_dir << "'";
-    CHECK(chdir((*located_fetcher_config.working_dir).c_str()) == 0)
-        << "Unable to change working dir to '"
-        << *located_fetcher_config.working_dir << "': " << strerror(errno);
-  }
-
+  FetcherConfig fetcher_config = FindFetcherConfig(input_files);
   // set gflags defaults to point to kernel/RD from fetcher config
-  ExtractKernelParamsFromFetcherConfig(located_fetcher_config.fetcher_config);
+  ExtractKernelParamsFromFetcherConfig(fetcher_config);
 
   KernelConfig kernel_config;
   CHECK(ParseCommandLineFlags(&argc, &argv, &kernel_config)) << "Failed to parse arguments";
 
-  auto config = InitFilesystemAndCreateConfig(
-      std::move(located_fetcher_config.fetcher_config), kernel_config);
+  auto config =
+      InitFilesystemAndCreateConfig(std::move(fetcher_config), kernel_config);
 
   std::cout << GetConfigFilePath(*config) << "\n";
   std::cout << std::flush;
