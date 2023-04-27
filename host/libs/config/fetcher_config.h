@@ -65,7 +65,8 @@ std::ostream& operator<<(std::ostream&, const CvdFile&);
  */
 class FetcherConfig {
   std::unique_ptr<Json::Value> dictionary_;
-public:
+
+ public:
   FetcherConfig();
   FetcherConfig(FetcherConfig&&);
   ~FetcherConfig();
