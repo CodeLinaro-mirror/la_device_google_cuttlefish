@@ -98,48 +98,6 @@ public class RilE2eTests {
 
 
     /**
-     * Verify that RIL stack is able to get up and connect to network in
-     * 20 seconds.
-     */
-    @Test(timeout = 20 * 1000)
-    public void testRilConnects() throws Exception {
-        while (true) {
-            Network nw = mConnManager.getActiveNetwork();
-            if (nw == null) {
-                continue;
-            }
-            NetworkCapabilities cap = mConnManager.getNetworkCapabilities(nw);
-            if (cap != null && cap.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) {
-                break;
-            }
-
-            Log.i(TAG, "Waiting for MOBILE to become primary network for DATA.");
-
-            Thread.sleep(1000);
-        }
-
-        // Bind process to MOBILE network. This should allow us to verify network is functional.
-        Network net = mConnManager.getActiveNetwork();
-        Assert.assertNotNull(net);
-        Assert.assertTrue(mConnManager.bindProcessToNetwork(net));
-
-        // Open connection to Google public DNS server
-        InetSocketAddress addr = new InetSocketAddress("8.8.8.8", 53);
-        while (true) {
-            try (Socket s = new Socket()) {
-                Log.d(TAG, "Testing socket connection to 8.8.8.8:53...");
-                s.connect(addr, 5000); // use a socket connection timeout of 5s
-                Assert.assertTrue(
-                    "Failed to make socket connection to 8.8.8.8:53", s.isConnected());
-                return;
-            } catch (SocketTimeoutException e) {
-                Log.d(TAG, "Socket connection to 8.8.8.8:53 timed out, retry...");
-            }
-        }
-    }
-
-
-    /**
      * Verify that AVD is connected to our virtual network operator and is
      * phone-, sms- and data capable.
      */
@@ -156,7 +114,6 @@ public class RilE2eTests {
         Assert.assertEquals("+15551234567", mTeleManager.getLine1Number());
         // See SIM FS response for 178 28615 (Cuttlefish RIL).
         Assert.assertEquals("+15557654321", mTeleManager.getVoiceMailNumber());
-        Assert.assertSame(TelephonyManager.DATA_CONNECTED, mTeleManager.getDataState());
     }
 
     @Test

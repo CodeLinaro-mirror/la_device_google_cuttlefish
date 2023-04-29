@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 The Android Open Source Project
+ * Copyright (C) 2023 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,19 +16,13 @@
 
 #pragma once
 
-#include <string>
+#include <fruit/fruit.h>
+
+#include "host/commands/cvd/server_command/acloud_common.h"
 
 namespace cuttlefish {
-namespace cvd {
 
-// Major version uprevs are backwards incompatible.
-// Minor version uprevs are backwards compatible within major version.
-constexpr int kVersionMajor = 1;
-constexpr int kVersionMinor = 2;
+fruit::Component<fruit::Required<>>
+AcloudMixSuperImageCommandComponent();
 
-}  // namespace cvd
-
-// Pathname of the abstract cvd_server socket.
-std::string ServerSocketPath();
-
-}  // namespace cuttlefish
+}
