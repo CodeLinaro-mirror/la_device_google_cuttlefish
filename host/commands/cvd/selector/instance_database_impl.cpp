@@ -20,10 +20,12 @@
 #include <regex>
 #include <sstream>
 
+#include <android-base/file.h>
 #include <android-base/parseint.h>
 
 #include "common/libs/utils/contains.h"
 #include "common/libs/utils/files.h"
+#include "host/commands/cvd/common_utils.h"
 #include "host/commands/cvd/selector/instance_database_utils.h"
 #include "host/commands/cvd/selector/selector_constants.h"
 
@@ -45,17 +47,16 @@ InstanceDatabase::FindIterator(const LocalInstanceGroup& group) {
 void InstanceDatabase::Clear() { local_instance_groups_.clear(); }
 
 Result<ConstRef<LocalInstanceGroup>> InstanceDatabase::AddInstanceGroup(
-    const std::string& group_name, const std::string& home_dir,
-    const std::string& host_artifacts_path) {
-  CF_EXPECT(IsValidGroupName(group_name),
-            "GroupName " << group_name << " is ill-formed.");
-  CF_EXPECT(EnsureDirectoryExistsAllTheWay(home_dir),
-            "HOME dir, " << home_dir << " does not exist");
-  CF_EXPECT(
-      PotentiallyHostArtifactsPath(host_artifacts_path),
-      "ANDROID_HOST_OUT, " << host_artifacts_path << " is not a tool dir");
-  std::vector<Query> queries = {{kHomeField, home_dir},
-                                {kGroupNameField, group_name}};
+    const AddInstanceGroupParam& param) {
+  CF_EXPECT(IsValidGroupName(param.group_name),
+            "GroupName " << param.group_name << " is ill-formed.");
+  CF_EXPECT(EnsureDirectoryExistsAllTheWay(param.home_dir),
+            "HOME dir, " << param.home_dir << " does not exist");
+  CF_EXPECT(PotentiallyHostArtifactsPath(param.host_artifacts_path),
+            "ANDROID_HOST_OUT, " << param.host_artifacts_path
+                                 << " is not a tool dir");
+  std::vector<Query> queries = {{kHomeField, param.home_dir},
+                                {kGroupNameField, param.group_name}};
   for (const auto& query : queries) {
     auto instance_groups =
         CF_EXPECT(Find<LocalInstanceGroup>(query, group_handlers_));
@@ -65,7 +66,10 @@ Result<ConstRef<LocalInstanceGroup>> InstanceDatabase::AddInstanceGroup(
     CF_EXPECT(instance_groups.empty(), err_msg.str());
   }
   auto new_group =
-      new LocalInstanceGroup(group_name, home_dir, host_artifacts_path);
+      new LocalInstanceGroup({.group_name = param.group_name,
+                              .home_dir = param.home_dir,
+                              .host_artifacts_path = param.host_artifacts_path,
+                              .product_out_path = param.product_out_path});
   CF_EXPECT(new_group != nullptr);
   local_instance_groups_.emplace_back(new_group);
   const auto raw_ptr = local_instance_groups_.back().get();
@@ -144,7 +148,27 @@ Result<Set<ConstRef<LocalInstanceGroup>>> InstanceDatabase::FindGroupsByHome(
   auto subset = CollectToSet<LocalInstanceGroup>(
       local_instance_groups_,
       [&home](const std::unique_ptr<LocalInstanceGroup>& group) {
-        return (group && (group->HomeDir() == home));
+        if (!group) {
+          return false;
+        }
+        if (group->HomeDir() == home) {
+          return true;
+        }
+        if (group->HomeDir().empty() || home.empty()) {
+          return false;
+        }
+        // The two paths must be an absolute path.
+        // this is guaranteed by the CreationAnalyzer
+        std::string home_realpath;
+        std::string group_home_realpath;
+        if (!android::base::Realpath(home, std::addressof(home_realpath))) {
+          return false;
+        }
+        if (!android::base::Realpath(group->HomeDir(),
+                                     std::addressof(group_home_realpath))) {
+          return false;
+        }
+        return home_realpath == group_home_realpath;
       });
   return AtMostOne(subset, GenerateTooManyInstancesErrorMsg(1, kHomeField));
 }

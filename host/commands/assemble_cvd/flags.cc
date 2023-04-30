@@ -389,6 +389,8 @@ DEFINE_vec(use_sdcard, CF_DEFAULTS_USE_SDCARD?"true":"false",
 DEFINE_vec(protected_vm, cuttlefish::BoolToString(CF_DEFAULTS_PROTECTED_VM),
             "Boot in Protected VM mode");
 
+DEFINE_vec(mte, cuttlefish::BoolToString(CF_DEFAULTS_MTE), "Enable MTE");
+
 DEFINE_vec(enable_audio, cuttlefish::BoolToString(CF_DEFAULTS_ENABLE_AUDIO),
             "Whether to play or capture audio");
 
@@ -614,7 +616,7 @@ Result<bool> ParseBool(const std::string& flag_str,
 
 Result<std::unordered_map<int, std::string>> CreateNumToWebrtcDeviceIdMap(
     const CuttlefishConfig& tmp_config_obj,
-    const std::set<std::int32_t>& instance_nums,
+    const std::vector<std::int32_t>& instance_nums,
     const std::string& webrtc_device_id_flag) {
   std::unordered_map<int, std::string> output_map;
   if (webrtc_device_id_flag.empty()) {
@@ -824,6 +826,12 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_enable_metrics(FLAGS_report_anonymous_usage_stats);
 
+#ifdef ENFORCE_MAC80211_HWSIM
+  tmp_config_obj.set_virtio_mac80211_hwsim(true);
+#else
+  tmp_config_obj.set_virtio_mac80211_hwsim(false);
+#endif
+
   tmp_config_obj.set_vhost_user_mac80211_hwsim(FLAGS_vhost_user_mac80211_hwsim);
 
   if ((FLAGS_ap_rootfs_image.empty()) != (FLAGS_ap_kernel_image.empty())) {
@@ -923,6 +931,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       CF_EXPECT(GET_FLAG_STR_VALUE(gem5_debug_file));
   std::vector<bool> protected_vm_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(
       protected_vm));
+  std::vector<bool> mte_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(mte));
   std::vector<bool> enable_kernel_log_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(
       enable_kernel_log));
   std::vector<bool> kgdb_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(kgdb));
@@ -1028,6 +1037,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_record_screen(record_screen_vec[instance_index]);
     instance.set_gem5_debug_file(gem5_debug_file_vec[instance_index]);
     instance.set_protected_vm(protected_vm_vec[instance_index]);
+    instance.set_mte(mte_vec[instance_index]);
     instance.set_enable_kernel_log(enable_kernel_log_vec[instance_index]);
     if (!boot_slot_vec[instance_index].empty()) {
       instance.set_boot_slot(boot_slot_vec[instance_index]);
@@ -1142,13 +1152,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_ethernet_bridge_name("cvd-ebr");
     instance.set_mobile_tap_name(iface_config.mobile_tap.name);
 
-#ifdef ENFORCE_MAC80211_HWSIM
-    const bool enforce_mac80211_hwsim = true;
-#else
-    const bool enforce_mac80211_hwsim = false;
-#endif
     if (NetworkInterfaceExists(iface_config.non_bridged_wireless_tap.name) &&
-        enforce_mac80211_hwsim) {
+        tmp_config_obj.virtio_mac80211_hwsim()) {
       instance.set_use_bridged_wifi_tap(false);
       instance.set_wifi_tap_name(iface_config.non_bridged_wireless_tap.name);
     } else {
@@ -1372,7 +1377,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 
     // Start wmediumd process for the first instance if
     // vhost_user_mac80211_hwsim is not specified.
-    const bool start_wmediumd = enforce_mac80211_hwsim &&
+    const bool start_wmediumd = tmp_config_obj.virtio_mac80211_hwsim() &&
                                 FLAGS_vhost_user_mac80211_hwsim.empty() &&
                                 is_first_instance;
     if (start_wmediumd) {

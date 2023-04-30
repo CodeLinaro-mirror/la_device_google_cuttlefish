@@ -247,10 +247,8 @@ StartSelectorParser::HandleInstanceIds(
 Result<bool> StartSelectorParser::CalcMayBeDefaultGroup() {
   auto disable_default_group_flag = CF_EXPECT(
       SelectorFlags::Get().GetFlag(SelectorFlags::kDisableDefaultGroup));
-  std::optional<bool> flag_value = false;
-  CF_EXPECT(
-      disable_default_group_flag.FilterFlag(selector_args_, flag_value).ok());
-  if (flag_value && *flag_value) {
+  if (CF_EXPECT(
+          disable_default_group_flag.CalculateFlag<bool>(selector_args_))) {
     return false;
   }
   /*
@@ -283,7 +281,7 @@ static bool IsTrue(const std::string& value) {
 }
 
 static bool IsFalse(const std::string& value) {
-  std::unordered_set<std::string> true_strings = {"n", "no", "false"};
+  std::unordered_set<std::string> false_strings = {"n", "no", "false"};
   std::string value_in_lower_case = value;
   /*
    * https://en.cppreference.com/w/cpp/string/byte/tolower
@@ -293,7 +291,7 @@ static bool IsFalse(const std::string& value) {
   std::transform(value_in_lower_case.begin(), value_in_lower_case.end(),
                  value_in_lower_case.begin(),
                  [](unsigned char c) { return std::tolower(c); });
-  return Contains(true_strings, value_in_lower_case);
+  return Contains(false_strings, value_in_lower_case);
 }
 
 static std::optional<std::string> GetAcquireFileLockEnvValue(
@@ -312,8 +310,8 @@ Result<bool> StartSelectorParser::CalcAcquireFileLock() {
   // if the flag is set, flag has the highest priority
   auto must_acquire_file_lock_flag =
       CF_EXPECT(SelectorFlags::Get().GetFlag(SelectorFlags::kAcquireFileLock));
-  std::optional<bool> value_opt;
-  CF_EXPECT(must_acquire_file_lock_flag.FilterFlag(selector_args_, value_opt));
+  std::optional<bool> value_opt =
+      CF_EXPECT(must_acquire_file_lock_flag.FilterFlag<bool>(selector_args_));
   if (value_opt) {
     return *value_opt;
   }
