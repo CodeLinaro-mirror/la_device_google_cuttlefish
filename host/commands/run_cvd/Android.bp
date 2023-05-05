@@ -50,6 +50,7 @@ cc_binary {
     srcs: [
         "boot_state_machine.cc",
         "launch/bluetooth_connector.cpp",
+        "launch/uwb_connector.cpp",
         "launch/config_server.cpp",
         "launch/console_forwarder.cpp",
         "launch/gnss_grpc_proxy.cpp",
@@ -63,10 +64,10 @@ cc_binary {
         "launch/openwrt_control_server.cpp",
         "launch/echo_server.cpp",
         "launch/root_canal.cpp",
+        "launch/pica.cpp",
         "launch/secure_env.cpp",
         "launch/streamer.cpp",
         "launch/tombstone_receiver.cpp",
-        "launch/vehicle_hal_server.cpp",
         "launch/wmediumd_server.cpp",
         "launch/netsim_server.cpp",
         "main.cc",
@@ -92,6 +93,7 @@ cc_binary {
         "libcuttlefish_vm_manager",
         "libcuttlefish_msg_queue",
         "libcuttlefish_metrics",
+        "libcuttlefish_utils",
         "libgflags",
     ],
     defaults: [

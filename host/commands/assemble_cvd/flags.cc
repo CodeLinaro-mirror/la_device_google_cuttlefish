@@ -161,6 +161,13 @@ DEFINE_int32(
     "with rootcanal_instance_num. Else, launch a new rootcanal instance");
 DEFINE_string(rootcanal_args, CF_DEFAULTS_ROOTCANAL_ARGS,
               "Space-separated list of rootcanal args. ");
+DEFINE_bool(enable_host_uwb, CF_DEFAULTS_ENABLE_HOST_UWB,
+            "Enable Pica in the host.");
+DEFINE_int32(
+    pica_instance_num, CF_DEFAULTS_ENABLE_PICA_INSTANCE_NUM,
+    "If it is greater than 0, use an existing pica instance which is "
+    "launched from cuttlefish instance "
+    "with pica_instance_num. Else, launch a new pica instance");
 DEFINE_bool(netsim, CF_DEFAULTS_NETSIM,
             "[Experimental] Connect all radios to netsim.");
 
@@ -281,10 +288,6 @@ DEFINE_string(gem5_debug_flags, CF_DEFAULTS_GEM5_DEBUG_FLAGS,
 DEFINE_vec(restart_subprocesses,
               cuttlefish::BoolToString(CF_DEFAULTS_RESTART_SUBPROCESSES),
               "Restart any crashed host process");
-DEFINE_vec(enable_vehicle_hal_grpc_server,
-            cuttlefish::BoolToString(CF_DEFAULTS_ENABLE_VEHICLE_HAL_GRPC_SERVER),
-            "Enables the vehicle HAL "
-            "emulation gRPC server on the host");
 DEFINE_vec(bootloader, CF_DEFAULTS_BOOTLOADER, "Bootloader binary path");
 DEFINE_vec(boot_slot, CF_DEFAULTS_BOOT_SLOT,
               "Force booting into the given slot. If empty, "
@@ -919,8 +922,6 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       modem_simulator_sim_type));
   std::vector<bool> console_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(console));
   std::vector<bool> enable_audio_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(enable_audio));
-  std::vector<bool> enable_vehicle_hal_grpc_server_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(
-      enable_vehicle_hal_grpc_server));
   std::vector<bool> start_gnss_proxy_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(
       start_gnss_proxy));
   std::vector<bool> enable_bootanimation_vec =
@@ -1003,6 +1004,18 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   tmp_config_obj.set_rootcanal_link_ble_port(7600 + rootcanal_instance_num);
   LOG(DEBUG) << "rootcanal_instance_num: " << rootcanal_instance_num;
   LOG(DEBUG) << "launch rootcanal: " << (FLAGS_rootcanal_instance_num <= 0);
+
+  // crosvm should create fifos for UWB
+  auto pica_instance_num = *instance_nums.begin() - 1;
+  if (FLAGS_pica_instance_num > 0) {
+    pica_instance_num = FLAGS_pica_instance_num - 1;
+  }
+  tmp_config_obj.set_enable_host_uwb(FLAGS_enable_host_uwb);
+  tmp_config_obj.set_enable_host_uwb_connector(FLAGS_enable_host_uwb);
+  tmp_config_obj.set_pica_uci_port(7000 + pica_instance_num);
+  LOG(DEBUG) << "pica_instance_num: " << pica_instance_num;
+  LOG(DEBUG) << "launch pica: " << (FLAGS_pica_instance_num <= 0);
+
   bool is_first_instance = true;
   int instance_index = 0;
   auto num_to_webrtc_device_id_flag_map =
@@ -1030,8 +1043,6 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       guest_configs[instance_index].hctr2_supported ? "hctr2" : "cts");
     instance.set_use_allocd(use_allocd_vec[instance_index]);
     instance.set_enable_audio(enable_audio_vec[instance_index]);
-    instance.set_enable_vehicle_hal_grpc_server(
-      enable_vehicle_hal_grpc_server_vec[instance_index]);
     instance.set_enable_gnss_grpc_proxy(start_gnss_proxy_vec[instance_index]);
     instance.set_enable_bootanimation(enable_bootanimation_vec[instance_index]);
     instance.set_record_screen(record_screen_vec[instance_index]);
@@ -1130,7 +1141,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_display_configs(display_configs);
 
     instance.set_memory_mb(memory_mb_vec[instance_index]);
-    instance.set_ddr_mem_mb(memory_mb_vec[instance_index] * 2);
+    instance.set_ddr_mem_mb(memory_mb_vec[instance_index] * 1.2);
     instance.set_setupwizard_mode(setupwizard_mode_vec[instance_index]);
     instance.set_userdata_format(userdata_format_vec[instance_index]);
     instance.set_guest_enforce_security(guest_enforce_security_vec[instance_index]);
@@ -1188,7 +1199,6 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_ethernet_ipv6(Ipv6ToString(ethernet_ipv6));
 
     instance.set_tombstone_receiver_port(calc_vsock_port(6600));
-    instance.set_vehicle_hal_server_port(9300 + num - 1);
     instance.set_audiocontrol_server_port(9410);  /* OK to use the same port number across instances */
     instance.set_config_server_port(calc_vsock_port(6800));
 
@@ -1398,6 +1408,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 
     instance.set_start_rootcanal(is_first_instance && !is_bt_netsim &&
                                  (FLAGS_rootcanal_instance_num <= 0));
+
+    instance.set_start_pica(is_first_instance);
 
     if (!FLAGS_ap_rootfs_image.empty() && !FLAGS_ap_kernel_image.empty() && start_wmediumd) {
       // TODO(264537774): Ubuntu grub modules / grub monoliths cannot be used to boot

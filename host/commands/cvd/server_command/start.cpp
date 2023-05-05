@@ -583,10 +583,11 @@ Result<cvd::Response> CvdStartCommandHandler::Handle(
   cvd::Response response;
   response.mutable_command_response();
 
-  auto [meets_precondition, error_message] = VerifyPrecondition(request);
-  if (!meets_precondition) {
+  auto precondition_verified = VerifyPrecondition(request);
+  if (!precondition_verified.ok()) {
     response.mutable_status()->set_code(cvd::Status::FAILED_PRECONDITION);
-    response.mutable_status()->set_message(error_message);
+    response.mutable_status()->set_message(
+        precondition_verified.error().Message());
     return response;
   }
 
@@ -677,7 +678,6 @@ Result<cvd::Response> CvdStartCommandHandler::Handle(
     LOG(ERROR) << "AcloudCompatActions() failed"
                << " but continue as they are minor errors.";
   }
-  LOG(ERROR) << "Daemon mode is " << (is_daemon ? "set" : "unset");
   return is_daemon ? HandleDaemon(group_creation_info, uid)
                    : HandleNoDaemon(group_creation_info, uid);
 }
