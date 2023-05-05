@@ -13,30 +13,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #pragma once
 
+#include <optional>
 #include <string>
 
 #include "common/libs/utils/result.h"
-#include "host/libs/graphics_detector/graphics_detector.h"
+#include "host/commands/cvd/types.h"
 
 namespace cuttlefish {
+namespace acloud_impl {
 
-enum class RenderingMode {
-  kNone,
-  kGuestSwiftShader,
-  kGfxstream,
-  kGfxstreamGuestAngle,
-  kGfxstreamGuestAngleHostSwiftshader,
-  kVirglRenderer,
+struct ConverterParsed {
+  bool local_instance_set;
+  std::optional<int> local_instance;
+  std::optional<std::string> flavor;
 };
-Result<RenderingMode> GetRenderingMode(const std::string& mode);
 
-struct AngleFeatureOverrides {
-  std::string angle_feature_overrides_enabled;
-  std::string angle_feature_overrides_disabled;
-};
-Result<AngleFeatureOverrides> GetNeededAngleFeatures(
-    RenderingMode mode, const GraphicsAvailability& availability);
+Result<ConverterParsed> ParseAcloudCreateFlags(cvd_common::Args& arguments);
 
+}  // namespace acloud_impl
 }  // namespace cuttlefish
