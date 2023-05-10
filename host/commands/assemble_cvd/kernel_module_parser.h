@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 The Android Open Source Project
+// Copyright (C) 2023 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,22 +13,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <memory>
-#include <string_view>
+#pragma once
 
-#include "common/libs/utils/json.h"
+#include <string>
 
 namespace cuttlefish {
 
-Result<Json::Value> ParseJson(std::string_view input) {
-  Json::Value root;
-  JSONCPP_STRING err;
-  Json::CharReaderBuilder builder;
-  const std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
-  auto begin = input.data();
-  auto end = begin + input.length();
-  CF_EXPECT(reader->parse(begin, end, &root, &err), err);
-  return root;
+bool IsKernelModuleSigned(const char* path);
+
+constexpr bool IsKernelModuleSigned(const std::string& path) {
+  return IsKernelModuleSigned(path.c_str());
 }
 
 }  // namespace cuttlefish

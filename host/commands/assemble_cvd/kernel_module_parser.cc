@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 The Android Open Source Project
+// Copyright (C) 2023 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,22 +13,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <memory>
-#include <string_view>
+#include "kernel_module_parser.h"
 
-#include "common/libs/utils/json.h"
+#include <fcntl.h>
+#include "common/libs/fs/shared_fd.h"
+
+static constexpr std::string_view SIGNATURE_FOOTER =
+    "~Module signature appended~\n";
 
 namespace cuttlefish {
 
-Result<Json::Value> ParseJson(std::string_view input) {
-  Json::Value root;
-  JSONCPP_STRING err;
-  Json::CharReaderBuilder builder;
-  const std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
-  auto begin = input.data();
-  auto end = begin + input.length();
-  CF_EXPECT(reader->parse(begin, end, &root, &err), err);
-  return root;
+bool IsKernelModuleSigned(const char *path) {
+  auto fd = SharedFD::Open(path, O_RDONLY);
+  fd->LSeek(-SIGNATURE_FOOTER.size(), SEEK_END);
+  std::array<char, SIGNATURE_FOOTER.size()> buf{};
+  fd->Read(buf.data(), buf.size());
+
+  return memcmp(buf.data(), SIGNATURE_FOOTER.data(), SIGNATURE_FOOTER.size()) ==
+         0;
 }
 
 }  // namespace cuttlefish
