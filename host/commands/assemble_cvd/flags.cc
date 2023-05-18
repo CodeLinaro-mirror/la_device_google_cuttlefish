@@ -131,8 +131,9 @@ DEFINE_vec(use_random_serial, cuttlefish::BoolToString(CF_DEFAULTS_USE_RANDOM_SE
 DEFINE_vec(vm_manager, CF_DEFAULTS_VM_MANAGER,
               "What virtual machine manager to use, one of {qemu_cli, crosvm}");
 DEFINE_vec(gpu_mode, CF_DEFAULTS_GPU_MODE,
-              "What gpu configuration to use, one of {auto, drm_virgl, "
-              "gfxstream, guest_swiftshader}");
+           "What gpu configuration to use, one of {auto, drm_virgl, "
+           "gfxstream, gfxstream_guest_angle, "
+           "gfxstream_guest_angle_host_swiftshader, guest_swiftshader}");
 DEFINE_vec(hwcomposer, CF_DEFAULTS_HWCOMPOSER,
               "What hardware composer to use, one of {auto, drm, ranchu} ");
 DEFINE_vec(gpu_capture_binary, CF_DEFAULTS_GPU_CAPTURE_BINARY,
@@ -405,8 +406,11 @@ DEFINE_bool(use_overlay, CF_DEFAULTS_USE_OVERLAY,
             "prerequisite for powerwash_cvd or multiple instances.");
 
 DEFINE_vec(modem_simulator_count,
-              std::to_string(CF_DEFAULTS_MODEM_SIMULATOR_COUNT),
-              "Modem simulator count corresponding to maximum sim number");
+           std::to_string(CF_DEFAULTS_MODEM_SIMULATOR_COUNT),
+           "Modem simulator count corresponding to maximum sim number");
+
+DEFINE_bool(track_host_tools_crc, CF_DEFAULTS_TRACK_HOST_TOOLS_CRC,
+            "Track changes to host executables");
 
 DECLARE_string(assembly_dir);
 DECLARE_string(boot_image);
@@ -880,7 +884,9 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   tmp_config_obj.set_extra_kernel_cmdline(FLAGS_extra_kernel_cmdline);
   tmp_config_obj.set_extra_bootconfig_args(FLAGS_extra_bootconfig_args);
 
-  tmp_config_obj.set_host_tools_version(HostToolsCrc());
+  if (FLAGS_track_host_tools_crc) {
+    tmp_config_obj.set_host_tools_version(HostToolsCrc());
+  }
 
   tmp_config_obj.set_gem5_debug_flags(FLAGS_gem5_debug_flags);
 
