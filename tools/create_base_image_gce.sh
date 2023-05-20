@@ -29,8 +29,12 @@ done
 
 sudo apt-get update
 
-# Stuff we need to get build support
+sudo apt install -y debconf-utils
 
+# Avoids blocking "Default mirror not found" popup prompt when pbuilder is installed.
+echo "pbuilder        pbuilder/mirrorsite     string  https://deb.debian.org/debian" | sudo debconf-set-selections
+
+# Stuff we need to get build support
 sudo apt install -y debhelper ubuntu-dev-tools equivs "${extra_packages[@]}"
 
 # Resize
@@ -101,6 +105,7 @@ sudo chroot /mnt/image /usr/bin/apt install -t bullseye-backports -y linux-image
 # update QEMU version to most recent backport
 sudo chroot /mnt/image /usr/bin/apt install -y --only-upgrade qemu-system-x86 -t bullseye-backports
 sudo chroot /mnt/image /usr/bin/apt install -y --only-upgrade qemu-system-arm -t bullseye-backports
+sudo chroot /mnt/image /usr/bin/apt install -y --only-upgrade qemu-system-misc -t bullseye-backports
 
 # Install GPU driver dependencies
 sudo cp install_nvidia.sh /mnt/image/
