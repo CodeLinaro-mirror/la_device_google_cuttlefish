@@ -107,10 +107,18 @@ struct InputPathForm {
  */
 Result<std::string> EmulateAbsolutePath(const InputPathForm& path_info);
 
+constexpr android::base::LogSeverity kCvdDefaultVerbosity = android::base::INFO;
+
 Result<android::base::LogSeverity> EncodeVerbosity(
     const std::string& verbosity);
 
 Result<std::string> VerbosityToString(
     const android::base::LogSeverity verbosity);
+
+android::base::LogSeverity SetMinimumVerbosity(
+    const android::base::LogSeverity);
+Result<android::base::LogSeverity> SetMinimumVerbosity(const std::string&);
+
+android::base::LogSeverity GetMinimumVerbosity();
 
 }  // namespace cuttlefish
