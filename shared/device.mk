@@ -269,7 +269,9 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Multitouch_Touchscreen_0.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Multitouch_Touchscreen_0.idc \
     device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Multitouch_Touchscreen_1.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Multitouch_Touchscreen_1.idc \
     device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Multitouch_Touchscreen_2.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Multitouch_Touchscreen_2.idc \
-    device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Multitouch_Touchscreen_3.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Multitouch_Touchscreen_3.idc
+    device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Multitouch_Touchscreen_3.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Multitouch_Touchscreen_3.idc \
+    device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Rotary_0.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Rotary_0.idc \
+
 endif
 
 PRODUCT_PACKAGES += \
@@ -357,7 +359,7 @@ DEVICE_PACKAGE_OVERLAYS += $(LOCAL_AUDIO_DEVICE_PACKAGE_OVERLAYS)
 # BiometricsFace HAL (AIDL)
 #
 PRODUCT_PACKAGES += \
-    android.hardware.biometrics.face-service.example
+    com.android.hardware.biometrics.face
 
 #
 # BiometricsFingerprint HAL (AIDL)
@@ -472,12 +474,6 @@ PRODUCT_PACKAGES += \
 #
 ifeq ($(LOCAL_KEYMINT_PRODUCT_PACKAGE),)
     LOCAL_KEYMINT_PRODUCT_PACKAGE := android.hardware.security.keymint-service.rust
-endif
-
-ifeq ($(LOCAL_KEYMINT_PRODUCT_PACKAGE),android.hardware.security.keymint-service.rust)
-    # KeyMint HAL has been overridden to force use of the Rust reference implementation.
-    # Set the build config for secure_env to match.
-    $(call soong_config_set,secure_env,keymint_impl,rust)
 endif
 
 PRODUCT_PACKAGES += \

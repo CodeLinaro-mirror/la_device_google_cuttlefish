@@ -515,6 +515,10 @@ Result<std::vector<GuestConfig>> ReadGuestConfig() {
     std::string config = ReadFile(ikconfig_path);
 
     GuestConfig guest_config;
+    guest_config.android_version_number =
+        CF_EXPECT(ReadAndroidVersionFromBootImage(cur_boot_image),
+                  "Failed to read guest's android version");
+
     if (config.find("\nCONFIG_ARM=y") != std::string::npos) {
       guest_config.target_arch = Arch::Arm;
     } else if (config.find("\nCONFIG_ARM64=y") != std::string::npos) {
@@ -532,14 +536,14 @@ Result<std::vector<GuestConfig>> ReadGuestConfig() {
         config.find("\nCONFIG_BOOT_CONFIG=y") != std::string::npos;
     // Once all Cuttlefish kernel versions are at least 5.15, this code can be
     // removed. CONFIG_CRYPTO_HCTR2=y will always be set.
+    // Note there's also a platform dep for hctr2 introduced in Android 14.
+    // Hence the version check.
     guest_config.hctr2_supported =
-        config.find("\nCONFIG_CRYPTO_HCTR2=y") != std::string::npos;
+        (config.find("\nCONFIG_CRYPTO_HCTR2=y") != std::string::npos) &&
+        (guest_config.android_version_number != "11.0.0") &&
+        (guest_config.android_version_number != "13.0.0");
 
     unlink(ikconfig_path.c_str());
-    guest_config.android_version_number =
-        CF_EXPECT(ReadAndroidVersionFromBootImage(cur_boot_image),
-                  "Failed to read guest's android version");
-    ;
     guest_configs.push_back(guest_config);
   }
   return guest_configs;
@@ -769,6 +773,15 @@ Result<std::string> SelectGpuMode(
   }
 
   if (gpu_mode_arg == kGpuModeAuto) {
+    // TODO (280826461) Android T Cuttlefish is currently not compatible
+    // with accelerated graphics. rammuthiah@ to debug and resolve.
+    if (guest_config.android_version_number == "13.0.0") {
+      LOG(INFO) << "GPU auto mode: detected guest of version T"
+                << ". Accelerated rendering support is not compatible, "
+                   "enabling --gpu_mode=guest_swiftshader.";
+      return kGpuModeGuestSwiftshader;
+    }
+
     if (vm_manager == QemuManager::name() &&
         !IsHostCompatible(guest_config.target_arch)) {
       LOG(INFO) << "Enabling --gpu_mode=drm_virgl.";
@@ -1323,6 +1336,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       if (vm_manager_vec[0] == QemuManager::name()) {
         instance.set_keyboard_server_port(calc_vsock_port(7000));
         instance.set_touch_server_port(calc_vsock_port(7100));
+        // intentionally do not set up rotary vsocks for QEMU.
+        // vsoc_input_service is deprecated and should be removed
       }
     }
     // end of gpu related settings
@@ -1349,7 +1364,12 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     persistent_disk &= !protected_vm_vec[instance_index];
     persistent_disk &= vm_manager_vec[0] != Gem5Manager::name();
     if (persistent_disk) {
-      auto path = const_instance.PerInstancePath("persistent_composite.img");
+      const bool is_vm_qemu_cli = (tmp_config_obj.vm_manager() == "qemu_cli");
+      const std::string persistent_composite_img_base =
+          is_vm_qemu_cli ? "persistent_composite_overlay.img"
+                         : "persistent_composite.img";
+      auto path =
+          const_instance.PerInstancePath(persistent_composite_img_base.data());
       virtual_disk_paths.push_back(path);
     }
 
