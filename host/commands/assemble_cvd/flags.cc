@@ -773,15 +773,6 @@ Result<std::string> SelectGpuMode(
   }
 
   if (gpu_mode_arg == kGpuModeAuto) {
-    // TODO (280826461) Android T Cuttlefish is currently not compatible
-    // with accelerated graphics. rammuthiah@ to debug and resolve.
-    if (guest_config.android_version_number == "13.0.0") {
-      LOG(INFO) << "GPU auto mode: detected guest of version T"
-                << ". Accelerated rendering support is not compatible, "
-                   "enabling --gpu_mode=guest_swiftshader.";
-      return kGpuModeGuestSwiftshader;
-    }
-
     if (vm_manager == QemuManager::name() &&
         !IsHostCompatible(guest_config.target_arch)) {
       LOG(INFO) << "Enabling --gpu_mode=drm_virgl.";
@@ -1332,14 +1323,6 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       LOG(FATAL) << graphics_check.error().Message();
     }
 
-    if (gpu_mode != kGpuModeDrmVirgl && gpu_mode != kGpuModeGfxstream) {
-      if (vm_manager_vec[0] == QemuManager::name()) {
-        instance.set_keyboard_server_port(calc_vsock_port(7000));
-        instance.set_touch_server_port(calc_vsock_port(7100));
-        // intentionally do not set up rotary vsocks for QEMU.
-        // vsoc_input_service is deprecated and should be removed
-      }
-    }
     // end of gpu related settings
 
     instance.set_gnss_grpc_proxy_server_port(7200 + num -1);
