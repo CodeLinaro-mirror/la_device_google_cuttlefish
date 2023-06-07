@@ -124,7 +124,6 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.wifi@1.6", // Converted to AIDL (see b/205044134)
     "android.hardware.wifi.hostapd@1.3", // Converted to AIDL (see b/194806512)
     "android.hardware.wifi.supplicant@1.4", // Converted to AIDL (see b/196235436)
-    "android.hardware.wifi.offload@1.0",
     "android.hidl.base@1.0",
     "android.hidl.memory.token@1.0",
     "android.system.net.netd@1.1", // Converted to AIDL (see b/205764585)
@@ -206,6 +205,8 @@ static const std::set<std::string> kAlwaysMissingAidl = {
     "android.hardware.uwb.fira_android",
     "android.hardware.keymaster",
     "android.hardware.automotive.vehicle.property",
+    // not on Cuttlefish since it's needed only on systems using HIDL audio HAL
+    "android.hardware.audio.sounddose",
 
     // android.hardware.media.bufferpool2 is a HAL-less interface.
     // It could be used for buffer recycling and caching by using the interface.

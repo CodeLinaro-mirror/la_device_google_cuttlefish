@@ -347,7 +347,7 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
   qemu_cmd.AddParameter("guest=", instance.instance_name(), ",debug-threads=on");
 
   qemu_cmd.AddParameter("-machine");
-  std::string machine = is_x86 ? "pc-i440fx-2.8,nvdimm=on" : "virt";
+  std::string machine = is_x86 ? "pc,nvdimm=on" : "virt";
   if (IsHostCompatible(arch_)) {
     machine += ",accel=kvm";
     if (is_arm) {
@@ -438,7 +438,7 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
         gpu_device = "virtio-gpu-gl-pci";
     } else if (instance.gpu_mode() == kGpuModeGfxstream ||
                instance.gpu_mode() == kGpuModeGfxstreamGuestAngle) {
-        gpu_device = "virtio-gpu-rutabaga-pci";
+        gpu_device = "virtio-gpu-gl-pci,capset_names=gfxstream,hostmem=256M";
     }
 
     qemu_cmd.AddParameter(gpu_device, ",id=gpu0",
@@ -527,6 +527,12 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
    * which is not created w/ QEMU.
    */
   add_hvc_sink();
+
+  if (config.enable_host_uwb()) {
+    add_hvc("uwb_fifo_vm");
+  } else {
+    add_hvc_sink();
+  }
 
   auto disk_num = instance.virtual_disk_paths().size();
 

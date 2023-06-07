@@ -16,7 +16,7 @@
 
 # FIXME: Split up and merge back in with shared/BoardConfig.mk
 
-TARGET_KERNEL_USE ?= 5.15
+TARGET_KERNEL_USE ?= 6.1
 TARGET_KERNEL_ARCH ?= $(TARGET_ARCH)
 TARGET_KERNEL_PATH ?= kernel/prebuilts/$(TARGET_KERNEL_USE)/$(TARGET_KERNEL_ARCH)/kernel-$(TARGET_KERNEL_USE)
 KERNEL_MODULES_PATH ?= \
@@ -37,13 +37,11 @@ RAMDISK_KERNEL_MODULES := \
     virtio-rng.ko \
     vmw_vsock_virtio_transport.ko \
 
-ifneq ($(filter-out 5.15,$(TARGET_KERNEL_USE)),)
-# GKI >5.15 will have and require virtio_pci_legacy_dev.ko
-RAMDISK_KERNEL_MODULES += virtio_pci_legacy_dev.ko
-endif
-
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES := \
     $(patsubst %,$(KERNEL_MODULES_PATH)/%,$(RAMDISK_KERNEL_MODULES))
+
+# GKI >5.15 will have and require virtio_pci_legacy_dev.ko
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/virtio_pci_legacy_dev.ko)
 
 TARGET_NO_RECOVERY := true
 

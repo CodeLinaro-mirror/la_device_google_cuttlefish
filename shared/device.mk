@@ -418,8 +418,9 @@ PRODUCT_PACKAGES += \
 # Drm HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.drm@latest-service.clearkey \
-    android.hardware.drm@latest-service.widevine
+    android.hardware.drm@latest-service.clearkey
+
+-include vendor/widevine/libwvdrmengine/apex/device/device.mk
 
 #
 # Confirmation UI HAL
@@ -688,6 +689,9 @@ endif
 # UWB HAL
 PRODUCT_PACKAGES += \
     android.hardware.uwb-service
+PRODUCT_COPY_FILES += \
+    device/google/cuttlefish/guest/hals/uwb/uwb-service.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/uwb-service.rc
+
 
 ifeq ($(PRODUCT_ENFORCE_MAC80211_HWSIM),true)
 # Wifi Runtime Resource Overlay
