@@ -183,6 +183,10 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     crosvm_cmd.Cmd().AddParameter("--no-balloon");
   }
 
+  if (!instance.crosvm_use_rng()) {
+    crosvm_cmd.Cmd().AddParameter("--no-rng");
+  }
+
   if (instance.gdb_port() > 0) {
     CF_EXPECT(instance.cpus() == 1, "CPUs must be 1 for crosvm gdb mode");
     crosvm_cmd.Cmd().AddParameter("--gdb=", instance.gdb_port());
@@ -233,7 +237,8 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   }
 
   if (instance.hwcomposer() != kHwComposerNone) {
-    if (!instance.mte() && FileExists(instance.hwcomposer_pmem_path())) {
+    const bool pmem_disabled = instance.mte() || !instance.use_pmem();
+    if (!pmem_disabled && FileExists(instance.hwcomposer_pmem_path())) {
       crosvm_cmd.Cmd().AddParameter("--rw-pmem-device=",
                                     instance.hwcomposer_pmem_path());
     }
@@ -301,7 +306,7 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   SharedFD wifi_tap;
   // GPU capture can only support named files and not file descriptors due to
   // having to pass arguments to crosvm via a wrapper script.
-  if (!gpu_capture_enabled) {
+  if (!gpu_capture_enabled && config.enable_wifi()) {
     // The ordering of tap devices is important. Make sure any change here
     // is reflected in ethprime u-boot variable
     crosvm_cmd.AddTap(instance.mobile_tap_name(), instance.mobile_mac());
@@ -312,12 +317,13 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     }
   }
 
-  if (!instance.mte() && FileExists(instance.access_kregistry_path())) {
+  const bool pmem_disabled = instance.mte() || !instance.use_pmem();
+  if (!pmem_disabled && FileExists(instance.access_kregistry_path())) {
     crosvm_cmd.Cmd().AddParameter("--rw-pmem-device=",
                                   instance.access_kregistry_path());
   }
 
-  if (!instance.mte() && FileExists(instance.pstore_path())) {
+  if (!pmem_disabled && FileExists(instance.pstore_path())) {
     crosvm_cmd.Cmd().AddParameter("--pstore=path=", instance.pstore_path(),
                                   ",size=", FileSize(instance.pstore_path()));
   }

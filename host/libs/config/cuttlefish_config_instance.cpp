@@ -1019,6 +1019,10 @@ std::string CuttlefishConfig::InstanceSpecific::sdcard_path() const {
   return AbsolutePath(PerInstancePath("sdcard.img"));
 }
 
+std::string CuttlefishConfig::InstanceSpecific::sdcard_overlay_path() const {
+  return AbsolutePath(PerInstancePath("sdcard_overlay.img"));
+}
+
 std::string CuttlefishConfig::InstanceSpecific::persistent_composite_disk_path()
     const {
   return AbsolutePath(PerInstancePath("persistent_composite.img"));
@@ -1401,6 +1405,24 @@ void CuttlefishConfig::MutableInstanceSpecific::set_crosvm_use_balloon(
 }
 bool CuttlefishConfig::InstanceSpecific::crosvm_use_balloon() const {
   return (*Dictionary())[kCrosvmUseBalloon].asBool();
+}
+
+static constexpr char kCrosvmUseRng[] = "crosvm_use_rng";
+void CuttlefishConfig::MutableInstanceSpecific::set_crosvm_use_rng(
+    const bool use_rng) {
+  (*Dictionary())[kCrosvmUseRng] = use_rng;
+}
+bool CuttlefishConfig::InstanceSpecific::crosvm_use_rng() const {
+  return (*Dictionary())[kCrosvmUseRng].asBool();
+}
+
+static constexpr char kCrosvmUsePmem[] = "use_pmem";
+void CuttlefishConfig::MutableInstanceSpecific::set_use_pmem(
+    const bool use_pmem) {
+  (*Dictionary())[kCrosvmUsePmem] = use_pmem;
+}
+bool CuttlefishConfig::InstanceSpecific::use_pmem() const {
+  return (*Dictionary())[kCrosvmUsePmem].asBool();
 }
 
 std::string CuttlefishConfig::InstanceSpecific::touch_socket_path(

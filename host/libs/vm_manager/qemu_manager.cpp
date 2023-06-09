@@ -589,17 +589,16 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
             "Provided too many disks (" << disk_num << "), maximum "
                                         << VmManager::kMaxDisks << "supported");
   auto readonly = instance.protected_vm() ? ",readonly" : "";
-  for (size_t i = 0; i < disk_num; i++) {
-    auto bootindex = i == 0 ? ",bootindex=1" : "";
-    auto disk = instance.virtual_disk_paths()[i];
-    const std::string format =
-        (disk == instance.sdcard_path() ? ",format=raw" : "");
+  size_t i = 0;
+  for (const auto& disk : instance.virtual_disk_paths()) {
     qemu_cmd.AddParameter("-drive");
     qemu_cmd.AddParameter("file=", disk, ",if=none,id=drive-virtio-disk", i,
-                          ",aio=threads", format, readonly);
+                          ",aio=threads", readonly);
     qemu_cmd.AddParameter("-device");
-    qemu_cmd.AddParameter("virtio-blk-pci-non-transitional,scsi=off,drive=drive-virtio-disk", i,
-                          ",id=virtio-disk", i, bootindex);
+    qemu_cmd.AddParameter(
+        "virtio-blk-pci-non-transitional,scsi=off,drive=drive-virtio-disk", i,
+        ",id=virtio-disk", i, (i == 0 ? ",bootindex=1" : ""));
+    ++i;
   }
 
   if (is_x86 && FileExists(instance.pstore_path())) {
@@ -692,6 +691,15 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
   if (is_x86 || is_arm) {
     qemu_cmd.AddParameter("-cpu");
     qemu_cmd.AddParameter(IsHostCompatible(arch_) ? "host" : "max");
+  }
+
+  // Explicitly enable the optional extensions of interest, in case the default
+  // behavior changes upstream.
+  if (is_riscv64) {
+    qemu_cmd.AddParameter("-cpu");
+    qemu_cmd.AddParameter("rv64",
+                          ",v=true,elen=64,vlen=128",
+                          ",zba=true,zbb=true,zbs=true");
   }
 
   qemu_cmd.AddParameter("-msg");
