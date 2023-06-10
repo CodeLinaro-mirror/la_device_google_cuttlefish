@@ -21,9 +21,12 @@
 #include <map>
 #include <memory>
 #include <optional>
-#include <string>
 #include <set>
+#include <string>
+#include <string_view>
 #include <vector>
+
+#include <fmt/ostream.h>
 
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/result.h"
@@ -73,6 +76,15 @@ enum class SecureHal {
   Gatekeeper,
   Oemlock,
 };
+
+enum class ExternalNetworkMode {
+  kUnknown,
+  kTap,
+  kSlirp,
+};
+
+std::ostream& operator<<(std::ostream&, ExternalNetworkMode);
+Result<ExternalNetworkMode> ParseExternalNetworkMode(std::string_view);
 
 // Holds the configuration of the cuttlefish instances.
 class CuttlefishConfig {
@@ -552,6 +564,7 @@ class CuttlefishConfig {
     std::string new_boot_image() const;
     std::string init_boot_image() const;
     std::string data_image() const;
+    std::string new_data_image() const;
     std::string super_image() const;
     std::string new_super_image() const;
     std::string misc_image() const;
@@ -592,6 +605,7 @@ class CuttlefishConfig {
     std::string guest_android_version() const;
     bool bootconfig_supported() const;
     std::string filename_encryption_mode() const;
+    ExternalNetworkMode external_network_mode() const;
   };
 
   // A view into an existing CuttlefishConfig object for a particular instance.
@@ -729,6 +743,7 @@ class CuttlefishConfig {
     void set_new_boot_image(const std::string& new_boot_image);
     void set_init_boot_image(const std::string& init_boot_image);
     void set_data_image(const std::string& data_image);
+    void set_new_data_image(const std::string& new_data_image);
     void set_super_image(const std::string& super_image);
     void set_new_super_image(const std::string& super_image);
     void set_misc_image(const std::string& misc_image);
@@ -766,6 +781,7 @@ class CuttlefishConfig {
     void set_guest_android_version(const std::string& guest_android_version);
     void set_bootconfig_supported(bool bootconfig_supported);
     void set_filename_encryption_mode(const std::string& userdata_format);
+    void set_external_network_mode(ExternalNetworkMode network_mode);
 
    private:
     void SetPath(const std::string& key, const std::string& path);
