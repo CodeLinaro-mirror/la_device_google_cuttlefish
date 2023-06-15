@@ -29,11 +29,13 @@
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/commands/run_cvd/runner_defs.h"
+#include "host/libs/command_util/util.h"
 #include "host/libs/config/command_source.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/data_image.h"
 #include "host/libs/config/feature.h"
 #include "host/libs/config/inject.h"
+#include "run_cvd.pb.h"
 
 namespace cuttlefish {
 
@@ -90,15 +92,28 @@ class ServerLoopImpl : public ServerLoop,
     while (true) {
       // TODO: use select to handle simultaneous connections.
       auto client = SharedFD::Accept(*server_);
-      LauncherAction action;
-      while (client->IsOpen() && client->Read(&action, sizeof(action)) > 0) {
-        if (action != LauncherAction::kExtended) {
-          HandleActionWithNoData(action, client, process_monitor);
+      while (client->IsOpen()) {
+        auto launcher_action_with_info_result =
+            ReadLauncherActionFromFd(client);
+        if (!launcher_action_with_info_result.ok()) {
+          LOG(ERROR) << "Reading launcher command from monitor failed.";
+          LOG(DEBUG) << launcher_action_with_info_result.error().Trace();
+          break;
+        }
+        auto launcher_action = std::move(*launcher_action_with_info_result);
+        if (launcher_action.action != LauncherAction::kExtended) {
+          HandleActionWithNoData(launcher_action.action, client,
+                                 process_monitor);
           continue;
         }
-        // This behavior follows LOG(FATAL) lines in the kRestart handling code
-        LOG(FATAL) << "kExtended is not yet implemented";
-        continue;
+        auto result = HandleExtended(launcher_action, client);
+        if (!result.ok()) {
+          LOG(ERROR) << "Failed to handle suspend request.";
+          LOG(DEBUG) << result.error().Trace();
+        }
+        // extended operations for now are 1 time request-response exchanges.
+        // thus, we will close the client FD.
+        client->Close();
       }
     }
   }
@@ -115,6 +130,51 @@ class ServerLoopImpl : public ServerLoop,
                                           SOCK_STREAM, 0666);
     CF_EXPECTF(server_->IsOpen(), "Error when opening launcher server: {}",
                server_->StrError());
+    return {};
+  }
+
+  Result<void> HandleExtended(const LauncherActionInfo& action_info,
+                              const SharedFD& client) {
+    CF_EXPECT(action_info.action == LauncherAction::kExtended);
+    switch (action_info.type) {
+      case ExtendedActionType::kSuspend: {
+        CF_EXPECT(HandleSuspend(action_info.serialized_data, client));
+        return {};
+      }
+      case ExtendedActionType::kResume: {
+        CF_EXPECT(HandleResume(action_info.serialized_data, client));
+        return {};
+      }
+      default:
+        return CF_ERR("Unsupported ExtendedActionType");
+    }
+  }
+
+  Result<void> HandleSuspend(const std::string& serialized_data,
+                             const SharedFD& client) {
+    run_cvd::ExtendedLauncherAction extended_action;
+    CF_EXPECT(extended_action.ParseFromString(serialized_data),
+              "Failed to load ExtendedLauncherAction proto.");
+    CF_EXPECT_EQ(extended_action.actions_case(),
+                 run_cvd::ExtendedLauncherAction::ActionsCase::kSuspend);
+    LOG(INFO) << "Suspend is requested but not yet implemented.";
+    auto response = LauncherResponse::kSuccess;
+    CF_EXPECT_EQ(client->Write(&response, sizeof(response)), sizeof(response),
+                 "Failed to wrote the suspend response.");
+    return {};
+  }
+
+  Result<void> HandleResume(const std::string& serialized_data,
+                            const SharedFD& client) {
+    run_cvd::ExtendedLauncherAction extended_action;
+    CF_EXPECT(extended_action.ParseFromString(serialized_data),
+              "Failed to load ExtendedLauncherAction proto.");
+    CF_EXPECT_EQ(extended_action.actions_case(),
+                 run_cvd::ExtendedLauncherAction::ActionsCase::kResume);
+    LOG(INFO) << "Resume is requested but not yet implemented.";
+    auto response = LauncherResponse::kSuccess;
+    CF_EXPECT_EQ(client->Write(&response, sizeof(response)), sizeof(response),
+                 "Failed to wrote the suspend response.");
     return {};
   }
 

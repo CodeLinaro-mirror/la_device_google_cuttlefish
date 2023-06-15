@@ -84,22 +84,83 @@ bool LauncherActionMessage::IsSupportedType(const ExtendedActionType type) {
   std::set<ExtendedActionType> supported_action_types{
       ExtendedActionType::kUnused,
       ExtendedActionType::kSuspend,
+      ExtendedActionType::kResume,
   };
   return Contains(supported_action_types, type);
 }
 
-Result<void> LauncherActionMessage::WriteToFd(const SharedFD& fd) {
-  ssize_t bytes_sent = WriteAllBinary(fd, &action_);
-  CF_EXPECTF(bytes_sent > 0,
-             "Error sending launcher monitor the command: ", fd->StrError());
-  CF_EXPECTF(bytes_sent == sizeof(action_),
-             "LauncherActionMessage::WriteToFd() ",
+static Result<void> WriteBuffer(const SharedFD& fd, const std::string& buf,
+                                const std::string& description) {
+  CF_EXPECT(fd->IsOpen(), "The file descriptor to write is not open.");
+  ssize_t bytes_sent = WriteAll(fd, buf);
+  CF_EXPECTF(bytes_sent > 0, "Error sending ", description,
+             " to launcher monitor: ", fd->StrError());
+  CF_EXPECTF(bytes_sent == buf.size(), "LauncherActionMessage::WriteToFd() ",
              "did not send correct number of bytes");
+  return {};
+}
+
+// use this when sizeof(T) is the number of bytes we want to send
+template <typename T>
+static Result<void> WriteSizeOfT(const SharedFD& fd, const T& t,
+                                 const std::string& description) {
+  CF_EXPECT(fd->IsOpen(), "The file descriptor to write is not open.");
+  const char* start_addr = reinterpret_cast<const char*>(&t);
+  std::vector<char> tmp{start_addr, start_addr + sizeof(T)};
+  std::string buf{tmp.begin(), tmp.end()};
+  CF_EXPECT(WriteBuffer(fd, buf, description));
+  return {};
+}
+
+Result<void> LauncherActionMessage::WriteToFd(const SharedFD& fd) {
+  CF_EXPECT(WriteSizeOfT(fd, action_, "LauncherAction"));
   if (IsShortAction(action_)) {
     return {};
   }
-  return CF_ERR(fmt::format("Action \"{}\" is not yet supported",
-                            static_cast<const char>(action_)));
+  CF_EXPECT(WriteSizeOfT(fd, type_, "ExtendedActionType"));
+  const SerializedDataSizeType length = serialized_data_.size();
+  CF_EXPECT(WriteSizeOfT(fd, length, "Length of serialized data"));
+  if (!serialized_data_.empty()) {
+    CF_EXPECT(WriteBuffer(fd, serialized_data_, "serialized data"));
+  }
+  return {};
+}
+
+Result<LauncherActionMessage> LauncherActionMessage::ReadFromFd(
+    const SharedFD& fd) {
+  CF_EXPECT(fd->IsOpen(), "The file descriptor for ReadFromFd is not open.");
+  LauncherAction action;
+  ssize_t n_bytes = 0;
+  CF_EXPECTF((n_bytes = fd->Read(&action, sizeof(action))) > 0,
+             "The returned n_bytes is not ", std::to_string(sizeof(action)),
+             " but ", std::to_string(n_bytes));
+  if (IsShortAction(action)) {
+    return CF_EXPECT(LauncherActionMessage::Create(action));
+  }
+  ExtendedActionType type;
+  CF_EXPECTF((n_bytes = fd->Read(&type, sizeof(type))) > 0,
+             "The returned n_bytes is not ", std::to_string(sizeof(type)),
+             " but ", std::to_string(n_bytes));
+  SerializedDataSizeType length = 0;
+  CF_EXPECTF((n_bytes = fd->Read(&length, sizeof(length))) > 0,
+             "The returned n_bytes is not ", std::to_string(sizeof(length)),
+             " but ", std::to_string(n_bytes));
+  if (length == 0) {
+    return CF_EXPECT(LauncherActionMessage::Create(action, type, ""));
+  }
+  std::string serialized_data(length, 0);
+  CF_EXPECTF((n_bytes = ReadExact(fd, &serialized_data)) > 0,
+             "The returned n_bytes is not ", std::to_string(sizeof(length)),
+             " but ", std::to_string(n_bytes));
+  auto message =
+      CF_EXPECT(LauncherActionMessage::Create(action, type, serialized_data));
+  return message;
+}
+
+LauncherAction LauncherActionMessage::Action() const { return action_; }
+ExtendedActionType LauncherActionMessage::Type() const { return type_; }
+const std::string& LauncherActionMessage::SerializedData() const {
+  return serialized_data_;
 }
 
 }  // namespace run_cvd_msg_impl

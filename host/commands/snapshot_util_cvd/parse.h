@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 The Android Open Source Project
+ * Copyright (C) 2023 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,17 +16,30 @@
 
 #pragma once
 
-#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include <android-base/logging.h>
+
+#include "common/libs/utils/result.h"
 
 namespace cuttlefish {
-namespace secure_env {
 
-enum class OemLockField : uint32_t {
-  ALLOWED_BY_CARRIER = 0,
-  ALLOWED_BY_DEVICE,
-  ALLOWED,
-  LOCKED,
+enum class SnapshotCmd : int {
+  kUnknown = 0,
+  kSuspend = 1,
+  kResume = 2,
+  kSnapshotTake = 3,
 };
 
-}  // namespace secure_env
+struct Parsed {
+  SnapshotCmd cmd;
+  int instance_num;
+  int wait_for_launcher;
+  std::optional<android::base::LogSeverity> verbosity_level;
+};
+Result<Parsed> Parse(int argc, char** argv);
+Result<Parsed> Parse(std::vector<std::string>& args);
+
 }  // namespace cuttlefish
