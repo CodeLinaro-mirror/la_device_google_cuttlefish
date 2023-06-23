@@ -15,7 +15,12 @@
  */
 
 #pragma once
+
+#include <string>
+#include <vector>
+
 #include <json/json.h>
+
 #include "common/libs/utils/result.h"
 #include "host/commands/cvd/parser/fetch_cvd_parser.h"
 
@@ -23,7 +28,7 @@ namespace cuttlefish {
 
 typedef struct _CvdFlags {
   std::vector<std::string> launch_cvd_flags;
-  FetchCvdConfigs fetch_cvd_flags;
+  FetchCvdConfig fetch_cvd_flags;
 } CvdFlags;
 
 Result<Json::Value> ParseJsonFile(const std::string& file_path);
