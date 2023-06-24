@@ -151,10 +151,19 @@ CrosvmManager::ConfigureBootDevices(int num_disks, bool have_gpu) {
 constexpr auto crosvm_socket = "crosvm_control.sock";
 
 Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
-    const CuttlefishConfig& config) {
+    const CuttlefishConfig& config,
+    std::vector<VmmDependencyCommand*>& dependencyCommands) {
   auto instance = config.ForDefaultInstance();
 
   CrosvmBuilder crosvm_cmd;
+
+  crosvm_cmd.Cmd().AddPrerequisite([&dependencyCommands]() -> Result<void> {
+    for (auto dependencyCommand : dependencyCommands) {
+      CF_EXPECT(dependencyCommand->WaitForAvailability());
+    }
+
+    return {};
+  });
 
   crosvm_cmd.ApplyProcessRestarter(instance.crosvm_binary(),
                                    kCrosvmVmResetExitCode);
@@ -203,7 +212,10 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
           ? ",gles=false"
           : ",gles=true";
   // 256MB so it is small enough for a 32-bit kernel.
-  const std::string gpu_pci_bar_size = ",pci-bar-size=268435456";
+  const bool target_is_32bit = instance.target_arch() == Arch::Arm ||
+                               instance.target_arch() == Arch::X86;
+  const std::string gpu_pci_bar_size =
+      target_is_32bit ? ",pci-bar-size=268435456" : "";
   const std::string gpu_udmabuf_string =
       instance.enable_gpu_udmabuf() ? ",udmabuf=true" : "";
 
