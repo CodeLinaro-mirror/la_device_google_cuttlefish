@@ -25,10 +25,18 @@ cc_binary {
         "boot_config.cc",
         "boot_image_utils.cc",
         "clean.cc",
+        "disk/factory_reset_protected.cc",
+        "disk/gem5_image_unpacker.cpp",
+        "disk/generate_persistent_bootconfig.cpp",
+        "disk/generate_persistent_vbmeta.cpp",
+        "disk/initialize_instance_composite_disk.cc",
+        "disk/kernel_ramdisk_repacker.cpp",
         "disk_builder.cpp",
         "disk_flags.cc",
+        "display.cpp",
         "flags.cc",
         "flag_feature.cpp",
+        "kernel_module_parser.cc",
         "misc_info.cc",
         "super_image_mixer.cc",
         "vendor_dlkm_utils.cc",
@@ -54,7 +62,6 @@ cc_binary {
         "libext2_uuid",
         "libimage_aggregator",
         "libsparse",
-        "libcuttlefish_display_flags",
         "libcuttlefish_graphics_configuration",
         "libcuttlefish_graphics_detector",
         "libcuttlefish_host_config",
@@ -71,19 +78,4 @@ cc_binary {
         "mkuserimg_mke2fs",
     ],
     defaults: ["cuttlefish_host", "cuttlefish_libicuuc"],
-}
-
-cc_library {
-    name: "libcuttlefish_display_flags",
-    srcs: [
-        "display_flags.cpp",
-    ],
-    shared_libs: [
-        "libbase",
-        "libjsoncpp",
-    ],
-    static_libs: [
-        "libcuttlefish_host_config",
-    ],
-    defaults: ["cuttlefish_host"],
 }

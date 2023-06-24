@@ -14,9 +14,14 @@
  * limitations under the License.
  */
 
+#include "host/commands/run_cvd/validate.h"
+
+#include <sys/utsname.h>
+
+#include <iostream>
+
 #include <android-base/logging.h>
 #include <fruit/fruit.h>
-#include <iostream>
 
 #include "common/libs/utils/network.h"
 #include "common/libs/utils/result.h"
@@ -29,9 +34,10 @@ namespace {
 
 using vm_manager::ValidateHostConfiguration;
 
-class ValidateTapDevices : public SetupFeature {
+class ValidateTapDevicesImpl : public ValidateTapDevices {
  public:
-  INJECT(ValidateTapDevices(const CuttlefishConfig::InstanceSpecific& instance))
+  INJECT(ValidateTapDevicesImpl(
+      const CuttlefishConfig::InstanceSpecific& instance))
       : instance_(instance) {}
 
   std::string Name() const override { return "ValidateTapDevices"; }
@@ -40,6 +46,15 @@ class ValidateTapDevices : public SetupFeature {
  private:
   std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
   Result<void> ResultSetup() override {
+    CF_EXPECT(TestTapDevices(),
+              "There appears to be another cuttlefish device"
+              " already running, using the requested host "
+              "resources. Try `cvd reset` or `pkill run_cvd` "
+              "and `pkill crosvm`");
+    return {};
+  }
+
+  Result<void> TestTapDevices() {
     auto taps = TapInterfacesInUse();
     auto wifi = instance_.wifi_tap_name();
     CF_EXPECT(taps.count(wifi) == 0, "Device \"" << wifi << "\" in use");
@@ -50,7 +65,6 @@ class ValidateTapDevices : public SetupFeature {
     return {};
   }
 
- private:
   const CuttlefishConfig::InstanceSpecific& instance_;
 };
 
@@ -86,13 +100,40 @@ class ValidateHostConfigurationFeature : public SetupFeature {
   }
 };
 
+class ValidateHostKernelFeature : public SetupFeature {
+ public:
+  INJECT(ValidateHostKernelFeature()) {}
+
+  bool Enabled() const override { return true; }
+  std::string Name() const override { return "ValidateHostKernel"; }
+
+ private:
+  std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
+  Result<void> ResultSetup() override {
+    struct utsname uname_data;
+    CF_EXPECT_EQ(uname(&uname_data), 0, "uname failed: " << strerror(errno));
+    LOG(DEBUG) << "uts.sysname = \"" << uname_data.sysname << "\"";
+    LOG(DEBUG) << "uts.nodename = \"" << uname_data.nodename << "\"";
+    LOG(DEBUG) << "uts.release = \"" << uname_data.release << "\"";
+    LOG(DEBUG) << "uts.version = \"" << uname_data.version << "\"";
+    LOG(DEBUG) << "uts.machine = \"" << uname_data.machine << "\"";
+#ifdef _GNU_SOURCE
+    LOG(DEBUG) << "uts.domainname = \"" << uname_data.domainname << "\"";
+#endif
+    return {};
+  }
+};
+
 }  // namespace
 
-fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>>
+fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>,
+                 ValidateTapDevices>
 validationComponent() {
   return fruit::createComponent()
       .addMultibinding<SetupFeature, ValidateHostConfigurationFeature>()
-      .addMultibinding<SetupFeature, ValidateTapDevices>();
+      .addMultibinding<SetupFeature, ValidateHostKernelFeature>()
+      .bind<ValidateTapDevices, ValidateTapDevicesImpl>()
+      .addMultibinding<SetupFeature, ValidateTapDevicesImpl>();
 }
 
 }  // namespace cuttlefish

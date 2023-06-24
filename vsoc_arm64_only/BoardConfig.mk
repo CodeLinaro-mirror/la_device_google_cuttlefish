@@ -26,11 +26,12 @@ TARGET_CPU_VARIANT := cortex-a53
 
 AUDIOSERVER_MULTILIB := first
 
-HOST_CROSS_OS := linux_bionic
+HOST_CROSS_OS := linux_musl
 HOST_CROSS_ARCH := arm64
 HOST_CROSS_2ND_ARCH :=
 
 -include device/google/cuttlefish/shared/BoardConfig.mk
+-include device/google/cuttlefish/shared/bluetooth/BoardConfig.mk
 -include device/google/cuttlefish/shared/camera/BoardConfig.mk
 -include device/google/cuttlefish/shared/graphics/BoardConfig.mk
 -include device/google/cuttlefish/shared/swiftshader/BoardConfig.mk

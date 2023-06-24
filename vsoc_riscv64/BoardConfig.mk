@@ -26,6 +26,10 @@ TARGET_CPU_ABI := riscv64
 
 AUDIOSERVER_MULTILIB := first
 
+HOST_CROSS_OS := linux_musl
+HOST_CROSS_ARCH := arm64
+HOST_CROSS_2ND_ARCH :=
+
 # Include 64-bit mediaserver to support 64-bit only devices
 TARGET_DYNAMIC_64_32_MEDIASERVER := true
 
@@ -39,6 +43,7 @@ TARGET_KERNEL_PATH := $(KERNEL_MODULES_PATH)/kernel-$(TARGET_KERNEL_USE)
 # FIXME: system_dlkm should be specified as well
 
 -include device/google/cuttlefish/shared/BoardConfig.mk
+-include device/google/cuttlefish/shared/bluetooth/BoardConfig.mk
 -include device/google/cuttlefish/shared/camera/BoardConfig.mk
 -include device/google/cuttlefish/shared/graphics/BoardConfig.mk
 -include device/google/cuttlefish/shared/telephony/BoardConfig.mk

@@ -105,8 +105,10 @@ cc_library_host_static {
         "lock_file.cpp",
         "logger.cpp",
         "reset_client_utils.cpp",
+        "run_server.cpp",
         "server.cc",
         "server_client.cpp",
+        "server_constants.cpp",
         "types.cpp",
     ],
     static_libs: [
@@ -127,7 +129,7 @@ cc_defaults {
         "libcvd_fetch",
     ],
     target: {
-        linux_bionic: {
+        linux_musl: {
             static_executable: true,
         },
     },

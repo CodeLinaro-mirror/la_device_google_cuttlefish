@@ -325,7 +325,7 @@ public class CuttlefishDisplayHotplugTest extends CuttlefishHostTest {
     public void removeDisplays(List<Integer> displayIds) throws FileNotFoundException {
         List<String> removeDisplaysCommand = Lists.newArrayList("display", "remove");
         for (Integer displayId : displayIds) {
-            removeDisplaysCommand.add(displayId.toString());
+            removeDisplaysCommand.add("--display=" + displayId.toString());
         }
 
         CommandResult removeDisplayResult = runCvdCommand(removeDisplaysCommand);
@@ -471,6 +471,21 @@ public class CuttlefishDisplayHotplugTest extends CuttlefishHostTest {
             List.of(
                 AddDisplayParams.create(1920, 1080),
                 AddDisplayParams.create(1280, 720)));
+    }
+
+    @Test
+    public void testDisplayHotplugSeries() throws Exception {
+        doOneConnectAndDisconnectCycle(
+            List.of(AddDisplayParams.create(640, 480)));
+
+        doOneConnectAndDisconnectCycle(
+            List.of(AddDisplayParams.create(1280, 720)));
+
+        doOneConnectAndDisconnectCycle(
+            List.of(AddDisplayParams.create(1920, 1080)));
+
+        doOneConnectAndDisconnectCycle(
+            List.of(AddDisplayParams.create(3840, 2160)));
     }
 
     @AutoValue

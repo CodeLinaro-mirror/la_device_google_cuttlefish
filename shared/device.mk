@@ -37,7 +37,7 @@ PRODUCT_VENDOR_PROPERTIES += \
 
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish # for audio and wifi
 
-PRODUCT_SHIPPING_API_LEVEL := 34
+PRODUCT_SHIPPING_API_LEVEL := 35
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
 
@@ -51,7 +51,7 @@ PRODUCT_SET_DEBUGFS_RESTRICTIONS := true
 PRODUCT_FS_COMPRESSION := 1
 TARGET_RO_FILE_SYSTEM_TYPE ?= erofs
 TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE ?= f2fs
-TARGET_USERDATAIMAGE_PARTITION_SIZE ?= 6442450944
+TARGET_USERDATAIMAGE_PARTITION_SIZE ?= 8589934592
 
 TARGET_VULKAN_SUPPORT ?= true
 
@@ -88,7 +88,6 @@ endif
 #   ro.hardware.keystore_desede=true needed for CtsKeystoreTestCases
 PRODUCT_VENDOR_PROPERTIES += \
     tombstoned.max_tombstone_count=500 \
-    vendor.bt.rootcanal_test_console=off \
     ro.carrier=unknown \
     ro.com.android.dataroaming?=false \
     ro.hardware.virtual_device=1 \
@@ -100,12 +99,6 @@ PRODUCT_VENDOR_PROPERTIES += \
     ro.rebootescrow.device=/dev/block/pmem0 \
     ro.incremental.enable=1 \
     debug.c2.use_dmabufheaps=1
-
-LOCAL_BT_PROPERTIES ?= \
- vendor.ser.bt-uart?=/dev/hvc5 \
-
-PRODUCT_VENDOR_PROPERTIES += \
-	 ${LOCAL_BT_PROPERTIES} \
 
 # Below is a list of properties we probably should get rid of.
 PRODUCT_VENDOR_PROPERTIES += \
@@ -261,7 +254,6 @@ PRODUCT_COPY_FILES += \
     hardware/interfaces/audio/aidl/default/audio_effects_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects_config.xml \
     frameworks/av/media/libstagefright/data/media_codecs_google_audio.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_audio.xml \
     frameworks/av/media/libstagefright/data/media_codecs_google_telephony.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_telephony.xml \
-    frameworks/av/services/audiopolicy/config/bluetooth_audio_policy_configuration_7_0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/bluetooth_audio_policy_configuration_7_0.xml \
     frameworks/av/services/audiopolicy/config/usb_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/usb_audio_policy_configuration.xml \
     frameworks/av/services/audiopolicy/config/r_submix_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/r_submix_audio_policy_configuration.xml \
     frameworks/av/services/audiopolicy/config/audio_policy_volumes.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy_volumes.xml \
@@ -304,46 +296,11 @@ PRODUCT_PACKAGES += \
 	android.hardware.ir-service.example \
 	consumerir.default
 
-
-#
-# OemLock aidl HAL
-#
-PRODUCT_PACKAGES += \
-    android.hardware.oemlock-service.example
-
 #
 # Authsecret AIDL HAL
 #
 PRODUCT_PACKAGES += \
     android.hardware.authsecret-service.example
-
-#
-# Bluetooth HAL and Compatibility Bluetooth library (for older revs).
-#
-ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
-PRODUCT_COPY_FILES +=\
-    frameworks/native/data/etc/android.hardware.bluetooth.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.bluetooth.xml \
-    frameworks/native/data/etc/android.hardware.bluetooth_le.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.bluetooth_le.xml
-
-PRODUCT_PACKAGES += \
-    android.hardware.bluetooth-service.default \
-    bt_vhci_forwarder
-
-# Bluetooth initialization configuration is copied to the init folder here instead of being added
-# as an init_rc attribute of the bt_vhci_forward binary.  The bt_vhci_forward binary is used by
-# multiple targets with different initialization configurations.
-PRODUCT_COPY_FILES += \
-    device/google/cuttlefish/guest/commands/bt_vhci_forwarder/bt_vhci_forwarder.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/bt_vhci_forwarder.rc
-
-else
-PRODUCT_PACKAGES += com.google.cf.bt
-endif
-
-#
-# Bluetooth Audio AIDL HAL
-#
-PRODUCT_PACKAGES += \
-    android.hardware.bluetooth.audio-impl \
 
 #
 # Audio HAL
@@ -406,13 +363,14 @@ PRODUCT_PACKAGES += \
 # BiometricsFingerprint HAL (AIDL)
 #
 PRODUCT_PACKAGES += \
-    android.hardware.biometrics.fingerprint-service.example
+    com.android.hardware.biometrics.fingerprint.virtual
 
 #
 # Contexthub HAL
 #
-PRODUCT_PACKAGES += \
+LOCAL_CONTEXTHUB_PRODUCT_PACKAGE ?= \
     android.hardware.contexthub-service.example
+PRODUCT_PACKAGES += $(LOCAL_CONTEXTHUB_PRODUCT_PACKAGE)
 
 #
 # Drm HAL
@@ -442,10 +400,21 @@ PRODUCT_PACKAGES += $(LOCAL_DUMPSTATE_PRODUCT_PACKAGE)
 # Gatekeeper
 #
 ifeq ($(LOCAL_GATEKEEPER_PRODUCT_PACKAGE),)
-       LOCAL_GATEKEEPER_PRODUCT_PACKAGE := android.hardware.gatekeeper-service.remote
+    LOCAL_GATEKEEPER_PRODUCT_PACKAGE := android.hardware.gatekeeper-service.remote
 endif
 PRODUCT_PACKAGES += \
     $(LOCAL_GATEKEEPER_PRODUCT_PACKAGE)
+
+#
+# Oemlock
+#
+ifeq ($(LOCAL_OEMLOCK_PRODUCT_PACKAGE),)
+    LOCAL_OEMLOCK_PRODUCT_PACKAGE := android.hardware.oemlock-service.remote
+endif
+PRODUCT_PACKAGES += \
+    $(LOCAL_OEMLOCK_PRODUCT_PACKAGE)
+
+PRODUCT_VENDOR_PROPERTIES += ro.oem_unlock_supported=1
 
 #
 # GPS
@@ -554,10 +523,6 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     com.android.hardware.usb
 
-# USB Gadget
-PRODUCT_PACKAGES += \
-    android.hardware.usb.gadget-service.example
-
 # Vibrator HAL
 ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
 PRODUCT_PACKAGES += com.android.hardware.vibrator
@@ -565,6 +530,12 @@ else
 PRODUCT_PACKAGES += \
     android.hardware.vibrator-service.example
 endif
+
+PRODUCT_PACKAGES += \
+    android.hardware.secure_element-service.example
+
+PRODUCT_COPY_FILES += \
+    frameworks/native/data/etc/android.hardware.se.omapi.ese.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.se.omapi.ese.xml
 
 # BootControl HAL
 PRODUCT_PACKAGES += \

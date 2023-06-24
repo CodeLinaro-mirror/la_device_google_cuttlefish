@@ -20,6 +20,8 @@ package {
 cc_binary {
     name: "bt_vhci_forwarder",
     srcs: [
+        "hci/h4_packetizer.cc",
+        "hci/h4_parser.cc",
         "main.cpp",
     ],
     shared_libs: [
@@ -28,7 +30,6 @@ cc_binary {
         "liblog",
     ],
     static_libs: [
-        "h4_packetizer_lib",
         "libgflags",
     ],
     defaults: ["cuttlefish_guest_only"]

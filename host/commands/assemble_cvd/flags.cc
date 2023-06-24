@@ -16,7 +16,6 @@
 #include "host/commands/assemble_cvd/flags.h"
 
 #include <android-base/logging.h>
-#include <android-base/parsebool.h>
 #include <android-base/parseint.h>
 #include <android-base/strings.h>
 #include <gflags/gflags.h>
@@ -51,8 +50,9 @@
 #include "host/commands/assemble_cvd/boot_config.h"
 #include "host/commands/assemble_cvd/boot_image_utils.h"
 #include "host/commands/assemble_cvd/disk_flags.h"
-#include "host/commands/assemble_cvd/display_flags.h"
+#include "host/commands/assemble_cvd/display.h"
 #include "host/libs/config/config_flag.h"
+#include "host/libs/config/display.h"
 #include "host/libs/config/esp.h"
 #include "host/libs/config/host_tools_version.h"
 #include "host/libs/config/instance_nums.h"
@@ -108,6 +108,7 @@ DEFINE_string(x_res, "0", "Width of the screen in pixels");
 DEFINE_string(y_res, "0", "Height of the screen in pixels");
 DEFINE_string(dpi, "0", "Pixels per inch for the screen");
 DEFINE_string(refresh_rate_hz, "60", "Screen refresh rate in Hertz");
+DEFINE_bool(use_16k, false, "Launch using 16k kernel");
 DEFINE_vec(kernel_path, CF_DEFAULTS_KERNEL_PATH,
               "Path to the kernel. Overrides the one from the boot image");
 DEFINE_vec(initramfs_path, CF_DEFAULTS_INITRAMFS_PATH,
@@ -130,8 +131,9 @@ DEFINE_vec(use_random_serial, cuttlefish::BoolToString(CF_DEFAULTS_USE_RANDOM_SE
 DEFINE_vec(vm_manager, CF_DEFAULTS_VM_MANAGER,
               "What virtual machine manager to use, one of {qemu_cli, crosvm}");
 DEFINE_vec(gpu_mode, CF_DEFAULTS_GPU_MODE,
-              "What gpu configuration to use, one of {auto, drm_virgl, "
-              "gfxstream, guest_swiftshader}");
+           "What gpu configuration to use, one of {auto, drm_virgl, "
+           "gfxstream, gfxstream_guest_angle, "
+           "gfxstream_guest_angle_host_swiftshader, guest_swiftshader}");
 DEFINE_vec(hwcomposer, CF_DEFAULTS_HWCOMPOSER,
               "What hardware composer to use, one of {auto, drm, ranchu} ");
 DEFINE_vec(gpu_capture_binary, CF_DEFAULTS_GPU_CAPTURE_BINARY,
@@ -178,10 +180,6 @@ DEFINE_string(bluetooth_controller_properties_file,
               CF_DEFAULTS_BLUETOOTH_CONTROLLER_PROPERTIES_FILE,
               "The configuartion file path for root-canal which is a Bluetooth "
               "emulator.");
-DEFINE_string(
-    bluetooth_default_commands_file,
-    CF_DEFAULTS_BLUETOOTH_DEFAULT_COMMANDS_FILE,
-    "The default commands which root-canal executes when it launches.");
 
 /**
  * crosvm sandbox feature requires /var/empty and seccomp directory
@@ -408,8 +406,11 @@ DEFINE_bool(use_overlay, CF_DEFAULTS_USE_OVERLAY,
             "prerequisite for powerwash_cvd or multiple instances.");
 
 DEFINE_vec(modem_simulator_count,
-              std::to_string(CF_DEFAULTS_MODEM_SIMULATOR_COUNT),
-              "Modem simulator count corresponding to maximum sim number");
+           std::to_string(CF_DEFAULTS_MODEM_SIMULATOR_COUNT),
+           "Modem simulator count corresponding to maximum sim number");
+
+DEFINE_bool(track_host_tools_crc, CF_DEFAULTS_TRACK_HOST_TOOLS_CRC,
+            "Track changes to host executables");
 
 DECLARE_string(assembly_dir);
 DECLARE_string(boot_image);
@@ -605,18 +606,6 @@ Result<std::vector<std::vector<CuttlefishConfig::DisplayConfig>>>
   return result;
 }
 
-Result<bool> ParseBool(const std::string& flag_str,
-                        const std::string& flag_name) {
-  auto result = android::base::ParseBool(flag_str);
-  CF_EXPECT(result != android::base::ParseBoolResult::kError,
-            "Failed to parse value \"" << flag_str
-            << "\" for " << flag_name);
-  if (result == android::base::ParseBoolResult::kTrue) {
-    return true;
-  }
-  return false;
-}
-
 Result<std::unordered_map<int, std::string>> CreateNumToWebrtcDeviceIdMap(
     const CuttlefishConfig& tmp_config_obj,
     const std::vector<std::int32_t>& instance_nums,
@@ -648,8 +637,7 @@ Result<std::unordered_map<int, std::string>> CreateNumToWebrtcDeviceIdMap(
     CF_EXPECT(device_id.find("{num}") != std::string::npos,
               "If one webrtc_device_ids is given for multiple instances, "
                   << " {num} should be included in webrtc_device_id.");
-    device_ids = std::move(
-        std::vector<std::string>(instance_nums.size(), tokens.front()));
+    device_ids = std::vector<std::string>(instance_nums.size(), tokens.front());
   }
 
   if (tokens.size() == instance_nums.size()) {
@@ -767,6 +755,84 @@ Result<std::vector<std::string>> GetFlagStrValueForInstances(
   return value_vec;
 }
 
+Result<std::string> SelectGpuMode(
+    const std::string& gpu_mode_arg, const std::string& vm_manager,
+    const GuestConfig& guest_config,
+    const GraphicsAvailability& graphics_availability) {
+  if (gpu_mode_arg != kGpuModeAuto && gpu_mode_arg != kGpuModeDrmVirgl &&
+      gpu_mode_arg != kGpuModeGfxstream &&
+      gpu_mode_arg != kGpuModeGfxstreamGuestAngle &&
+      gpu_mode_arg != kGpuModeGfxstreamGuestAngleHostSwiftShader &&
+      gpu_mode_arg != kGpuModeGuestSwiftshader &&
+      gpu_mode_arg != kGpuModeNone) {
+    return CF_ERR("Invalid gpu_mode: " << gpu_mode_arg);
+  }
+
+  if (gpu_mode_arg == kGpuModeAuto) {
+    if (vm_manager == QemuManager::name() &&
+        !IsHostCompatible(guest_config.target_arch)) {
+      LOG(INFO) << "Enabling --gpu_mode=drm_virgl.";
+      return kGpuModeDrmVirgl;
+    }
+
+    if (ShouldEnableAcceleratedRendering(graphics_availability)) {
+      LOG(INFO) << "GPU auto mode: detected prerequisites for accelerated "
+                << "rendering support.";
+      if (vm_manager == QemuManager::name()) {
+        LOG(INFO) << "Enabling --gpu_mode=drm_virgl.";
+        return kGpuModeDrmVirgl;
+      } else {
+        // TODO (284204884) accelerated gfx detection on launch_cvd startup
+        // broken atm. Until it can be fixed - default to guest swiftshader.
+        LOG(INFO) << "GPU auto mode: prereq detection for accel gfx is "
+                     "broken. Switching to --gpu_mode=guest_swiftshader.";
+        return kGpuModeGuestSwiftshader;
+      }
+    } else {
+      LOG(INFO) << "GPU auto mode: did not detect prerequisites for "
+                   "accelerated rendering support, enabling "
+                   "--gpu_mode=guest_swiftshader.";
+      return kGpuModeGuestSwiftshader;
+    }
+  }
+
+  if (gpu_mode_arg == kGpuModeGfxstream ||
+      gpu_mode_arg == kGpuModeGfxstreamGuestAngle ||
+      gpu_mode_arg == kGpuModeDrmVirgl) {
+    if (!ShouldEnableAcceleratedRendering(graphics_availability)) {
+      LOG(ERROR) << "--gpu_mode=" << gpu_mode_arg
+                 << " was requested but the prerequisites for accelerated "
+                    "rendering were not detected so the device may not "
+                    "function correctly. Please consider switching to "
+                    "--gpu_mode=auto or --gpu_mode=guest_swiftshader.";
+    }
+  }
+
+  return gpu_mode_arg;
+}
+
+Result<std::string> InitializeGpuMode(
+    const std::string& gpu_mode_arg, const std::string& vm_manager,
+    const GuestConfig& guest_config,
+    CuttlefishConfig::MutableInstanceSpecific* instance) {
+  const GraphicsAvailability graphics_availability =
+      GetGraphicsAvailabilityWithSubprocessCheck();
+  LOG(DEBUG) << graphics_availability;
+
+  const std::string gpu_mode = CF_EXPECT(SelectGpuMode(
+      gpu_mode_arg, vm_manager, guest_config, graphics_availability));
+  instance->set_gpu_mode(gpu_mode);
+
+  const auto angle_features = CF_EXPECT(GetNeededAngleFeatures(
+      CF_EXPECT(GetRenderingMode(gpu_mode)), graphics_availability));
+  instance->set_gpu_angle_feature_overrides_enabled(
+      angle_features.angle_feature_overrides_enabled);
+  instance->set_gpu_angle_feature_overrides_disabled(
+      angle_features.angle_feature_overrides_disabled);
+
+  return gpu_mode;
+}
+
 } // namespace
 
 Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
@@ -802,11 +868,6 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   }
   tmp_config_obj.set_vm_manager(vm_manager_vec[0]);
 
-  const GraphicsAvailability graphics_availability =
-    GetGraphicsAvailabilityWithSubprocessCheck();
-
-  LOG(DEBUG) << graphics_availability;
-
   auto secure_hals = android::base::Split(FLAGS_secure_hals, ",");
   tmp_config_obj.set_secure_hals(
       std::set<std::string>(secure_hals.begin(), secure_hals.end()));
@@ -814,7 +875,9 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   tmp_config_obj.set_extra_kernel_cmdline(FLAGS_extra_kernel_cmdline);
   tmp_config_obj.set_extra_bootconfig_args(FLAGS_extra_bootconfig_args);
 
-  tmp_config_obj.set_host_tools_version(HostToolsCrc());
+  if (FLAGS_track_host_tools_crc) {
+    tmp_config_obj.set_host_tools_version(HostToolsCrc());
+  }
 
   tmp_config_obj.set_gem5_debug_flags(FLAGS_gem5_debug_flags);
 
@@ -854,8 +917,6 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   tmp_config_obj.set_wmediumd_config(FLAGS_wmediumd_config);
 
   // netsim flags allow all radios or selecting a specific radio
-  tmp_config_obj.set_rootcanal_default_commands_file(
-      FLAGS_bluetooth_default_commands_file);
   tmp_config_obj.set_rootcanal_config_file(
       FLAGS_bluetooth_controller_properties_file);
 
@@ -1101,29 +1162,25 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_blank_data_image_mb(blank_data_image_mb_vec[instance_index]);
     instance.set_gdb_port(gdb_port_vec[instance_index]);
 
+    std::optional<std::vector<CuttlefishConfig::DisplayConfig>>
+        binding_displays_configs;
+    auto displays_configs_bindings =
+        injector.getMultibindings<DisplaysConfigs>();
+    CF_EXPECT_EQ(displays_configs_bindings.size(), 1,
+                 "Expected a single binding?");
+    if (auto configs = displays_configs_bindings[0]->GetConfigs();
+        !configs.empty()) {
+      binding_displays_configs = configs;
+    }
+
     std::vector<CuttlefishConfig::DisplayConfig> display_configs;
     // assume displays proto input has higher priority than original display inputs
     if (!FLAGS_displays_textproto.empty() || !FLAGS_displays_binproto.empty()) {
       if (instance_index < instances_display_configs.size()) {
         display_configs = instances_display_configs[instance_index];
       } // else display_configs is an empty vector
-    } else {
-      auto display0 = CF_EXPECT(ParseDisplayConfig(FLAGS_display0));
-      if (display0) {
-        display_configs.push_back(*display0);
-      }
-      auto display1 = CF_EXPECT(ParseDisplayConfig(FLAGS_display1));
-      if (display1) {
-        display_configs.push_back(*display1);
-      }
-      auto display2 = CF_EXPECT(ParseDisplayConfig(FLAGS_display2));
-      if (display2) {
-        display_configs.push_back(*display2);
-      }
-      auto display3 = CF_EXPECT(ParseDisplayConfig(FLAGS_display3));
-      if (display3) {
-        display_configs.push_back(*display3);
-      }
+    } else if (binding_displays_configs) {
+      display_configs = *binding_displays_configs;
     }
 
     if (x_res_vec[instance_index] > 0 && y_res_vec[instance_index] > 0) {
@@ -1135,7 +1192,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
             .refresh_rate_hz = refresh_rate_hz_vec[instance_index],
           });
       } else {
-        LOG(WARNING) << "Ignoring --x_res and --y_res when --displayN specified.";
+        LOG(WARNING)
+            << "Ignoring --x_res and --y_res when --display specified.";
       }
     }
     instance.set_display_configs(display_configs);
@@ -1203,49 +1261,9 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_config_server_port(calc_vsock_port(6800));
 
     // gpu related settings
-    auto gpu_mode = gpu_mode_vec[instance_index];
-    if (gpu_mode != kGpuModeAuto && gpu_mode != kGpuModeDrmVirgl &&
-        gpu_mode != kGpuModeGfxstream &&
-        gpu_mode != kGpuModeGfxstreamGuestAngle &&
-        gpu_mode != kGpuModeGuestSwiftshader && gpu_mode != kGpuModeNone) {
-      LOG(FATAL) << "Invalid gpu_mode: " << gpu_mode;
-    }
-    if (gpu_mode == kGpuModeAuto) {
-      if (ShouldEnableAcceleratedRendering(graphics_availability)) {
-        LOG(INFO) << "GPU auto mode: detected prerequisites for accelerated "
-            "rendering support.";
-        if (vm_manager_vec[0] == QemuManager::name()) {
-          LOG(INFO) << "Enabling --gpu_mode=drm_virgl.";
-          gpu_mode = kGpuModeDrmVirgl;
-        } else {
-          LOG(INFO) << "Enabling --gpu_mode=gfxstream.";
-          gpu_mode = kGpuModeGfxstream;
-        }
-      } else {
-        LOG(INFO) << "GPU auto mode: did not detect prerequisites for "
-            "accelerated rendering support, enabling "
-            "--gpu_mode=guest_swiftshader.";
-        gpu_mode = kGpuModeGuestSwiftshader;
-      }
-    } else if (gpu_mode == kGpuModeGfxstream ||
-               gpu_mode == kGpuModeGfxstreamGuestAngle ||
-               gpu_mode == kGpuModeDrmVirgl) {
-      if (!ShouldEnableAcceleratedRendering(graphics_availability)) {
-        LOG(ERROR) << "--gpu_mode=" << gpu_mode
-                   << " was requested but the prerequisites for accelerated "
-                      "rendering were not detected so the device may not "
-                      "function correctly. Please consider switching to "
-                      "--gpu_mode=auto or --gpu_mode=guest_swiftshader.";
-      }
-    }
-    instance.set_gpu_mode(gpu_mode);
-
-    const auto angle_features = CF_EXPECT(GetNeededAngleFeatures(
-        CF_EXPECT(GetRenderingMode(gpu_mode)), graphics_availability));
-    instance.set_gpu_angle_feature_overrides_enabled(
-        angle_features.angle_feature_overrides_enabled);
-    instance.set_gpu_angle_feature_overrides_disabled(
-        angle_features.angle_feature_overrides_disabled);
+    const std::string gpu_mode = CF_EXPECT(InitializeGpuMode(
+        gpu_mode_vec[instance_index], vm_manager_vec[instance_index],
+        guest_configs[instance_index], &instance));
 
     instance.set_restart_subprocesses(restart_subprocesses_vec[instance_index]);
     instance.set_gpu_capture_binary(gpu_capture_binary_vec[instance_index]);

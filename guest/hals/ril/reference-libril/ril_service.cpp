@@ -19,8 +19,9 @@
 #include "RefRadioSim.h"
 #include "RefImsMedia.h"
 #include "RefRadioIms.h"
-#include "RefRadioModem.h"
 #include "RefRadioNetwork.h"
+#include "RefRadioSatellite.h"
+#include "RefRadioModem.h"
 
 #include <android-base/logging.h>
 #include <android/binder_manager.h>
@@ -35,6 +36,7 @@
 #include <libradiocompat/RadioImsMedia.h>
 #include <libradiocompat/RadioMessaging.h>
 #include <libradiocompat/RadioModem.h>
+#include <libradiocompat/RadioSatellite.h>
 #include <libradiocompat/RadioSim.h>
 #include <libradiocompat/RadioVoice.h>
 
@@ -13437,6 +13439,7 @@ void radio_1_6::registerService(RIL_RadioFunctions *callbacks, CommandInfo *comm
         publishRadioHal<compat::RadioSim>(context, radioHidl, callbackMgr, slot);
         publishRadioHal<compat::RadioVoice>(context, radioHidl, callbackMgr, slot);
         publishRadioHal<cf::ril::RefRadioIms>(context, radioHidl, callbackMgr, slot);
+        publishRadioHal<cf::ril::RefRadioSatellite>(context, radioHidl, callbackMgr, slot);
         publishRadioHal<cf::ril::RefImsMedia>(context, radioHidl, callbackMgr,
                                               std::string("default"));
         publishRadioHal<cf::ril::RefRadioModem>(context, radioHidl, callbackMgr, slot);

@@ -38,10 +38,8 @@ import com.android.internal.util.FunctionalUtils;
 import com.android.telephony.Rlog;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Executor;
 
@@ -58,7 +56,7 @@ public class CFSatelliteService extends SatelliteImplBase {
     /** SatelliteCapabilities constant indicating the maximum number of characters per datagram. */
     private static final int MAX_BYTES_PER_DATAGRAM = 339;
 
-    @NonNull private final Map<IBinder, ISatelliteListener> mListeners = new HashMap<>();
+    @NonNull private final Set<ISatelliteListener> mListeners = new HashSet<>();
 
     private boolean mIsCommunicationAllowedInLocation;
     private boolean mIsEnabled;
@@ -112,7 +110,7 @@ public class CFSatelliteService extends SatelliteImplBase {
     @Override
     public void setSatelliteListener(@NonNull ISatelliteListener listener) {
         logd("setSatelliteListener");
-        mListeners.put(listener.asBinder(), listener);
+        mListeners.add(listener);
     }
 
     @Override
@@ -286,8 +284,7 @@ public class CFSatelliteService extends SatelliteImplBase {
         if (modemState == mModemState) {
             return;
         }
-        logd("updateSatelliteModemState: mListeners.size=" + mListeners.size());
-        mListeners.values().forEach(listener -> runWithExecutor(() ->
+        mListeners.forEach(listener -> runWithExecutor(() ->
                 listener.onSatelliteModemStateChanged(modemState)));
         mModemState = modemState;
     }
@@ -302,9 +299,8 @@ public class CFSatelliteService extends SatelliteImplBase {
         if (isProvisioned == mIsProvisioned) {
             return;
         }
-        logd("updateSatelliteProvisionState: mListeners.size=" + mListeners.size());
         mIsProvisioned = isProvisioned;
-        mListeners.values().forEach(listener -> runWithExecutor(() ->
+        mListeners.forEach(listener -> runWithExecutor(() ->
                 listener.onSatelliteProvisionStateChanged(mIsProvisioned)));
     }
 
