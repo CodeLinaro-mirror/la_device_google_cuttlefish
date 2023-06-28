@@ -16,6 +16,8 @@
 
 #include "host/commands/cvd/parser/fetch_cvd_parser.h"
 
+#include <algorithm>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -26,45 +28,45 @@
 namespace cuttlefish {
 namespace {
 
-#define EMPTY_CREDENTIAL ""
-#define EMPTY_DEFAULT_BUILD ""
-#define EMPTY_SYSTEM_BUILD ""
-#define EMPTY_KERNEL_BUILD ""
-
 void InitFetchInstanceConfigs(Json::Value& instances) {
-  // Handle common flags
-  InitStringConfig(instances, "disk", "default_build", EMPTY_DEFAULT_BUILD);
-  InitStringConfig(instances, "disk", "system_build", EMPTY_SYSTEM_BUILD);
-  InitStringConfig(instances, "disk", "kernel_build", EMPTY_KERNEL_BUILD);
+  InitNullGroupConfig(instances, "disk", "default_build");
+  InitNullGroupConfig(instances, "disk", "system_build");
+  InitNullGroupConfig(instances, "disk", "kernel_build");
 }
 
 void InitFetchCvdConfigs(Json::Value& root) {
-  if (!root.isMember("credential_source")) {
-    root["credential_source"] = EMPTY_CREDENTIAL;
-  }
+  InitNullConfig(root, "credential_source");
   InitFetchInstanceConfigs(root["instances"]);
 }
 
-FetchCvdInstanceConfig ParseFetchInstanceConfigs(const Json::Value& instance) {
-  FetchCvdInstanceConfig result;
-  result.default_build = instance["disk"]["default_build"].asString();
-  result.system_build = instance["disk"]["system_build"].asString();
-  result.kernel_build = instance["disk"]["kernel_build"].asString();
-  if (result.default_build != EMPTY_DEFAULT_BUILD ||
-      result.system_build != EMPTY_SYSTEM_BUILD ||
-      result.kernel_build != EMPTY_KERNEL_BUILD) {
-    result.should_fetch = true;
-  } else {
-    result.should_fetch = false;
+std::optional<std::string> OptString(const Json::Value& value) {
+  if (value.isNull()) {
+    return std::nullopt;
   }
+  return value.asString();
+}
 
+bool ShouldFetch(const std::vector<std::optional<std::string>>& values) {
+  return std::any_of(std::begin(values), std::end(values),
+                     [](const std::optional<std::string>& value) {
+                       return value.has_value();
+                     });
+}
+
+FetchCvdInstanceConfig ParseFetchInstanceConfigs(const Json::Value& instance) {
+  auto result = FetchCvdInstanceConfig{
+      .default_build = OptString(instance["disk"]["default_build"]),
+      .system_build = OptString(instance["disk"]["system_build"]),
+      .kernel_build = OptString(instance["disk"]["kernel_build"])};
+  result.should_fetch = ShouldFetch(
+      {result.default_build, result.system_build, result.kernel_build});
   return result;
 }
 
 FetchCvdConfig GenerateFetchCvdFlags(const Json::Value& root) {
   FetchCvdConfig result;
-  result.credential_source = root["credential_source"].asString();
-  int num_instances = root["instances"].size();
+  result.credential_source = OptString(root["credential_source"]);
+  const int num_instances = root["instances"].size();
   for (unsigned int i = 0; i < num_instances; i++) {
     auto instance_config = ParseFetchInstanceConfigs(root["instances"][i]);
     result.instances.emplace_back(instance_config);
