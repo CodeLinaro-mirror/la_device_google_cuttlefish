@@ -23,6 +23,7 @@
 #include <vector>
 
 #include <android-base/parseint.h>
+#include <android-base/strings.h>
 #include <fruit/fruit.h>
 #include <json/json.h>
 
@@ -42,20 +43,13 @@
 namespace cuttlefish {
 namespace {
 
-std::string GenerateSystemImageFlag(
-    const std::vector<FetchCvdInstanceConfig>& configs) {
-  std::string result = "";
-
-  for (const auto& config : configs) {
-    result += config.artifacts_directory + ",";
+std::string GenerateSystemImageFlag(const FetchCvdConfig& config) {
+  std::vector<std::string> paths;
+  for (const auto& instance : config.instances) {
+    paths.emplace_back(config.target_directory + "/" +
+                       instance.target_subdirectory);
   }
-
-  // remove the last comma character from the final string, if it exists
-  if (!result.empty()) {
-    result.pop_back();
-  }
-
-  return "--system_image_dir=" + result;
+  return "--system_image_dir=" + android::base::Join(paths, ',');
 }
 
 std::string GenerateParentDirectory() {
@@ -70,10 +64,8 @@ std::string GenerateParentDirectory() {
   return ss.str();
 }
 
-std::string GenerateHostArtifactsDirectoryName(int64_t time,
-                                        int instance_index) {
-  return GenerateParentDirectory() + std::to_string(time) + "_" +
-         std::to_string(instance_index) + "/";
+std::string GenerateHostArtifactsDirectory(int64_t time) {
+  return GenerateParentDirectory() + std::to_string(time);
 }
 
 std::string GenerateHomeDirectoryName(int64_t time) {
@@ -81,6 +73,29 @@ std::string GenerateHomeDirectoryName(int64_t time) {
 }
 
 using DemoCommandSequence = std::vector<RequestWithStdio>;
+
+void AddFetchCommandArgs(cvd::CommandRequest& command,
+                         const FetchCvdConfig& config,
+                         const FetchCvdInstanceConfig& instance_config) {
+  command.set_working_directory(config.target_directory);
+  command.add_args("cvd");
+  command.add_args("fetch");
+  command.add_args("--target_directory=" + config.target_directory);
+  command.add_args("--target_subdirectory=" +
+                   instance_config.target_subdirectory);
+  if (config.credential_source) {
+    command.add_args("--credential_source=" + *config.credential_source);
+  }
+  if (instance_config.default_build) {
+    command.add_args("--default_build=" + *instance_config.default_build);
+  }
+  if (instance_config.system_build) {
+    command.add_args("--system_build=" + *instance_config.system_build);
+  }
+  if (instance_config.kernel_build) {
+    command.add_args("--kernel_build=" + *instance_config.kernel_build);
+  }
+}
 
 }  // namespace
 
@@ -286,38 +301,22 @@ class LoadConfigsCommand : public CvdServerHandler {
     const auto& client_env = request.Message().command_request().env();
 
     auto time = std::chrono::system_clock::now().time_since_epoch().count();
-    // set the home directory for each instance
+    cvd_flags.fetch_cvd_flags.target_directory =
+        GenerateHostArtifactsDirectory(time);
     for (int instance_index = 0; instance_index < num_instances;
          instance_index++) {
-      cvd_flags.fetch_cvd_flags.instances[instance_index].artifacts_directory =
-          GenerateHostArtifactsDirectoryName(time, instance_index);
-      LOG(INFO) << "Home directory for instance " << instance_index << " is "
-                << cvd_flags.fetch_cvd_flags.instances[instance_index]
-                       .artifacts_directory;
+      LOG(INFO) << "Instance " << instance_index << " directory is "
+                << cvd_flags.fetch_cvd_flags.target_directory << "/"
+                << std::to_string(instance_index);
+      cvd_flags.fetch_cvd_flags.instances[instance_index].target_subdirectory =
+          std::to_string(instance_index);
     }
 
     for (const auto& instance : cvd_flags.fetch_cvd_flags.instances) {
       if (instance.should_fetch) {
         auto& fetch_cmd = *req_protos.emplace_back().mutable_command_request();
         *fetch_cmd.mutable_env() = client_env;
-        fetch_cmd.set_working_directory(instance.artifacts_directory);
-        fetch_cmd.add_args("cvd");
-        fetch_cmd.add_args("fetch");
-        fetch_cmd.add_args("--target_directory=" +
-                           instance.artifacts_directory);
-        if (cvd_flags.fetch_cvd_flags.credential_source) {
-          fetch_cmd.add_args("--credential_source=" +
-                             *cvd_flags.fetch_cvd_flags.credential_source);
-        }
-        if (instance.default_build) {
-          fetch_cmd.add_args("--default_build=" + *instance.default_build);
-        }
-        if (instance.system_build) {
-          fetch_cmd.add_args("--system_build=" + *instance.system_build);
-        }
-        if (instance.kernel_build) {
-          fetch_cmd.add_args("--kernel_build=" + *instance.kernel_build);
-        }
+        AddFetchCommandArgs(fetch_cmd, cvd_flags.fetch_cvd_flags, instance);
       }
     }
 
@@ -334,7 +333,8 @@ class LoadConfigsCommand : public CvdServerHandler {
     auto& launch_cmd = *req_protos.emplace_back().mutable_command_request();
 
     auto first_instance_dir =
-        cvd_flags.fetch_cvd_flags.instances[0].artifacts_directory;
+        cvd_flags.fetch_cvd_flags.target_directory + "/" +
+        cvd_flags.fetch_cvd_flags.instances[0].target_subdirectory;
     *launch_cmd.mutable_env() = client_env;
     launch_cmd.set_working_directory(first_instance_dir);
     (*launch_cmd.mutable_env())["HOME"] = launch_home_dir;
@@ -357,8 +357,7 @@ class LoadConfigsCommand : public CvdServerHandler {
       launch_cmd.add_args(parsed_flag);
     }
     // Add system flag for multi-build scenario
-    launch_cmd.add_args(
-        GenerateSystemImageFlag(cvd_flags.fetch_cvd_flags.instances));
+    launch_cmd.add_args(GenerateSystemImageFlag(cvd_flags.fetch_cvd_flags));
 
     launch_cmd.mutable_selector_opts()->add_args(
         std::string("--") + selector::SelectorFlags::kDisableDefaultGroup);
