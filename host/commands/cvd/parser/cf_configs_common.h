@@ -15,8 +15,14 @@
  */
 
 #pragma once
-#include <json/json.h>
+
+#include <functional>
 #include <iostream>
+#include <map>
+#include <string>
+#include <vector>
+
+#include <json/json.h>
 
 #include "common/libs/utils/result.h"
 
@@ -74,6 +80,11 @@ void InitBoolConfigSubGroup(Json::Value& instances, const std::string& group,
                             const std::string& subgroup,
                             const std::string& json_flag,
                             const bool default_value);
+
+void InitNullConfig(Json::Value& value, const std::string& json_flag);
+
+void InitNullGroupConfig(Json::Value& instances, const std::string& group,
+                         const std::string& json_flag);
 
 std::string GenerateGflag(const Json::Value& instances,
                           const std::string& gflag_name,

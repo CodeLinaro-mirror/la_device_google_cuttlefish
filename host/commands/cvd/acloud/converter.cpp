@@ -50,12 +50,12 @@ namespace cuttlefish {
 namespace {
 
 // Image names to search
-const std::vector<std::string> _KERNEL_IMAGE_NAMES = {"kernel", "bzImage",
-                                                      "Image"};
-const std::vector<std::string> _INITRAMFS_IMAGE_NAME = {"initramfs.img"};
-const std::vector<std::string> _BOOT_IMAGE_NAME = {"boot.img"};
-const std::vector<std::string> _VENDOR_BOOT_IMAGE_NAME = {"vendor_boot.img"};
-const std::string _MIXED_SUPER_IMAGE_NAME = "mixed_super.img";
+const std::vector<std::string> kKernelImageNames = {"kernel", "bzImage",
+                                                    "Image"};
+const std::vector<std::string> kInitRamFsImageName = {"initramfs.img"};
+const std::vector<std::string> kBootImageName = {"boot.img"};
+const std::vector<std::string> kVendorBootImageName = {"vendor_boot.img"};
+const std::string kMixedSuperImageName = "mixed_super.img";
 
 struct BranchBuildTargetInfo {
   std::string branch_str;
@@ -176,128 +176,6 @@ Result<ConvertedAcloudCreateCommand> ConvertAcloudCreate(
   auto parsed_flags = CF_EXPECT(acloud_impl::ParseAcloudCreateFlags(arguments));
 
   std::vector<Flag> flags;
-
-  std::optional<std::string> local_kernel_image;
-  flags.emplace_back(
-      Flag()
-          .Alias(
-              {FlagAliasMode::kFlagConsumesFollowing, "--local-kernel-image"})
-          .Alias({FlagAliasMode::kFlagConsumesFollowing, "--local-boot-image"})
-          .Setter([&local_kernel_image](const FlagMatch& m) {
-            local_kernel_image = m.value;
-            return true;
-          }));
-
-  std::optional<std::string> image_download_dir;
-  flags.emplace_back(Flag()
-                         .Alias({FlagAliasMode::kFlagConsumesFollowing,
-                                 "--image-download-dir"})
-                         .Setter([&image_download_dir](const FlagMatch& m) {
-                           image_download_dir = m.value;
-                           return true;
-                         }));
-
-  std::optional<std::string> local_system_image;
-  flags.emplace_back(Flag()
-                         .Alias({FlagAliasMode::kFlagConsumesFollowing,
-                                 "--local-system-image"})
-                         .Setter([&local_system_image](const FlagMatch& m) {
-                           local_system_image = m.value;
-                           return true;
-                         }));
-
-  bool verbose = false;
-  flags.emplace_back(Flag()
-                         .Alias({FlagAliasMode::kFlagExact, "-v"})
-                         .Alias({FlagAliasMode::kFlagExact, "-vv"})
-                         .Alias({FlagAliasMode::kFlagExact, "--verbose"})
-                         .Setter([&verbose](const FlagMatch&) {
-                           verbose = true;
-                           return true;
-                         }));
-
-  std::optional<std::string> branch;
-  flags.emplace_back(
-      Flag()
-          .Alias({FlagAliasMode::kFlagConsumesFollowing, "--branch"})
-          .Setter([&branch](const FlagMatch& m) {
-            branch = m.value;
-            return true;
-          }));
-
-  bool local_image = false;
-  std::optional<std::string> local_image_path;
-  flags.emplace_back(
-      Flag()
-          .Alias({FlagAliasMode::kFlagConsumesArbitrary, "--local-image"})
-          .Setter([&local_image, &local_image_path](const FlagMatch& m) {
-            local_image = true;
-            if (m.value != "") {
-              local_image_path = m.value;
-            }
-            return true;
-          }));
-
-  std::optional<std::string> build_id;
-  flags.emplace_back(
-      Flag()
-          .Alias({FlagAliasMode::kFlagConsumesFollowing, "--build-id"})
-          .Alias({FlagAliasMode::kFlagConsumesFollowing, "--build_id"})
-          .Setter([&build_id](const FlagMatch& m) {
-            build_id = m.value;
-            return true;
-          }));
-
-  std::optional<std::string> build_target;
-  flags.emplace_back(
-      Flag()
-          .Alias({FlagAliasMode::kFlagConsumesFollowing, "--build-target"})
-          .Alias({FlagAliasMode::kFlagConsumesFollowing, "--build_target"})
-          .Setter([&build_target](const FlagMatch& m) {
-            build_target = m.value;
-            return true;
-          }));
-
-  std::optional<std::string> config_file;
-  flags.emplace_back(
-      Flag()
-          .Alias({FlagAliasMode::kFlagConsumesFollowing, "--config-file"})
-          .Alias({FlagAliasMode::kFlagConsumesFollowing, "--config_file"})
-          .Setter([&config_file](const FlagMatch& m) {
-            config_file = m.value;
-            return true;
-          }));
-
-  std::optional<std::string> bootloader_build_id;
-  flags.emplace_back(Flag()
-                         .Alias({FlagAliasMode::kFlagConsumesFollowing,
-                                 "--bootloader-build-id"})
-                         .Alias({FlagAliasMode::kFlagConsumesFollowing,
-                                 "--bootloader_build_id"})
-                         .Setter([&bootloader_build_id](const FlagMatch& m) {
-                           bootloader_build_id = m.value;
-                           return true;
-                         }));
-  std::optional<std::string> bootloader_build_target;
-  flags.emplace_back(
-      Flag()
-          .Alias({FlagAliasMode::kFlagConsumesFollowing,
-                  "--bootloader-build-target"})
-          .Alias({FlagAliasMode::kFlagConsumesFollowing,
-                  "--bootloader_build_target"})
-          .Setter([&bootloader_build_target](const FlagMatch& m) {
-            bootloader_build_target = m.value;
-            return true;
-          }));
-  std::optional<std::string> bootloader_branch;
-  flags.emplace_back(
-      Flag()
-          .Alias({FlagAliasMode::kFlagConsumesFollowing, "--bootloader-branch"})
-          .Alias({FlagAliasMode::kFlagConsumesFollowing, "--bootloader_branch"})
-          .Setter([&bootloader_branch](const FlagMatch& m) {
-            bootloader_branch = m.value;
-            return true;
-          }));
 
   std::optional<std::string> boot_build_id;
   flags.emplace_back(
@@ -452,11 +330,12 @@ Result<ConvertedAcloudCreateCommand> ConvertAcloudCreate(
                                        << android::base::Join(arguments, "', '")
                                        << "'");
 
-  CF_EXPECT(parsed_flags.local_instance_set == true,
-            "Only '--local-instance' is supported");
+  CF_EXPECT_EQ(parsed_flags.local_instance.is_set, true,
+               "Only '--local-instance' is supported");
   auto host_dir = TempDir() + "/acloud_image_artifacts/";
-  if (image_download_dir) {
-    host_dir = image_download_dir.value() + "/acloud_image_artifacts/";
+  if (parsed_flags.image_download_dir) {
+    host_dir =
+        parsed_flags.image_download_dir.value() + "/acloud_image_artifacts/";
   }
 
   const auto& request_command = request.Message().command_request();
@@ -466,24 +345,22 @@ Result<ConvertedAcloudCreateCommand> ConvertAcloudCreate(
 
   std::vector<cvd::Request> request_protos;
   const uid_t uid = request.Credentials()->uid;
-  // default user config path
-  std::string user_config_path = CF_EXPECT(GetDefaultConfigFile(uid));
+  const std::string user_config_path =
+      parsed_flags.config_file.value_or(CF_EXPECT(GetDefaultConfigFile(uid)));
 
-  if (config_file) {
-    user_config_path = config_file.value();
-  }
   AcloudConfig acloud_config =
       CF_EXPECT(LoadAcloudConfig(user_config_path, uid));
 
   std::string fetch_command_str;
   std::string fetch_cvd_args_file;
 
-  if (local_image) {
+  if (parsed_flags.local_image.given) {
     CF_EXPECT(!(system_branch || system_build_target || system_build_id),
               "--local-image incompatible with --system-* flags");
-    CF_EXPECT(
-        !(bootloader_branch || bootloader_build_target || bootloader_build_id),
-        "--local-image incompatible with --bootloader-* flags");
+    CF_EXPECT(!(parsed_flags.bootloader.branch ||
+                parsed_flags.bootloader.build_target ||
+                parsed_flags.bootloader.build_id),
+              "--local-image incompatible with --bootloader-* flags");
     CF_EXPECT(
         !(boot_branch || boot_build_target || boot_build_id || boot_artifact),
         "--local-image incompatible with --boot-* flags");
@@ -503,9 +380,11 @@ Result<ConvertedAcloudCreateCommand> ConvertAcloudCreate(
     }
     // used for default branch and target when there is no input
     std::optional<BranchBuildTargetInfo> given_branch_target_info;
-    if (branch || build_id || build_target) {
-      auto target = build_target ? *build_target : "";
-      auto build = build_id.value_or(branch.value_or("aosp-master"));
+    if (parsed_flags.branch || parsed_flags.build_id ||
+        parsed_flags.build_target) {
+      auto target = parsed_flags.build_target ? *parsed_flags.build_target : "";
+      auto build = parsed_flags.build_id.value_or(
+          parsed_flags.branch.value_or("aosp-master"));
       host_dir += (build + target);
     } else {
       given_branch_target_info = CF_EXPECT(GetDefaultBranchBuildTarget(
@@ -534,15 +413,18 @@ Result<ConvertedAcloudCreateCommand> ConvertAcloudCreate(
       fetch_command_str += (given_branch_target_info->branch_str + "/" +
                             given_branch_target_info->build_target_str);
     } else {
-      auto target = build_target ? "/" + *build_target : "";
-      auto build = build_id.value_or(branch.value_or("aosp-master"));
+      auto target =
+          parsed_flags.build_target ? "/" + *parsed_flags.build_target : "";
+      auto build = parsed_flags.build_id.value_or(
+          parsed_flags.branch.value_or("aosp-master"));
       fetch_command.add_args(build + target);
       fetch_command_str += (build + target);
     }
     if (system_branch || system_build_id || system_build_target) {
       fetch_command.add_args("--system_build");
       fetch_command_str += " --system_build=";
-      auto target = system_build_target.value_or(build_target.value_or(""));
+      auto target =
+          system_build_target.value_or(parsed_flags.build_target.value_or(""));
       if (target != "") {
         target = "/" + target;
       }
@@ -551,15 +433,16 @@ Result<ConvertedAcloudCreateCommand> ConvertAcloudCreate(
       fetch_command.add_args(build + target);
       fetch_command_str += (build + target);
     }
-    if (bootloader_branch || bootloader_build_id || bootloader_build_target) {
+    if (parsed_flags.bootloader.branch || parsed_flags.bootloader.build_id ||
+        parsed_flags.bootloader.build_target) {
       fetch_command.add_args("--bootloader_build");
       fetch_command_str += " --bootloader_build=";
-      auto target = bootloader_build_target.value_or("");
+      auto target = parsed_flags.bootloader.build_target.value_or("");
       if (target != "") {
         target = "/" + target;
       }
-      auto build = bootloader_build_id.value_or(
-          bootloader_branch.value_or("aosp_u-boot-mainline"));
+      auto build = parsed_flags.bootloader.build_id.value_or(
+          parsed_flags.bootloader.branch.value_or("aosp_u-boot-mainline"));
       fetch_command.add_args(build + target);
       fetch_command_str += (build + target);
     }
@@ -622,7 +505,7 @@ Result<ConvertedAcloudCreateCommand> ConvertAcloudCreate(
   }
 
   std::string super_image_path;
-  if (local_system_image) {
+  if (parsed_flags.local_system_image) {
     // in new cvd server design, at this point,
     // we don't know which HOME is assigned by cvd start.
     // create a temporary directory to store generated
@@ -630,11 +513,11 @@ Result<ConvertedAcloudCreateCommand> ConvertAcloudCreate(
     TemporaryDir my_dir;
     std::string required_paths;
     my_dir.DoNotRemove();
-    super_image_path = std::string(my_dir.path) + "/" + _MIXED_SUPER_IMAGE_NAME;
+    super_image_path = std::string(my_dir.path) + "/" + kMixedSuperImageName;
 
     // combine super_image path and local_system_image path
     required_paths = super_image_path;
-    required_paths += ("," + local_system_image.value());
+    required_paths += ("," + parsed_flags.local_system_image.value());
 
     cvd::Request& mixsuperimage_request = request_protos.emplace_back();
     auto& mixsuperimage_command =
@@ -645,14 +528,10 @@ Result<ConvertedAcloudCreateCommand> ConvertAcloudCreate(
     mixsuperimage_command.add_args("--super_image");
 
     auto& mixsuperimage_env = *mixsuperimage_command.mutable_env();
-    if (local_image) {
-      if (local_image_path) {
-        // added image_dir to required_paths for MixSuperImage use
-        required_paths += ("," + local_image_path.value());
-      } else {
-        required_paths += ",";
-      }
-
+    if (parsed_flags.local_image.given) {
+      // added image_dir to required_paths for MixSuperImage use if there is
+      required_paths.append(",").append(
+          parsed_flags.local_image.path.value_or(""));
       mixsuperimage_env[kAndroidHostOut] = host_artifacts_path->second;
 
       auto product_out = request_command.env().find(kAndroidProductOut);
@@ -681,25 +560,25 @@ Result<ConvertedAcloudCreateCommand> ConvertAcloudCreate(
     start_command.add_args(parsed_flags.flavor.value());
   }
 
-  if (local_system_image) {
+  if (parsed_flags.local_system_image) {
     start_command.add_args("-super_image");
     start_command.add_args(super_image_path);
   }
 
-  if (local_kernel_image) {
+  if (parsed_flags.local_kernel_image) {
     // kernel image has 1st priority than boot image
     struct stat statbuf {};
     std::string local_boot_image;
     std::string vendor_boot_image;
     std::string kernel_image;
     std::string initramfs_image;
-    if (stat(local_kernel_image.value().c_str(), &statbuf) == 0) {
+    if (stat(parsed_flags.local_kernel_image.value().c_str(), &statbuf) == 0) {
       if (statbuf.st_mode & S_IFDIR) {
         // it's a directory, deal with kernel image case first
-        kernel_image =
-            FindImage(local_kernel_image.value(), _KERNEL_IMAGE_NAMES);
-        initramfs_image =
-            FindImage(local_kernel_image.value(), _INITRAMFS_IMAGE_NAME);
+        kernel_image = FindImage(parsed_flags.local_kernel_image.value(),
+                                 kKernelImageNames);
+        initramfs_image = FindImage(parsed_flags.local_kernel_image.value(),
+                                    kInitRamFsImageName);
         // This is the original python acloud behavior, it
         // expects both kernel and initramfs files, however,
         // there are some very old kernels that are built without
@@ -713,10 +592,10 @@ Result<ConvertedAcloudCreateCommand> ConvertAcloudCreate(
         } else {
           // boot.img case
           // adding boot.img and vendor_boot.img to the path
-          local_boot_image =
-              FindImage(local_kernel_image.value(), _BOOT_IMAGE_NAME);
-          vendor_boot_image =
-              FindImage(local_kernel_image.value(), _VENDOR_BOOT_IMAGE_NAME);
+          local_boot_image = FindImage(parsed_flags.local_kernel_image.value(),
+                                       kBootImageName);
+          vendor_boot_image = FindImage(parsed_flags.local_kernel_image.value(),
+                                        kVendorBootImageName);
           start_command.add_args("-boot_image");
           start_command.add_args(local_boot_image);
           // vendor boot image may not exist
@@ -727,7 +606,7 @@ Result<ConvertedAcloudCreateCommand> ConvertAcloudCreate(
         }
       } else if (statbuf.st_mode & S_IFREG) {
         // it's a file which directly points to boot.img
-        local_boot_image = local_kernel_image.value();
+        local_boot_image = parsed_flags.local_kernel_image.value();
         start_command.add_args("-boot_image");
         start_command.add_args(local_boot_image);
       }
@@ -783,9 +662,9 @@ Result<ConvertedAcloudCreateCommand> ConvertAcloudCreate(
   }
 
   auto& start_env = *start_command.mutable_env();
-  if (local_image) {
-    if (local_image_path) {
-      std::string local_image_path_str = local_image_path.value();
+  if (parsed_flags.local_image.given) {
+    if (parsed_flags.local_image.path) {
+      std::string local_image_path_str = parsed_flags.local_image.path.value();
       // Python acloud source: local_image_local_instance.py;l=81
       // this acloud flag is equal to launch_cvd flag system_image_dir
       start_command.add_args("-system_image_dir");
@@ -807,16 +686,16 @@ Result<ConvertedAcloudCreateCommand> ConvertAcloudCreate(
     // this variable will confuse cvd start, though
     start_env.erase(kCuttlefishInstanceEnvVarName);
   }
-  if (parsed_flags.local_instance) {
+  if (parsed_flags.local_instance.id) {
     start_env[kCuttlefishInstanceEnvVarName] =
-        std::to_string(*parsed_flags.local_instance);
+        std::to_string(*parsed_flags.local_instance.id);
   }
   // we don't know which HOME is assigned by cvd start.
   // cvd server does not rely on the working directory for cvd start
   *start_command.mutable_working_directory() =
       request_command.working_directory();
   std::vector<SharedFD> fds;
-  if (verbose) {
+  if (parsed_flags.verbose) {
     fds = request.FileDescriptors();
   } else {
     auto dev_null = SharedFD::Open("/dev/null", O_RDWR);
@@ -829,7 +708,7 @@ Result<ConvertedAcloudCreateCommand> ConvertAcloudCreate(
                                         request.Credentials()),
       .fetch_command_str = fetch_command_str,
       .fetch_cvd_args_file = fetch_cvd_args_file,
-      .verbose = verbose,
+      .verbose = parsed_flags.verbose,
   };
   for (auto& request_proto : request_protos) {
     ret.prep_requests.emplace_back(request.Client(), request_proto, fds,

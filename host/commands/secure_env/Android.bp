@@ -20,7 +20,6 @@ package {
 cc_defaults {
     name: "secure_env_defaults",
     shared_libs: [
-        "libext2_blkid",
         "libbase",
         "libcppbor_external",
         "libcppcose_rkp",
@@ -70,11 +69,10 @@ cc_defaults {
 common_libsecure_srcs = [
         "composite_serialization.cpp",
         "encrypted_serializable.cpp",
-        "fragile_tpm_storage.cpp",
+        "storage/tpm_storage.cpp",
         "gatekeeper_responder.cpp",
         "hmac_serializable.cpp",
         "in_process_tpm.cpp",
-        "insecure_fallback_storage.cpp",
         "json_serializable.cpp",
         "keymaster_responder.cpp",
         "primary_key_builder.cpp",

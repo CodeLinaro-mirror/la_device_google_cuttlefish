@@ -16,29 +16,39 @@
 
 #pragma once
 
-#include <optional>
+#include <cstdint>
 #include <string>
 #include <vector>
 
-#include <json/json.h>
+#include "common/libs/utils/flag_parser.h"
+#include "common/libs/utils/result.h"
 
 namespace cuttlefish {
 
-struct FetchCvdInstanceConfig {
-  bool should_fetch = false;
-  // this subdirectory is relative to FetchCvdConfig::target_directory
-  std::string target_subdirectory;
-  std::optional<std::string> default_build;
-  std::optional<std::string> system_build;
-  std::optional<std::string> kernel_build;
+class Parser {
+ public:
+  static Result<Parser> ConsumeAndParse(std::vector<std::string>&);
+
+  bool IgnoreSigtstp() const;
+  bool WhenDumped() const;
+  bool WhenKilled() const;
+  bool WhenExitedWithFailure() const;
+  std::int32_t WhenExitedWithCode() const;
+
+ private:
+  Parser();
+
+  Flag IgnoreSigtstpFlag();
+  Flag WhenDumpedFlag();
+  Flag WhenKilledFlag();
+  Flag WhenExitedWithFailureFlag();
+  Flag WhenExitedWithCodeFlag();
+
+  bool ignore_sigtstp_;
+  bool when_dumped_;
+  bool when_killed_;
+  bool when_exited_with_failure_;
+  std::int32_t when_exited_with_code_;
 };
 
-struct FetchCvdConfig {
-  std::string target_directory;
-  std::optional<std::string> credential_source;
-  std::vector<FetchCvdInstanceConfig> instances;
-};
-
-FetchCvdConfig ParseFetchCvdConfigs(Json::Value& root);
-
-};  // namespace cuttlefish
+}  // namespace cuttlefish

@@ -16,6 +16,7 @@
 
 #include "host/libs/vm_manager/crosvm_manager.h"
 
+#include <signal.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -151,10 +152,19 @@ CrosvmManager::ConfigureBootDevices(int num_disks, bool have_gpu) {
 constexpr auto crosvm_socket = "crosvm_control.sock";
 
 Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
-    const CuttlefishConfig& config) {
+    const CuttlefishConfig& config,
+    std::vector<VmmDependencyCommand*>& dependencyCommands) {
   auto instance = config.ForDefaultInstance();
 
   CrosvmBuilder crosvm_cmd;
+
+  crosvm_cmd.Cmd().AddPrerequisite([&dependencyCommands]() -> Result<void> {
+    for (auto dependencyCommand : dependencyCommands) {
+      CF_EXPECT(dependencyCommand->WaitForAvailability());
+    }
+
+    return {};
+  });
 
   crosvm_cmd.ApplyProcessRestarter(instance.crosvm_binary(),
                                    kCrosvmVmResetExitCode);
@@ -203,7 +213,10 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
           ? ",gles=false"
           : ",gles=true";
   // 256MB so it is small enough for a 32-bit kernel.
-  const std::string gpu_pci_bar_size = ",pci-bar-size=268435456";
+  const bool target_is_32bit = instance.target_arch() == Arch::Arm ||
+                               instance.target_arch() == Arch::X86;
+  const std::string gpu_pci_bar_size =
+      target_is_32bit ? ",pci-bar-size=268435456" : "";
   const std::string gpu_udmabuf_string =
       instance.enable_gpu_udmabuf() ? ",udmabuf=true" : "";
 
@@ -308,6 +321,7 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   SharedFD wifi_tap;
   // GPU capture can only support named files and not file descriptors due to
   // having to pass arguments to crosvm via a wrapper script.
+#ifdef __linux__
   if (!gpu_capture_enabled && config.enable_wifi()) {
     // The ordering of tap devices is important. Make sure any change here
     // is reflected in ethprime u-boot variable
@@ -318,6 +332,7 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
       wifi_tap = crosvm_cmd.AddTap(instance.wifi_tap_name());
     }
   }
+#endif
 
   const bool pmem_disabled = instance.mte() || !instance.use_pmem();
   if (!pmem_disabled && FileExists(instance.access_kregistry_path())) {

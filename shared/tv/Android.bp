@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2021 The Android Open Source Project
+// Copyright (C) 2023 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,24 +17,9 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-cc_binary {
-    name: "health",
-    srcs: [
-        "health.cpp",
-    ],
-    shared_libs: [
-        "libbase",
-        "libcuttlefish_device_config",
-        "libcuttlefish_device_config_proto",
-        "libcuttlefish_fs",
-        "libcuttlefish_utils",
-        "libfruit",
-        "libjsoncpp",
-    ],
-    static_libs: [
-        "libcuttlefish_host_config",
-        "libcuttlefish_vm_manager",
-        "libgflags",
-    ],
-    defaults: ["cuttlefish_host", "cuttlefish_libicuuc"],
+prebuilt_etc {
+    name: "tv_excluded_hardware.prebuilt.xml",
+    src: "tv_excluded_hardware.xml",
+    relative_install_path: "permissions",
+    soc_specific: true,
 }
