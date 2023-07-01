@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 The Android Open Source Project
+// Copyright (C) 2023 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,29 +13,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package {
-    default_applicable_licenses: ["Android-Apache-2.0"],
-}
+#pragma once
 
-cc_library_static {
-    name: "libcuttlefish_command_util",
-    srcs: [
-        "launcher_message.cc",
-        "util.cc",
-    ],
-    shared_libs: [
-        "libcuttlefish_fs",
-        "libcuttlefish_utils",
-        "libjsoncpp",
-    ],
-    static_libs: [
-        "libbase",
-        "libcuttlefish_host_config",
-    ],
-    target: {
-        darwin: {
-            enabled: true,
-        },
-    },
-    defaults: ["cuttlefish_host"],
-}
+#include <string>
+
+namespace cuttlefish {
+
+std::string ScrubSecrets(const std::string& data);
+
+}  // namespace cuttlefish
