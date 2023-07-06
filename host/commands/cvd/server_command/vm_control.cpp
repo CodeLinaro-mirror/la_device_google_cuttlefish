@@ -29,6 +29,7 @@
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/utils/contains.h"
+#include "common/libs/utils/files.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/commands/cvd/flag.h"
 #include "host/commands/cvd/selector/instance_group_record.h"
@@ -41,29 +42,6 @@
 #include "host/libs/config/cuttlefish_config.h"
 
 namespace cuttlefish {
-
-static constexpr char kSuspendResume[] =
-    R"(Cuttlefish Virtual Device (CVD) CLI.
-
-Suspend/resume the cuttlefish device
-
-usage: cvd [selector flags] suspend/resume [--help]
-
-Common:
-  Selector Flags:
-    --group_name=<name>       The name of the instance group
-    --instance_name=<names>   The comma-separated list of the instance names
-
-  Args:
-    --help                    print this message
-
-Crosvm:
-  No crosvm-specific arguments at the moment
-
-QEMU:
-  No QEMU-specific arguments at the moment
-
-)";
 
 static constexpr char kSnapshot[] =
     R"(Cuttlefish Virtual Device (CVD) CLI.
@@ -99,9 +77,7 @@ class CvdVmControlCommandHandler : public CvdServerHandler {
  public:
   INJECT(CvdVmControlCommandHandler(InstanceManager& instance_manager))
       : instance_manager_{instance_manager},
-        vm_operations_{{"suspend", kSuspendResume},
-                       {"resume", kSuspendResume},
-                       {"snapshot", kSnapshot}} {}
+        vm_operations_{{"snapshot", kSnapshot}} {}
 
   Result<bool> CanHandle(const RequestWithStdio& request) const {
     auto invocation = ParseInvocation(request.Message());
@@ -130,7 +106,6 @@ class CvdVmControlCommandHandler : public CvdServerHandler {
 
     if (is_help) {
       auto help_response = CF_EXPECT(HandleHelp(request.Err(), vm_op));
-      interrupt_lock.unlock();
       return help_response;
     }
 
@@ -283,11 +258,22 @@ class CvdVmControlCommandHandler : public CvdServerHandler {
       const cvd_common::Envs& envs) {
     const auto& instance_group = instance.ParentGroup();
     const auto instance_id = instance.InstanceId();
+    const auto& internal_name = instance.InternalDeviceName();
     auto home = instance_group.HomeDir();
-    const auto socket_file_path =
+
+    // Use /tmp/cf_avd as crosvm_control.sock UDS path, if it does not exist,
+    // fallback to HOME directory(legacy).
+    const auto defaultPath =
+        ConcatToString("/tmp/cf_avd_", getuid(), "/", internal_name,
+                       "/internal/"
+                       "crosvm_control.sock");
+    const auto fallbackPath =
         ConcatToString(home, "/cuttlefish_runtime.", instance_id,
                        "/internal/"
                        "crosvm_control.sock");
+
+    const auto socket_file_path =
+        FileExists(defaultPath) ? defaultPath : fallbackPath;
 
     auto android_host_out = instance_group.HostArtifactsPath();
     auto crosvm_bin_path = ConcatToString(android_host_out, "/bin/crosvm");

@@ -16,6 +16,8 @@
 
 #include <common/libs/utils/flag_parser.h>
 
+#include <android-base/strings.h>
+
 #include <gtest/gtest.h>
 #include <libxml/tree.h>
 #include <map>
@@ -267,18 +269,28 @@ TEST(FlagParser, BoolVectorFlag) {
 
   ASSERT_TRUE(flag.Parse({"--myflag=true"}));
   ASSERT_EQ(value, std::vector<bool>({true}));
+  ASSERT_TRUE(flagXml(flag));
+  ASSERT_EQ((*flagXml(flag))["default"], "true");
 
   ASSERT_TRUE(flag.Parse({"--myflag=true,false"}));
   ASSERT_EQ(value, std::vector<bool>({true, false}));
+  ASSERT_TRUE(flagXml(flag));
+  ASSERT_EQ((*flagXml(flag))["default"], "true,false");
 
   ASSERT_TRUE(flag.Parse({"--myflag=,false"}));
   ASSERT_EQ(value, std::vector<bool>({true, false}));
+  ASSERT_TRUE(flagXml(flag));
+  ASSERT_EQ((*flagXml(flag))["default"], "true,false");
 
   ASSERT_TRUE(flag.Parse({"--myflag=true,"}));
   ASSERT_EQ(value, std::vector<bool>({true, true}));
+  ASSERT_TRUE(flagXml(flag));
+  ASSERT_EQ((*flagXml(flag))["default"], "true,true");
 
   ASSERT_TRUE(flag.Parse({"--myflag=,"}));
   ASSERT_EQ(value, std::vector<bool>({true, true}));
+  ASSERT_TRUE(flagXml(flag));
+  ASSERT_EQ((*flagXml(flag))["default"], "true,true");
 }
 
 TEST(FlagParser, InvalidStringFlag) {
@@ -315,6 +327,17 @@ TEST(FlagParser, UnexpectedArgumentGuard) {
   ASSERT_FALSE(flag.Parse({"positional", "positional2"}));
   ASSERT_FALSE(flag.Parse({"-flag"}));
   ASSERT_FALSE(flag.Parse({"-"}));
+}
+
+TEST(FlagParser, EndOfOptionMark) {
+  std::vector<std::string> args{"-flag", "--", "-invalid_flag"};
+  bool flag = false;
+  std::vector<Flag> flags{GflagsCompatFlag("flag", flag), InvalidFlagGuard()};
+
+  ASSERT_FALSE(ParseFlags(flags, args));
+  ASSERT_TRUE(ParseFlags(flags, args,
+                         /* recognize_end_of_option_mark */ true));
+  ASSERT_TRUE(flag);
 }
 
 class FlagConsumesArbitraryTest : public ::testing::Test {

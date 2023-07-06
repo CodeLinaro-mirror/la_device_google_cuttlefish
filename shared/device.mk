@@ -145,7 +145,6 @@ PRODUCT_PACKAGES += \
     tombstone_transmit \
     tombstone_producer \
     suspend_blocker \
-    vsoc_input_service \
     metrics_helper \
 
 $(call soong_config_append,cvd,launch_configs,cvd_config_auto.json cvd_config_auto_portrait.json cvd_config_auto_md.json cvd_config_foldable.json cvd_config_go.json cvd_config_phone.json cvd_config_slim.json cvd_config_tablet.json cvd_config_tv.json cvd_config_wear.json)
@@ -269,7 +268,9 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Multitouch_Touchscreen_0.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Multitouch_Touchscreen_0.idc \
     device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Multitouch_Touchscreen_1.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Multitouch_Touchscreen_1.idc \
     device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Multitouch_Touchscreen_2.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Multitouch_Touchscreen_2.idc \
-    device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Multitouch_Touchscreen_3.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Multitouch_Touchscreen_3.idc
+    device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Multitouch_Touchscreen_3.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Multitouch_Touchscreen_3.idc \
+    device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Rotary_0.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Rotary_0.idc \
+
 endif
 
 PRODUCT_PACKAGES += \
@@ -357,7 +358,7 @@ DEVICE_PACKAGE_OVERLAYS += $(LOCAL_AUDIO_DEVICE_PACKAGE_OVERLAYS)
 # BiometricsFace HAL (AIDL)
 #
 PRODUCT_PACKAGES += \
-    android.hardware.biometrics.face-service.example
+    com.android.hardware.biometrics.face
 
 #
 # BiometricsFingerprint HAL (AIDL)
@@ -408,6 +409,8 @@ PRODUCT_PACKAGES += \
 #
 # Oemlock
 #
+LOCAL_ENABLE_OEMLOCK ?= true
+ifeq ($(LOCAL_ENABLE_OEMLOCK),true)
 ifeq ($(LOCAL_OEMLOCK_PRODUCT_PACKAGE),)
     LOCAL_OEMLOCK_PRODUCT_PACKAGE := android.hardware.oemlock-service.remote
 endif
@@ -415,6 +418,7 @@ PRODUCT_PACKAGES += \
     $(LOCAL_OEMLOCK_PRODUCT_PACKAGE)
 
 PRODUCT_VENDOR_PROPERTIES += ro.oem_unlock_supported=1
+endif
 
 #
 # GPS
@@ -472,12 +476,6 @@ PRODUCT_PACKAGES += \
 #
 ifeq ($(LOCAL_KEYMINT_PRODUCT_PACKAGE),)
     LOCAL_KEYMINT_PRODUCT_PACKAGE := android.hardware.security.keymint-service.remote
-endif
-
-ifeq ($(LOCAL_KEYMINT_PRODUCT_PACKAGE),android.hardware.security.keymint-service.rust)
-    # KeyMint HAL has been overridden to force use of the Rust reference implementation.
-    # Set the build config for secure_env to match.
-    $(call soong_config_set,secure_env,keymint_impl,rust)
 endif
 
 PRODUCT_PACKAGES += \

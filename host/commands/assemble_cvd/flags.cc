@@ -15,17 +15,10 @@
  */
 #include "host/commands/assemble_cvd/flags.h"
 
-#include <android-base/logging.h>
-#include <android-base/parseint.h>
-#include <android-base/strings.h>
-#include <gflags/gflags.h>
-#include <json/json.h>
-#include <json/writer.h>
 #include <sys/types.h>
 #include <unistd.h>
 
 #include <algorithm>
-#include <array>
 #include <fstream>
 #include <iostream>
 #include <optional>
@@ -34,24 +27,28 @@
 #include <sstream>
 #include <unordered_map>
 
+#include <android-base/logging.h>
+#include <android-base/parseint.h>
+#include <android-base/strings.h>
 #include <fruit/fruit.h>
+#include <gflags/gflags.h>
 #include <google/protobuf/text_format.h>
-
-#include "launch_cvd.pb.h"
+#include <json/json.h>
+#include <json/writer.h>
 
 #include "common/libs/utils/base64.h"
 #include "common/libs/utils/contains.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/flag_parser.h"
 #include "common/libs/utils/network.h"
-#include "flags.h"
-#include "flags_defaults.h"
 #include "host/commands/assemble_cvd/alloc.h"
 #include "host/commands/assemble_cvd/boot_config.h"
 #include "host/commands/assemble_cvd/boot_image_utils.h"
 #include "host/commands/assemble_cvd/disk_flags.h"
 #include "host/commands/assemble_cvd/display.h"
+#include "host/commands/assemble_cvd/flags_defaults.h"
 #include "host/libs/config/config_flag.h"
+#include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/display.h"
 #include "host/libs/config/esp.h"
 #include "host/libs/config/host_tools_version.h"
@@ -62,6 +59,7 @@
 #include "host/libs/vm_manager/gem5_manager.h"
 #include "host/libs/vm_manager/qemu_manager.h"
 #include "host/libs/vm_manager/vm_manager.h"
+#include "launch_cvd.pb.h"
 
 using cuttlefish::DefaultHostArtifactsPath;
 using cuttlefish::HostBinaryPath;
@@ -412,6 +410,24 @@ DEFINE_vec(modem_simulator_count,
 DEFINE_bool(track_host_tools_crc, CF_DEFAULTS_TRACK_HOST_TOOLS_CRC,
             "Track changes to host executables");
 
+// The default value should be set to the default of crosvm --balloon
+DEFINE_vec(crosvm_use_balloon, "true",
+           "Controls the crosvm --no-balloon flag"
+           "The flag is given if crosvm_use_balloon is false");
+
+DEFINE_vec(crosvm_use_rng, "true",
+           "Controls the crosvm --no-rng flag"
+           "The flag is given if crosvm_use_rng is false");
+
+DEFINE_vec(use_pmem, "true",
+           "Make this flag false to disable pmem with crosvm");
+
+DEFINE_bool(enable_wifi, true,
+            "Enables the guest WIFI. Disable this only for Minidroid.");
+
+DEFINE_vec(device_external_network, CF_DEFAULTS_DEVICE_EXTERNAL_NETWORK,
+           "The mechanism to connect to the public internet.");
+
 DECLARE_string(assembly_dir);
 DECLARE_string(boot_image);
 DECLARE_string(system_image_dir);
@@ -515,6 +531,10 @@ Result<std::vector<GuestConfig>> ReadGuestConfig() {
     std::string config = ReadFile(ikconfig_path);
 
     GuestConfig guest_config;
+    guest_config.android_version_number =
+        CF_EXPECT(ReadAndroidVersionFromBootImage(cur_boot_image),
+                  "Failed to read guest's android version");
+
     if (config.find("\nCONFIG_ARM=y") != std::string::npos) {
       guest_config.target_arch = Arch::Arm;
     } else if (config.find("\nCONFIG_ARM64=y") != std::string::npos) {
@@ -532,14 +552,14 @@ Result<std::vector<GuestConfig>> ReadGuestConfig() {
         config.find("\nCONFIG_BOOT_CONFIG=y") != std::string::npos;
     // Once all Cuttlefish kernel versions are at least 5.15, this code can be
     // removed. CONFIG_CRYPTO_HCTR2=y will always be set.
+    // Note there's also a platform dep for hctr2 introduced in Android 14.
+    // Hence the version check.
     guest_config.hctr2_supported =
-        config.find("\nCONFIG_CRYPTO_HCTR2=y") != std::string::npos;
+        (config.find("\nCONFIG_CRYPTO_HCTR2=y") != std::string::npos) &&
+        (guest_config.android_version_number != "11.0.0") &&
+        (guest_config.android_version_number != "13.0.0");
 
     unlink(ikconfig_path.c_str());
-    guest_config.android_version_number =
-        CF_EXPECT(ReadAndroidVersionFromBootImage(cur_boot_image),
-                  "Failed to read guest's android version");
-    ;
     guest_configs.push_back(guest_config);
   }
   return guest_configs;
@@ -925,6 +945,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 
   // crosvm should create fifos for Bluetooth
   tmp_config_obj.set_enable_host_bluetooth(FLAGS_enable_host_bluetooth || is_bt_netsim);
+  tmp_config_obj.set_enable_wifi(FLAGS_enable_wifi);
 
   // rootcanal and bt_connector should handle Bluetooth (instead of netsim)
   tmp_config_obj.set_enable_host_bluetooth_connector(FLAGS_enable_host_bluetooth && !is_bt_netsim);
@@ -1048,6 +1069,15 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instances_display_configs = CF_EXPECT(ParseDisplaysProto());
   }
 
+  std::vector<bool> use_balloon_vec =
+      CF_EXPECT(GET_FLAG_BOOL_VALUE(crosvm_use_balloon));
+  std::vector<bool> use_rng_vec =
+      CF_EXPECT(GET_FLAG_BOOL_VALUE(crosvm_use_rng));
+  std::vector<bool> use_pmem_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(use_pmem));
+
+  std::vector<std::string> device_external_network_vec =
+      CF_EXPECT(GET_FLAG_STR_VALUE(device_external_network));
+
   std::string default_enable_sandbox = "";
   std::string comma_str = "";
 
@@ -1099,6 +1129,9 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     auto const_instance =
         const_cast<const CuttlefishConfig&>(tmp_config_obj).ForInstance(num);
 
+    instance.set_crosvm_use_balloon(use_balloon_vec[instance_index]);
+    instance.set_crosvm_use_rng(use_rng_vec[instance_index]);
+    instance.set_use_pmem(use_pmem_vec[instance_index]);
     instance.set_bootconfig_supported(guest_configs[instance_index].bootconfig_supported);
     instance.set_filename_encryption_mode(
       guest_configs[instance_index].hctr2_supported ? "hctr2" : "cts");
@@ -1319,12 +1352,6 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       LOG(FATAL) << graphics_check.error().Message();
     }
 
-    if (gpu_mode != kGpuModeDrmVirgl && gpu_mode != kGpuModeGfxstream) {
-      if (vm_manager_vec[0] == QemuManager::name()) {
-        instance.set_keyboard_server_port(calc_vsock_port(7000));
-        instance.set_touch_server_port(calc_vsock_port(7100));
-      }
-    }
     // end of gpu related settings
 
     instance.set_gnss_grpc_proxy_server_port(7200 + num -1);
@@ -1349,7 +1376,12 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     persistent_disk &= !protected_vm_vec[instance_index];
     persistent_disk &= vm_manager_vec[0] != Gem5Manager::name();
     if (persistent_disk) {
-      auto path = const_instance.PerInstancePath("persistent_composite.img");
+      const bool is_vm_qemu_cli = (tmp_config_obj.vm_manager() == "qemu_cli");
+      const std::string persistent_composite_img_base =
+          is_vm_qemu_cli ? "persistent_composite_overlay.img"
+                         : "persistent_composite.img";
+      auto path =
+          const_instance.PerInstancePath(persistent_composite_img_base.data());
       virtual_disk_paths.push_back(path);
     }
 
@@ -1359,7 +1391,11 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     sdcard &= use_sdcard_vec[instance_index];
     sdcard &= !protected_vm_vec[instance_index];
     if (sdcard) {
-      virtual_disk_paths.push_back(const_instance.sdcard_path());
+      if (tmp_config_obj.vm_manager() == "qemu_cli") {
+        virtual_disk_paths.push_back(const_instance.sdcard_overlay_path());
+      } else {
+        virtual_disk_paths.push_back(const_instance.sdcard_path());
+      }
     }
 
     instance.set_virtual_disk_paths(virtual_disk_paths);
@@ -1407,7 +1443,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     // vhost_user_mac80211_hwsim is not specified.
     const bool start_wmediumd = tmp_config_obj.virtio_mac80211_hwsim() &&
                                 FLAGS_vhost_user_mac80211_hwsim.empty() &&
-                                is_first_instance;
+                                is_first_instance && FLAGS_enable_wifi;
     if (start_wmediumd) {
       // TODO(b/199020470) move this to the directory for shared resources
       auto vhost_user_socket_path =
@@ -1459,6 +1495,14 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     } else {
       instance.set_modem_simulator_ports("");
     }
+
+    auto external_network_mode = CF_EXPECT(
+        ParseExternalNetworkMode(device_external_network_vec[instance_index]));
+    CF_EXPECT(external_network_mode == ExternalNetworkMode::kTap ||
+                  vm_manager_vec[instance_index] == QemuManager::name(),
+              "TODO(b/286284441): slirp only works on QEMU");
+    instance.set_external_network_mode(external_network_mode);
+
     instance_index++;
   }  // end of num_instances loop
 

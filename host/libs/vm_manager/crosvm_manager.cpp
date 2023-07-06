@@ -165,6 +165,8 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     crosvm_cmd.Cmd().AddParameter("--no-smt");
   }
 
+  crosvm_cmd.Cmd().AddParameter("--core-scheduling=false");
+
   if (instance.vhost_net()) {
     crosvm_cmd.Cmd().AddParameter("--vhost-net");
   }
@@ -177,6 +179,14 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
 
   if (instance.protected_vm()) {
     crosvm_cmd.Cmd().AddParameter("--protected-vm");
+  }
+
+  if (!instance.crosvm_use_balloon()) {
+    crosvm_cmd.Cmd().AddParameter("--no-balloon");
+  }
+
+  if (!instance.crosvm_use_rng()) {
+    crosvm_cmd.Cmd().AddParameter("--no-rng");
   }
 
   if (instance.gdb_port() > 0) {
@@ -229,7 +239,8 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   }
 
   if (instance.hwcomposer() != kHwComposerNone) {
-    if (!instance.mte() && FileExists(instance.hwcomposer_pmem_path())) {
+    const bool pmem_disabled = instance.mte() || !instance.use_pmem();
+    if (!pmem_disabled && FileExists(instance.hwcomposer_pmem_path())) {
       crosvm_cmd.Cmd().AddParameter("--rw-pmem-device=",
                                     instance.hwcomposer_pmem_path());
     }
@@ -281,15 +292,15 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
 
     for (int i = 0; i < display_configs.size(); ++i) {
       auto display_config = display_configs[i];
-
       crosvm_cmd.Cmd().AddParameter(
           touch_type_parameter, instance.touch_socket_path(i), ":",
           display_config.width, ":", display_config.height);
+
     }
+    crosvm_cmd.Cmd().AddParameter("--rotary=",
+                                  instance.rotary_socket_path());
     crosvm_cmd.Cmd().AddParameter("--keyboard=",
                                   instance.keyboard_socket_path());
-  }
-  if (instance.enable_webrtc()) {
     crosvm_cmd.Cmd().AddParameter("--switches=",
                                   instance.switches_socket_path());
   }
@@ -297,7 +308,7 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   SharedFD wifi_tap;
   // GPU capture can only support named files and not file descriptors due to
   // having to pass arguments to crosvm via a wrapper script.
-  if (!gpu_capture_enabled) {
+  if (!gpu_capture_enabled && config.enable_wifi()) {
     // The ordering of tap devices is important. Make sure any change here
     // is reflected in ethprime u-boot variable
     crosvm_cmd.AddTap(instance.mobile_tap_name(), instance.mobile_mac());
@@ -308,12 +319,13 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     }
   }
 
-  if (!instance.mte() && FileExists(instance.access_kregistry_path())) {
+  const bool pmem_disabled = instance.mte() || !instance.use_pmem();
+  if (!pmem_disabled && FileExists(instance.access_kregistry_path())) {
     crosvm_cmd.Cmd().AddParameter("--rw-pmem-device=",
                                   instance.access_kregistry_path());
   }
 
-  if (!instance.mte() && FileExists(instance.pstore_path())) {
+  if (!pmem_disabled && FileExists(instance.pstore_path())) {
     crosvm_cmd.Cmd().AddParameter("--pstore=path=", instance.pstore_path(),
                                   ",size=", FileSize(instance.pstore_path()));
   }
@@ -337,6 +349,7 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     crosvm_cmd.Cmd().AddParameter("--cid=", instance.vsock_guest_cid());
   }
 
+  // /dev/hvc0 = kernel console
   // If kernel log is enabled, the virtio-console port will be specified as
   // a true console for Linux, and kernel messages will be printed there.
   // Otherwise, the port will still be set up for bootloader and userspace
@@ -347,6 +360,7 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   crosvm_cmd.AddHvcReadOnly(instance.kernel_log_pipe_name(),
                             instance.enable_kernel_log());
 
+  // /dev/hvc1 = serial console
   if (instance.console()) {
     // stdin is the only currently supported way to write data to a serial port
     // in crosvm. A file (named pipe) is used here instead of stdout to ensure
@@ -404,16 +418,20 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     return StopperResult::kStopSuccess;
   });
 
+  // /dev/hvc2 = serial logging
   // Serial port for logcat, redirected to a pipe
   crosvm_cmd.AddHvcReadOnly(instance.logcat_pipe_name());
 
+  // /dev/hvc3 = keymaster (C++ implementation)
   crosvm_cmd.AddHvcReadWrite(
       instance.PerInstanceInternalPath("keymaster_fifo_vm.out"),
       instance.PerInstanceInternalPath("keymaster_fifo_vm.in"));
+  // /dev/hvc4 = gatekeeper
   crosvm_cmd.AddHvcReadWrite(
       instance.PerInstanceInternalPath("gatekeeper_fifo_vm.out"),
       instance.PerInstanceInternalPath("gatekeeper_fifo_vm.in"));
 
+  // /dev/hvc5 = bt
   if (config.enable_host_bluetooth()) {
     crosvm_cmd.AddHvcReadWrite(
         instance.PerInstanceInternalPath("bt_fifo_vm.out"),
@@ -421,6 +439,9 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   } else {
     crosvm_cmd.AddHvcSink();
   }
+
+  // /dev/hvc6 = gnss
+  // /dev/hvc7 = location
   if (instance.enable_gnss_grpc_proxy()) {
     crosvm_cmd.AddHvcReadWrite(
         instance.PerInstanceInternalPath("gnsshvc_fifo_vm.out"),
@@ -434,10 +455,12 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     }
   }
 
+  // /dev/hvc8 = confirmationui
   crosvm_cmd.AddHvcReadWrite(
       instance.PerInstanceInternalPath("confui_fifo_vm.out"),
       instance.PerInstanceInternalPath("confui_fifo_vm.in"));
 
+  // /dev/hvc9 = uwb
   if (config.enable_host_uwb()) {
     crosvm_cmd.AddHvcReadWrite(
         instance.PerInstanceInternalPath("uwb_fifo_vm.out"),
@@ -446,9 +469,15 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     crosvm_cmd.AddHvcSink();
   }
 
+  // /dev/hvc10 = oemlock
   crosvm_cmd.AddHvcReadWrite(
       instance.PerInstanceInternalPath("oemlock_fifo_vm.out"),
       instance.PerInstanceInternalPath("oemlock_fifo_vm.in"));
+
+  // /dev/hvc11 = keymint (Rust implementation)
+  crosvm_cmd.AddHvcReadWrite(
+      instance.PerInstanceInternalPath("keymint_fifo_vm.out"),
+      instance.PerInstanceInternalPath("keymint_fifo_vm.in"));
 
   for (auto i = 0; i < VmManager::kMaxDisks - disk_num; i++) {
     crosvm_cmd.AddHvcSink();

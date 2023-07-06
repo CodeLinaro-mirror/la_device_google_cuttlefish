@@ -57,11 +57,11 @@ class ValidateTapDevicesImpl : public ValidateTapDevices {
   Result<void> TestTapDevices() {
     auto taps = TapInterfacesInUse();
     auto wifi = instance_.wifi_tap_name();
-    CF_EXPECT(taps.count(wifi) == 0, "Device \"" << wifi << "\" in use");
+    CF_EXPECTF(taps.count(wifi) == 0, "Device \"{}\" in use", wifi);
     auto mobile = instance_.mobile_tap_name();
-    CF_EXPECT(taps.count(mobile) == 0, "Device \"" << mobile << "\" in use");
+    CF_EXPECTF(taps.count(mobile) == 0, "Device \"{}\" in use", mobile);
     auto eth = instance_.ethernet_tap_name();
-    CF_EXPECT(taps.count(eth) == 0, "Device \"" << eth << "\" in use");
+    CF_EXPECTF(taps.count(eth) == 0, "Device \"{}\" in use", eth);
     return {};
   }
 
@@ -83,20 +83,15 @@ class ValidateHostConfigurationFeature : public SetupFeature {
 
  private:
   std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
-  bool Setup() override {
+  Result<void> ResultSetup() override {
     // Check host configuration
     std::vector<std::string> config_commands;
-    if (!ValidateHostConfiguration(&config_commands)) {
-      LOG(ERROR) << "Validation of user configuration failed";
-      std::cout << "Execute the following to correctly configure:" << std::endl;
-      for (auto& command : config_commands) {
-        std::cout << "  " << command << std::endl;
-      }
-      std::cout << "You may need to logout for the changes to take effect"
-                << std::endl;
-      return false;
-    }
-    return true;
+    CF_EXPECTF(ValidateHostConfiguration(&config_commands),
+               "Validation of user configuration failed.\n"
+               "Execute the following to correctly configure: \n[{}]\n",
+               "You may need to logout for the changes to take effect.\n",
+               fmt::join(config_commands, "\n"));
+    return {};
   }
 };
 

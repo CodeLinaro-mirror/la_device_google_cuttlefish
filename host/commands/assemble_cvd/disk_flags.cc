@@ -383,9 +383,13 @@ std::vector<ImagePartition> android_composite_disk_config(
       .image_file_path = AbsolutePath(super_image),
       .read_only = FLAGS_use_overlay,
   });
+  auto data_image = instance.new_data_image();
+  if (!FileExists(data_image)) {
+    data_image = instance.data_image();
+  }
   partitions.push_back(ImagePartition{
       .label = "userdata",
-      .image_file_path = AbsolutePath(instance.data_image()),
+      .image_file_path = AbsolutePath(data_image),
       .read_only = FLAGS_use_overlay,
   });
   partitions.push_back(ImagePartition{
@@ -493,8 +497,8 @@ class InitializeMetadataImage : public SetupFeature {
  private:
   std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
   Result<void> ResultSetup() override {
-    if (FileExists(instance_.metadata_image()) &&
-        FileSize(instance_.metadata_image()) == instance_.blank_metadata_image_mb() << 20) {
+    if (FileExists(instance_.new_metadata_image()) &&
+        FileSize(instance_.new_metadata_image()) == instance_.blank_metadata_image_mb() << 20) {
       return {};
     }
 
@@ -587,8 +591,9 @@ class InitializePstore : public SetupFeature {
 
 class InitializeSdCard : public SetupFeature {
  public:
-  INJECT(InitializeSdCard(const CuttlefishConfig::InstanceSpecific& instance))
-      : instance_(instance) {}
+  INJECT(InitializeSdCard(const CuttlefishConfig& config,
+                          const CuttlefishConfig::InstanceSpecific& instance))
+      : config_{config}, instance_(instance) {}
 
   // SetupFeature
   std::string Name() const override { return "InitializeSdCard"; }
@@ -605,9 +610,17 @@ class InitializeSdCard : public SetupFeature {
     CF_EXPECT(CreateBlankImage(instance_.sdcard_path(),
                                instance_.blank_sdcard_image_mb(), "sdcard"),
               "Failed to create \"" << instance_.sdcard_path() << "\"");
+    if (IsVmManagerQemu()) {
+      const std::string crosvm_path = instance_.crosvm_binary();
+      CreateQcowOverlay(crosvm_path, instance_.sdcard_path(),
+                        instance_.sdcard_overlay_path());
+    }
     return {};
   }
 
+  bool IsVmManagerQemu() const { return config_.vm_manager() == "qemu_cli"; }
+
+  const CuttlefishConfig& config_;
   const CuttlefishConfig::InstanceSpecific& instance_;
 };
 
@@ -632,11 +645,13 @@ class VbmetaEnforceMinimumSize : public SetupFeature {
       // not exist
       if (FileExists(vbmeta_image) && FileSize(vbmeta_image) != VBMETA_MAX_SIZE) {
         auto fd = SharedFD::Open(vbmeta_image, O_RDWR);
-        CF_EXPECT(fd->IsOpen(), "Could not open \"" << vbmeta_image << "\": "
-                                                    << fd->StrError());
-        CF_EXPECT(fd->Truncate(VBMETA_MAX_SIZE) == 0,
-                  "`truncate --size=" << VBMETA_MAX_SIZE << " " << vbmeta_image
-                                      << "` failed: " << fd->StrError());
+        CF_EXPECTF(fd->IsOpen(), "Could not open \"{}\": {}", vbmeta_image,
+                   fd->StrError());
+        CF_EXPECTF(fd->Truncate(VBMETA_MAX_SIZE) == 0,
+                   "`truncate --size={} {}` failed: {}", VBMETA_MAX_SIZE,
+                   vbmeta_image, fd->StrError());
+        CF_EXPECTF(fd->Fsync() == 0, "fsync on `{}` failed: {}", vbmeta_image,
+                   fd->StrError());
       }
     }
     return {};
@@ -937,6 +952,13 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
           const_instance.PerInstancePath("boot_repacked.img");
       // change the new flag value to corresponding instance
       instance.set_new_boot_image(new_boot_image_path.c_str());
+    }
+
+    instance.set_new_data_image(const_instance.PerInstancePath("userdata.img"));
+    if (instance_index >= data_image.size()) {
+      instance.set_data_image(data_image[0]);
+    } else {
+      instance.set_data_image(data_image[instance_index]);
     }
 
     if (cur_kernel_path.size() || cur_initramfs_path.size()) {

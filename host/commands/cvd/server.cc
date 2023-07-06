@@ -61,6 +61,7 @@
 #include "host/commands/cvd/server_command/reset.h"
 #include "host/commands/cvd/server_command/start.h"
 #include "host/commands/cvd/server_command/subcmd.h"
+#include "host/commands/cvd/server_command/suspend_resume.h"
 #include "host/commands/cvd/server_command/vm_control.h"
 #include "host/commands/cvd/server_constants.h"
 #include "host/libs/config/cuttlefish_config.h"
@@ -130,6 +131,7 @@ fruit::Component<> CvdServer::RequestComponent(CvdServer* server) {
       .install(CvdRestartComponent)
       .install(cvdShutdownComponent)
       .install(CvdStartCommandComponent)
+      .install(CvdSuspendResumeComponent)
       .install(cvdVersionComponent)
       .install(CvdVmControlComponent)
       .install(DemoMultiVdComponent)
@@ -231,9 +233,8 @@ Result<void> CvdServer::Exec(const ExecParam& exec_param) {
   });
   if (exec_param.in_memory_data_fd) {
     in_memory_dup = exec_param.in_memory_data_fd.value()->UNMANAGED_Dup();
-    CF_EXPECT(
-        in_memory_dup >= 0,
-        "dup: \"" << exec_param.in_memory_data_fd.value()->StrError() << "\"");
+    CF_EXPECTF(in_memory_dup >= 0, "dup: \"{}\"",
+               exec_param.in_memory_data_fd.value()->StrError());
     argv_str.push_back("-INTERNAL_memory_carryover_fd=" +
                        std::to_string(in_memory_dup));
   }

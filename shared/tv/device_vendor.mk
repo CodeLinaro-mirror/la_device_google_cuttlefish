@@ -30,15 +30,22 @@ $(call inherit-product, device/google/cuttlefish/shared/device.mk)
 # Extend cuttlefish common sepolicy with tv-specific functionality
 BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/tv/sepolicy/vendor
 
+ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
+     PRODUCT_PACKAGES += tv_excluded_hardware.prebuilt.xml
+endif
+
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/media_codecs_google_tv.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_tv.xml \
     frameworks/native/data/etc/android.hardware.hdmi.cec.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.hdmi.cec.xml \
-    frameworks/native/data/etc/android.hardware.sensor.accelerometer.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.accelerometer.xml \
-    frameworks/native/data/etc/android.hardware.sensor.compass.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.compass.xml \
     frameworks/native/data/etc/android.hardware.tv.tuner.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.tv.tuner.xml \
     hardware/interfaces/tv/tuner/config/sample_tuner_vts_config_1_0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/tuner_vts_config_1_0.xml \
     hardware/interfaces/tv/tuner/config/sample_tuner_vts_config_1_1.xml:$(TARGET_COPY_OUT_VENDOR)/etc/tuner_vts_config_1_1.xml \
     hardware/interfaces/tv/tuner/config/sample_tuner_vts_config_aidl_V1.xml:$(TARGET_COPY_OUT_VENDOR)/etc/tuner_vts_config_aidl_V1.xml
+
+# Bluetooth hardware properties.
+ifeq ($(TARGET_PRODUCT_PROP),)
+TARGET_PRODUCT_PROP := $(LOCAL_PATH)/product.prop
+endif
 
 # HDMI AIDL HAL
 PRODUCT_PACKAGES += \
@@ -53,7 +60,9 @@ PRODUCT_PACKAGES += \
      android.hardware.tv.hdmi.earc-service
 
 # Setup HDMI CEC as Playback Device
-PRODUCT_PROPERTY_OVERRIDES += ro.hdmi.device_type=4
+PRODUCT_PROPERTY_OVERRIDES += \
+    ro.hdmi.device_type=4 \
+    ro.hdmi.cec_device_types=playback_device
 
 # Tuner lazy HAL
 PRODUCT_PACKAGES += android.hardware.tv.tuner-service.example-lazy

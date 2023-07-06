@@ -24,8 +24,10 @@ namespace cuttlefish {
 Result<void> ValidateTypo(const Json::Value& root,
                           const std::map<std::string, Json::ValueType>& map) {
   for (const std::string& flag : root.getMemberNames()) {
-    CF_EXPECT(map.count(flag) != 0 , "Invalid flag name (typo) , Param --> " << flag<< " not recognized");
-    CF_EXPECT(root[flag].isConvertibleTo(map.at(flag)), "Invalid flag typ"<< flag);
+    CF_EXPECT(map.count(flag) != 0,
+              "Invalid input flag name:- " << flag << " not recognized");
+    CF_EXPECT(root[flag].isConvertibleTo(map.at(flag)),
+              "Invalid flag type" << flag);
   }
   return {};
 }
@@ -40,7 +42,7 @@ Result<void> ValidateIntConfig(
     if (instances[i].isMember(group) &&
         (instances[i][group].isMember(json_flag))) {
       int flag = instances[i][group][json_flag].asInt();
-      CF_EXPECT(validate_config(flag), "Invalid flag value \"" << flag << "\"");
+      CF_EXPECTF(validate_config(flag), "Invalid flag value \"{}\"", flag);
     }
   }
   return {};
@@ -57,7 +59,7 @@ Result<void> ValidateIntConfigSubGroup(
         (instances[i][group].isMember(subgroup)) &&
         (instances[i][group][subgroup].isMember(json_flag))) {
       int flag = instances[i][group][subgroup][json_flag].asInt();
-      CF_EXPECT(validate_config(flag), "Invalid flag value \"" << flag << "\"");
+      CF_EXPECTF(validate_config(flag), "Invalid flag value \"{}\"", flag);
     }
   }
   return {};
@@ -74,7 +76,7 @@ Result<void> ValidateStringConfig(
         (instances[i][group].isMember(json_flag))) {
       // Validate input parameter
       std::string flag = instances[i][group][json_flag].asString();
-      CF_EXPECT(validate_config(flag), "Invalid flag value \"" << flag << "\"");
+      CF_EXPECTF(validate_config(flag), "Invalid flag value \"{}\"", flag);
     }
   }
   return {};
@@ -91,7 +93,7 @@ Result<void> ValidateStringConfigSubGroup(
         (!instances[i][group].isMember(subgroup)) ||
         (!instances[i][group][subgroup].isMember(json_flag))) {
       std::string flag = instances[i][group][subgroup][json_flag].asString();
-      CF_EXPECT(validate_config(flag), "Invalid flag value \"" << flag << "\"");
+      CF_EXPECTF(validate_config(flag), "Invalid flag value \"{}\"", flag);
     }
   }
   return {};

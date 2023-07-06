@@ -197,24 +197,11 @@ class InitializeDataImageImpl : public InitializeDataImage {
 
  private:
   std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
-  bool Setup() override {
-    auto action = ChooseAction();
-    if (!action.ok()) {
-      LOG(ERROR) << "Failed to select a userdata processing action: "
-                 << action.error().Message();
-      LOG(DEBUG) << "Failed to select a userdata processing action: "
-                 << action.error().Trace();
-      return false;
-    }
-    auto result = EvaluateAction(*action);
-    if (!result.ok()) {
-      LOG(ERROR) << "Failed to evaluate userdata action: "
-                 << result.error().Message();
-      LOG(DEBUG) << "Failed to evaluate userdata action: "
-                 << result.error().Trace();
-      return false;
-    }
-    return true;
+  Result<void> ResultSetup() override {
+    auto action = CF_EXPECT(ChooseAction(),
+                            "Failed to select a userdata processing action");
+    CF_EXPECT(EvaluateAction(action), "Failed to evaluate userdata action");
+    return {};
   }
 
  private:
@@ -257,15 +244,15 @@ class InitializeDataImageImpl : public InitializeDataImage {
         LOG(DEBUG) << instance_.data_image() << " exists. Not creating it.";
         return {};
       case DataImageAction::kCreateImage: {
-        RemoveFile(instance_.data_image());
+        RemoveFile(instance_.new_data_image());
         CF_EXPECT(instance_.blank_data_image_mb() != 0,
                   "Expected `-blank_data_image_mb` to be set for "
                   "image creation.");
-        CF_EXPECT(CreateBlankImage(instance_.data_image(),
+        CF_EXPECT(CreateBlankImage(instance_.new_data_image(),
                                    instance_.blank_data_image_mb(),
                                    instance_.userdata_format()),
                   "Failed to create a blank image at \""
-                      << instance_.data_image() << "\" with size "
+                      << instance_.new_data_image() << "\" with size "
                       << instance_.blank_data_image_mb() << " and format \""
                       << instance_.userdata_format() << "\"");
         return {};
@@ -274,9 +261,12 @@ class InitializeDataImageImpl : public InitializeDataImage {
         CF_EXPECT(instance_.blank_data_image_mb() != 0,
                   "Expected `-blank_data_image_mb` to be set for "
                   "image resizing.");
-        CF_EXPECT(ResizeImage(instance_.data_image(),
+        CF_EXPECTF(Copy(instance_.data_image(), instance_.new_data_image()),
+                   "Failed to `cp {} {}`", instance_.data_image(),
+                   instance_.new_data_image());
+        CF_EXPECT(ResizeImage(instance_.new_data_image(),
                               instance_.blank_data_image_mb(), instance_),
-                  "Failed to resize \"" << instance_.data_image() << "\" to "
+                  "Failed to resize \"" << instance_.new_data_image() << "\" to "
                                         << instance_.blank_data_image_mb()
                                         << " MB");
         return {};
@@ -307,22 +297,17 @@ class InitializeMiscImageImpl : public InitializeMiscImage {
 
  private:
   std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
-  bool Setup() override {
-    bool misc_exists = FileHasContent(instance_.misc_image());
-
-    if (misc_exists) {
-      LOG(DEBUG) << "misc partition image: use existing at \""
-                 << instance_.misc_image() << "\"";
-      return true;
+  Result<void> ResultSetup() override {
+    if (FileHasContent(instance_.new_misc_image())) {
+      LOG(DEBUG) << "misc partition image already exists";
+      return {};
     }
 
     LOG(DEBUG) << "misc partition image: creating empty at \""
-               << instance_.misc_image() << "\"";
-    if (!CreateBlankImage(instance_.new_misc_image(), 1 /* mb */, "none")) {
-      LOG(ERROR) << "Failed to create misc image";
-      return false;
-    }
-    return true;
+               << instance_.new_misc_image() << "\"";
+    CF_EXPECT(CreateBlankImage(instance_.new_misc_image(), 1 /* mb */, "none"),
+              "Failed to create misc image");
+    return {};
   }
 
  private:
@@ -353,23 +338,18 @@ class InitializeEspImageImpl : public InitializeEspImage {
   }
 
  protected:
-  bool Setup() override {
+  Result<void> ResultSetup() override {
     if (EspRequiredForAPBootFlow()) {
       LOG(DEBUG) << "creating esp_image: " << instance_.ap_esp_image_path();
-      if (!BuildAPImage()) {
-        return false;
-      }
+      CF_EXPECT(BuildAPImage());
     }
     const auto is_not_gem5 = config_.vm_manager() != vm_manager::Gem5Manager::name();
     const auto esp_required_for_boot_flow = EspRequiredForBootFlow();
     if (is_not_gem5 && esp_required_for_boot_flow) {
       LOG(DEBUG) << "creating esp_image: " << instance_.otheros_esp_image_path();
-      if (!BuildOSImage()) {
-        return false;
-      }
+      CF_EXPECT(BuildOSImage());
     }
-
-    return true;
+    return {};
   }
 
  private:

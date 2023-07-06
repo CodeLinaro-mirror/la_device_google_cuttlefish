@@ -36,7 +36,9 @@
 #include <android-base/logging.h>
 #include <vulkan/vulkan.h>
 
+#include "common/libs/device_config/device_config.h"
 #include "common/libs/fs/shared_select.h"
+#include "common/libs/utils/contains.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
@@ -478,6 +480,7 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
     }
   }
 
+  // /dev/hvc0 = kernel console
   // If kernel log is enabled, the virtio-console port will be specified as
   // a true console for Linux, and kernel messages will be printed there.
   // Otherwise, the port will still be set up for bootloader and userspace
@@ -490,6 +493,7 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
   //  actually managed by the kernel as a console is handled elsewhere.)
   add_hvc_ro(instance.kernel_log_pipe_name());
 
+  // /dev/hvc1 = serial console
   if (instance.console()) {
     if (instance.kgdb() || instance.use_bootloader()) {
       add_serial_console(instance.console_pipe_prefix());
@@ -516,17 +520,23 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
     add_hvc_sink();
   }
 
+  // /dev/hvc2 = serial logging
   // Serial port for logcat, redirected to a pipe
   add_hvc_ro(instance.logcat_pipe_name());
 
+  // /dev/hvc3 = keymaster (C++ implementation)
   add_hvc(instance.PerInstanceInternalPath("keymaster_fifo_vm"));
+  // /dev/hvc4 = gatekeeper
   add_hvc(instance.PerInstanceInternalPath("gatekeeper_fifo_vm"));
+  // /dev/hvc5 = bt
   if (config.enable_host_bluetooth()) {
     add_hvc(instance.PerInstanceInternalPath("bt_fifo_vm"));
   } else {
     add_hvc_sink();
   }
 
+  // /dev/hvc6 = gnss
+  // /dev/hvc7 = location
   if (instance.enable_gnss_grpc_proxy()) {
     add_hvc(instance.PerInstanceInternalPath("gnsshvc_fifo_vm"));
     add_hvc(instance.PerInstanceInternalPath("locationhvc_fifo_vm"));
@@ -547,15 +557,21 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
    * confui_fifo_vm.{in/out} are created along with the streamer process,
    * which is not created w/ QEMU.
    */
+  // /dev/hvc8 = confirmationui
   add_hvc_sink();
 
+  // /dev/hvc9 = uwb
   if (config.enable_host_uwb()) {
     add_hvc("uwb_fifo_vm");
   } else {
     add_hvc_sink();
   }
 
+  // /dev/hvc10 = oemlock
   add_hvc(instance.PerInstanceInternalPath("oemlock_fifo_vm"));
+
+  // /dev/hvc11 = keymint (Rust implementation)
+  add_hvc(instance.PerInstanceInternalPath("keymint_fifo_vm"));
 
   auto disk_num = instance.virtual_disk_paths().size();
 
@@ -574,16 +590,16 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
             "Provided too many disks (" << disk_num << "), maximum "
                                         << VmManager::kMaxDisks << "supported");
   auto readonly = instance.protected_vm() ? ",readonly" : "";
-  for (size_t i = 0; i < disk_num; i++) {
-    auto bootindex = i == 0 ? ",bootindex=1" : "";
-    auto format = i == 0 ? "" : ",format=raw";
-    auto disk = instance.virtual_disk_paths()[i];
+  size_t i = 0;
+  for (const auto& disk : instance.virtual_disk_paths()) {
     qemu_cmd.AddParameter("-drive");
     qemu_cmd.AddParameter("file=", disk, ",if=none,id=drive-virtio-disk", i,
-                          ",aio=threads", format, readonly);
+                          ",aio=threads", readonly);
     qemu_cmd.AddParameter("-device");
-    qemu_cmd.AddParameter("virtio-blk-pci-non-transitional,scsi=off,drive=drive-virtio-disk", i,
-                          ",id=virtio-disk", i, bootindex);
+    qemu_cmd.AddParameter(
+        "virtio-blk-pci-non-transitional,scsi=off,drive=drive-virtio-disk", i,
+        ",id=virtio-disk", i, (i == 0 ? ",bootindex=1" : ""));
+    ++i;
   }
 
   if (is_x86 && FileExists(instance.pstore_path())) {
@@ -647,27 +663,68 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("virtio-balloon-pci-non-transitional,id=balloon0");
 
-  // The ordering of tap devices is important. Make sure any change here
+  switch (instance.external_network_mode()) {
+    case ExternalNetworkMode::kTap:
+      qemu_cmd.AddParameter("-netdev");
+      qemu_cmd.AddParameter(
+          "tap,id=hostnet0,ifname=", instance.mobile_tap_name(),
+          ",script=no,downscript=no", vhost_net);
+
+      qemu_cmd.AddParameter("-netdev");
+      qemu_cmd.AddParameter(
+          "tap,id=hostnet1,ifname=", instance.ethernet_tap_name(),
+          ",script=no,downscript=no", vhost_net);
+
+      if (!config.virtio_mac80211_hwsim()) {
+        qemu_cmd.AddParameter("-netdev");
+        qemu_cmd.AddParameter(
+            "tap,id=hostnet2,ifname=", instance.wifi_tap_name(),
+            ",script=no,downscript=no", vhost_net);
+      }
+      break;
+    case cuttlefish::ExternalNetworkMode::kSlirp: {
+      // TODO(schuffelen): Deduplicate with modem_simulator/cf_device_config.cpp
+      // The configuration here needs to match the ip address reported by the
+      // modem simulator, which the guest uses to statically assign an IP
+      // address to its virtio-net ethernet device.
+      std::string net = "10.0.2.15/24";
+      std::string host = "10.0.2.2";
+      auto device_config_helper = DeviceConfigHelper::Get();
+      if (device_config_helper) {
+        const auto& cfg = device_config_helper->GetDeviceConfig().ril_config();
+        net = fmt::format("{}/{}", cfg.ipaddr(), cfg.prefixlen());
+        host = cfg.gateway();
+      }
+      qemu_cmd.AddParameter("-netdev");
+      // TODO(schuffelen): `dns` needs to match the first `nameserver` in
+      // `/etc/resolv.conf`. Implement something that generalizes beyond gLinux.
+      qemu_cmd.AddParameter("user,id=hostnet0,net=", net, ",host=", host,
+                            ",dns=127.0.0.1");
+
+      qemu_cmd.AddParameter("-netdev");
+      qemu_cmd.AddParameter("user,id=hostnet1,net=10.0.1.1/24,dns=8.8.4.4");
+
+      if (!config.virtio_mac80211_hwsim()) {
+        qemu_cmd.AddParameter("-netdev");
+        qemu_cmd.AddParameter("user,id=hostnet2,net=10.0.2.1/24,dns=1.1.1.1");
+      }
+      break;
+    }
+    default:
+      return CF_ERRF("Unexpected net mode {}",
+                     instance.external_network_mode());
+  }
+
+  // The ordering of virtio-net devices is important. Make sure any change here
   // is reflected in ethprime u-boot variable
-  qemu_cmd.AddParameter("-netdev");
-  qemu_cmd.AddParameter("tap,id=hostnet0,ifname=", instance.mobile_tap_name(),
-                        ",script=no,downscript=no", vhost_net);
-
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-net-pci-non-transitional,netdev=hostnet0,id=net0,mac=",
-                        instance.mobile_mac());
-
-  qemu_cmd.AddParameter("-netdev");
-  qemu_cmd.AddParameter("tap,id=hostnet1,ifname=", instance.ethernet_tap_name(),
-                        ",script=no,downscript=no", vhost_net);
-
+  qemu_cmd.AddParameter(
+      "virtio-net-pci-non-transitional,netdev=hostnet0,id=net0,mac=",
+      instance.mobile_mac());
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("virtio-net-pci-non-transitional,netdev=hostnet1,id=net1,mac=",
                         instance.ethernet_mac());
   if (!config.virtio_mac80211_hwsim()) {
-    qemu_cmd.AddParameter("-netdev");
-    qemu_cmd.AddParameter("tap,id=hostnet2,ifname=", instance.wifi_tap_name(),
-                          ",script=no,downscript=no", vhost_net);
     qemu_cmd.AddParameter("-device");
     qemu_cmd.AddParameter("virtio-net-pci-non-transitional,netdev=hostnet2,id=net2,mac=",
                           instance.wifi_mac());
@@ -676,6 +733,15 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
   if (is_x86 || is_arm) {
     qemu_cmd.AddParameter("-cpu");
     qemu_cmd.AddParameter(IsHostCompatible(arch_) ? "host" : "max");
+  }
+
+  // Explicitly enable the optional extensions of interest, in case the default
+  // behavior changes upstream.
+  if (is_riscv64) {
+    qemu_cmd.AddParameter("-cpu");
+    qemu_cmd.AddParameter("rv64",
+                          ",v=true,elen=64,vlen=128",
+                          ",zba=true,zbb=true,zbs=true");
   }
 
   qemu_cmd.AddParameter("-msg");

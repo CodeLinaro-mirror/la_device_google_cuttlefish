@@ -81,6 +81,8 @@ on boot
 
 on property:sys.boot_completed=1
     trigger sys-boot-completed-set
+    mkdir /mnt/vendor/custom 0755 root root
+    mount ext2 /dev/block/by-name/custom /mnt/vendor/custom loop rw sync
 
 # We want one opportunity per boot to enable zram, so we
 # use a trigger we fire from the above stanza. If
@@ -107,19 +109,7 @@ service seriallogging /system/bin/logcat -b all -v threadtime -f /dev/hvc2 *:V
     class main
     user logd
     group root logd
-
-service vsoc_input_service /vendor/bin/vsoc_input_service -touch_port=${ro.boot.vsock_touch_port} -keyboard_port=${ro.boot.vsock_keyboard_port}
-    group root uhid
-    user root
-    disabled
-
-on early-boot && property:ro.boot.vsock_touch_port=*
-   enable vsoc_input_service
-   start vsoc_input_service
-
-on early-boot && property:ro.boot.vsock_keyboard_port=*
-   enable vsoc_input_service
-   start vsoc_input_service
+    seclabel u:r:logpersist:s0
 
 service bugreport /system/bin/dumpstate -d -p -z
     class main
