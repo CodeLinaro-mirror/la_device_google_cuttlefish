@@ -52,11 +52,13 @@ PRODUCT_COPY_FILES += \
 endif
 
 $(call inherit-product, frameworks/native/build/phone-xhdpi-2048-dalvik-heap.mk)
+$(call inherit-product, device/google/cuttlefish/shared/biometrics_face/device_vendor.mk)
 BOARD_HAVE_BLUETOOTH := false
 $(call inherit-product, device/google/cuttlefish/shared/bluetooth/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/camera/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/consumerir/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/graphics/device_vendor.mk)
+$(call inherit-product, device/google/cuttlefish/shared/identity/device_vendor.mk)
 # TODO: FIXME: Enable swiftshader for graphics, and remove angle below.
 #$(call inherit-product, device/google/cuttlefish/shared/swiftshader/device_vendor.mk)
 
@@ -71,7 +73,6 @@ TARGET_PRODUCT_PROP := $(LOCAL_PATH)/../../shared/phone/product.prop
 
 ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
 PRODUCT_COPY_FILES += \
-    frameworks/native/data/etc/android.hardware.biometrics.face.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.biometrics.face.xml \
     frameworks/native/data/etc/android.hardware.faketouch.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.faketouch.xml \
     frameworks/native/data/etc/android.hardware.fingerprint.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.fingerprint.xml \
 
