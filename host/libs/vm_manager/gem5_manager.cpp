@@ -29,6 +29,8 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include <android-base/strings.h>
@@ -37,8 +39,10 @@
 
 #include "common/libs/fs/shared_select.h"
 #include "common/libs/utils/files.h"
+#include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
 #include "common/libs/utils/users.h"
+#include "host/libs/config/command_source.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/known_paths.h"
 
@@ -133,14 +137,37 @@ Gem5Manager::ConfigureGraphics(
   // with properities lead to non-deterministic behavior while loading the
   // HALs.
 
-  std::unordered_map<std::string, std::string> bootconfig_args = {
-      {"androidboot.cpuvulkan.version", std::to_string(VK_API_VERSION_1_1)},
-      {"androidboot.hardware.gralloc", "minigbm"},
-      {"androidboot.hardware.hwcomposer", instance.hwcomposer()},
-      {"androidboot.hardware.hwcomposer.mode", "noop"},
-      {"androidboot.hardware.egl", "angle"},
-      {"androidboot.hardware.vulkan", "pastel"},
-  };
+  std::unordered_map<std::string, std::string> bootconfig_args;
+
+  if (instance.gpu_mode() == kGpuModeGuestSwiftshader) {
+    LOG(INFO) << "We are in SwiftShader mode";
+    bootconfig_args = {
+        {"androidboot.cpuvulkan.version", std::to_string(VK_API_VERSION_1_1)},
+        {"androidboot.hardware.gralloc", "minigbm"},
+        {"androidboot.hardware.hwcomposer", "ranchu"},
+        {"androidboot.hardware.hwcomposer.mode", "noop"},
+        {"androidboot.hardware.hwcomposer.display_finder_mode", "gem5"},
+        {"androidboot.hardware.egl", "angle"},
+        {"androidboot.hardware.vulkan", "pastel"},
+        {"androidboot.opengles.version", "196609"},  // OpenGL ES 3.1
+    };
+  } else if (instance.gpu_mode() == kGpuModeGfxstream) {
+    LOG(INFO) << "We are in Gfxstream mode";
+    bootconfig_args = {
+        {"androidboot.cpuvulkan.version", "0"},
+        {"androidboot.hardware.gralloc", "minigbm"},
+        {"androidboot.hardware.hwcomposer", "ranchu"},
+        {"androidboot.hardware.hwcomposer.display_finder_mode", "gem5"},
+        {"androidboot.hardware.egl", "emulation"},
+        {"androidboot.hardware.vulkan", "ranchu"},
+        {"androidboot.hardware.gltransport", "virtio-gpu-pipe"},
+        {"androidboot.opengles.version", "196609"},  // OpenGL ES 3.1
+    };
+  } else if (instance.gpu_mode() == kGpuModeNone) {
+    return {};
+  } else {
+    return CF_ERR("Unknown GPU mode " << instance.gpu_mode());
+  }
 
   if (!instance.gpu_angle_feature_overrides_enabled().empty()) {
     bootconfig_args["androidboot.hardware.angle_feature_overrides_enabled"] =
@@ -166,7 +193,7 @@ Gem5Manager::ConfigureBootDevices(int /*num_disks*/, bool /*have_gpu*/) {
   }
 }
 
-Result<std::vector<Command>> Gem5Manager::StartCommands(
+Result<std::vector<MonitorCommand>> Gem5Manager::StartCommands(
     const CuttlefishConfig& config) {
   auto instance = config.ForDefaultInstance();
 
@@ -223,9 +250,9 @@ Result<std::vector<Command>> Gem5Manager::StartCommands(
 
   LogAndSetEnv("M5_PATH", config.assembly_dir());
 
-  std::vector<Command> ret;
-  ret.push_back(std::move(gem5_cmd));
-  return ret;
+  std::vector<MonitorCommand> commands;
+  commands.emplace_back(std::move(gem5_cmd), true);
+  return commands;
 }
 
 } // namespace vm_manager

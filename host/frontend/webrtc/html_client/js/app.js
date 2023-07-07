@@ -117,6 +117,10 @@ class DeviceDetailsUpdater {
   }
 }  // DeviceDetailsUpdater
 
+// These classes provide the same interface as those from the server_connector,
+// but can't inherit from them because older versions of server_connector.js
+// don't provide them.
+// These classes are only meant to avoid having to check for null everytime.
 class EmptyDeviceDisplaysMessage {
   addDisplay(display_id, width, height) {}
   send() {}
@@ -1102,7 +1106,8 @@ window.addEventListener("load", async evt => {
     let parentController = null;
     if (connectorModule.createParentController) {
       parentController = connectorModule.createParentController();
-    } else {
+    }
+    if (!parentController) {
       parentController = new EmptyParentController();
     }
     let deviceControlApp = new DeviceControlApp(deviceConnection, parentController);

@@ -83,6 +83,7 @@
   cuttlefish::ForCurrentInstance("CUTTLEFISHCVD")
 #define CF_DEFAULTS_SECURE_HALS "keymint,gatekeeper"
 #define CF_DEFAULTS_PROTECTED_VM false
+#define CF_DEFAULTS_MTE false
 
 // Kernel default parameters
 #define CF_DEFAULTS_ENABLE_KERNEL_LOG true
@@ -145,6 +146,10 @@
 #define CF_DEFAULTS_VHOST_USER_MAC80211_HWSIM CF_DEFAULTS_DYNAMIC_STRING
 #define CF_DEFAULTS_WMEDIUMD_CONFIG CF_DEFAULTS_DYNAMIC_STRING
 
+// UWB default parameters
+#define CF_DEFAULTS_ENABLE_HOST_UWB false
+#define CF_DEFAULTS_ENABLE_PICA_INSTANCE_NUM 0
+
 // Bluetooth default parameters
 #define CF_DEFAULTS_BLUETOOTH_CONTROLLER_PROPERTIES_FILE \
   "etc/rootcanal/data/controller_properties.json"
@@ -183,9 +188,6 @@
 // GflagsCompatFlag
 #define CF_DEFAULTS_RUN_ADB_CONNECTOR true
 #define CF_DEFAULTS_ADB_MODE "vsock_half_tunnel"
-
-// Vehicle default parameters
-#define CF_DEFAULTS_ENABLE_VEHICLE_HAL_GRPC_SERVER true
 
 // Location default parameters
 #define CF_DEFAULTS_START_GNSS_PROXY true

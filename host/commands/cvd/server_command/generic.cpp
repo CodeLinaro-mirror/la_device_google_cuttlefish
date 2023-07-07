@@ -35,6 +35,7 @@
 #include "host/commands/cvd/command_sequence.h"
 #include "host/commands/cvd/common_utils.h"
 #include "host/commands/cvd/instance_manager.h"
+#include "host/commands/cvd/selector/selector_constants.h"
 #include "host/commands/cvd/server_command/host_tool_target_manager.h"
 #include "host/commands/cvd/server_command/server_handler.h"
 #include "host/commands/cvd/server_command/subprocess_waiter.h"
@@ -106,8 +107,6 @@ class CvdGenericCommandHandler : public CvdServerHandler {
   std::map<std::string, BinType> command_to_binary_map_;
 
   static constexpr char kHostBugreportBin[] = "cvd_internal_host_bugreport";
-  static constexpr char kDisplayBin[] = "cvd_internal_display";
-  static constexpr char kEnvBin[] = "cvd_internal_env";
   static constexpr char kLnBin[] = "ln";
   static constexpr char kMkdirBin[] = "mkdir";
   static constexpr char kClearBin[] =
@@ -162,8 +161,6 @@ CvdGenericCommandHandler::CvdGenericCommandHandler(
           {"clear", kClearBin},
           {"mkdir", kMkdirBin},
           {"ln", kLnBin},
-          {"display", kDisplayBin},
-          {"env", kEnvBin},
       } {}
 
 Result<bool> CvdGenericCommandHandler::CanHandle(
@@ -192,10 +189,11 @@ Result<cvd::Response> CvdGenericCommandHandler::Handle(
   cvd::Response response;
   response.mutable_command_response();
 
-  auto [meets_precondition, error_message] = VerifyPrecondition(request);
-  if (!meets_precondition) {
+  auto precondition_verified = VerifyPrecondition(request);
+  if (!precondition_verified.ok()) {
     response.mutable_status()->set_code(cvd::Status::FAILED_PRECONDITION);
-    response.mutable_status()->set_message(error_message);
+    response.mutable_status()->set_message(
+        precondition_verified.error().Message());
     return response;
   }
   auto [invocation_info, group_opt] = CF_EXPECT(ExtractInfo(request));
@@ -307,11 +305,13 @@ CvdGenericCommandHandler::CvdBinPath(const std::string& subcmd,
                                      const std::string& home,
                                      const uid_t uid) const {
   std::string host_artifacts_path;
-  auto assembly_info_result = instance_manager_.GetInstanceGroupInfo(uid, home);
+  auto instance_group_result = instance_manager_.FindGroup(
+      uid, InstanceManager::Query{selector::kHomeField, home});
+
   // the dir that "bin/<this subcmd bin file>" belongs to
   std::string tool_dir_path;
-  if (assembly_info_result.ok()) {
-    host_artifacts_path = assembly_info_result->host_artifacts_path;
+  if (instance_group_result.ok()) {
+    host_artifacts_path = instance_group_result->HostArtifactsPath();
     tool_dir_path = host_artifacts_path;
   } else {
     // if the group does not exist (e.g. cvd status --help)

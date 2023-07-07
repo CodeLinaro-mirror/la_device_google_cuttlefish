@@ -15,10 +15,18 @@
 
 #include "host/commands/run_cvd/launch/launch.h"
 
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
 #include <android-base/logging.h>
+#include <fruit/fruit.h>
 
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/network.h"
+#include "common/libs/utils/result.h"
+#include "host/libs/config/command_source.h"
 #include "host/libs/config/known_paths.h"
 #include "host/libs/config/openwrt_args.h"
 #include "host/libs/vm_manager/crosvm_builder.h"
@@ -37,7 +45,7 @@ class OpenWrt : public CommandSource {
       : config_(config), instance_(instance), log_tee_(log_tee) {}
 
   // CommandSource
-  Result<std::vector<Command>> Commands() override {
+  Result<std::vector<MonitorCommand>> Commands() override {
     constexpr auto crosvm_for_ap_socket = "ap_control.sock";
 
     CrosvmBuilder ap_cmd;
@@ -53,24 +61,6 @@ class OpenWrt : public CommandSource {
                                 config_.vhost_user_mac80211_hwsim());
     }
     SharedFD wifi_tap = ap_cmd.AddTap(instance_.wifi_tap_name());
-    // Only run the leases workaround if we are not using the new network
-    // bridge architecture - in that case, we have a wider DHCP address
-    // space and stale leases should be much less of an issue
-    if (!FileExists("/var/run/cuttlefish-dnsmasq-cvd-wbr.leases") &&
-        wifi_tap->IsOpen()) {
-      // TODO(schuffelen): QEMU also needs this and this is not the best place
-      // for this code. Find a better place to put it.
-      auto lease_file =
-          ForCurrentInstance("/var/run/cuttlefish-dnsmasq-cvd-wbr-") +
-          ".leases";
-      std::uint8_t dhcp_server_ip[] = {
-          192, 168, 96, (std::uint8_t)(ForCurrentInstance(1) * 4 - 3)};
-      if (!ReleaseDhcpLeases(lease_file, wifi_tap, dhcp_server_ip)) {
-        LOG(ERROR)
-            << "Failed to release wifi DHCP leases. Connecting to the wifi "
-            << "network may not work.";
-      }
-    }
     if (instance_.enable_sandbox()) {
       ap_cmd.Cmd().AddParameter("--seccomp-policy-dir=",
                                 instance_.seccomp_policy_dir());
@@ -104,8 +94,9 @@ class OpenWrt : public CommandSource {
         break;
     }
 
-    std::vector<Command> commands;
-    commands.emplace_back(log_tee_.CreateLogTee(ap_cmd.Cmd(), "openwrt"));
+    std::vector<MonitorCommand> commands;
+    commands.emplace_back(
+        std::move(log_tee_.CreateLogTee(ap_cmd.Cmd(), "openwrt")));
     commands.emplace_back(std::move(ap_cmd.Cmd()));
     return commands;
   }

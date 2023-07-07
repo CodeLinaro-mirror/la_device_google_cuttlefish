@@ -28,24 +28,48 @@ namespace cuttlefish {
 
 static constexpr char kHelpMessage[] = R"(Cuttlefish Virtual Device (CVD) CLI.
 
-usage: cvd <command> <args>
+usage: cvd <selector/driver options> <command> <args>
+
+Selector Options:
+  -group_name <name>     Specify the name of the instance group created
+                         or selected.
+  -instance_name <name>  Selects the device of the given name to perform the
+                         commands for.
+  -instance_name <names> Takes the names of the devices to create within an
+                         instance group. The 'names' is comma-separated.
+
+Driver Options:
+  --help                 Print this message
+  -disable_default_group If the flag is true, the group's runtime files are
+                         not populated under the user's HOME. Instead the
+                         files are created under an automatically-generated
+                         directory. (default: false)
+  -acquire_file_lock     If the flag is given, the cvd server attempts to
+                         acquire the instance lock file lock. (default: true)
 
 Commands:
-  help                Print this message.
-  help <command>      Print help for a command.
-  start               Start a device.
-  stop                Stop a running device.
-  clear               Stop all running devices and delete all instance and assembly directories.
-  fleet               View the current fleet status.
-  kill-server         Kill the cvd_server background process.
-  server-kill         Same as kill-server
-  restart-server      Restart the cvd_server background process.
-  status              Check and print the state of a running instance.
-  host_bugreport      Capture a host bugreport, including configs, logs, and tombstones.
+  help                   Print this message.
+  help <command>         Print help for a command.
+  start                  Start a device.
+  stop                   Stop a running device.
+  clear                  Stop all running devices and delete all instance and
+                         assembly directories.
+  fleet                  View the current fleet status.
+  kill-server            Kill the cvd_server background process.
+  server-kill            Same as kill-server
+  powerwash              Delivers powerwash command to the selected device
+  restart                Restart the device without reinitializing the disks
+  restart-server         Restart the cvd_server background process.
+  status                 Check and print the state of a running instance.
+  host_bugreport         Capture a host bugreport, including configs, logs, and
+                         tombstones.
 
 Args:
-  <command args>      Each command has its own set of args. See cvd help <command>.
-  --clean             If provided, runs cvd kill-server before the requested command.
+  <command args>         Each command has its own set of args.
+                         See cvd help <command>.
+
+Experimental:
+  reset                  See cvd reset --help. Requires cvd >= v1.2
 )";
 
 class CvdHelpHandler : public CvdServerHandler {
@@ -72,6 +96,7 @@ class CvdHelpHandler : public CvdServerHandler {
 
     auto [subcmd, subcmd_args] = ParseInvocation(request.Message());
     const auto supported_subcmd_list = executor_.CmdList();
+
     /*
      * cvd help, cvd help invalid_token, cvd help help
      */
@@ -82,10 +107,7 @@ class CvdHelpHandler : public CvdServerHandler {
       return response;
     }
 
-    cvd::Request modified_proto = request.Message();
-    auto& args = *modified_proto.mutable_command_request()->mutable_args();
-    args.erase(args.begin());
-    args.Add("--help");
+    cvd::Request modified_proto = HelpSubcommandToFlag(request);
 
     RequestWithStdio inner_cmd(request.Client(), modified_proto,
                                request.FileDescriptors(),
@@ -96,6 +118,7 @@ class CvdHelpHandler : public CvdServerHandler {
 
     return response;
   }
+
   Result<void> Interrupt() override {
     std::scoped_lock interrupt_lock(interruptible_);
     interrupted_ = true;
@@ -106,10 +129,34 @@ class CvdHelpHandler : public CvdServerHandler {
   cvd_common::Args CmdList() const override { return {"help"}; }
 
  private:
+  cvd::Request HelpSubcommandToFlag(const RequestWithStdio& request);
+
   std::mutex interruptible_;
   bool interrupted_ = false;
   CommandSequenceExecutor& executor_;
 };
+
+cvd::Request CvdHelpHandler::HelpSubcommandToFlag(
+    const RequestWithStdio& request) {
+  cvd::Request modified_proto = request.Message();
+  auto all_args =
+      cvd_common::ConvertToArgs(modified_proto.command_request().args());
+  auto& args = *modified_proto.mutable_command_request()->mutable_args();
+  args.Clear();
+  // there must be one or more "help" in all_args
+  // delete the first "help"
+  bool found_help = false;
+  for (const auto& cmd_arg : all_args) {
+    if (cmd_arg != "help" || found_help) {
+      args.Add(cmd_arg.c_str());
+      continue;
+    }
+    // skip first help
+    found_help = true;
+  }
+  args.Add("--help");
+  return modified_proto;
+}
 
 fruit::Component<fruit::Required<CommandSequenceExecutor>> CvdHelpComponent() {
   return fruit::createComponent()

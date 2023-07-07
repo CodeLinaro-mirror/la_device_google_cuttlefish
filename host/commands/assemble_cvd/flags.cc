@@ -161,6 +161,13 @@ DEFINE_int32(
     "with rootcanal_instance_num. Else, launch a new rootcanal instance");
 DEFINE_string(rootcanal_args, CF_DEFAULTS_ROOTCANAL_ARGS,
               "Space-separated list of rootcanal args. ");
+DEFINE_bool(enable_host_uwb, CF_DEFAULTS_ENABLE_HOST_UWB,
+            "Enable Pica in the host.");
+DEFINE_int32(
+    pica_instance_num, CF_DEFAULTS_ENABLE_PICA_INSTANCE_NUM,
+    "If it is greater than 0, use an existing pica instance which is "
+    "launched from cuttlefish instance "
+    "with pica_instance_num. Else, launch a new pica instance");
 DEFINE_bool(netsim, CF_DEFAULTS_NETSIM,
             "[Experimental] Connect all radios to netsim.");
 
@@ -281,10 +288,6 @@ DEFINE_string(gem5_debug_flags, CF_DEFAULTS_GEM5_DEBUG_FLAGS,
 DEFINE_vec(restart_subprocesses,
               cuttlefish::BoolToString(CF_DEFAULTS_RESTART_SUBPROCESSES),
               "Restart any crashed host process");
-DEFINE_vec(enable_vehicle_hal_grpc_server,
-            cuttlefish::BoolToString(CF_DEFAULTS_ENABLE_VEHICLE_HAL_GRPC_SERVER),
-            "Enables the vehicle HAL "
-            "emulation gRPC server on the host");
 DEFINE_vec(bootloader, CF_DEFAULTS_BOOTLOADER, "Bootloader binary path");
 DEFINE_vec(boot_slot, CF_DEFAULTS_BOOT_SLOT,
               "Force booting into the given slot. If empty, "
@@ -388,6 +391,8 @@ DEFINE_vec(use_sdcard, CF_DEFAULTS_USE_SDCARD?"true":"false",
 
 DEFINE_vec(protected_vm, cuttlefish::BoolToString(CF_DEFAULTS_PROTECTED_VM),
             "Boot in Protected VM mode");
+
+DEFINE_vec(mte, cuttlefish::BoolToString(CF_DEFAULTS_MTE), "Enable MTE");
 
 DEFINE_vec(enable_audio, cuttlefish::BoolToString(CF_DEFAULTS_ENABLE_AUDIO),
             "Whether to play or capture audio");
@@ -614,7 +619,7 @@ Result<bool> ParseBool(const std::string& flag_str,
 
 Result<std::unordered_map<int, std::string>> CreateNumToWebrtcDeviceIdMap(
     const CuttlefishConfig& tmp_config_obj,
-    const std::set<std::int32_t>& instance_nums,
+    const std::vector<std::int32_t>& instance_nums,
     const std::string& webrtc_device_id_flag) {
   std::unordered_map<int, std::string> output_map;
   if (webrtc_device_id_flag.empty()) {
@@ -824,6 +829,12 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_enable_metrics(FLAGS_report_anonymous_usage_stats);
 
+#ifdef ENFORCE_MAC80211_HWSIM
+  tmp_config_obj.set_virtio_mac80211_hwsim(true);
+#else
+  tmp_config_obj.set_virtio_mac80211_hwsim(false);
+#endif
+
   tmp_config_obj.set_vhost_user_mac80211_hwsim(FLAGS_vhost_user_mac80211_hwsim);
 
   if ((FLAGS_ap_rootfs_image.empty()) != (FLAGS_ap_kernel_image.empty())) {
@@ -911,8 +922,6 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       modem_simulator_sim_type));
   std::vector<bool> console_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(console));
   std::vector<bool> enable_audio_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(enable_audio));
-  std::vector<bool> enable_vehicle_hal_grpc_server_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(
-      enable_vehicle_hal_grpc_server));
   std::vector<bool> start_gnss_proxy_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(
       start_gnss_proxy));
   std::vector<bool> enable_bootanimation_vec =
@@ -923,6 +932,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       CF_EXPECT(GET_FLAG_STR_VALUE(gem5_debug_file));
   std::vector<bool> protected_vm_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(
       protected_vm));
+  std::vector<bool> mte_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(mte));
   std::vector<bool> enable_kernel_log_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(
       enable_kernel_log));
   std::vector<bool> kgdb_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(kgdb));
@@ -994,6 +1004,18 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   tmp_config_obj.set_rootcanal_link_ble_port(7600 + rootcanal_instance_num);
   LOG(DEBUG) << "rootcanal_instance_num: " << rootcanal_instance_num;
   LOG(DEBUG) << "launch rootcanal: " << (FLAGS_rootcanal_instance_num <= 0);
+
+  // crosvm should create fifos for UWB
+  auto pica_instance_num = *instance_nums.begin() - 1;
+  if (FLAGS_pica_instance_num > 0) {
+    pica_instance_num = FLAGS_pica_instance_num - 1;
+  }
+  tmp_config_obj.set_enable_host_uwb(FLAGS_enable_host_uwb);
+  tmp_config_obj.set_enable_host_uwb_connector(FLAGS_enable_host_uwb);
+  tmp_config_obj.set_pica_uci_port(7000 + pica_instance_num);
+  LOG(DEBUG) << "pica_instance_num: " << pica_instance_num;
+  LOG(DEBUG) << "launch pica: " << (FLAGS_pica_instance_num <= 0);
+
   bool is_first_instance = true;
   int instance_index = 0;
   auto num_to_webrtc_device_id_flag_map =
@@ -1021,13 +1043,12 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       guest_configs[instance_index].hctr2_supported ? "hctr2" : "cts");
     instance.set_use_allocd(use_allocd_vec[instance_index]);
     instance.set_enable_audio(enable_audio_vec[instance_index]);
-    instance.set_enable_vehicle_hal_grpc_server(
-      enable_vehicle_hal_grpc_server_vec[instance_index]);
     instance.set_enable_gnss_grpc_proxy(start_gnss_proxy_vec[instance_index]);
     instance.set_enable_bootanimation(enable_bootanimation_vec[instance_index]);
     instance.set_record_screen(record_screen_vec[instance_index]);
     instance.set_gem5_debug_file(gem5_debug_file_vec[instance_index]);
     instance.set_protected_vm(protected_vm_vec[instance_index]);
+    instance.set_mte(mte_vec[instance_index]);
     instance.set_enable_kernel_log(enable_kernel_log_vec[instance_index]);
     if (!boot_slot_vec[instance_index].empty()) {
       instance.set_boot_slot(boot_slot_vec[instance_index]);
@@ -1120,7 +1141,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_display_configs(display_configs);
 
     instance.set_memory_mb(memory_mb_vec[instance_index]);
-    instance.set_ddr_mem_mb(memory_mb_vec[instance_index] * 2);
+    instance.set_ddr_mem_mb(memory_mb_vec[instance_index] * 1.2);
     instance.set_setupwizard_mode(setupwizard_mode_vec[instance_index]);
     instance.set_userdata_format(userdata_format_vec[instance_index]);
     instance.set_guest_enforce_security(guest_enforce_security_vec[instance_index]);
@@ -1142,13 +1163,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_ethernet_bridge_name("cvd-ebr");
     instance.set_mobile_tap_name(iface_config.mobile_tap.name);
 
-#ifdef ENFORCE_MAC80211_HWSIM
-    const bool enforce_mac80211_hwsim = true;
-#else
-    const bool enforce_mac80211_hwsim = false;
-#endif
     if (NetworkInterfaceExists(iface_config.non_bridged_wireless_tap.name) &&
-        enforce_mac80211_hwsim) {
+        tmp_config_obj.virtio_mac80211_hwsim()) {
       instance.set_use_bridged_wifi_tap(false);
       instance.set_wifi_tap_name(iface_config.non_bridged_wireless_tap.name);
     } else {
@@ -1183,7 +1199,6 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_ethernet_ipv6(Ipv6ToString(ethernet_ipv6));
 
     instance.set_tombstone_receiver_port(calc_vsock_port(6600));
-    instance.set_vehicle_hal_server_port(9300 + num - 1);
     instance.set_audiocontrol_server_port(9410);  /* OK to use the same port number across instances */
     instance.set_config_server_port(calc_vsock_port(6800));
 
@@ -1372,7 +1387,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 
     // Start wmediumd process for the first instance if
     // vhost_user_mac80211_hwsim is not specified.
-    const bool start_wmediumd = enforce_mac80211_hwsim &&
+    const bool start_wmediumd = tmp_config_obj.virtio_mac80211_hwsim() &&
                                 FLAGS_vhost_user_mac80211_hwsim.empty() &&
                                 is_first_instance;
     if (start_wmediumd) {
@@ -1393,6 +1408,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 
     instance.set_start_rootcanal(is_first_instance && !is_bt_netsim &&
                                  (FLAGS_rootcanal_instance_num <= 0));
+
+    instance.set_start_pica(is_first_instance);
 
     if (!FLAGS_ap_rootfs_image.empty() && !FLAGS_ap_kernel_image.empty() && start_wmediumd) {
       // TODO(264537774): Ubuntu grub modules / grub monoliths cannot be used to boot

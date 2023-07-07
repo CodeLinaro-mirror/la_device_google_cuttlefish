@@ -15,6 +15,25 @@
 
 #include "host/commands/run_cvd/launch/launch.h"
 
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
+#include <fruit/fruit.h>
+
+#include "common/libs/utils/result.h"
+#include "host/libs/config/command_source.h"
+#include "host/libs/config/known_paths.h"
+
+// Copied from net/bluetooth/hci.h
+#define HCI_MAX_ACL_SIZE 1024
+#define HCI_MAX_FRAME_SIZE (HCI_MAX_ACL_SIZE + 4)
+
+// Include H4 header byte, and reserve more buffer size in the case of excess
+// packet.
+constexpr const size_t kBufferSize = (HCI_MAX_FRAME_SIZE + 1) * 2;
+
 namespace cuttlefish {
 namespace {
 
@@ -25,15 +44,15 @@ class BluetoothConnector : public CommandSource {
       : config_(config), instance_(instance) {}
 
   // CommandSource
-  Result<std::vector<Command>> Commands() override {
-    Command command(HostBinaryPath("bt_connector"));
-    command.AddParameter("-bt_out=", fifos_[0]);
-    command.AddParameter("-bt_in=", fifos_[1]);
-    command.AddParameter("-hci_port=", config_.rootcanal_hci_port());
-    command.AddParameter("-link_port=", config_.rootcanal_link_port());
-    command.AddParameter("-test_port=", config_.rootcanal_test_port());
-    command.AddParameter("-link_ble_port=", config_.rootcanal_link_ble_port());
-    return single_element_emplace(std::move(command));
+  Result<std::vector<MonitorCommand>> Commands() override {
+    Command command(TcpConnectorBinary());
+    command.AddParameter("-fifo_out=", fifos_[0]);
+    command.AddParameter("-fifo_in=", fifos_[1]);
+    command.AddParameter("-data_port=", config_.rootcanal_hci_port());
+    command.AddParameter("-buffer_size=", kBufferSize);
+    std::vector<MonitorCommand> commands;
+    commands.emplace_back(std::move(command));
+    return commands;
   }
 
   // SetupFeature

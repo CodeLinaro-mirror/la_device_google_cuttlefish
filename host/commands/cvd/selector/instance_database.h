@@ -41,14 +41,22 @@ class InstanceDatabase {
   InstanceDatabase();
   bool IsEmpty() const;
 
+  struct AddInstanceGroupParam {
+    std::string group_name;
+    std::string home_dir;
+    std::string host_artifacts_path;
+    std::string product_out_path;
+  };
   /** Adds instance group.
    *
    * If group_name or home_dir is already taken or host_artifacts_path is
    * not likely an artifacts path, CF_ERR is returned.
    */
   Result<ConstRef<LocalInstanceGroup>> AddInstanceGroup(
-      const std::string& group_name, const std::string& home_dir,
-      const std::string& host_artifacts_path);
+      const AddInstanceGroupParam& param);
+
+  Json::Value Serialize() const;
+  Result<void> LoadFromJson(const Json::Value&);
 
   /**
    * Adds instance to the group.
@@ -74,6 +82,7 @@ class InstanceDatabase {
    *  RemoveInstanceGroup(group)
    */
   bool RemoveInstanceGroup(const LocalInstanceGroup& group);
+  bool RemoveInstanceGroup(const std::string& group_name);
   void Clear();
 
   Result<Set<ConstRef<LocalInstanceGroup>>> FindGroups(
@@ -133,9 +142,13 @@ class InstanceDatabase {
 
   Result<LocalInstanceGroup*> FindMutableGroup(const std::string& group_name);
 
+  Result<void> LoadGroupFromJson(const Json::Value& group_json);
+
   std::vector<std::unique_ptr<LocalInstanceGroup>> local_instance_groups_;
   Map<FieldName, ConstGroupHandler> group_handlers_;
   Map<FieldName, ConstInstanceHandler> instance_handlers_;
+
+  static constexpr const char kJsonGroups[] = "Groups";
 };
 
 }  // namespace selector

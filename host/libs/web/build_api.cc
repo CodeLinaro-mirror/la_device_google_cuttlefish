@@ -19,15 +19,21 @@
 #include <unistd.h>
 
 #include <chrono>
+#include <memory>
 #include <set>
 #include <string>
 #include <thread>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 #include <android-base/logging.h>
 #include <android-base/strings.h>
 
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
+#include "common/libs/utils/result.h"
+#include "host/libs/web/credential_source.h"
 
 namespace cuttlefish {
 namespace {
@@ -40,6 +46,31 @@ bool StatusIsTerminal(const std::string& status) {
       "abandoned", "complete", "error", "ABANDONED", "COMPLETE", "ERROR",
   };
   return terminal_statuses.count(status) > 0;
+}
+
+bool ArtifactsContain(const std::vector<Artifact>& artifacts,
+                      const std::string& name) {
+  for (const auto& artifact : artifacts) {
+    if (artifact.Name() == name) {
+      return true;
+    }
+  }
+  return false;
+}
+
+std::string BuildNameRegexp(
+    const std::vector<std::string>& artifact_filenames) {
+  // surrounding with \Q and \E treats the text literally to avoid
+  // characters being treated as regex
+  auto it = artifact_filenames.begin();
+  std::string name_regex = "^\\Q" + *it + "\\E$";
+  std::string result = name_regex;
+  ++it;
+  for (const auto end = artifact_filenames.end(); it != end; ++it) {
+    name_regex = "^\\Q" + *it + "\\E$";
+    result += "|" + name_regex;
+  }
+  return result;
 }
 
 }  // namespace
@@ -77,14 +108,22 @@ DirectoryBuild::DirectoryBuild(std::vector<std::string> paths,
   product = StringFromEnv("TARGET_PRODUCT", "");
 }
 
-BuildApi::BuildApi(HttpClient& http_client, CredentialSource* credential_source)
-    : BuildApi(http_client, credential_source, "") {}
+BuildApi::BuildApi() : BuildApi(std::move(HttpClient::CurlClient()), nullptr) {}
 
-BuildApi::BuildApi(HttpClient& http_client, CredentialSource* credential_source,
-                   std::string api_key)
-    : http_client(http_client),
-      credential_source(credential_source),
-      api_key_(std::move(api_key)) {}
+BuildApi::BuildApi(std::unique_ptr<HttpClient> http_client,
+                   std::unique_ptr<CredentialSource> credential_source)
+    : BuildApi(std::move(http_client), nullptr, std::move(credential_source),
+               "", std::chrono::seconds(0)) {}
+
+BuildApi::BuildApi(std::unique_ptr<HttpClient> http_client,
+                   std::unique_ptr<HttpClient> inner_http_client,
+                   std::unique_ptr<CredentialSource> credential_source,
+                   std::string api_key, const std::chrono::seconds retry_period)
+    : http_client(std::move(http_client)),
+      inner_http_client(std::move(inner_http_client)),
+      credential_source(std::move(credential_source)),
+      api_key_(std::move(api_key)),
+      retry_period_(retry_period) {}
 
 Result<std::vector<std::string>> BuildApi::Headers() {
   std::vector<std::string> headers;
@@ -98,15 +137,15 @@ Result<std::vector<std::string>> BuildApi::Headers() {
 Result<std::string> BuildApi::LatestBuildId(const std::string& branch,
                                             const std::string& target) {
   std::string url =
-      BUILD_API + "/builds?branch=" + http_client.UrlEscape(branch) +
+      BUILD_API + "/builds?branch=" + http_client->UrlEscape(branch) +
       "&buildAttemptStatus=complete" +
       "&buildType=submitted&maxResults=1&successful=true&target=" +
-      http_client.UrlEscape(target);
+      http_client->UrlEscape(target);
   if (!api_key_.empty()) {
-    url += "&key=" + http_client.UrlEscape(api_key_);
+    url += "&key=" + http_client->UrlEscape(api_key_);
   }
   auto response =
-      CF_EXPECT(http_client.DownloadToJson(url, CF_EXPECT(Headers())));
+      CF_EXPECT(http_client->DownloadToJson(url, CF_EXPECT(Headers())));
   const auto& json = response.data;
   CF_EXPECT(response.HttpSuccess(), "Error fetching the latest build of \""
                                         << target << "\" on \"" << branch
@@ -128,13 +167,13 @@ Result<std::string> BuildApi::LatestBuildId(const std::string& branch,
 }
 
 Result<std::string> BuildApi::BuildStatus(const DeviceBuild& build) {
-  std::string url = BUILD_API + "/builds/" + http_client.UrlEscape(build.id) +
-                    "/" + http_client.UrlEscape(build.target);
+  std::string url = BUILD_API + "/builds/" + http_client->UrlEscape(build.id) +
+                    "/" + http_client->UrlEscape(build.target);
   if (!api_key_.empty()) {
-    url += "?key=" + http_client.UrlEscape(api_key_);
+    url += "?key=" + http_client->UrlEscape(api_key_);
   }
   auto response =
-      CF_EXPECT(http_client.DownloadToJson(url, CF_EXPECT(Headers())));
+      CF_EXPECT(http_client->DownloadToJson(url, CF_EXPECT(Headers())));
   const auto& json = response.data;
   CF_EXPECT(response.HttpSuccess(),
             "Error fetching the status of \""
@@ -148,13 +187,13 @@ Result<std::string> BuildApi::BuildStatus(const DeviceBuild& build) {
 }
 
 Result<std::string> BuildApi::ProductName(const DeviceBuild& build) {
-  std::string url = BUILD_API + "/builds/" + http_client.UrlEscape(build.id) +
-                    "/" + http_client.UrlEscape(build.target);
+  std::string url = BUILD_API + "/builds/" + http_client->UrlEscape(build.id) +
+                    "/" + http_client->UrlEscape(build.target);
   if (!api_key_.empty()) {
-    url += "?key=" + http_client.UrlEscape(api_key_);
+    url += "?key=" + http_client->UrlEscape(api_key_);
   }
   auto response =
-      CF_EXPECT(http_client.DownloadToJson(url, CF_EXPECT(Headers())));
+      CF_EXPECT(http_client->DownloadToJson(url, CF_EXPECT(Headers())));
   const auto& json = response.data;
   CF_EXPECT(response.HttpSuccess(),
             "Error fetching the product name of \""
@@ -169,27 +208,27 @@ Result<std::string> BuildApi::ProductName(const DeviceBuild& build) {
 }
 
 Result<std::vector<Artifact>> BuildApi::Artifacts(
-    const DeviceBuild& build, const std::string& artifact_filename) {
+    const DeviceBuild& build,
+    const std::vector<std::string>& artifact_filenames) {
   std::string page_token = "";
   std::vector<Artifact> artifacts;
   do {
-    std::string url = BUILD_API + "/builds/" + http_client.UrlEscape(build.id) +
-                      "/" + http_client.UrlEscape(build.target) +
+    std::string url = BUILD_API + "/builds/" +
+                      http_client->UrlEscape(build.id) + "/" +
+                      http_client->UrlEscape(build.target) +
                       "/attempts/latest/artifacts?maxResults=100";
-    if (!artifact_filename.empty()) {
-      // surrounding with \Q and \E treats the text literally to avoid
-      // characters being treated as regex
-      std::string name_regex = "^\\Q" + artifact_filename + "\\E$";
-      url += "&nameRegexp=" + http_client.UrlEscape(name_regex);
+    if (!artifact_filenames.empty()) {
+      url += "&nameRegexp=" +
+             http_client->UrlEscape(BuildNameRegexp(artifact_filenames));
     }
     if (page_token != "") {
-      url += "&pageToken=" + http_client.UrlEscape(page_token);
+      url += "&pageToken=" + http_client->UrlEscape(page_token);
     }
     if (!api_key_.empty()) {
-      url += "&key=" + http_client.UrlEscape(api_key_);
+      url += "&key=" + http_client->UrlEscape(api_key_);
     }
     auto response =
-        CF_EXPECT(http_client.DownloadToJson(url, CF_EXPECT(Headers())));
+        CF_EXPECT(http_client->DownloadToJson(url, CF_EXPECT(Headers())));
     const auto& json = response.data;
     CF_EXPECT(response.HttpSuccess(),
               "Error fetching the artifacts of \""
@@ -214,13 +253,11 @@ struct CloseDir {
   void operator()(DIR* dir) { closedir(dir); }
 };
 
-using UniqueDir = std::unique_ptr<DIR, CloseDir>;
-
-Result<std::vector<Artifact>> BuildApi::Artifacts(const DirectoryBuild& build,
-                                                  const std::string&) {
+Result<std::vector<Artifact>> BuildApi::Artifacts(
+    const DirectoryBuild& build, const std::vector<std::string>&) {
   std::vector<Artifact> artifacts;
   for (const auto& path : build.paths) {
-    auto dir = UniqueDir(opendir(path.c_str()));
+    auto dir = std::unique_ptr<DIR, CloseDir>(opendir(path.c_str()));
     CF_EXPECT(dir != nullptr, "Could not read files from \"" << path << "\"");
     for (auto entity = readdir(dir.get()); entity != nullptr;
          entity = readdir(dir.get())) {
@@ -234,14 +271,14 @@ Result<void> BuildApi::ArtifactToCallback(const DeviceBuild& build,
                                           const std::string& artifact,
                                           HttpClient::DataCallback callback) {
   std::string download_url_endpoint =
-      BUILD_API + "/builds/" + http_client.UrlEscape(build.id) + "/" +
-      http_client.UrlEscape(build.target) + "/attempts/latest/artifacts/" +
-      http_client.UrlEscape(artifact) + "/url";
+      BUILD_API + "/builds/" + http_client->UrlEscape(build.id) + "/" +
+      http_client->UrlEscape(build.target) + "/attempts/latest/artifacts/" +
+      http_client->UrlEscape(artifact) + "/url";
   if (!api_key_.empty()) {
-    download_url_endpoint += "?key=" + http_client.UrlEscape(api_key_);
+    download_url_endpoint += "?key=" + http_client->UrlEscape(api_key_);
   }
   auto response = CF_EXPECT(
-      http_client.DownloadToJson(download_url_endpoint, CF_EXPECT(Headers())));
+      http_client->DownloadToJson(download_url_endpoint, CF_EXPECT(Headers())));
   const auto& json = response.data;
   CF_EXPECT(response.HttpSuccess() || response.HttpRedirect(),
             "Error fetching the url of \"" << artifact << "\" for \"" << build
@@ -255,7 +292,7 @@ Result<void> BuildApi::ArtifactToCallback(const DeviceBuild& build,
             "URL endpoint did not have json path: " << json);
   std::string url = json["signedUrl"].asString();
   auto callback_response =
-      CF_EXPECT(http_client.DownloadToCallback(callback, url));
+      CF_EXPECT(http_client->DownloadToCallback(callback, url));
   CF_EXPECT(IsHttpSuccess(callback_response.http_code));
   return {};
 }
@@ -264,14 +301,14 @@ Result<void> BuildApi::ArtifactToFile(const DeviceBuild& build,
                                       const std::string& artifact,
                                       const std::string& path) {
   std::string download_url_endpoint =
-      BUILD_API + "/builds/" + http_client.UrlEscape(build.id) + "/" +
-      http_client.UrlEscape(build.target) + "/attempts/latest/artifacts/" +
-      http_client.UrlEscape(artifact) + "/url";
+      BUILD_API + "/builds/" + http_client->UrlEscape(build.id) + "/" +
+      http_client->UrlEscape(build.target) + "/attempts/latest/artifacts/" +
+      http_client->UrlEscape(artifact) + "/url";
   if (!api_key_.empty()) {
-    download_url_endpoint += "?key=" + http_client.UrlEscape(api_key_);
+    download_url_endpoint += "?key=" + http_client->UrlEscape(api_key_);
   }
   auto response = CF_EXPECT(
-      http_client.DownloadToJson(download_url_endpoint, CF_EXPECT(Headers())));
+      http_client->DownloadToJson(download_url_endpoint, CF_EXPECT(Headers())));
   const auto& json = response.data;
   CF_EXPECT(response.HttpSuccess() || response.HttpRedirect(),
             "Error fetching the url of \"" << artifact << "\" for \"" << build
@@ -284,7 +321,7 @@ Result<void> BuildApi::ArtifactToFile(const DeviceBuild& build,
   CF_EXPECT(json.isMember("signedUrl"),
             "URL endpoint did not have json path: " << json);
   std::string url = json["signedUrl"].asString();
-  CF_EXPECT(CF_EXPECT(http_client.DownloadToFile(url, path)).HttpSuccess());
+  CF_EXPECT(CF_EXPECT(http_client->DownloadToFile(url, path)).HttpSuccess());
   return {};
 }
 
@@ -307,9 +344,8 @@ Result<void> BuildApi::ArtifactToFile(const DirectoryBuild& build,
                                              << build << "\"");
 }
 
-Result<Build> ArgumentToBuild(BuildApi& build_api, const std::string& arg,
-                              const std::string& default_build_target,
-                              const std::chrono::seconds& retry_period) {
+Result<Build> BuildApi::ArgumentToBuild(
+    const std::string& arg, const std::string& default_build_target) {
   if (arg.find(':') != std::string::npos) {
     std::vector<std::string> dirs = android::base::Split(arg, ":");
     std::string id = dirs.back();
@@ -328,7 +364,7 @@ Result<Build> ArgumentToBuild(BuildApi& build_api, const std::string& arg,
   std::string branch_or_id =
       slash_pos == std::string::npos ? arg : arg.substr(0, slash_pos);
   std::string branch_latest_build_id =
-      CF_EXPECT(build_api.LatestBuildId(branch_or_id, build_target));
+      CF_EXPECT(LatestBuildId(branch_or_id, build_target));
   std::string build_id = branch_or_id;
   if (branch_latest_build_id != "") {
     LOG(INFO) << "The latest good build on branch \"" << branch_or_id
@@ -337,20 +373,64 @@ Result<Build> ArgumentToBuild(BuildApi& build_api, const std::string& arg,
     build_id = branch_latest_build_id;
   }
   DeviceBuild proposed_build = DeviceBuild(build_id, build_target);
-  std::string status = CF_EXPECT(build_api.BuildStatus(proposed_build));
+  std::string status = CF_EXPECT(BuildStatus(proposed_build));
   CF_EXPECT(status != "",
             proposed_build << " is not a valid branch or build id.");
   LOG(INFO) << "Status for build " << proposed_build << " is " << status;
-  while (retry_period != std::chrono::seconds::zero() &&
+  while (retry_period_ != std::chrono::seconds::zero() &&
          !StatusIsTerminal(status)) {
     LOG(INFO) << "Status is \"" << status << "\". Waiting for "
-              << retry_period.count() << " seconds.";
-    std::this_thread::sleep_for(retry_period);
-    status = CF_EXPECT(build_api.BuildStatus(proposed_build));
+              << retry_period_.count() << " seconds.";
+    std::this_thread::sleep_for(retry_period_);
+    status = CF_EXPECT(BuildStatus(proposed_build));
   }
   LOG(INFO) << "Status for build " << proposed_build << " is " << status;
-  proposed_build.product = CF_EXPECT(build_api.ProductName(proposed_build));
+  proposed_build.product = CF_EXPECT(ProductName(proposed_build));
   return proposed_build;
+}
+
+Result<std::string> BuildApi::DownloadFile(const Build& build,
+                                           const std::string& target_directory,
+                                           const std::string& artifact_name) {
+  std::vector<Artifact> artifacts =
+      CF_EXPECT(Artifacts(build, {artifact_name}));
+  CF_EXPECT(ArtifactsContain(artifacts, artifact_name),
+            "Target " << build << " did not contain " << artifact_name);
+  return DownloadTargetFile(build, target_directory, artifact_name);
+}
+
+Result<std::string> BuildApi::DownloadFileWithBackup(
+    const Build& build, const std::string& target_directory,
+    const std::string& artifact_name, const std::string& backup_artifact_name) {
+  std::vector<Artifact> artifacts =
+      CF_EXPECT(Artifacts(build, {artifact_name, backup_artifact_name}));
+  std::string selected_artifact = artifact_name;
+  if (!ArtifactsContain(artifacts, artifact_name)) {
+    selected_artifact = backup_artifact_name;
+  }
+  return DownloadTargetFile(build, target_directory, selected_artifact);
+}
+
+Result<std::string> BuildApi::DownloadTargetFile(
+    const Build& build, const std::string& target_directory,
+    const std::string& artifact_name) {
+  std::string target_filepath = target_directory + "/" + artifact_name;
+  CF_EXPECT(ArtifactToFile(build, artifact_name, target_filepath),
+            "Unable to download " << build << ":" << artifact_name << " to "
+                                  << target_filepath);
+  return {target_filepath};
+}
+
+/** Returns the name of one of the artifact target zip files.
+ *
+ * For example, for a target "aosp_cf_x86_phone-userdebug" at a build "5824130",
+ * the image zip file would be "aosp_cf_x86_phone-img-5824130.zip"
+ */
+std::string GetBuildZipName(const Build& build, const std::string& name) {
+  std::string product =
+      std::visit([](auto&& arg) { return arg.product; }, build);
+  auto id = std::visit([](auto&& arg) { return arg.id; }, build);
+  return product + "-" + name + "-" + id + ".zip";
 }
 
 }  // namespace cuttlefish

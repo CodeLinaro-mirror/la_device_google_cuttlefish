@@ -46,6 +46,10 @@ DECLARE_string(vm_manager);
 namespace cuttlefish {
 namespace {
 
+// The ordering of tap devices we're passing to crosvm / qemu is important
+// Ethernet tap device is the second one (eth1) we're passing ATM
+static constexpr char kUbootPrimaryEth[] = "eth1";
+
 void WritePausedEntrypoint(std::ostream& env, const char* entrypoint,
                            const CuttlefishConfig::InstanceSpecific& instance) {
   if (instance.pause_in_bootloader()) {
@@ -86,6 +90,7 @@ size_t WriteEnvironment(const CuttlefishConfig::InstanceSpecific& instance,
                         const std::string& env_path) {
   std::ostringstream env;
 
+  env << "ethprime=" << kUbootPrimaryEth << '\0';
   if (!kernel_args.empty()) {
     env << "uenvcmd=setenv bootargs \"$cbootargs " << kernel_args << "\" && ";
   } else {
@@ -248,7 +253,7 @@ class InitBootloaderEnvPartitionImpl : public InitBootloaderEnvPartition {
 
     if (!FileExists(image_path) ||
         ReadFile(image_path) != ReadFile(tmp_boot_env_image_path)) {
-      if (!RenameFile(tmp_boot_env_image_path, image_path)) {
+      if (!RenameFile(tmp_boot_env_image_path, image_path).ok()) {
         LOG(ERROR) << "Unable to delete the old env image.";
         return false;
       }

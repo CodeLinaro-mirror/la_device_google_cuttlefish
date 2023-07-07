@@ -25,6 +25,7 @@
 
 #include "cvd_server.pb.h"
 
+#include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/commands/cvd/server_client.h"
 #include "host/commands/cvd/types.h"
@@ -40,11 +41,7 @@ CommandInvocation ParseInvocation(const cvd::Request& request);
 
 cuttlefish::cvd::Response ResponseFromSiginfo(siginfo_t infop);
 
-struct PreconditionVerification {
-  bool is_ok;
-  std::string error_message;
-};
-PreconditionVerification VerifyPrecondition(const RequestWithStdio& request);
+Result<void> VerifyPrecondition(const RequestWithStdio& request);
 
 struct ConstructCommandParam {
   const std::string& bin_path;
@@ -60,23 +57,24 @@ struct ConstructCommandParam {
 Result<Command> ConstructCommand(const ConstructCommandParam& cmd_param);
 
 // Constructs a command for cvd whatever --help or --help-related-option
-Result<Command> ConstructCvdHelpCommand(
-    const std::string& bin_file, const cvd_common::Envs& envs,
-    const std::vector<std::string>& subcmd_args,
-    const RequestWithStdio& request);
+Result<Command> ConstructCvdHelpCommand(const std::string& bin_file,
+                                        cvd_common::Envs envs,
+                                        const cvd_common::Args& _args,
+                                        const RequestWithStdio& request);
+
+// Constructs a command for cvd non-start-op
+struct ConstructNonHelpForm {
+  std::string bin_file;
+  cvd_common::Envs envs;
+  cvd_common::Args cmd_args;
+  std::string android_host_out;
+  std::string home;
+  bool verbose;
+};
+Result<Command> ConstructCvdGenericNonHelpCommand(
+    const ConstructNonHelpForm& request_form, const RequestWithStdio& request);
 
 // e.g. cvd start --help, cvd stop --help
 bool IsHelpSubcmd(const std::vector<std::string>& args);
-
-/**
- * Calculates absolute path based on the client's environment
- *
- * If the client sent a relative path like "bin/foo", it is relative
- * to the client's working directory, not to the server's.
- * Likewise, if the client sent a path that starts with ~, we should
- * replace ~ with the client user's home, not the server user's.
- */
-Result<std::string> ClientAbsolutePath(const std::string& path, const uid_t uid,
-                                       const std::string& client_pwd);
 
 }  // namespace cuttlefish

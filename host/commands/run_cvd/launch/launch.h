@@ -15,10 +15,10 @@
 
 #pragma once
 
-#include <fruit/fruit.h>
-
 #include <string>
 #include <vector>
+
+#include <fruit/fruit.h>
 
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/subprocess.h"
@@ -33,12 +33,9 @@
 
 namespace cuttlefish {
 
-template <typename T>
-std::vector<T> single_element_emplace(T&& element) {
-  std::vector<T> vec;
-  vec.emplace_back(std::move(element));
-  return vec;
-}
+fruit::Component<fruit::Required<const CuttlefishConfig,
+                                 const CuttlefishConfig::InstanceSpecific>>
+UwbConnectorComponent();
 
 fruit::Component<fruit::Required<const CuttlefishConfig,
                                  const CuttlefishConfig::InstanceSpecific>>
@@ -78,6 +75,11 @@ fruit::Component<
                     const CuttlefishConfig::InstanceSpecific, LogTeeCreator>>
 RootCanalComponent();
 
+fruit::Component<
+    fruit::Required<const CuttlefishConfig,
+                    const CuttlefishConfig::InstanceSpecific, LogTeeCreator>>
+PicaComponent();
+
 fruit::Component<fruit::Required<GrpcSocketCreator>> EchoServerComponent();
 
 fruit::Component<fruit::Required<const CuttlefishConfig,
@@ -92,12 +94,9 @@ SecureEnvComponent();
 fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>>
 TombstoneReceiverComponent();
 
-fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>>
-VehicleHalServerComponent();
-
-fruit::Component<
-    fruit::Required<const CuttlefishConfig,
-                    const CuttlefishConfig::InstanceSpecific, LogTeeCreator>>
+fruit::Component<fruit::Required<const CuttlefishConfig,
+                                 const CuttlefishConfig::InstanceSpecific,
+                                 LogTeeCreator, GrpcSocketCreator>>
 WmediumdServerComponent();
 
 fruit::Component<fruit::Required<const CuttlefishConfig,

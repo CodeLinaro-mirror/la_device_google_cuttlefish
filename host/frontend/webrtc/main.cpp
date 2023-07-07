@@ -20,6 +20,7 @@
 
 #include <android-base/logging.h>
 #include <android-base/strings.h>
+#include <fruit/fruit.h>
 #include <gflags/gflags.h>
 #include <libyuv.h>
 
@@ -98,6 +99,22 @@ fruit::Component<cuttlefish::CustomActionConfigProvider> WebRtcComponent() {
       .install(cuttlefish::ConfigFlagPlaceholder)
       .install(cuttlefish::CustomActionsComponent);
 };
+
+fruit::Component<
+    cuttlefish::ScreenConnector<DisplayHandler::WebRtcScProcessedFrame>,
+    cuttlefish::confui::HostServer, cuttlefish::confui::HostVirtualInput>
+CreateConfirmationUIComponent(
+    int* frames_fd, cuttlefish::confui::PipeConnectionPair* pipe_io_pair) {
+  using cuttlefish::ScreenConnectorFrameRenderer;
+  using ScreenConnector = cuttlefish::DisplayHandler::ScreenConnector;
+  return fruit::createComponent()
+      .bindInstance<
+          fruit::Annotated<cuttlefish::WaylandScreenConnector::FramesFd, int>>(
+          *frames_fd)
+      .bindInstance(*pipe_io_pair)
+      .bind<ScreenConnectorFrameRenderer, ScreenConnector>();
+}
+
 int main(int argc, char** argv) {
   cuttlefish::DefaultSubprocessLogging(argv);
   ::gflags::ParseCommandLineFlags(&argc, &argv, true);
@@ -161,24 +178,29 @@ int main(int argc, char** argv) {
 
   auto cvd_config = cuttlefish::CuttlefishConfig::Get();
   auto instance = cvd_config->ForDefaultInstance();
-  auto& host_mode_ctrl = cuttlefish::HostModeCtrl::Get();
-  auto screen_connector_ptr = cuttlefish::DisplayHandler::ScreenConnector::Get(
-      FLAGS_frame_server_fd, host_mode_ctrl);
-  auto& screen_connector = *(screen_connector_ptr.get());
-  auto client_server = cuttlefish::ClientFilesServer::New(FLAGS_client_dir);
-  CHECK(client_server) << "Failed to initialize client files server";
 
-  // create confirmation UI service, giving host_mode_ctrl and
-  // screen_connector
-  // keep this singleton object alive until the webRTC process ends
-  auto confui_to_guest_fd = cuttlefish::SharedFD::Dup(FLAGS_confui_in_fd);
+  cuttlefish::confui::PipeConnectionPair conf_ui_comm_fd_pair{
+      .from_guest_ = cuttlefish::SharedFD::Dup(FLAGS_confui_out_fd),
+      .to_guest_ = cuttlefish::SharedFD::Dup(FLAGS_confui_in_fd)};
   close(FLAGS_confui_in_fd);
-  auto confui_from_guest_fd = cuttlefish::SharedFD::Dup(FLAGS_confui_out_fd);
   close(FLAGS_confui_out_fd);
 
-  auto& host_confui_server = cuttlefish::confui::HostServer::Get(
-      host_mode_ctrl, screen_connector, confui_from_guest_fd,
-      confui_to_guest_fd);
+  int frames_fd = FLAGS_frame_server_fd;
+  fruit::Injector<
+      cuttlefish::ScreenConnector<DisplayHandler::WebRtcScProcessedFrame>,
+      cuttlefish::confui::HostServer, cuttlefish::confui::HostVirtualInput>
+      conf_ui_components_injector(CreateConfirmationUIComponent,
+                                  std::addressof(frames_fd),
+                                  &conf_ui_comm_fd_pair);
+  auto& screen_connector =
+      conf_ui_components_injector.get<DisplayHandler::ScreenConnector&>();
+
+  auto client_server = cuttlefish::ClientFilesServer::New(FLAGS_client_dir);
+  CHECK(client_server) << "Failed to initialize client files server";
+  auto& host_confui_server =
+      conf_ui_components_injector.get<cuttlefish::confui::HostServer&>();
+  auto& confui_virtual_input =
+      conf_ui_components_injector.get<cuttlefish::confui::HostVirtualInput&>();
 
   StreamerConfig streamer_config;
 
@@ -201,20 +223,10 @@ int main(int argc, char** argv) {
 
   KernelLogEventsHandler kernel_logs_event_handler(kernel_log_events_client);
   auto observer_factory = std::make_shared<CfConnectionObserverFactory>(
-      input_sockets, &kernel_logs_event_handler, host_confui_server);
+      input_sockets, &kernel_logs_event_handler, confui_virtual_input);
 
-  auto streamer = Streamer::Create(streamer_config, observer_factory);
-  CHECK(streamer) << "Could not create streamer";
-
-  auto display_handler =
-      std::make_shared<DisplayHandler>(*streamer, screen_connector);
-
-  if (instance.camera_server_port()) {
-    auto camera_controller = streamer->AddCamera(instance.camera_server_port(),
-                                                 instance.vsock_guest_cid());
-    observer_factory->SetCameraHandler(camera_controller);
-  }
-
+  // The recorder is created first, so displays added in callbacks to the
+  // Streamer can also be added to the LocalRecorder.
   std::unique_ptr<cuttlefish::webrtc_streaming::LocalRecorder> local_recorder;
   if (instance.record_screen()) {
     int recording_num = 0;
@@ -227,8 +239,19 @@ int main(int argc, char** argv) {
     } while (cuttlefish::FileExists(recording_path));
     local_recorder = LocalRecorder::Create(recording_path);
     CHECK(local_recorder) << "Could not create local recorder";
+  }
 
-    streamer->RecordDisplays(*local_recorder);
+  auto streamer =
+      Streamer::Create(streamer_config, local_recorder.get(), observer_factory);
+  CHECK(streamer) << "Could not create streamer";
+
+  auto display_handler =
+      std::make_shared<DisplayHandler>(*streamer, screen_connector);
+
+  if (instance.camera_server_port()) {
+    auto camera_controller = streamer->AddCamera(instance.camera_server_port(),
+                                                 instance.vsock_guest_cid());
+    observer_factory->SetCameraHandler(camera_controller);
   }
 
   observer_factory->SetDisplayHandler(display_handler);

@@ -46,14 +46,13 @@ soong_config_module_type {
 }
 
 cvd_host_tools = [
-    "android.hardware.automotive.vehicle@2.0-virtualization-grpc-server",
     "adb",
     "adb_connector",
     "allocd",
     "allocd_client",
     "assemble_cvd",
     "avbtool",
-    "bt_connector",
+    "tcp_connector",
     "common_crosvm",
     "config_server",
     "console_forwarder",
@@ -104,12 +103,14 @@ cvd_host_tools = [
     "netsimd",
     "newfs_msdos",
     "openwrt_control_server",
+    "pica",
     "powerwash_cvd",
     "process_restarter",
     "restart_cvd",
     "root-canal",
     "run_cvd",
     "secure_env",
+    "sefcontext_compile",
     "cvd_send_sms",
     "cvd_update_location",
     "cvd_import_locations",
@@ -169,6 +170,10 @@ cvd_host_model_simulator_files = [
     "iccprofile_for_sim0.xml_host",
     "iccprofile_for_sim0_for_CtsCarrierApiTestCases.xml_host",
     "numeric_operator.xml_host",
+]
+
+cvd_host_acloud_data = [
+    "default.config_host",
 ]
 
 cvd_host_seccomp_policy_x86_64 = [
@@ -253,6 +258,30 @@ cvd_host_avb_testkey = [
     "cvd_avb_testkey",
 ]
 
+cvd_host_netsim_gui_assets = [
+    "netsim_ui_index.html",
+    "netsim_ui_js_cube-sprite.js",
+    "netsim_ui_js_customize-map-button.js",
+    "netsim_ui_js_device-dragzone.js",
+    "netsim_ui_js_device-dropzone.js",
+    "netsim_ui_js_device-info.js",
+    "netsim_ui_js_device-list.js",
+    "netsim_ui_js_device-map.js",
+    "netsim_ui_js_device-observer.js",
+    "netsim_ui_js_license-info.js",
+    "netsim_ui_js_navigation-bar.js",
+    "netsim_ui_js_netsim-app.js",
+    "netsim_ui_js_packet-info.js",
+    "netsim_ui_js_pyramid-sprite.js",
+    "netsim_ui_js_model.js",
+    "netsim_ui_tslib",
+    "netsim_ui_assets_grid-background.svg",
+    "netsim_ui_assets_hexagonal-background.png",
+    "netsim_ui_assets_netsim-logo-b.svg",
+    "netsim_ui_assets_netsim-logo.svg",
+    "netsim_ui_assets_polar-background.svg",
+]
+
 cvd_host_package_customization {
     name: "cvd-host_package",
     deps: cvd_host_tools +
@@ -262,9 +291,11 @@ cvd_host_package_customization {
             deps: cvd_host_webrtc_assets +
                 cvd_host_avb_testkey +
                 cvd_host_model_simulator_files +
+                cvd_host_acloud_data +
                 cvd_host_bootloader +
                 cvd_bluetooth_config_files +
-                cvd_openwrt_images,
+                cvd_openwrt_images +
+                cvd_host_netsim_gui_assets,
         },
     },
 

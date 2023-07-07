@@ -95,7 +95,7 @@ class Connector {
 
 // Returns real implementation for ParentController.
 export function createParentController() {
-  return new PostMsgParentController();
+  return null;
 }
 
 // ParentController object provides methods for sending information from device
@@ -103,7 +103,7 @@ export function createParentController() {
 // at the operator side. This class shouldn't be instantiated directly.
 class ParentController {
   constructor() {
-    if (this.constructor === DeviceDisplays) {
+    if (this.constructor === ParentController) {
       throw new Error('ParentController is an abstract class');
     }
   }

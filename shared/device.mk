@@ -70,12 +70,11 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
 # sepolicy
 PRODUCT_PRODUCT_PROPERTIES += \
     remote_provisioning.enable_rkpd=true \
-    remote_provisioning.hostname=autopush-remoteprovisioning.sandbox.googleapis.com \
+    remote_provisioning.hostname=staging-remoteprovisioning.sandbox.googleapis.com \
     persist.adb.tcp.port=5555 \
     ro.com.google.locationfeatures=1 \
     persist.sys.fuse.passthrough.enable=true \
-    remote_provisioning.tee.rkp_only=1 \
-    ro.fuse.bpf.enabled=true
+    remote_provisioning.tee.rkp_only=1
 
 # Until we support adb keys on user builds, and fix logcat over serial,
 # spawn adbd by default without authorization for "adb logcat"
@@ -198,6 +197,11 @@ PRODUCT_PACKAGES += \
     cuttlefish_overlay_settings_provider
 
 endif
+
+#
+# Satellite vendor service for CF
+#
+PRODUCT_PACKAGES += CFSatelliteService
 
 # PRODUCT_AAPT_CONFIG and PRODUCT_AAPT_PREF_CONFIG are intentionally not set to
 # pick up every density resources.
@@ -414,8 +418,9 @@ PRODUCT_PACKAGES += \
 # Drm HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.drm@latest-service.clearkey \
-    android.hardware.drm@latest-service.widevine
+    android.hardware.drm@latest-service.clearkey
+
+-include vendor/widevine/libwvdrmengine/apex/device/device.mk
 
 #
 # Confirmation UI HAL
@@ -684,6 +689,9 @@ endif
 # UWB HAL
 PRODUCT_PACKAGES += \
     android.hardware.uwb-service
+PRODUCT_COPY_FILES += \
+    device/google/cuttlefish/guest/hals/uwb/uwb-service.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/uwb-service.rc
+
 
 ifeq ($(PRODUCT_ENFORCE_MAC80211_HWSIM),true)
 # Wifi Runtime Resource Overlay

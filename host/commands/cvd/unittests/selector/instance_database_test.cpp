@@ -14,11 +14,13 @@
 // limitations under the License.
 
 #include <algorithm>
+#include <iostream>
 #include <unordered_set>
 
 #include <gtest/gtest.h>
 
 #include "common/libs/utils/files.h"
+#include "common/libs/utils/json.h"
 #include "host/commands/cvd/selector/instance_database.h"
 #include "host/commands/cvd/selector/selector_constants.h"
 #include "host/commands/cvd/unittests/selector/instance_database_helper.h"
@@ -75,17 +77,32 @@ TEST_F(CvdInstanceDatabaseTest, AddWithInvalidGroupInfo) {
 
   // group_name : "meow"
   auto result_bad_home =
-      db.AddInstanceGroup("meow", "/path/to/never/exists", HostArtifactsPath());
+      db.AddInstanceGroup({.group_name = "meow",
+                           .home_dir = "/path/to/never/exists",
+                           .host_artifacts_path = HostArtifactsPath(),
+                           .product_out_path = HostArtifactsPath()});
   auto result_bad_host_bin_dir =
-      db.AddInstanceGroup("meow", home, "/path/to/never/exists");
-  auto result_both_bad = db.AddInstanceGroup("meow", "/path/to/never/exists",
-                                             "/path/to/never/exists");
+      db.AddInstanceGroup({.group_name = "meow",
+                           .home_dir = home,
+                           .host_artifacts_path = "/path/to/never/exists",
+                           .product_out_path = "/path/to/never/exists"});
+  auto result_both_bad =
+      db.AddInstanceGroup({.group_name = "meow",
+                           .home_dir = "/path/to/never/exists",
+                           .host_artifacts_path = "/path/to/never/exists",
+                           .product_out_path = "/path/to/never/exists"});
   auto result_bad_group_name =
-      db.AddInstanceGroup("0invalid_group_name", home, HostArtifactsPath());
+      db.AddInstanceGroup({.group_name = "0invalid_group_name",
+                           .home_dir = home,
+                           .host_artifacts_path = HostArtifactsPath(),
+                           .product_out_path = HostArtifactsPath()});
   // Everything is correct but one thing: the host artifacts directory does not
   // have host tool files such as launch_cvd
   auto result_non_qualifying_host_tool_dir =
-      db.AddInstanceGroup("meow", home, invalid_host_artifacts_path);
+      db.AddInstanceGroup({.group_name = "meow",
+                           .home_dir = home,
+                           .host_artifacts_path = invalid_host_artifacts_path,
+                           .product_out_path = invalid_host_artifacts_path});
 
   ASSERT_FALSE(result_bad_home.ok());
   ASSERT_FALSE(result_bad_host_bin_dir.ok());
@@ -108,8 +125,16 @@ TEST_F(CvdInstanceDatabaseTest, AddWithValidGroupInfo) {
     GTEST_SKIP() << "Failed to find/create " << home1;
   }
 
-  ASSERT_TRUE(db.AddInstanceGroup("meow", home0, HostArtifactsPath()).ok());
-  ASSERT_TRUE(db.AddInstanceGroup("miaou", home1, HostArtifactsPath()).ok());
+  ASSERT_TRUE(db.AddInstanceGroup({.group_name = "meow",
+                                   .home_dir = home0,
+                                   .host_artifacts_path = HostArtifactsPath(),
+                                   .product_out_path = HostArtifactsPath()})
+                  .ok());
+  ASSERT_TRUE(db.AddInstanceGroup({.group_name = "miaou",
+                                   .home_dir = home1,
+                                   .host_artifacts_path = HostArtifactsPath(),
+                                   .product_out_path = HostArtifactsPath()})
+                  .ok());
 }
 
 TEST_F(CvdInstanceDatabaseTest, AddToTakenHome) {
@@ -122,8 +147,16 @@ TEST_F(CvdInstanceDatabaseTest, AddToTakenHome) {
     GTEST_SKIP() << "Failed to find/create " << home;
   }
 
-  ASSERT_TRUE(db.AddInstanceGroup("meow", home, HostArtifactsPath()).ok());
-  ASSERT_FALSE(db.AddInstanceGroup("meow", home, HostArtifactsPath()).ok());
+  ASSERT_TRUE(db.AddInstanceGroup({.group_name = "meow",
+                                   .home_dir = home,
+                                   .host_artifacts_path = HostArtifactsPath(),
+                                   .product_out_path = HostArtifactsPath()})
+                  .ok());
+  ASSERT_FALSE(db.AddInstanceGroup({.group_name = "meow",
+                                    .home_dir = home,
+                                    .host_artifacts_path = HostArtifactsPath(),
+                                    .product_out_path = HostArtifactsPath()})
+                   .ok());
 }
 
 TEST_F(CvdInstanceDatabaseTest, Clear) {
@@ -393,6 +426,49 @@ TEST_F(CvdInstanceDatabaseTest, AddInstancesTogether) {
 
   ASSERT_TRUE(result_8.ok()) << result_8.error().Trace();
   ASSERT_TRUE(result_tv.ok()) << result_tv.error().Trace();
+}
+
+TEST_F(CvdInstanceDatabaseJsonTest, DumpLoadDumpCompare) {
+  // starting set up
+  if (!SetUpOk() || !AddGroups({"miau"})) {
+    GTEST_SKIP() << Error().msg;
+  }
+  auto& db = GetDb();
+  std::vector<InstanceDatabase::InstanceInfo> miau_group_instance_id_name_pairs{
+      {1, "8"}, {10, "tv_instance"}};
+  auto miau_group = db.FindGroup({kHomeField, Workspace() + "/" + "miau"});
+  if (!miau_group.ok()) {
+    GTEST_SKIP() << "miau group was not found";
+  }
+  auto add_result = db.AddInstances("miau", miau_group_instance_id_name_pairs);
+  if (!add_result.ok()) {
+    GTEST_SKIP() << "Adding instances are not being tested in this test case.";
+  }
+
+  /*
+   * Dumping to json, clearing up the DB, loading from the json,
+   *
+   */
+  auto serialized_db = db.Serialize();
+  if (!db.RemoveInstanceGroup("miau")) {
+    // not testing RemoveInstanceGroup
+    GTEST_SKIP() << "miau had to be added.";
+  }
+  auto json_parsing = ParseJson(serialized_db.toStyledString());
+  ASSERT_TRUE(json_parsing.ok()) << serialized_db << std::endl
+                                 << " is not a valid json.";
+  auto load_result = db.LoadFromJson(serialized_db);
+  ASSERT_TRUE(load_result.ok()) << load_result.error().Trace();
+  {
+    // re-look up the group and the instances
+    auto miau_group = db.FindGroup({kHomeField, Workspace() + "/" + "miau"});
+    ASSERT_TRUE(miau_group.ok()) << miau_group.error().Trace();
+    auto result_8 = db.FindInstance({kInstanceNameField, "8"});
+    auto result_tv = db.FindInstance({kInstanceNameField, "tv_instance"});
+
+    ASSERT_TRUE(result_8.ok()) << result_8.error().Trace();
+    ASSERT_TRUE(result_tv.ok()) << result_tv.error().Trace();
+  }
 }
 
 }  // namespace selector

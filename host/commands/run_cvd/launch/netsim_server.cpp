@@ -13,8 +13,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "common/libs/utils/files.h"
 #include "host/commands/run_cvd/launch/launch.h"
+
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
+#include <fruit/fruit.h>
+
+#include "common/libs/fs/shared_fd.h"
+#include "common/libs/utils/files.h"
+#include "common/libs/utils/result.h"
+#include "host/libs/config/command_source.h"
+#include "host/libs/config/known_paths.h"
 
 namespace cuttlefish {
 namespace {
@@ -22,10 +34,10 @@ namespace {
 // NetsimServer launches netsim server with fifos for radio HALs.
 //
 // netsimd -s '{devices:[
-//  {serial:"0.0.0.0:5000", chips:[
-//    {kind:"BLUETOOTH", fdIn:10, fdOut:11}]},
-//  {serial:"0.0.0.0:5010", chips:[
-//    {kind:"BLUETOOTH", fdIn:14, fdOut:15}]}]}
+//  {"name":"0.0.0.0:5000", "chips":[
+//    {"kind":"BLUETOOTH", "fdIn":10, "fdOut":11}]},
+//  {"name":"0.0.0.0:5010", "chips":[
+//    {"kind":"BLUETOOTH", "fdIn":14, "fdOut":15}]}]}
 
 // Chip and Device classes pass SharedFD fifos between ResultSetup and Commands
 // and format the netsim json command line.
@@ -39,8 +51,8 @@ class Chip {
 
   // Append the chip information as Json to the command.
   void Append(Command& c) const {
-    c.AppendToLastParameter(R"({kind:")", kind_, R"(",fdIn:)", fd_in,
-                            ",fdOut:", fd_out, "}");
+    c.AppendToLastParameter(R"({"kind":")", kind_, R"(","fdIn":)", fd_in,
+                            R"(,"fdOut":)", fd_out, "}");
   }
 
  private:
@@ -49,10 +61,10 @@ class Chip {
 
 class Device {
  public:
-  Device(std::string serial) : serial_(serial) {}
+  Device(std::string name) : name_(name) {}
 
   void Append(Command& c) const {
-    c.AppendToLastParameter(R"({serial:")", serial_, R"(",chips:[)");
+    c.AppendToLastParameter(R"({"name":")", name_, R"(","chips":[)");
     for (int i = 0; i < chips.size(); ++i) {
       chips[i].Append(c);
       if (chips.size() - i > 1) {
@@ -65,7 +77,7 @@ class Device {
   std::vector<Chip> chips;
 
  private:
-  std::string serial_;
+  std::string name_;
 };
 
 class NetsimServer : public CommandSource {
@@ -75,8 +87,8 @@ class NetsimServer : public CommandSource {
       : config_(config), instance_(instance) {}
 
   // CommandSource
-  Result<std::vector<Command>> Commands() override {
-    Command cmd(HostBinaryPath("netsimd"));
+  Result<std::vector<MonitorCommand>> Commands() override {
+    Command cmd(NetsimdBinary());
     cmd.AddParameter("-s");
     AddDevicesParameter(cmd);
     // Release SharedFDs, they've been duped by Command
@@ -87,14 +99,16 @@ class NetsimServer : public CommandSource {
     // Default commands file
     cmd.AddParameter("--rootcanal_default_commands_file=",
                      config_.rootcanal_default_commands_file());
-    return single_element_emplace(std::move(cmd));
+    std::vector<MonitorCommand> commands;
+    commands.emplace_back(std::move(cmd));
+    return commands;
   }
 
   // Convert devices_ to json for netsimd -s <arg>. The devices_, created and
   // validated during ResultSetup, contains all the SharedFDs and meta-data.
 
   void AddDevicesParameter(Command& c) {
-    c.AddParameter("{devices:[");
+    c.AddParameter(R"({"devices":[)");
     for (int i = 0; i < devices_.size(); ++i) {
       devices_[i].Append(c);
       if (devices_.size() - i > 1) {

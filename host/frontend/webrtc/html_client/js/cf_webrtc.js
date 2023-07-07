@@ -300,7 +300,7 @@ class DeviceConnection {
   }
 
   async #useDevice(
-      in_use, senders_arr, device_opt, requestedFn = () => {in_use}) {
+      in_use, senders_arr, device_opt, requestedFn = () => {in_use}, enabledFn = (stream) => {}) {
     // An empty array means no tracks are currently in use
     if (senders_arr.length > 0 === !!in_use) {
       return in_use;
@@ -314,6 +314,7 @@ class DeviceConnection {
         if (!!in_use != requestedFn()) {
           return requestedFn();
         }
+        enabledFn(stream);
         stream.getTracks().forEach(track => {
           console.info(`Using ${track.kind} device: ${track.label}`);
           senders_arr.push(this.#pc.addTrack(track));
@@ -360,7 +361,8 @@ class DeviceConnection {
     this.#cameraRequested = !!in_use;
     return this.#useDevice(
         in_use, this.#micSenders, {audio: false, video: true},
-        () => this.#cameraRequested);
+        () => this.#cameraRequested,
+        (stream) => this.sendCameraResolution(stream));
   }
 
   sendCameraResolution(stream) {
@@ -446,6 +448,9 @@ class Controller {
   #pc;
   #serverConnector;
   #connectedPr = Promise.resolve({});
+  // A list of callbacks that need to be called when the remote description is
+  // successfully added to the peer connection.
+  #onRemoteDescriptionSetCbs = [];
 
   constructor(serverConnector) {
     this.#serverConnector = serverConnector;
@@ -459,7 +464,7 @@ class Controller {
         this.#onOffer({type: 'offer', sdp: message.sdp});
         break;
       case 'answer':
-        this.#onAnswer({type: 'answer', sdp: message.sdp});
+        this.#onRemoteDescription({type: 'answer', sdp: message.sdp});
         break;
       case 'ice-candidate':
           this.#onIceCandidate(new RTCIceCandidate({
@@ -487,9 +492,8 @@ class Controller {
   }
 
   async #onOffer(desc) {
-    console.debug('Remote description (offer): ', desc);
     try {
-      await this.#pc.setRemoteDescription(desc);
+      await this.#onRemoteDescription(desc);
       let answer = await this.#pc.createAnswer();
       console.debug('Answer: ', answer);
       await this.#pc.setLocalDescription(answer);
@@ -500,12 +504,16 @@ class Controller {
     }
   }
 
-  async #onAnswer(answer) {
-    console.debug('Remote description (answer): ', answer);
+  async #onRemoteDescription(desc) {
+    console.debug(`Remote description (${desc.type}): `, desc);
     try {
-      await this.#pc.setRemoteDescription(answer);
+      await this.#pc.setRemoteDescription(desc);
+      for (const cb of this.#onRemoteDescriptionSetCbs) {
+        cb();
+      }
+      this.#onRemoteDescriptionSetCbs = [];
     } catch (e) {
-      console.error('Error processing remote description (answer)', e)
+      console.error(`Error processing remote description (${desc.type})`, e)
       throw e;
     }
   }
@@ -523,6 +531,14 @@ class Controller {
     const connectedPr = this.#connectedPr.then(() => {
       const controller = new AbortController();
       const pr = new Promise((resolve, reject) => {
+        // The promise resolves when the connection changes state to 'connected'
+        // or when a remote description is set and the connection was already in
+        // 'connected' state.
+        this.#onRemoteDescriptionSetCbs.push(() => {
+          if (this.#pc.connectionState == 'connected') {
+            resolve({});
+          }
+        });
         this.#pc.addEventListener('connectionstatechange', evt => {
           let state = this.#pc.connectionState;
           if (state == 'connected') {
@@ -565,7 +581,7 @@ class Controller {
       let offer = await this.#pc.createOffer();
       console.debug('Local description (offer): ', offer);
       await this.#pc.setLocalDescription(offer);
-      this.#serverConnector.sendToDevice({type: 'offer', sdp: offer.sdp});
+      await this.#serverConnector.sendToDevice({type: 'offer', sdp: offer.sdp});
     });
   }
 }
