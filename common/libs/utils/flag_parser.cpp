@@ -432,15 +432,9 @@ bool WriteGflagsCompatXml(const std::vector<Flag>& flags, std::ostream& out) {
 Flag VerbosityFlag(android::base::LogSeverity& value) {
   return GflagsCompatFlag("verbosity")
       .Getter([&value]() { return FromSeverity(value); })
-      .Setter([&value](const FlagMatch& match) {
-        Result<android::base::LogSeverity> result = ToSeverity(match.value);
-        if (!result.ok()) {
-          LOG(ERROR) << "Unable to convert \"" << match.value
-                     << "\" to a LogSeverity";
-          return false;
-        }
-        value = result.value();
-        return true;
+      .Setter([&value](const FlagMatch& match) -> Result<void> {
+        value = CF_EXPECT(ToSeverity(match.value));
+        return {};
       })
       .Help("Used to set the verbosity level for logging.");
 }
@@ -461,31 +455,29 @@ Flag HelpFlag(const std::vector<Flag>& flags, const std::string& text) {
       .Setter(setter);
 }
 
-static bool GflagsCompatBoolFlagSetter(const std::string& name, bool& value,
-                                       const FlagMatch& match) {
+static Result<void> GflagsCompatBoolFlagSetter(const std::string& name,
+                                               bool& value,
+                                               const FlagMatch& match) {
   const auto& key = match.key;
   if (key == "-" + name || key == "--" + name) {
     value = true;
-    return true;
+    return {};
   } else if (key == "-no" + name || key == "--no" + name) {
     value = false;
-    return true;
+    return {};
   } else if (key == "-" + name + "=" || key == "--" + name + "=") {
     if (match.value == "true") {
       value = true;
-      return true;
+      return {};
     } else if (match.value == "false") {
       value = false;
-      return true;
+      return {};
     } else {
-      LOG(ERROR) << "Unexpected boolean value \"" << match.value << "\""
-                 << " for \"" << name << "\"";
-      return false;
+      return CF_ERRF("Unexpected boolean value \"{}\" for \{}\"", match.value,
+                     name);
     }
   }
-  LOG(ERROR) << "Unexpected key \"" << match.key << "\""
-             << " for \"" << name << "\"";
-  return false;
+  return CF_ERRF("Unexpected key \"{}\" for \"{}\"", match.key, name);
 }
 
 static Flag GflagsCompatBoolFlagBase(const std::string& name) {
@@ -501,14 +493,12 @@ static Flag GflagsCompatBoolFlagBase(const std::string& name) {
 Flag HelpXmlFlag(const std::vector<Flag>& flags, std::ostream& out, bool& value,
                  const std::string& text) {
   const std::string name = "helpxml";
-  auto setter = [name, &out, &value, &text, &flags](const FlagMatch& match) {
+  auto setter = [name, &out, &value, &text,
+                 &flags](const FlagMatch& match) -> Result<void> {
     bool print_xml = false;
-    auto parse_success = GflagsCompatBoolFlagSetter(name, print_xml, match);
-    if (!parse_success) {
-      return false;
-    }
+    CF_EXPECT(GflagsCompatBoolFlagSetter(name, print_xml, match));
     if (!print_xml) {
-      return true;
+      return {};
     }
     if (!text.empty()) {
       out << text << std::endl;
@@ -517,7 +507,7 @@ Flag HelpXmlFlag(const std::vector<Flag>& flags, std::ostream& out, bool& value,
     out << "<?xml version=\"1.0\"?>" << std::endl << "<AllFlags>" << std::endl;
     WriteGflagsCompatXml(flags, out);
     out << "</AllFlags>" << std::flush;
-    return false;
+    return CF_ERR("Requested early exit");
   };
   return GflagsCompatBoolFlagBase(name).Setter(setter);
 }
@@ -585,16 +575,10 @@ template <typename T>
 static Flag GflagsCompatNumericFlagGeneric(const std::string& name, T& value) {
   return GflagsCompatFlag(name)
       .Getter([&value]() { return std::to_string(value); })
-      .Setter([&value](const FlagMatch& match) {
-        auto parsed = ParseInteger<T>(match.value);
-        if (parsed) {
-          value = *parsed;
-          return true;
-        } else {
-          LOG(ERROR) << "Failed to parse \"" << match.value
-                     << "\" as an integer";
-          return false;
-        }
+      .Setter([&value](const FlagMatch& match) -> Result<void> {
+        value = CF_EXPECTF(ParseInteger<T>(match.value),
+                           "Failed to parse \"{}\" as an integer", match.value);
+        return {};
       });
 }
 
@@ -614,45 +598,37 @@ Flag GflagsCompatFlag(const std::string& name,
                       std::vector<std::string>& value) {
   return GflagsCompatFlag(name)
       .Getter([&value]() { return android::base::Join(value, ','); })
-      .Setter([&name, &value](const FlagMatch& match) {
-        if (match.value.empty()) {
-          LOG(ERROR) << "No values given for flag \"" << name << "\"";
-          return false;
-        }
+      .Setter([&name, &value](const FlagMatch& match) -> Result<void> {
+        CF_EXPECTF(!match.value.empty(), "No values given for flag \"{}\"",
+                   name);
         std::vector<std::string> str_vals =
             android::base::Split(match.value, ",");
         value = std::move(str_vals);
-        return true;
+        return {};
       });
 }
 
 Flag GflagsCompatFlag(const std::string& name, std::vector<bool>& value,
-                      const bool default_value) {
+                      const bool def_val) {
   return GflagsCompatFlag(name)
       .Getter([&value]() { return fmt::format("{}", fmt::join(value, ",")); })
-      .Setter([&name, &value, default_value](const FlagMatch& match) {
-        if (match.value.empty()) {
-          LOG(ERROR) << "No values given for flag \"" << name << "\"";
-          return false;
-        }
+      .Setter([&name, &value, def_val](const FlagMatch& match) -> Result<void> {
+        CF_EXPECTF(!match.value.empty(), "No values given for flag \"{}\"",
+                   name);
         std::vector<std::string> str_vals =
             android::base::Split(match.value, ",");
         value.clear();
-        value.reserve(str_vals.size());
+        std::vector<bool> output_vals;
+        output_vals.reserve(str_vals.size());
         for (const auto& str_val : str_vals) {
           if (str_val.empty()) {
-            value.push_back(default_value);
+            output_vals.push_back(def_val);
           } else {
-            Result<bool> result = ParseBool(str_val, name);
-            if (!result.ok()) {
-              value.clear();
-              LOG(ERROR) << result.error().Trace();
-              return false;
-            }
-            value.push_back(result.value());
+            output_vals.push_back(CF_EXPECT(ParseBool(str_val, name)));
           }
         }
-        return true;
+        value = output_vals;
+        return {};
       });
 }
 

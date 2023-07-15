@@ -246,6 +246,8 @@ DEFINE_bool(verify_sig_server_certificate,
             "trusted signing authority (Disallow self signed certificates). "
             "This is ignored if an insecure server is configured.");
 
+DEFINE_string(group_id, "", "The group name of instance");
+
 DEFINE_vec(
     webrtc_device_id, CF_DEFAULTS_WEBRTC_DEVICE_ID,
     "The for the device to register with the signaling server. Every "
@@ -833,9 +835,13 @@ Result<std::string> InitializeGpuMode(
   (void)vm_manager;
   (void)guest_config;
   CF_EXPECT(gpu_mode_arg == kGpuModeAuto ||
-            gpu_mode_arg == kGpuModeGuestSwiftshader);
-  std::string gpu_mode = kGpuModeGuestSwiftshader;
-  instance->set_gpu_mode(kGpuModeGuestSwiftshader);
+            gpu_mode_arg == kGpuModeGuestSwiftshader ||
+            gpu_mode_arg == kGpuModeDrmVirgl || gpu_mode_arg == kGpuModeNone);
+  std::string gpu_mode = gpu_mode_arg;
+  if (gpu_mode == kGpuModeAuto) {
+    gpu_mode = kGpuModeGuestSwiftshader;
+  }
+  instance->set_gpu_mode(gpu_mode);
 #else
   const GraphicsAvailability graphics_availability =
       GetGraphicsAvailabilityWithSubprocessCheck();
@@ -1376,10 +1382,15 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     persistent_disk &= !protected_vm_vec[instance_index];
     persistent_disk &= vm_manager_vec[0] != Gem5Manager::name();
     if (persistent_disk) {
+#ifdef __APPLE__
+      const std::string persistent_composite_img_base =
+          "persistent_composite.img";
+#else
       const bool is_vm_qemu_cli = (tmp_config_obj.vm_manager() == "qemu_cli");
       const std::string persistent_composite_img_base =
           is_vm_qemu_cli ? "persistent_composite_overlay.img"
                          : "persistent_composite.img";
+#endif
       auto path =
           const_instance.PerInstancePath(persistent_composite_img_base.data());
       virtual_disk_paths.push_back(path);
@@ -1422,6 +1433,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     CF_EXPECT(Contains(num_to_webrtc_device_id_flag_map, num),
               "Error in looking up num to webrtc_device_id_flag_map");
     instance.set_webrtc_device_id(num_to_webrtc_device_id_flag_map[num]);
+
+    instance.set_group_id(FLAGS_group_id);
 
     if (!is_first_instance || !start_webrtc_vec[instance_index]) {
       // Only the first instance starts the signaling server or proxy
