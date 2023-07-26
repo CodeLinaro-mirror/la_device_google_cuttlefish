@@ -39,6 +39,7 @@ cvd_host_tools = [
     "assemble_cvd",
     "avbtool",
     "bt_connector",
+    "build_super_image",
     "common_crosvm",
     "config_server",
     "console_forwarder",
