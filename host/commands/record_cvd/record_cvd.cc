@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 The Android Open Source Project
+ * Copyright (C) 2023 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,13 +13,32 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#pragma once
 
-#include <string>
+#include <android-base/logging.h>
+#include <gflags/gflags.h>
 
 #include "common/libs/utils/result.h"
 
 namespace cuttlefish {
+namespace {
 
-Result<void> ValidateSetupWizardMode(const std::string& setupwizard_mode);
+Result<void> RecordCvdMain() {
+  LOG(INFO) << "Recording operation are unimplemented.";
+  return {};
+}
+
+}  // namespace
 }  // namespace cuttlefish
+
+int main(int argc, char** argv) {
+  ::android::base::InitLogging(argv, android::base::StderrLogger);
+  google::ParseCommandLineFlags(&argc, &argv, true);
+
+  cuttlefish::Result<void> result = cuttlefish::RecordCvdMain();
+  if (!result.ok()) {
+    LOG(ERROR) << result.error().Message();
+    LOG(DEBUG) << result.error().Trace();
+    return EXIT_FAILURE;
+  }
+  return EXIT_SUCCESS;
+}
