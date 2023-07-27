@@ -32,13 +32,13 @@
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
-#include "host/commands/run_cvd/process_monitor.h"
 #include "host/commands/run_cvd/runner_defs.h"
 #include "host/libs/command_util/util.h"
 #include "host/libs/config/command_source.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/data_image.h"
 #include "host/libs/config/inject.h"
+#include "host/libs/process_monitor/process_monitor.h"
 
 namespace cuttlefish {
 namespace run_cvd_impl {
@@ -106,7 +106,7 @@ Result<void> ServerLoopImpl::Run() {
       }
       auto result = HandleExtended(launcher_action, client);
       if (!result.ok()) {
-        LOG(ERROR) << "Failed to handle suspend request.";
+        LOG(ERROR) << "Failed to handle extended action request.";
         LOG(DEBUG) << result.error().Trace();
       }
       // extended operations for now are 1 time request-response exchanges.
@@ -123,6 +123,36 @@ Result<void> ServerLoopImpl::ResultSetup() {
   CF_EXPECTF(server_->IsOpen(), "Error when opening launcher server: {}",
              server_->StrError());
   return {};
+}
+
+Result<void> ServerLoopImpl::HandleExtended(
+    const LauncherActionInfo& action_info, const SharedFD& client) {
+  CF_EXPECT(action_info.action == LauncherAction::kExtended);
+  switch (action_info.type) {
+    case ExtendedActionType::kSuspend: {
+      LOG(DEBUG) << "Run_cvd received suspend request.";
+      CF_EXPECT(HandleSuspend(action_info.serialized_data, client));
+      return {};
+    }
+    case ExtendedActionType::kResume: {
+      LOG(DEBUG) << "Run_cvd received resume request.";
+      CF_EXPECT(HandleResume(action_info.serialized_data, client));
+      return {};
+    }
+    case ExtendedActionType::kStartScreenRecording: {
+      LOG(DEBUG) << "Run_cvd received start screen recording request.";
+      CF_EXPECT(
+          HandleStartScreenRecording(action_info.serialized_data, client));
+      return {};
+    }
+    case ExtendedActionType::kStopScreenRecording: {
+      LOG(DEBUG) << "Run_cvd received stop screen recording request.";
+      CF_EXPECT(HandleStopScreenRecording(action_info.serialized_data, client));
+      return {};
+    }
+    default:
+      return CF_ERR("Unsupported ExtendedActionType");
+  }
 }
 
 void ServerLoopImpl::HandleActionWithNoData(const LauncherAction action,

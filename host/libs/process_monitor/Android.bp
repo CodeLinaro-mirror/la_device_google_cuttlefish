@@ -17,24 +17,27 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-cc_binary_host {
-    name: "record_cvd",
+cc_library_static {
+    name: "libcuttlefish_process_monitor",
     srcs: [
-        "record_cvd.cc",
+        "process_monitor.cc",
+        "process_monitor_channel.cc"
     ],
     shared_libs: [
-        "libbase",
         "libcuttlefish_fs",
         "libcuttlefish_utils",
+        "libbase",
+        "libfruit",
         "libjsoncpp",
     ],
     static_libs: [
-        "libcuttlefish_command_util",
         "libcuttlefish_host_config",
-        "libcuttlefish_run_cvd_proto",
         "libgflags",
-        "libprotobuf-cpp-full",
     ],
-    defaults: ["cuttlefish_host", "cuttlefish_libicuuc"],
+    target: {
+        darwin: {
+            enabled: true,
+        },
+    },
+    defaults: ["cuttlefish_host"],
 }
-
