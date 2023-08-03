@@ -34,7 +34,6 @@ constexpr char kCvdEnvHelpMessage[] =
     "    Usage: cvd [selector options] env ls [service] [method] [-l]\n"
     "      service(optional) : gRPC service name\n"
     "      method(optional)  : method name for given service\n"
-    "      -l(optional)      : Use a long listing format\n"
     "  type: get detailed information for given request/reply type\n"
     "    Usage: cvd [selector options] env type [service] [method] [type]\n"
     "      service           : gRPC service name\n"
@@ -47,6 +46,7 @@ constexpr char kCvdEnvHelpMessage[] =
     "      request           : Protobuffer with json format\n\n"
     "* \"cvd [selector_options] env\" can be replaced with:\n"
     "    \"cvd_internal_env [internal device name]\"\n";
+constexpr char kServiceControlEnvProxy[] = "ControlEnvProxyService";
 
 bool ContainHelpOption(int argc, char** argv) {
   for (int i = 0; i < argc; i++) {
@@ -68,14 +68,16 @@ Result<void> CvdEnvMain(int argc, char** argv) {
   const auto& receiver = argv[1];
   const auto& cmd = argv[2];
 
-  std::vector<std::string> options;
   std::vector<std::string> args;
   for (int i = 3; i < argc; i++) {
-    if (android::base::StartsWith(argv[i], '-')) {
-      options.push_back(argv[i]);
-    } else {
+    // Ignore options, not to be applied when calling grpc_cli.
+    if (!android::base::StartsWith(argv[i], '-')) {
       args.push_back(argv[i]);
     }
+  }
+  if (args.size() > 0) {
+    CF_EXPECT(args[0].compare(kServiceControlEnvProxy) != 0,
+              "Prohibited service name");
   }
 
   const auto* config = CuttlefishConfig::Get();
@@ -90,10 +92,8 @@ Result<void> CvdEnvMain(int argc, char** argv) {
             "there is no instance of which name is "
                 << receiver << ". please check instance name by cvd fleet");
 
-  // TODO(265747873): Check if argument contains ControlEnvProxyService, not to
-  // use this service by cvd env CLI.
-  auto command_output = CF_EXPECT(
-      HandleCmds(receiver_instance->grpc_socket_path(), cmd, args, options));
+  auto command_output =
+      CF_EXPECT(HandleCmds(receiver_instance->grpc_socket_path(), cmd, args));
 
   std::cout << command_output;
 
