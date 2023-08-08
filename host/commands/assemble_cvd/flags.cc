@@ -155,7 +155,7 @@ DEFINE_vec(
 DEFINE_bool(enable_host_bluetooth, CF_DEFAULTS_ENABLE_HOST_BLUETOOTH,
             "Enable the root-canal which is Bluetooth emulator in the host.");
 DEFINE_int32(
-    rootcanal_instance_num, CF_DEFAULTS_ENABLE_ROOTCANAL_INSTANCE_NUM,
+    rootcanal_instance_num, CF_DEFAULTS_ROOTCANAL_INSTANCE_NUM,
     "If it is greater than 0, use an existing rootcanal instance which is "
     "launched from cuttlefish instance "
     "with rootcanal_instance_num. Else, launch a new rootcanal instance");
@@ -173,11 +173,6 @@ DEFINE_bool(netsim, CF_DEFAULTS_NETSIM,
 
 DEFINE_bool(netsim_bt, CF_DEFAULTS_NETSIM_BT,
             "[Experimental] Connect Bluetooth radio to netsim.");
-
-DEFINE_string(bluetooth_controller_properties_file,
-              CF_DEFAULTS_BLUETOOTH_CONTROLLER_PROPERTIES_FILE,
-              "The configuartion file path for root-canal which is a Bluetooth "
-              "emulator.");
 
 /**
  * crosvm sandbox feature requires /var/empty and seccomp directory
@@ -775,6 +770,7 @@ Result<std::vector<std::string>> GetFlagStrValueForInstances(
   return value_vec;
 }
 
+#ifndef __APPLE__
 Result<std::string> SelectGpuMode(
     const std::string& gpu_mode_arg, const std::string& vm_manager,
     const GuestConfig& guest_config,
@@ -802,11 +798,8 @@ Result<std::string> SelectGpuMode(
         LOG(INFO) << "Enabling --gpu_mode=drm_virgl.";
         return kGpuModeDrmVirgl;
       } else {
-        // TODO (284204884) accelerated gfx detection on launch_cvd startup
-        // broken atm. Until it can be fixed - default to guest swiftshader.
-        LOG(INFO) << "GPU auto mode: prereq detection for accel gfx is "
-                     "broken. Switching to --gpu_mode=guest_swiftshader.";
-        return kGpuModeGuestSwiftshader;
+        LOG(INFO) << "Enabling --gpu_mode=gfxstream.";
+        return kGpuModeGfxstream;
       }
     } else {
       LOG(INFO) << "GPU auto mode: did not detect prerequisites for "
@@ -830,18 +823,26 @@ Result<std::string> SelectGpuMode(
 
   return gpu_mode_arg;
 }
+#endif
 
 Result<std::string> InitializeGpuMode(
     const std::string& gpu_mode_arg, const std::string& vm_manager,
     const GuestConfig& guest_config,
     CuttlefishConfig::MutableInstanceSpecific* instance) {
+#ifdef __APPLE__
+  (void)vm_manager;
+  (void)guest_config;
+  CF_EXPECT(gpu_mode_arg == kGpuModeAuto ||
+            gpu_mode_arg == kGpuModeGuestSwiftshader);
+  std::string gpu_mode = kGpuModeGuestSwiftshader;
+  instance->set_gpu_mode(kGpuModeGuestSwiftshader);
+#else
   const GraphicsAvailability graphics_availability =
       GetGraphicsAvailabilityWithSubprocessCheck();
   LOG(DEBUG) << graphics_availability;
 
   const std::string gpu_mode = CF_EXPECT(SelectGpuMode(
       gpu_mode_arg, vm_manager, guest_config, graphics_availability));
-  instance->set_gpu_mode(gpu_mode);
 
   const auto angle_features = CF_EXPECT(GetNeededAngleFeatures(
       CF_EXPECT(GetRenderingMode(gpu_mode)), graphics_availability));
@@ -849,7 +850,8 @@ Result<std::string> InitializeGpuMode(
       angle_features.angle_feature_overrides_enabled);
   instance->set_gpu_angle_feature_overrides_disabled(
       angle_features.angle_feature_overrides_disabled);
-
+#endif
+  instance->set_gpu_mode(gpu_mode);
   return gpu_mode;
 }
 
@@ -937,9 +939,6 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   tmp_config_obj.set_wmediumd_config(FLAGS_wmediumd_config);
 
   // netsim flags allow all radios or selecting a specific radio
-  tmp_config_obj.set_rootcanal_config_file(
-      FLAGS_bluetooth_controller_properties_file);
-
   bool is_any_netsim = FLAGS_netsim || FLAGS_netsim_bt;
   bool is_bt_netsim = FLAGS_netsim || FLAGS_netsim_bt;
 

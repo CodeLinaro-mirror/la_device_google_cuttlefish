@@ -13,24 +13,30 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <android-base/file.h>
-#include <gflags/gflags.h>
 
-#include <stdio.h>
-#include <fstream>
+#include "host/commands/cvd/parser/cf_flags_validator.h"
+
+#include <map>
 #include <string>
 #include <unordered_set>
 
+#include <json/json.h>
+
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/flags_validator.h"
-#include "common/libs/utils/json.h"
+#include "common/libs/utils/result.h"
 #include "host/commands/cvd/parser/cf_configs_common.h"
 
 namespace cuttlefish {
+namespace {
 
 // json main parameters definitions
 static std::map<std::string, Json::ValueType> kConfigsKeyMap = {
+    {"api_key", Json::ValueType::stringValue},
     {"credential", Json::ValueType::stringValue},
+    {"wait_retry_period", Json::ValueType::uintValue},
+    {"external_dns_resolver", Json::ValueType::booleanValue},
+    {"keep_downloaded_archives", Json::ValueType::booleanValue},
     {"netsim_bt", Json::ValueType::booleanValue},
     {"instances", Json::ValueType::arrayValue}};
 
@@ -210,6 +216,8 @@ Result<void> ValidateInstancesConfigs(const Json::Value& root) {
 
   return {};
 }
+
+}  // namespace
 
 // Validate cuttlefish config json parameters
 Result<void> ValidateCfConfigs(const Json::Value& root) {

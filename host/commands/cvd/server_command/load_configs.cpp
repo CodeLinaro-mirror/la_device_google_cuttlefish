@@ -18,19 +18,23 @@
 #include <chrono>
 #include <iostream>
 #include <mutex>
+#include <optional>
 #include <sstream>
 #include <string>
+#include <vector>
 
-#include <fruit/fruit.h>
 #include <android-base/parseint.h>
+#include <android-base/strings.h>
+#include <fruit/fruit.h>
+#include <json/json.h>
 
-#include <common/libs/utils/flag_parser.h>
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/utils/flag_parser.h"
 #include "common/libs/utils/result.h"
 #include "host/commands/cvd/command_sequence.h"
 #include "host/commands/cvd/common_utils.h"
 #include "host/commands/cvd/parser/cf_configs_common.h"
+#include "host/commands/cvd/parser/fetch_cvd_parser.h"
 #include "host/commands/cvd/parser/load_configs_parser.h"
 #include "host/commands/cvd/selector/selector_constants.h"
 #include "host/commands/cvd/server_client.h"
@@ -38,25 +42,37 @@
 #include "host/commands/cvd/types.h"
 
 namespace cuttlefish {
-
 namespace {
 
-std::string GenerateSystemImageFlag(
-    const std::vector<FetchCvdDeviceConfigs>& configs) {
-  std::string result = "";
-
-  for (const auto& config : configs) {
-    // concatenate host_artifacts_dir parameter with a comma separator instead
-    // of a space
-    result += config.host_artifacts_dir + ",";
+std::string JoinBySelector(
+    const std::vector<FetchCvdInstanceConfig>& collection,
+    const std::function<std::string(const FetchCvdInstanceConfig&)>& selector) {
+  std::vector<std::string> selected;
+  selected.reserve(collection.size());
+  for (const auto& instance : collection) {
+    selected.emplace_back(selector(instance));
   }
+  return android::base::Join(selected, ',');
+}
 
-  // remove the last comma character from the final string, if it exists
-  if (!result.empty()) {
-    result.pop_back();
+std::optional<std::string> JoinBySelectorOptional(
+    const std::vector<FetchCvdInstanceConfig>& collection,
+    const std::function<std::string(const FetchCvdInstanceConfig&)>& selector) {
+  std::string result = JoinBySelector(collection, selector);
+  // no values, empty or only ',' separators
+  if (result.size() == collection.size() - 1) {
+    return std::nullopt;
   }
+  return result;
+}
 
-  return "--system_image_dir=" + result;
+std::string GenerateSystemImageFlag(const FetchCvdConfig& config) {
+  auto get_full_path = [&target_directory = config.target_directory](
+                           const FetchCvdInstanceConfig& instance_config) {
+    return target_directory + "/" + instance_config.target_subdirectory;
+  };
+  return "--system_image_dir=" +
+         JoinBySelector(config.instances, get_full_path);
 }
 
 std::string GenerateParentDirectory() {
@@ -71,25 +87,68 @@ std::string GenerateParentDirectory() {
   return ss.str();
 }
 
-std::string GenerateHostArtifactsDirectoryName(int64_t time,
-                                        int instance_index) {
-  // Concatenates the string using GenerateParentDirectory and std::to_string.
-  std::string host_artifacts_dir = GenerateParentDirectory() +
-                         std::to_string(time) + "_" +
-                         std::to_string(instance_index) + "/";
-
-  return host_artifacts_dir;
+std::string GenerateHostArtifactsDirectory(int64_t time) {
+  return GenerateParentDirectory() + std::to_string(time);
 }
 
 std::string GenerateHomeDirectoryName(int64_t time) {
-  // Concatenates the string using GenerateParentDirectory and std::to_string.
-  std::string home_dir =
-      GenerateParentDirectory() + std::to_string(time) + "_home/";
-
-  return home_dir;
+  return GenerateParentDirectory() + std::to_string(time) + "_home/";
 }
 
 using DemoCommandSequence = std::vector<RequestWithStdio>;
+
+void AddFetchCommandArgs(
+    cvd::CommandRequest& command, const FetchCvdConfig& config,
+    const std::vector<FetchCvdInstanceConfig>& fetch_instances) {
+  command.add_args("cvd");
+  command.add_args("fetch");
+  command.add_args("--target_directory=" + config.target_directory);
+  if (config.api_key) {
+    command.add_args("--api_key=" + *config.api_key);
+  }
+  if (config.credential_source) {
+    command.add_args("--credential_source=" + *config.credential_source);
+  }
+  if (config.wait_retry_period) {
+    command.add_args("--wait_retry_period=" + *config.wait_retry_period);
+  }
+  if (config.external_dns_resolver) {
+    command.add_args("--external_dns_resolver=" +
+                     *config.external_dns_resolver);
+  }
+  if (config.keep_downloaded_archives) {
+    command.add_args("--keep_downloaded_archives=" +
+                     *config.keep_downloaded_archives);
+  }
+
+  command.add_args(
+      "--target_subdirectory=" +
+      JoinBySelector(fetch_instances,
+                     [](const FetchCvdInstanceConfig& instance_config) {
+                       return instance_config.target_subdirectory;
+                     }));
+  std::optional<std::string> default_build_params = JoinBySelectorOptional(
+      fetch_instances, [](const FetchCvdInstanceConfig& instance_config) {
+        return instance_config.default_build.value_or("");
+      });
+  if (default_build_params) {
+    command.add_args("--default_build=" + *default_build_params);
+  }
+  std::optional<std::string> system_build_params = JoinBySelectorOptional(
+      fetch_instances, [](const FetchCvdInstanceConfig& instance_config) {
+        return instance_config.system_build.value_or("");
+      });
+  if (system_build_params) {
+    command.add_args("--system_build=" + *system_build_params);
+  }
+  std::optional<std::string> kernel_build_params = JoinBySelectorOptional(
+      fetch_instances, [](const FetchCvdInstanceConfig& instance_config) {
+        return instance_config.kernel_build.value_or("");
+      });
+  if (kernel_build_params) {
+    command.add_args("--kernel_build=" + *kernel_build_params);
+  }
+}
 
 }  // namespace
 
@@ -287,45 +346,38 @@ class LoadConfigsCommand : public CvdServerHandler {
     auto cvd_flags =
         CF_EXPECT(ParseCvdConfigs(json_configs), "parsing json configs failed");
 
-    // return if the length of fetch_cvd_flags.instances is 0
-    int num_devices = cvd_flags.fetch_cvd_flags.instances.size();
-    CF_EXPECT_GT(num_devices, 0, "No instances to load");
+    int num_instances = cvd_flags.fetch_cvd_flags.instances.size();
+    CF_EXPECT_GT(num_instances, 0, "No instances to load");
 
     std::vector<cvd::Request> req_protos;
 
     const auto& client_env = request.Message().command_request().env();
 
     auto time = std::chrono::system_clock::now().time_since_epoch().count();
-    // set the home directory for each device
-    for (int instance_index = 0; instance_index < num_devices; instance_index++) {
-      cvd_flags.fetch_cvd_flags.instances[instance_index].host_artifacts_dir =
-          GenerateHostArtifactsDirectoryName(time, instance_index);
-      LOG(INFO) << "Home directory for device " << instance_index << " is "
-                << cvd_flags.fetch_cvd_flags.instances[instance_index].host_artifacts_dir;
+    cvd_flags.fetch_cvd_flags.target_directory =
+        GenerateHostArtifactsDirectory(time);
+    for (int instance_index = 0; instance_index < num_instances;
+         instance_index++) {
+      LOG(INFO) << "Instance " << instance_index << " directory is "
+                << cvd_flags.fetch_cvd_flags.target_directory << "/"
+                << std::to_string(instance_index);
+      cvd_flags.fetch_cvd_flags.instances[instance_index].target_subdirectory =
+          std::to_string(instance_index);
     }
 
-    for (const auto& device : cvd_flags.fetch_cvd_flags.instances) {
-      auto& mkdir_cmd = *req_protos.emplace_back().mutable_command_request();
-      *mkdir_cmd.mutable_env() = client_env;
-      mkdir_cmd.add_args("cvd");
-      mkdir_cmd.add_args("mkdir");
-      mkdir_cmd.add_args("-p");
-      mkdir_cmd.add_args(device.host_artifacts_dir);
-
-      if (device.use_fetch_artifact) {
-        // TODO(moelsherif):Separate fetch from launch command
-        auto& fetch_cmd = *req_protos.emplace_back().mutable_command_request();
-        *fetch_cmd.mutable_env() = client_env;
-        fetch_cmd.set_working_directory(device.host_artifacts_dir);
-        fetch_cmd.add_args("cvd");
-        fetch_cmd.add_args("fetch");
-        fetch_cmd.add_args("--directory=" + device.host_artifacts_dir);
-        fetch_cmd.add_args("-default_build=" + device.default_build);
-        // TODO: other flags like system_build, kernel_build and credential
-        // optionally later fetch_cmd.add_args("-credential_source=" +
-        // cvd_flags.fetch_cvd_flags.credential);
+    std::vector<FetchCvdInstanceConfig> fetch_instances;
+    for (const auto& instance : cvd_flags.fetch_cvd_flags.instances) {
+      if (instance.should_fetch) {
+        fetch_instances.emplace_back(instance);
       }
     }
+    if (fetch_instances.size() > 0) {
+      auto& fetch_cmd = *req_protos.emplace_back().mutable_command_request();
+      *fetch_cmd.mutable_env() = client_env;
+      AddFetchCommandArgs(fetch_cmd, cvd_flags.fetch_cvd_flags,
+                          fetch_instances);
+    }
+
     // Create the launch home directory
     std::string launch_home_dir = GenerateHomeDirectoryName(time);
     auto& mkdir_cmd = *req_protos.emplace_back().mutable_command_request();
@@ -339,7 +391,8 @@ class LoadConfigsCommand : public CvdServerHandler {
     auto& launch_cmd = *req_protos.emplace_back().mutable_command_request();
 
     auto first_instance_dir =
-        cvd_flags.fetch_cvd_flags.instances[0].host_artifacts_dir;
+        cvd_flags.fetch_cvd_flags.target_directory + "/" +
+        cvd_flags.fetch_cvd_flags.instances[0].target_subdirectory;
     *launch_cmd.mutable_env() = client_env;
     launch_cmd.set_working_directory(first_instance_dir);
     (*launch_cmd.mutable_env())["HOME"] = launch_home_dir;
@@ -362,8 +415,7 @@ class LoadConfigsCommand : public CvdServerHandler {
       launch_cmd.add_args(parsed_flag);
     }
     // Add system flag for multi-build scenario
-    launch_cmd.add_args(
-        GenerateSystemImageFlag(cvd_flags.fetch_cvd_flags.instances));
+    launch_cmd.add_args(GenerateSystemImageFlag(cvd_flags.fetch_cvd_flags));
 
     launch_cmd.mutable_selector_opts()->add_args(
         std::string("--") + selector::SelectorFlags::kDisableDefaultGroup);

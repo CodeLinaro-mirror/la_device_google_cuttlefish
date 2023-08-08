@@ -16,65 +16,76 @@
 
 #include "host/commands/cvd/parser/fetch_cvd_parser.h"
 
-#include <android-base/file.h>
-#include <gflags/gflags.h>
-
-#include <stdio.h>
-#include <fstream>
+#include <algorithm>
+#include <optional>
 #include <string>
+#include <vector>
+
+#include <json/json.h>
 
 #include "host/commands/cvd/parser/cf_configs_common.h"
 
 namespace cuttlefish {
-
-#define EMPTY_CREDENTIAL ""
-#define EMPTY_DEFAULT_BUILD ""
-#define EMPTY_SYSTEM_BUILD ""
-#define EMPTY_KERNEL_BUILD ""
+namespace {
 
 void InitFetchInstanceConfigs(Json::Value& instances) {
-  // Handle common flags
-  InitStringConfig(instances, "disk", "default_build", EMPTY_DEFAULT_BUILD);
-  InitStringConfig(instances, "disk", "system_build", EMPTY_SYSTEM_BUILD);
-  InitStringConfig(instances, "disk", "kernel_build", EMPTY_KERNEL_BUILD);
+  InitNullGroupConfig(instances, "disk", "default_build");
+  InitNullGroupConfig(instances, "disk", "system_build");
+  InitNullGroupConfig(instances, "disk", "kernel_build");
 }
 
 void InitFetchCvdConfigs(Json::Value& root) {
-  if (!root.isMember("credential")) {
-    root["credential"] = EMPTY_CREDENTIAL;
-  }
+  InitNullConfig(root, "api_key");
+  InitNullConfig(root, "credential_source");
+  InitNullConfig(root, "wait_retry_period");
+  InitNullConfig(root, "external_dns_resolver");
+  InitNullConfig(root, "keep_downloaded_archives");
   InitFetchInstanceConfigs(root["instances"]);
 }
 
-FetchCvdDeviceConfigs ParseFetchInstanceConfigs(const Json::Value& instance) {
-  FetchCvdDeviceConfigs result;
-  result.default_build = instance["disk"]["default_build"].asString();
-  result.system_build = instance["disk"]["system_build"].asString();
-  result.kernel_build = instance["disk"]["kernel_build"].asString();
-  if (result.default_build != EMPTY_DEFAULT_BUILD ||
-      result.system_build != EMPTY_SYSTEM_BUILD ||
-      result.kernel_build != EMPTY_KERNEL_BUILD) {
-    result.use_fetch_artifact = true;
-  } else {
-    result.use_fetch_artifact = false;
+std::optional<std::string> OptString(const Json::Value& value) {
+  if (value.isNull()) {
+    return std::nullopt;
   }
+  return value.asString();
+}
 
+bool ShouldFetch(const std::vector<std::optional<std::string>>& values) {
+  return std::any_of(std::begin(values), std::end(values),
+                     [](const std::optional<std::string>& value) {
+                       return value.has_value();
+                     });
+}
+
+FetchCvdInstanceConfig ParseFetchInstanceConfigs(const Json::Value& instance) {
+  auto result = FetchCvdInstanceConfig{
+      .default_build = OptString(instance["disk"]["default_build"]),
+      .system_build = OptString(instance["disk"]["system_build"]),
+      .kernel_build = OptString(instance["disk"]["kernel_build"])};
+  result.should_fetch = ShouldFetch(
+      {result.default_build, result.system_build, result.kernel_build});
   return result;
 }
 
-FetchCvdConfigs GenerateFetchCvdFlags(const Json::Value& root) {
-  FetchCvdConfigs result;
-  result.credential = root["credential"].asString();
-  int num_instances = root["instances"].size();
+FetchCvdConfig GenerateFetchCvdFlags(const Json::Value& root) {
+  auto result = FetchCvdConfig{
+      .api_key = OptString(root["api_key"]),
+      .credential_source = OptString(root["credential_source"]),
+      .wait_retry_period = OptString(root["wait_retry_period"]),
+      .external_dns_resolver = OptString(root["external_dns_resolver"]),
+      .keep_downloaded_archives = OptString(root["keep_downloaded_archives"])};
+
+  const int num_instances = root["instances"].size();
   for (unsigned int i = 0; i < num_instances; i++) {
-    auto instance_config = ParseFetchInstanceConfigs(root["instances"][i]);
-    result.instances.emplace_back(instance_config);
+    result.instances.emplace_back(
+        ParseFetchInstanceConfigs(root["instances"][i]));
   }
-
   return result;
 }
 
-FetchCvdConfigs ParseFetchCvdConfigs(Json::Value& root) {
+}  // namespace
+
+FetchCvdConfig ParseFetchCvdConfigs(Json::Value& root) {
   InitFetchCvdConfigs(root);
   return GenerateFetchCvdFlags(root);
 }

@@ -21,6 +21,7 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/handheld_vendor.mk)
 
 ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
 PRODUCT_COPY_FILES += \
+    frameworks/native/data/etc/android.software.sip.voip.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.sip.voip.xml \
     frameworks/native/data/etc/handheld_core_hardware.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/handheld_core_hardware.xml
 PRODUCT_PACKAGES += slim_excluded_hardware.prebuilt.xml
 endif
@@ -28,6 +29,7 @@ endif
 $(call inherit-product, frameworks/native/build/phone-xhdpi-2048-dalvik-heap.mk)
 $(call inherit-product, device/google/cuttlefish/shared/bluetooth/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/camera/device_vendor.mk)
+$(call inherit-product, device/google/cuttlefish/shared/consumerir/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/graphics/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/swiftshader/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/telephony/device_vendor.mk)

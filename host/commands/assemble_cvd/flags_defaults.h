@@ -87,7 +87,7 @@
 #define CF_DEFAULTS_USE_RANDOM_SERIAL false
 #define CF_DEFAULTS_SERIAL_NUMBER \
   cuttlefish::ForCurrentInstance("CUTTLEFISHCVD")
-#define CF_DEFAULTS_SECURE_HALS "keymint,gatekeeper"
+#define CF_DEFAULTS_SECURE_HALS "keymint,gatekeeper,oemlock"
 #define CF_DEFAULTS_PROTECTED_VM false
 #define CF_DEFAULTS_MTE false
 
@@ -161,10 +161,8 @@
 #define CF_DEFAULTS_ENABLE_PICA_INSTANCE_NUM 0
 
 // Bluetooth default parameters
-#define CF_DEFAULTS_BLUETOOTH_CONTROLLER_PROPERTIES_FILE \
-  "etc/rootcanal/data/controller_properties.json"
 #define CF_DEFAULTS_ENABLE_HOST_BLUETOOTH true
-#define CF_DEFAULTS_ENABLE_ROOTCANAL_INSTANCE_NUM 0
+#define CF_DEFAULTS_ROOTCANAL_INSTANCE_NUM 0
 #define CF_DEFAULTS_ROOTCANAL_ARGS CF_DEFAULTS_DYNAMIC_STRING
 
 // Modem Simulator default parameters
