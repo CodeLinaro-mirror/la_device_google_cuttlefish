@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
 /*
-** Copyright 2023, The Android Open Source Project
+** Copyright 2023, The Android Open Source Project.
 **
 ** Licensed under the Apache License, Version 2.0 (the "License");
 ** you may not use this file except in compliance with the License.
@@ -16,11 +16,8 @@
 ** limitations under the License.
 */
 -->
+<manifest version="1.0" type="device" target-level="8">
 
-<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
-    <!-- Whether the device allows users to start in background visible on the default display.
-         Should be false for most devices, except passenger-only automotive build (i.e., when
-         Android runs in a separate system in the back seat to manage the passenger displays) -->
-    <!-- The config is enabled for the development purpose only. -->
-    <bool name="config_multiuserVisibleBackgroundUsersOnDefaultDisplay">true</bool>
-</resources>
+    <!-- DO NOT ADD MORE - use vintf_fragments -->
+
+</manifest>

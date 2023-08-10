@@ -76,6 +76,7 @@ cc_binary {
         "console_forwarder",
         "kernel_log_monitor",
         "logcat_receiver",
+        "log_tee",
         "secure_env",
     ],
     target: {
@@ -97,7 +98,6 @@ cc_binary {
     },
     defaults: [
         "cuttlefish_host",
-        "cuttlefish_libicuuc",
         "cvd_cc_defaults",
     ],
     use_version_lib: true,
