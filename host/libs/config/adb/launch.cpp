@@ -21,6 +21,7 @@
 #include <vector>
 
 #include <fruit/fruit.h>
+#include <gflags/gflags.h>
 
 #include "common/libs/utils/result.h"
 #include "host/commands/kernel_log_monitor/utils.h"
@@ -129,8 +130,30 @@ class SocketVsockProxy : public CommandSource, public KernelLogPipeConsumer {
   // CommandSource
   Result<std::vector<MonitorCommand>> Commands() override {
     std::vector<MonitorCommand> commands;
-    if (helper_.VsockTunnelEnabled()) {
-      Command adb_tunnel(SocketVsockProxyBinary());
+    const auto vsock_tunnel_enabled = helper_.VsockTunnelEnabled();
+    const auto vsock_half_tunnel_enabled = helper_.VsockHalfTunnelEnabled();
+    CF_EXPECT(!vsock_half_tunnel_enabled || !vsock_tunnel_enabled,
+              "Up to one of vsock_tunnel or vsock_half_tunnel is allowed.");
+    if (!vsock_half_tunnel_enabled && !vsock_tunnel_enabled) {
+      return commands;
+    }
+
+    Command adb_tunnel(SocketVsockProxyBinary());
+    adb_tunnel.AddParameter("--events_fd=", kernel_log_pipe_);
+    adb_tunnel.AddParameter("--start_event_id=", monitor::Event::AdbdStarted);
+    adb_tunnel.AddParameter("--stop_event_id=",
+                            monitor::Event::FastbootStarted);
+    /* fmayle@ found out that when cuttlefish starts from the saved snapshot
+     * that was saved after ADBD start event, the socket_vsock_proxy must not
+     * wait for the AdbdStarted event.
+     */
+    if (!instance_.sock_vsock_proxy_wait_adbd_start()) {
+      adb_tunnel.AddParameter("--start_immediately=true");
+    }
+    adb_tunnel.AddParameter("--server_type=tcp");
+    adb_tunnel.AddParameter("--server_tcp_port=", instance_.adb_host_port());
+
+    if (vsock_tunnel_enabled) {
       /**
        * This socket_vsock_proxy (a.k.a. sv proxy) runs on the host. It assumes
        * that another sv proxy runs inside the guest. see:
@@ -145,19 +168,9 @@ class SocketVsockProxy : public CommandSource, public KernelLogPipeConsumer {
        * instance.adb_host_port()
        *
        */
-      adb_tunnel.AddParameter("--events_fd=", kernel_log_pipe_);
-      adb_tunnel.AddParameter("--start_event_id=", monitor::Event::AdbdStarted);
-      adb_tunnel.AddParameter("--stop_event_id=", monitor::Event::FastbootStarted);
-      adb_tunnel.AddParameter("--server_type=tcp");
-      adb_tunnel.AddParameter("--server_tcp_port=", instance_.adb_host_port());
       adb_tunnel.AddParameter("--client_type=vsock");
       adb_tunnel.AddParameter("--client_vsock_port=6520");
-      adb_tunnel.AddParameter("--client_vsock_id=", instance_.vsock_guest_cid());
-      adb_tunnel.AddParameter("--label=", "adb");
-      commands.emplace_back(std::move(adb_tunnel));
-    }
-    if (helper_.VsockHalfTunnelEnabled()) {
-      Command adb_tunnel(SocketVsockProxyBinary());
+    } else {
       /*
        * This socket_vsock_proxy (a.k.a. sv proxy) runs on the host, and
        * cooperates with the adbd inside the guest. See this file:
@@ -168,17 +181,13 @@ class SocketVsockProxy : public CommandSource, public KernelLogPipeConsumer {
        * should be therefore tcp, and the port should differ from instance to
        * instance and be equal to instance.adb_host_port()
        */
-      adb_tunnel.AddParameter("--events_fd=", kernel_log_pipe_);
-      adb_tunnel.AddParameter("--start_event_id=", monitor::Event::AdbdStarted);
-      adb_tunnel.AddParameter("--stop_event_id=", monitor::Event::FastbootStarted);
-      adb_tunnel.AddParameter("--server_type=tcp");
-      adb_tunnel.AddParameter("--server_tcp_port=", instance_.adb_host_port());
       adb_tunnel.AddParameter("--client_type=vsock");
       adb_tunnel.AddParameter("--client_vsock_port=", 5555);
-      adb_tunnel.AddParameter("--client_vsock_id=", instance_.vsock_guest_cid());
-      adb_tunnel.AddParameter("--label=", "adb");
-      commands.emplace_back(std::move(adb_tunnel));
     }
+
+    adb_tunnel.AddParameter("--client_vsock_id=", instance_.vsock_guest_cid());
+    adb_tunnel.AddParameter("--label=", "adb");
+    commands.emplace_back(std::move(adb_tunnel));
     return commands;
   }
 
