@@ -16,34 +16,26 @@
 
 #pragma once
 
-#include <iostream>
-#include <optional>
+#include <Eigen/Dense>
+
+#include <chrono>
 #include <string>
-#include <vector>
-
-#include <android-base/logging.h>
-
-#include "common/libs/utils/result.h"
 
 namespace cuttlefish {
+namespace webrtc_streaming {
 
-enum class SnapshotCmd : int {
-  kUnknown = 0,
-  kSuspend = 1,
-  kResume = 2,
-  kSnapshotTake = 3,
+class SensorsSimulator {
+ public:
+  SensorsSimulator();
+  // Update sensor values based on new rotation status.
+  void RefreshSensors(double x, double y, double z);
+  // Get sensors data in string format to be passed as a message.
+  std::string GetSensorsData();
+
+ private:
+  Eigen::Vector3d xyz_ {0, 0, 0}, acc_xyz_{0, 0, 0}, mgn_xyz_{0, 0, 0}, gyro_xyz_{0, 0, 0};
+  Eigen::Matrix3d prior_rotation_matrix_, current_rotation_matrix_;
+  std::chrono::time_point<std::chrono::high_resolution_clock> last_event_timestamp_;
 };
-
-std::ostream& operator<<(std::ostream& out, const SnapshotCmd& cmd);
-
-struct Parsed {
-  SnapshotCmd cmd;
-  std::vector<int> instance_nums;
-  int wait_for_launcher;
-  std::string snapshot_path;
-  std::optional<android::base::LogSeverity> verbosity_level;
-};
-Result<Parsed> Parse(int argc, char** argv);
-Result<Parsed> Parse(std::vector<std::string>& args);
-
+}  // namespace webrtc_streaming
 }  // namespace cuttlefish

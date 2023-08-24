@@ -1318,8 +1318,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_qemu_vnc_server_port(544 + num - 1);
     instance.set_adb_host_port(6520 + num - 1);
     instance.set_adb_ip_and_port("0.0.0.0:" + std::to_string(6520 + num - 1));
-
-    instance.set_fastboot_host_port(7520 + num - 1);
+    instance.set_fastboot_host_port(const_instance.adb_host_port());
 
     std::uint8_t ethernet_mac[6] = {};
     std::uint8_t mobile_mac[6] = {};
@@ -1519,7 +1518,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_start_rootcanal(is_first_instance && !is_bt_netsim &&
                                  (FLAGS_rootcanal_instance_num <= 0));
 
-    instance.set_start_pica(is_first_instance);
+    instance.set_start_pica(is_first_instance && FLAGS_pica_instance_num <= 0);
 
     if (!FLAGS_ap_rootfs_image.empty() && !FLAGS_ap_kernel_image.empty() && start_wmediumd) {
       // TODO(264537774): Ubuntu grub modules / grub monoliths cannot be used to boot

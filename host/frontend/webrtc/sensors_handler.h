@@ -16,34 +16,23 @@
 
 #pragma once
 
-#include <iostream>
-#include <optional>
-#include <string>
-#include <vector>
-
-#include <android-base/logging.h>
-
-#include "common/libs/utils/result.h"
+#include "common/libs/fs/shared_fd.h"
+#include "host/frontend/webrtc/sensors_simulator.h"
 
 namespace cuttlefish {
+namespace webrtc_streaming {
 
-enum class SnapshotCmd : int {
-  kUnknown = 0,
-  kSuspend = 1,
-  kResume = 2,
-  kSnapshotTake = 3,
+struct SensorsHandler {
+  SensorsHandler();
+  ~SensorsHandler();
+  void InitializeHandler(std::function<void(const uint8_t*, size_t)> send_to_client);
+  void SendInitialState();
+  void HandleMessage(const double x, const double y, const double z);
+
+ private:
+  SensorsSimulator* sensors_simulator_ = new SensorsSimulator();
+  std::function<void(const uint8_t *, size_t)> send_to_client_;
+  SharedFD shutdown_;
 };
-
-std::ostream& operator<<(std::ostream& out, const SnapshotCmd& cmd);
-
-struct Parsed {
-  SnapshotCmd cmd;
-  std::vector<int> instance_nums;
-  int wait_for_launcher;
-  std::string snapshot_path;
-  std::optional<android::base::LogSeverity> verbosity_level;
-};
-Result<Parsed> Parse(int argc, char** argv);
-Result<Parsed> Parse(std::vector<std::string>& args);
-
+}  // namespace webrtc_streaming
 }  // namespace cuttlefish
