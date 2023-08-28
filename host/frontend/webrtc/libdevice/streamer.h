@@ -42,6 +42,10 @@ class ClientHandler;
 struct StreamerConfig {
   // The id with which to register with the operator server.
   std::string device_id;
+
+  // The group id with which to register with the operator server.
+  std::string group_id;
+
   // The port on which the client files are being served
   int client_files_port;
   ServerConfig operator_server;
@@ -53,6 +57,8 @@ struct StreamerConfig {
   std::string openwrt_device_id;
   // Openwrt IP address for accessing Luci interface.
   std::string openwrt_addr;
+  // Path of ControlEnvProxyServer for serving Rest API in WebUI.
+  std::string control_env_proxy_server_path;
 };
 
 class OperatorObserver {

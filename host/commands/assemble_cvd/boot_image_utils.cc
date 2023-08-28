@@ -233,13 +233,12 @@ bool UnpackVendorBootImageIfNotUnpacked(
   return true;
 }
 
-bool RepackBootImage(const std::string& new_kernel_path,
-                     const std::string& boot_image_path,
-                     const std::string& new_boot_image_path,
-                     const std::string& build_dir) {
-  if (UnpackBootImage(boot_image_path, build_dir) == false) {
-    return false;
-  }
+Result<void> RepackBootImage(const Avb& avb,
+                             const std::string& new_kernel_path,
+                             const std::string& boot_image_path,
+                             const std::string& new_boot_image_path,
+                             const std::string& build_dir) {
+  CF_EXPECT(UnpackBootImage(boot_image_path, build_dir));
 
   std::string boot_params = ReadFile(build_dir + "/boot_params");
   auto kernel_cmdline = ExtractValue(boot_params, "command line args: ");
@@ -258,28 +257,13 @@ bool RepackBootImage(const std::string& new_kernel_path,
   repack_cmd.AddParameter(kernel_cmdline);
   repack_cmd.AddParameter("-o");
   repack_cmd.AddParameter(tmp_boot_image_path);
-  int success = repack_cmd.Start().Wait();
-  if (success != 0) {
-    LOG(ERROR) << "Unable to run mkbootimg. Exited with status " << success;
-    return false;
-  }
+  int result = repack_cmd.Start().Wait();
+  CF_EXPECT(result == 0, "Unable to run mkbootimg. Exited with status " << result);
 
-  auto avbtool_path = HostBinaryPath("avbtool");
-  Command avb_cmd(avbtool_path);
-  avb_cmd.AddParameter("add_hash_footer");
-  avb_cmd.AddParameter("--image");
-  avb_cmd.AddParameter(tmp_boot_image_path);
-  avb_cmd.AddParameter("--partition_size");
-  avb_cmd.AddParameter(FileSize(boot_image_path));
-  avb_cmd.AddParameter("--partition_name");
-  avb_cmd.AddParameter("boot");
-  success = avb_cmd.Start().Wait();
-  if (success != 0) {
-    LOG(ERROR) << "Unable to run avbtool. Exited with status " << success;
-    return false;
-  }
+  CF_EXPECT(avb.AddHashFooter(tmp_boot_image_path, "boot", FileSize(boot_image_path)));
+  CF_EXPECT(DeleteTmpFileIfNotChanged(tmp_boot_image_path, new_boot_image_path));
 
-  return DeleteTmpFileIfNotChanged(tmp_boot_image_path, new_boot_image_path);
+  return {};
 }
 
 bool RepackVendorBootImage(const std::string& new_ramdisk,
@@ -448,6 +432,9 @@ void RepackGem5BootImage(const std::string& initrd_path,
   final_rd.close();
 }
 
+// TODO(290586882) switch this function to rely on avb footers instead of
+// the os version field in the boot image header.
+// https://source.android.com/docs/core/architecture/bootloader/boot-image-header
 Result<std::string> ReadAndroidVersionFromBootImage(
     const std::string& boot_image_path) {
   // temp dir path length is chosen to be larger than sun_path_length (108)
@@ -471,7 +458,12 @@ Result<std::string> ReadAndroidVersionFromBootImage(
 
   RecursivelyRemoveDirectory(unpack_dir);
   std::string os_version = ExtractValue(boot_params, "os version: ");
-  CF_EXPECT(os_version != "", "Could not extract os version from \"" + boot_image_path + "\"");
+  // if the OS version is "None", it wasn't set when the boot image was made.
+  if (os_version == "None") {
+    LOG(INFO) << "Could not extract os version from " << boot_image_path
+              << ". Defaulting to 0.0.0.";
+    return "0.0.0";
+  }
   std::regex re("[1-9][0-9]*.[0-9]+.[0-9]+");
   CF_EXPECT(std::regex_match(os_version, re), "Version string is not a valid version \"" + os_version + "\"");
   return os_version;

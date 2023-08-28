@@ -40,12 +40,16 @@ TARGET_KERNEL_ARCH ?= $(TARGET_ARCH)
 TARGET_KERNEL_USE ?= mainline
 KERNEL_MODULES_PATH := device/google/cuttlefish_prebuilts/kernel/$(TARGET_KERNEL_USE)-$(TARGET_KERNEL_ARCH)
 TARGET_KERNEL_PATH := $(KERNEL_MODULES_PATH)/kernel-$(TARGET_KERNEL_USE)
-SYSTEM_DLKM_SRC ?= $(KERNEL_MODULES_PATH)
+SYSTEM_DLKM_SRC ?= $(KERNEL_MODULES_PATH)/system_dlkm
 
--include device/google/cuttlefish/shared/angle/BoardConfig.mk
 -include device/google/cuttlefish/shared/BoardConfig.mk
 -include device/google/cuttlefish/shared/bluetooth/BoardConfig.mk
 -include device/google/cuttlefish/shared/camera/BoardConfig.mk
+-include device/google/cuttlefish/shared/gnss/BoardConfig.mk
 -include device/google/cuttlefish/shared/graphics/BoardConfig.mk
+-include device/google/cuttlefish/shared/identity/BoardConfig.mk
+-include device/google/cuttlefish/shared/reboot_escrow/BoardConfig.mk
+-include device/google/cuttlefish/shared/sensors/BoardConfig.mk
+-include device/google/cuttlefish/shared/swiftshader/BoardConfig.mk
 -include device/google/cuttlefish/shared/telephony/BoardConfig.mk
 -include device/google/cuttlefish/shared/virgl/BoardConfig.mk

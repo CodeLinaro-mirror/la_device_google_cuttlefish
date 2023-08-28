@@ -189,12 +189,14 @@ Result<int> DoRemove(std::vector<std::string>& args) {
   const std::vector<Flag> remove_displays_flags = {
       GflagsCompatFlag(kDisplayFlag)
           .Help("Display id of a display to remove.")
-          .Setter([&](const FlagMatch& match) {
+          .Setter([&](const FlagMatch& match) -> Result<void> {
             displays.push_back(match.value);
-            return true;
+            return {};
           }),
   };
-  if (!ParseFlags(remove_displays_flags, args)) {
+  auto parse_res = ParseFlags(remove_displays_flags, args);
+  if (!parse_res.ok()) {
+    std::cerr << parse_res.error().Message() << std::endl;
     std::cerr << "Failed to parse flags. Usage:" << std::endl;
     std::cerr << kRemoveUsage << std::endl;
     return 1;

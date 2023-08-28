@@ -45,25 +45,6 @@ ServerLoopImpl::InitializeVmToControlSockPath(
   };
 }
 
-Result<void> ServerLoopImpl::HandleExtended(
-    const LauncherActionInfo& action_info, const SharedFD& client) {
-  CF_EXPECT(action_info.action == LauncherAction::kExtended);
-  switch (action_info.type) {
-    case ExtendedActionType::kSuspend: {
-      LOG(DEBUG) << "Run_cvd received suspend request.";
-      CF_EXPECT(HandleSuspend(action_info.serialized_data, client));
-      return {};
-    }
-    case ExtendedActionType::kResume: {
-      LOG(DEBUG) << "Run_cvd received resume request.";
-      CF_EXPECT(HandleResume(action_info.serialized_data, client));
-      return {};
-    }
-    default:
-      return CF_ERR("Unsupported ExtendedActionType");
-  }
-}
-
 static std::string SubtoolPath(const std::string& subtool_name) {
   auto my_own_dir = android::base::GetExecutableDirectory();
   std::stringstream subtool_path_stream;
@@ -78,7 +59,7 @@ static std::string SubtoolPath(const std::string& subtool_name) {
 static Result<void> SuspendCrosvm(const std::string& vm_sock_path) {
   const auto crosvm_bin_path = SubtoolPath("crosvm");
   std::vector<std::string> command_args{crosvm_bin_path, "suspend",
-                                        vm_sock_path};
+                                        vm_sock_path, "--full"};
   auto infop = CF_EXPECT(Execute(command_args, SubprocessOptions(), WEXITED));
   CF_EXPECT_EQ(infop.si_code, CLD_EXITED);
   CF_EXPECTF(infop.si_status == 0, "crosvm suspend returns non zero code {}",
@@ -88,11 +69,11 @@ static Result<void> SuspendCrosvm(const std::string& vm_sock_path) {
 
 static Result<void> ResumeCrosvm(const std::string& vm_sock_path) {
   const auto crosvm_bin_path = SubtoolPath("crosvm");
-  std::vector<std::string> command_args{crosvm_bin_path, "resume",
-                                        vm_sock_path};
+  std::vector<std::string> command_args{crosvm_bin_path, "resume", vm_sock_path,
+                                        "--full"};
   auto infop = CF_EXPECT(Execute(command_args, SubprocessOptions(), WEXITED));
   CF_EXPECT_EQ(infop.si_code, CLD_EXITED);
-  CF_EXPECTF(infop.si_status == 0, "crosvm suspend returns non zero code {}",
+  CF_EXPECTF(infop.si_status == 0, "crosvm resume returns non zero code {}",
              infop.si_status);
   return {};
 }
@@ -100,7 +81,7 @@ static Result<void> ResumeCrosvm(const std::string& vm_sock_path) {
 Result<void> ServerLoopImpl::SuspendGuest() {
   const auto vm_name = config_.vm_manager();
   CF_EXPECTF(Contains(vm_name_to_control_sock_, vm_name),
-             "vm_namager \"{}\" is not supported for suspend yet.", vm_name);
+             "vm_manager \"{}\" is not supported for suspend yet.", vm_name);
   const auto& vm_sock_path = vm_name_to_control_sock_.at(vm_name);
   if (vm_name == vm_manager::CrosvmManager::name()) {
     return SuspendCrosvm(vm_sock_path);
@@ -112,7 +93,7 @@ Result<void> ServerLoopImpl::SuspendGuest() {
 Result<void> ServerLoopImpl::ResumeGuest() {
   const auto vm_name = config_.vm_manager();
   CF_EXPECTF(Contains(vm_name_to_control_sock_, vm_name),
-             "vm_namager \"{}\" is not supported for suspend yet.", vm_name);
+             "vm_manager \"{}\" is not supported for resume yet.", vm_name);
   const auto& vm_sock_path = vm_name_to_control_sock_.at(vm_name);
   if (vm_name == vm_manager::CrosvmManager::name()) {
     return ResumeCrosvm(vm_sock_path);

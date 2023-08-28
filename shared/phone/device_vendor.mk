@@ -17,8 +17,6 @@
 PRODUCT_MANIFEST_FILES += device/google/cuttlefish/shared/config/product_manifest.xml
 SYSTEM_EXT_MANIFEST_FILES += device/google/cuttlefish/shared/config/system_ext_manifest.xml
 
-PRODUCT_MAX_PAGE_SIZE_SUPPORTED := 65536
-
 $(call inherit-product, $(SRC_TARGET_DIR)/product/handheld_vendor.mk)
 
 ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
@@ -28,23 +26,30 @@ PRODUCT_COPY_FILES += \
 endif
 
 $(call inherit-product, frameworks/native/build/phone-xhdpi-2048-dalvik-heap.mk)
+$(call inherit-product, device/google/cuttlefish/shared/biometrics_face/device_vendor.mk)
+$(call inherit-product, device/google/cuttlefish/shared/biometrics_fingerprint/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/bluetooth/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/camera/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/consumerir/device_vendor.mk)
+$(call inherit-product, device/google/cuttlefish/shared/gnss/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/graphics/device_vendor.mk)
+$(call inherit-product, device/google/cuttlefish/shared/identity/device_vendor.mk)
+$(call inherit-product, device/google/cuttlefish/shared/reboot_escrow/device_vendor.mk)
+$(call inherit-product, device/google/cuttlefish/shared/secure_element/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/swiftshader/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/telephony/device_vendor.mk)
+$(call inherit-product, device/google/cuttlefish/shared/sensors/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/virgl/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/device.mk)
 
-PRODUCT_EXTRA_VNDK_VERSIONS := 29 30 31
+# Support mixing CF system onto previous versions of vendor
+PRODUCT_EXTRA_VNDK_VERSIONS := 30 31 32 33 34
 
 TARGET_PRODUCT_PROP := $(LOCAL_PATH)/product.prop
 
 ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.faketouch.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.faketouch.xml \
-    frameworks/native/data/etc/android.hardware.fingerprint.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.fingerprint.xml \
 
     ifneq ($(TARGET_DISABLE_BIOMETRICS_FACE),true)
         PRODUCT_COPY_FILES += \

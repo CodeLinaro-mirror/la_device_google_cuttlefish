@@ -16,6 +16,7 @@
 
 #include <android-base/logging.h>
 #include <android-base/strings.h>
+#include <build/version.h>
 #include <fruit/fruit.h>
 #include <gflags/gflags.h>
 #include <unistd.h>
@@ -35,19 +36,19 @@
 #include "common/libs/utils/tee_logging.h"
 #include "host/commands/run_cvd/boot_state_machine.h"
 #include "host/commands/run_cvd/launch/launch.h"
-#include "host/commands/run_cvd/process_monitor.h"
 #include "host/commands/run_cvd/reporting.h"
 #include "host/commands/run_cvd/runner_defs.h"
 #include "host/commands/run_cvd/server_loop.h"
 #include "host/commands/run_cvd/validate.h"
 #include "host/libs/config/adb/adb.h"
-#include "host/libs/config/fastboot/fastboot.h"
 #include "host/libs/config/config_flag.h"
 #include "host/libs/config/config_fragment.h"
 #include "host/libs/config/custom_actions.h"
 #include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/config/fastboot/fastboot.h"
 #include "host/libs/config/inject.h"
 #include "host/libs/metrics/metrics_receiver.h"
+#include "host/libs/process_monitor/process_monitor.h"
 #include "host/libs/vm_manager/vm_manager.h"
 
 namespace cuttlefish {
@@ -66,6 +67,10 @@ class CuttlefishEnvironment : public DiagnosticInformation {
     return {
         "Launcher log: " + instance_.launcher_log_path(),
         "Instance configuration: " + config_path,
+        // TODO(rammuthiah)  replace this with a more thorough cvd host package
+        // version scheme. Currently this only reports the Build NUmber of run_cvd
+        // and it is possible for other host binaries to be from different versions.
+        "Launcher Build ID: " + android::build::GetBuildNumber(),
     };
   }
 
@@ -118,6 +123,14 @@ fruit::Component<> runCvdComponent(
       .addMultibinding<LateInjected, InstanceLifecycle>()
       .bindInstance(*config)
       .bindInstance(*instance)
+#ifdef __linux__
+      .install(ConfigServerComponent)
+      .install(launchModemComponent)
+      .install(launchStreamerComponent)
+      .install(OpenWrtComponent)
+      .install(TombstoneReceiverComponent)
+      .install(WmediumdServerComponent)
+#endif
       .install(AdbConfigComponent)
       .install(AdbConfigFragmentComponent)
       .install(FastbootConfigComponent)
@@ -129,23 +142,18 @@ fruit::Component<> runCvdComponent(
       .install(LaunchFastbootComponent)
       .install(BluetoothConnectorComponent)
       .install(UwbConnectorComponent)
-      .install(ConfigServerComponent)
       .install(ConsoleForwarderComponent)
+      .install(ControlEnvProxyServerComponent)
       .install(EchoServerComponent)
       .install(GnssGrpcProxyServerComponent)
       .install(LogcatReceiverComponent)
       .install(KernelLogMonitorComponent)
       .install(MetricsServiceComponent)
-      .install(OpenWrtComponent)
       .install(OpenwrtControlServerComponent)
       .install(PicaComponent)
       .install(RootCanalComponent)
       .install(NetsimServerComponent)
       .install(SecureEnvComponent)
-      .install(TombstoneReceiverComponent)
-      .install(WmediumdServerComponent)
-      .install(launchModemComponent)
-      .install(launchStreamerComponent)
       .install(serverLoopComponent)
       .install(validationComponent)
       .install(vm_manager::VmManagerComponent);

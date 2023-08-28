@@ -241,6 +241,7 @@ WIFI_DRIVER_FW_PATH_AP      := "/dev/null"
 
 # vendor sepolicy
 BOARD_VENDOR_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor
+BOARD_VENDOR_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor/seriallogging
 BOARD_VENDOR_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor/google
 
 BOARD_SEPOLICY_DIRS += system/bt/vendor_libs/linux/sepolicy
@@ -335,9 +336,6 @@ BOARD_MKBOOTIMG_INIT_ARGS += --header_version $(BOARD_INIT_BOOT_HEADER_VERSION)
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/dtb.img:dtb.img \
     device/google/cuttlefish/required_images:required_images \
-
-# Cuttlefish doesn't support ramdump feature yet, exclude the ramdump debug tool.
-EXCLUDE_BUILD_RAMDUMP_UPLOADER_DEBUG_TOOL := true
 
 # GKI-related variables.
 BOARD_USES_GENERIC_KERNEL_IMAGE := true

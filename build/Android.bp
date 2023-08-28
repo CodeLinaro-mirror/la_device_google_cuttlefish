@@ -52,10 +52,12 @@ cvd_host_tools = [
     "allocd_client",
     "assemble_cvd",
     "avbtool",
+    "build_super_image",
     "tcp_connector",
     "common_crosvm",
     "config_server",
     "console_forwarder",
+    "control_env_proxy_server",
     "crosvm",
     "cvd",
     "cvd_internal_display",
@@ -106,6 +108,7 @@ cvd_host_tools = [
     "pica",
     "powerwash_cvd",
     "process_restarter",
+    "record_cvd",
     "restart_cvd",
     "root-canal",
     "snapshot_util_cvd",
@@ -160,6 +163,7 @@ cvd_host_webrtc_assets = [
     "webrtc_index.css",
     "webrtc_controls.css",
     "webrtc_trusted.pem",
+    "webrtc_sensors.js",
 ]
 
 cvd_host_model_simulator_files = [

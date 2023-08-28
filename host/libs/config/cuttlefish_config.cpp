@@ -323,6 +323,14 @@ bool CuttlefishConfig::netsim_radio_enabled(NetsimRadio flag) const {
   return (*dictionary_)[kNetsimRadios].asInt() & flag;
 }
 
+static constexpr char kNetsimInstanceNum[] = "netsim_instance_num";
+int CuttlefishConfig::netsim_instance_num() const {
+  return (*dictionary_)[kNetsimInstanceNum].asInt();
+}
+void CuttlefishConfig::set_netsim_instance_num(int netsim_instance_num) {
+  (*dictionary_)[kNetsimInstanceNum] = netsim_instance_num;
+}
+
 static constexpr char kEnableMetrics[] = "enable_metrics";
 void CuttlefishConfig::set_enable_metrics(std::string enable_metrics) {
   (*dictionary_)[kEnableMetrics] = kUnknown;
@@ -709,8 +717,12 @@ std::string DefaultGuestImagePath(const std::string& file_name) {
 
 bool HostSupportsQemuCli() {
   static bool supported =
+#ifdef __linux__
       std::system(
           "/usr/lib/cuttlefish-common/bin/capability_query.py qemu_cli") == 0;
+#else
+      true;
+#endif
   return supported;
 }
 

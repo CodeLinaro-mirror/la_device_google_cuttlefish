@@ -162,6 +162,8 @@ class CuttlefishConfig {
 
   void netsim_radio_enable(NetsimRadio flag);
   bool netsim_radio_enabled(NetsimRadio flag) const;
+  void set_netsim_instance_num(int netsim_instance_num);
+  int netsim_instance_num() const;
 
   enum Answer {
     kUnknown = 0,
@@ -418,6 +420,10 @@ class CuttlefishConfig {
     // signaling server
     std::string webrtc_device_id() const;
 
+    // The group id the webrtc process should use to register with the
+    // signaling server
+    std::string group_id() const;
+
     // Whether this instance should start the webrtc signaling server
     bool start_webrtc_sig_server() const;
 
@@ -565,10 +571,8 @@ class CuttlefishConfig {
     std::string super_image() const;
     std::string new_super_image() const;
     std::string misc_image() const;
-    std::string new_misc_image() const;
     std::string misc_info_txt() const;
     std::string metadata_image() const;
-    std::string new_metadata_image() const;
     std::string vendor_boot_image() const;
     std::string new_vendor_boot_image() const;
     std::string vbmeta_image() const;
@@ -649,6 +653,7 @@ class CuttlefishConfig {
     void set_modem_simulator_ports(const std::string& modem_simulator_ports);
     void set_virtual_disk_paths(const std::vector<std::string>& disk_paths);
     void set_webrtc_device_id(const std::string& id);
+    void set_group_id(const std::string& id);
     void set_start_webrtc_signaling_server(bool start);
     void set_start_webrtc_sig_server_proxy(bool start);
     void set_start_wmediumd(bool start);
@@ -743,11 +748,7 @@ class CuttlefishConfig {
     void set_new_data_image(const std::string& new_data_image);
     void set_super_image(const std::string& super_image);
     void set_new_super_image(const std::string& super_image);
-    void set_misc_image(const std::string& misc_image);
-    void set_new_misc_image(const std::string& new_misc_image);
     void set_misc_info_txt(const std::string& misc_image);
-    void set_metadata_image(const std::string& metadata_image);
-    void set_new_metadata_image(const std::string& new_metadata_image);
     void set_vendor_boot_image(const std::string& vendor_boot_image);
     void set_new_vendor_boot_image(const std::string& new_vendor_boot_image);
     void set_vbmeta_image(const std::string& vbmeta_image);

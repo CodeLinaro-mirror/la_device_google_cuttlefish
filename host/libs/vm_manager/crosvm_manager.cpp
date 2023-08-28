@@ -175,6 +175,11 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     crosvm_cmd.Cmd().AddParameter("--no-smt");
   }
 
+  // Disable USB passthrough. It isn't needed for any key use cases and it is
+  // not compatible with crosvm suspend-resume support yet (b/266622743).
+  // TODO: Allow it to be turned back on using a flag.
+  crosvm_cmd.Cmd().AddParameter("--no-usb");
+
   crosvm_cmd.Cmd().AddParameter("--core-scheduling=false");
 
   if (instance.vhost_net()) {
@@ -322,13 +327,13 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   // GPU capture can only support named files and not file descriptors due to
   // having to pass arguments to crosvm via a wrapper script.
 #ifdef __linux__
-  if (!gpu_capture_enabled && config.enable_wifi()) {
+  if (!gpu_capture_enabled) {
     // The ordering of tap devices is important. Make sure any change here
     // is reflected in ethprime u-boot variable
     crosvm_cmd.AddTap(instance.mobile_tap_name(), instance.mobile_mac());
     crosvm_cmd.AddTap(instance.ethernet_tap_name(), instance.ethernet_mac());
 
-    if (!config.virtio_mac80211_hwsim()) {
+    if (!config.virtio_mac80211_hwsim() && config.enable_wifi()) {
       wifi_tap = crosvm_cmd.AddTap(instance.wifi_tap_name());
     }
   }

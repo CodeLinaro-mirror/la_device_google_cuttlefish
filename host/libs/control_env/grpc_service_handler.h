@@ -14,19 +14,10 @@
  * limitations under the License.
  */
 
-#pragma once
-
-#include <string>
-#include <unordered_map>
-#include <vector>
-
-#include <fruit/fruit.h>
-
 namespace cuttlefish {
 
-using OperationToBinsMap =
-    std::unordered_map<std::string, std::vector<std::string>>;
-
-fruit::Component<OperationToBinsMap> OperationToBinsMapComponent();
+Result<std::string> HandleCmds(const std::string& grpc_socket_path,
+                               const std::string& cmd,
+                               const std::vector<std::string>& args);
 
 }  // namespace cuttlefish

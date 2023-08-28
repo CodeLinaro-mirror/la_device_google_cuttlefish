@@ -14,9 +14,12 @@
  * limitations under the License.
  */
 
-#include "host/commands/run_cvd/process_monitor.h"
+#include "host/libs/process_monitor/process_monitor.h"
 
+#ifdef __linux__
 #include <sys/prctl.h>
+#endif
+
 #include <sys/types.h>
 #include <sys/wait.h>
 
@@ -40,9 +43,9 @@
 #include "common/libs/fs/shared_select.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
-#include "host/commands/run_cvd/process_monitor_channel.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/known_paths.h"
+#include "host/libs/process_monitor/process_monitor_channel.h"
 
 namespace cuttlefish {
 
@@ -97,8 +100,8 @@ Result<void> MonitorLoop(const std::atomic_bool& running,
     int error_num = errno;
     CF_EXPECT(pid != -1, "Wait failed: " << strerror(error_num));
     if (!WIFSIGNALED(wstatus) && !WIFEXITED(wstatus)) {
-      LOG(DEBUG) << "Unexpected status from wait: " << wstatus
-                  << " for pid " << pid;
+      LOG(DEBUG) << "Unexpected status from wait: " << wstatus << " for pid "
+                 << pid;
       continue;
     }
     if (!running.load()) {  // Avoid extra restarts near the end
@@ -246,10 +249,12 @@ Result<void> ProcessMonitor::StartAndMonitorProcesses() {
 }
 
 Result<void> ProcessMonitor::MonitorRoutine() {
+#ifdef __linux__
   // Make this process a subreaper to reliably catch subprocess exits.
   // See https://man7.org/linux/man-pages/man2/prctl.2.html
   prctl(PR_SET_CHILD_SUBREAPER, 1);
   prctl(PR_SET_PDEATHSIG, SIGHUP);  // Die when parent dies
+#endif
 
   LOG(DEBUG) << "Monitoring subprocesses";
   StartSubprocesses(properties_.entries_);
