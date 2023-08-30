@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 The Android Open Source Project
+ * Copyright (C) 2023 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,17 +16,18 @@
 
 #pragma once
 
-#include <fruit/fruit.h>
+#include <string>
 
-#include "host/libs/config/cuttlefish_config.h"
-#include "host/libs/config/feature.h"
+#include "common/libs/utils/result.h"
 
 namespace cuttlefish {
 
-class ValidateTapDevices : public SetupFeature {};
+/*
+ * Copy recursively from src_dir_path to dest_dir_path as long as
+ * the predicate function returns true
+ */
+Result<void> CopyDirectoryRecursively(const std::string& src_dir_path,
+                                      const std::string& dest_dir_path,
+                                      const bool verify_dest_dir_empty = false);
 
-fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific,
-                                 const CuttlefishConfig::EnvironmentSpecific>,
-                 ValidateTapDevices>
-validationComponent();
-}
+}  // namespace cuttlefish

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 The Android Open Source Project
+ * Copyright (C) 2023 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,20 +13,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "host/commands/cvd/parser/selector_parser.h"
 
-#pragma once
+#include <string>
+#include <vector>
 
-#include <fruit/fruit.h>
+#include <json/json.h>
 
-#include "host/libs/config/cuttlefish_config.h"
-#include "host/libs/config/feature.h"
+#include "common/libs/utils/json.h"
+#include "common/libs/utils/result.h"
+#include "host/commands/cvd/parser/cf_configs_common.h"
 
 namespace cuttlefish {
 
-class ValidateTapDevices : public SetupFeature {};
-
-fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific,
-                                 const CuttlefishConfig::EnvironmentSpecific>,
-                 ValidateTapDevices>
-validationComponent();
+Result<std::vector<std::string>> ParseSelectorConfigs(Json::Value& root) {
+  return {{CF_EXPECT(GenerateGflag(root["instances"], "instance_name", {"name"}))}};
 }
+
+}  // namespace cuttlefish
+

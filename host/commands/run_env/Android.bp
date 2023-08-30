@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 The Android Open Source Project
+// Copyright (C) 2023 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,27 +17,31 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-cc_library {
-    name: "libcuttlefish_command_util",
+cc_binary {
+    name: "run_env",
     srcs: [
-        "launcher_message.cc",
-        "snapshot_utils.cc",
-        "util.cc",
+        "main.cpp",
+        "services/env_grpc_socket_creator.cpp",
+        "services/env_log_tee_creator.cpp",
+        "services/wmediumd_server.cpp",
     ],
     shared_libs: [
-        "liblog",
-        "libcuttlefish_fs",
+        "libbase",
         "libcuttlefish_utils",
+        "libfruit",
         "libjsoncpp",
     ],
     static_libs: [
-        "libbase",
+        "libcuttlefish_command_util",
+        "libcuttlefish_fs",
         "libcuttlefish_host_config",
+        "libcuttlefish_process_monitor",
+        "libcuttlefish_utils",
+        "libcuttlefish_vm_manager",
+        "libgflags",
     ],
-    target: {
-        darwin: {
-            enabled: true,
-        },
-    },
-    defaults: ["cuttlefish_host"],
+    defaults: [
+        "cuttlefish_host",
+        "cvd_cc_defaults",
+    ],
 }

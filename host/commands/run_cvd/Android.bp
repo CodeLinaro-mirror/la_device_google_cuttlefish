@@ -17,7 +17,7 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-cc_binary {
+cc_binary_host {
     name: "run_cvd",
     srcs: [
         "boot_state_machine.cc",
@@ -95,7 +95,6 @@ cc_binary {
                 "launch/tombstone_receiver.cpp",
                 "launch/modem.cpp",
                 "launch/open_wrt.cpp",
-                "launch/wmediumd_server.cpp",
             ],
             shared_libs: [
                 "libnl",

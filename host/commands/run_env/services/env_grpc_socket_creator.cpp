@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 The Android Open Source Project
+// Copyright (C) 2023 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,27 +13,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package {
-    default_applicable_licenses: ["Android-Apache-2.0"],
+#include "host/commands/run_env/services/env_grpc_socket_creator.h"
+
+namespace cuttlefish {
+
+EnvGrpcSocketCreator::EnvGrpcSocketCreator(
+    const CuttlefishConfig::EnvironmentSpecific& environment)
+    : environment_(environment) {}
+
+std::string EnvGrpcSocketCreator::CreateGrpcSocket(
+    const std::string& process_name) {
+  auto name_with_ext = process_name + ".sock";
+  auto socket_path = environment_.PerEnvironmentGrpcSocketPath(name_with_ext);
+
+  return socket_path;
 }
 
-cc_binary_host {
-    name: "mkenvimage_slim",
-    defaults: ["cuttlefish_host"],
-    srcs: [
-        "mkenvimage_slim.cc",
-    ],
-    static_libs: [
-        "libbase",
-        "libcuttlefish_fs",
-        "libcuttlefish_utils",
-        "libgflags",
-        "liblog",
-        "libz",
-    ],
-    target: {
-        darwin: {
-            enabled: true,
-        },
-    },
-}
+}  // namespace cuttlefish
