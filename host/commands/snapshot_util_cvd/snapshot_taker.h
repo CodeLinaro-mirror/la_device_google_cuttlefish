@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 The Android Open Source Project
+ * Copyright (C) 2023 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,16 +16,21 @@
 
 #pragma once
 
-#include <fruit/fruit.h>
+#include <string>
 
-#include "host/libs/config/cuttlefish_config.h"
-#include "host/libs/config/feature.h"
+#include "common/libs/utils/result.h"
 
 namespace cuttlefish {
 
-class ValidateTapDevices : public SetupFeature {};
+/**
+ * Takes the snapshot of instance group
+ *
+ * This may includes the snapshot for cvd_env, etc. However, for now,
+ * we also take per-instance host snapshot here.
+ *
+ * TODO(kwstephenkim): separate host instance specific snapshot from
+ * the host group snapshot
+ */
+Result<std::string> HandleHostGroupSnapshot(const std::string& snapshot_path);
 
-fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>,
-                 ValidateTapDevices>
-validationComponent();
-}
+}  // namespace cuttlefish
