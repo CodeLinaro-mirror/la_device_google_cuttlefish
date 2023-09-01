@@ -24,6 +24,7 @@
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
+#include "common/libs/utils/contains.h"
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/flag_parser.h"
@@ -34,6 +35,7 @@
 #include "host/commands/assemble_cvd/flag_feature.h"
 #include "host/commands/assemble_cvd/flags.h"
 #include "host/commands/assemble_cvd/flags_defaults.h"
+#include "host/libs/command_util/snapshot_utils.h"
 #include "host/libs/config/adb/adb.h"
 #include "host/libs/config/config_flag.h"
 #include "host/libs/config/custom_actions.h"
@@ -117,7 +119,8 @@ Result<void> SaveConfig(const CuttlefishConfig& tmp_config_obj) {
 #endif
 
 Result<void> CreateLegacySymlinks(
-    const CuttlefishConfig::InstanceSpecific& instance) {
+    const CuttlefishConfig::InstanceSpecific& instance,
+    const CuttlefishConfig::EnvironmentSpecific& environment) {
   std::string log_files[] = {"kernel.log",
                              "launcher.log",
                              "logcat",
@@ -157,7 +160,7 @@ Result<void> CreateLegacySymlinks(
   const auto mac80211_uds_name = "vhost_user_mac80211";
 
   const auto mac80211_uds_path =
-      instance.PerInstanceInternalUdsPath(mac80211_uds_name);
+      environment.PerEnvironmentUdsPath(mac80211_uds_name);
   const auto legacy_mac80211_uds_path =
       instance.PerInstanceInternalPath(mac80211_uds_name);
 
@@ -165,6 +168,24 @@ Result<void> CreateLegacySymlinks(
     return CF_ERRNO("symlink(\"" << mac80211_uds_path << "\", \""
                                  << legacy_mac80211_uds_path << "\") failed");
   }
+
+  return {};
+}
+
+Result<void> RestoreHostFiles(const std::string& snapshot_dir_path) {
+  const auto meta_json_path = SnapshotMetaJsonPath(snapshot_dir_path);
+  const auto cuttlefish_home = StringFromEnv("HOME", CurrentDirectory());
+
+  auto guest_snapshot_dirs =
+      CF_EXPECT(GuestSnapshotDirectories(snapshot_dir_path));
+  auto filter_guest_dir =
+      [&guest_snapshot_dirs](const std::string& src_dir) -> bool {
+    return !Contains(guest_snapshot_dirs, src_dir);
+  };
+  // cp -r snapshot_dir_path HOME
+  CF_EXPECT(CopyDirectoryRecursively(snapshot_dir_path, cuttlefish_home,
+                                     /* delete destination first */ false,
+                                     filter_guest_dir));
 
   return {};
 }
@@ -287,6 +308,10 @@ Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
         CF_EXPECT(PreservingOnResume(creating_os_disk, modem_simulator_count),
                   "Error in Preserving set calculation.");
 
+    const std::string snapshot_path = FLAGS_snapshot_path;
+    if (!snapshot_path.empty()) {
+      CF_EXPECT(RestoreHostFiles(snapshot_path));
+    }
     auto instance_dirs = config.instance_dirs();
     auto environment_dirs = config.environment_dirs();
     std::vector<std::string> clean_dirs;
@@ -350,7 +375,7 @@ Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
                                       default_mode, default_group));
 
       // TODO(schuffelen): Move this code somewhere better
-      CF_EXPECT(CreateLegacySymlinks(instance));
+      CF_EXPECT(CreateLegacySymlinks(instance, environment));
     }
     CF_EXPECT(SaveConfig(config), "Failed to initialize configuration");
   }
