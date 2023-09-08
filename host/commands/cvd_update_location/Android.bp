@@ -23,7 +23,6 @@ cc_defaults {
         "libbase",
         "libcuttlefish_fs",
         "liblog",
-        "libicuuc",
         "libprotobuf-cpp-full",
         "libgrpc++_unsecure",
     ],
@@ -54,4 +53,9 @@ cc_binary {
         "-D_XOPEN_SOURCE",
     ],
     defaults: ["cvd_update_location_defaults"],
+    target: {
+        darwin: {
+            enabled: true,
+        },
+    },
 }

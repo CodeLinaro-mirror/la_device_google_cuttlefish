@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-cc_library_static {
+cc_library {
     name: "libcuttlefish_run_cvd_proto",
     host_supported: true,
     proto: {
@@ -31,7 +31,6 @@ cc_library_static {
     },
     defaults: [
         "cuttlefish_host",
-        "cuttlefish_libicuuc",
         "cvd_cc_defaults",
     ],
 }

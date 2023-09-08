@@ -81,9 +81,7 @@ Result<std::unordered_map<std::string, std::string>> BootconfigArgsFromConfig(
   auto vmm =
       vm_manager::GetVmManager(config.vm_manager(), instance.target_arch());
   AppendMapWithReplacement(&bootconfig_args,
-                           CF_EXPECT(vmm->ConfigureBootDevices(
-                               instance.virtual_disk_paths().size(),
-                               instance.hwcomposer() != kHwComposerNone)));
+                           CF_EXPECT(vmm->ConfigureBootDevices(instance)));
 
   AppendMapWithReplacement(&bootconfig_args,
                            CF_EXPECT(vmm->ConfigureGraphics(instance)));
@@ -139,6 +137,13 @@ Result<std::unordered_map<std::string, std::string>> BootconfigArgsFromConfig(
     bootconfig_args["androidboot.vsock_camera_port"] =
         std::to_string(instance.camera_server_port());
     bootconfig_args["androidboot.vsock_camera_cid"] =
+        std::to_string(instance.vsock_guest_cid());
+  }
+
+  if (instance.lights_server_port()) {
+    bootconfig_args["androidboot.vsock_lights_port"] =
+        std::to_string(instance.lights_server_port());
+    bootconfig_args["androidboot.vsock_lights_cid"] =
         std::to_string(instance.vsock_guest_cid());
   }
 

@@ -18,12 +18,14 @@
 #include <android-base/logging.h>
 #include <gflags/gflags.h>
 
+#include <chrono>
 #include <memory>
 #include <sstream>
 
 #include "common/frontend/socket_vsock_proxy/client.h"
 #include "common/frontend/socket_vsock_proxy/server.h"
 #include "common/libs/fs/shared_fd.h"
+#include "common/libs/utils/result.h"
 #include "common/libs/utils/socket2socket_proxy.h"
 #include "common/libs/utils/tee_logging.h"
 #include "host/commands/kernel_log_monitor/utils.h"
@@ -32,8 +34,12 @@
 #include "host/libs/config/logging.h"
 #endif // CUTTLEFISH_HOST
 
-constexpr const char TRANSPORT_TCP[] = "tcp";
-constexpr const char TRANSPORT_VSOCK[] = "vsock";
+constexpr int TCP_SERVER_START_RETRIES_COUNT = 10;
+constexpr std::chrono::milliseconds TCP_SERVER_RETRIES_DELAY(1250);
+constexpr std::chrono::seconds TCP_CLIENT_TIMEOUT(1);
+
+constexpr char TRANSPORT_TCP[] = "tcp";
+constexpr char TRANSPORT_VSOCK[] = "vsock";
 
 DEFINE_string(label, "socket_vsock_proxy", "Label which is used only for logging. "
                                            "Log messages will look like [label] message");
@@ -55,12 +61,14 @@ DEFINE_uint32(start_event_id, -1, "Kernel event id (cuttlefish::monitor::Event f
                                   "kernel_log_server.h) that we will listen to start proxy");
 DEFINE_uint32(stop_event_id, -1, "Kernel event id (cuttlefish::monitor::Event from "
                                   "kernel_log_server.h) that we will listen to stop proxy");
+DEFINE_bool(start_immediately, false, "A flag to start proxying without waiting for "
+                                      "initial start event");
 
 namespace cuttlefish {
 namespace socket_proxy {
 namespace {
 
-std::unique_ptr<Server> BuildServer() {
+static std::unique_ptr<Server> BuildServer() {
   if (FLAGS_server_fd >= 0) {
     return std::make_unique<DupServer>(FLAGS_server_fd);
   }
@@ -80,7 +88,8 @@ std::unique_ptr<Server> BuildServer() {
   std::unique_ptr<Server> server = nullptr;
 
   if (FLAGS_server_type == TRANSPORT_TCP) {
-    server = std::make_unique<TcpServer>(FLAGS_server_tcp_port);
+    server = std::make_unique<TcpServer>(FLAGS_server_tcp_port, TCP_SERVER_START_RETRIES_COUNT,
+                                         TCP_SERVER_RETRIES_DELAY);
   } else if (FLAGS_server_type == TRANSPORT_VSOCK) {
     server = std::make_unique<VsockServer>(FLAGS_server_vsock_port);
   } else {
@@ -90,7 +99,7 @@ std::unique_ptr<Server> BuildServer() {
   return server;
 }
 
-std::unique_ptr<Client> BuildClient() {
+static std::unique_ptr<Client> BuildClient() {
   CHECK(FLAGS_client_type == TRANSPORT_TCP || FLAGS_client_type == TRANSPORT_VSOCK)
       << "Must specify -client_type with tcp or vsock values";
 
@@ -106,7 +115,8 @@ std::unique_ptr<Client> BuildClient() {
   std::unique_ptr<Client> client = nullptr;
 
   if (FLAGS_client_type == TRANSPORT_TCP) {
-    client = std::make_unique<TcpClient>(FLAGS_client_tcp_host, FLAGS_client_tcp_port);
+    client = std::make_unique<TcpClient>(FLAGS_client_tcp_host, FLAGS_client_tcp_port,
+                                         TCP_CLIENT_TIMEOUT);
   } else if (FLAGS_client_type == TRANSPORT_VSOCK) {
     client = std::make_unique<VsockClient>(FLAGS_client_vsock_id, FLAGS_client_vsock_port);
   } else {
@@ -116,14 +126,26 @@ std::unique_ptr<Client> BuildClient() {
   return client;
 }
 
-void ListenEventsAndProxy(int events_fd, const monitor::Event start, const monitor::Event stop,
-                          Server& server, Client& client) {
+static Result<std::unique_ptr<ProxyServer>> StartProxyAsync(Server& server, Client& client) {
+  LOG(INFO) << "From: " << server.Describe();
+  LOG(INFO) << "To: " << client.Describe();
+  return ProxyAsync(CF_EXPECT(server.Start()), [&client] { return client.Start(); });
+}
+
+static Result<void> ListenEventsAndProxy(int events_fd,
+                                         const monitor::Event start, const monitor::Event stop,
+                                         Server& server, Client& client) {
   auto events = SharedFD::Dup(events_fd);
   close(events_fd);
 
-  std::unique_ptr<cuttlefish::ProxyServer> proxy;
+  std::unique_ptr<ProxyServer> proxy;
 
-  LOG(DEBUG) << "Start reading ";
+  if (FLAGS_start_immediately) {
+    LOG(INFO) << "start_immediately was set to true, so starting proxying";
+    proxy = std::move(CF_EXPECT(StartProxyAsync(server, client)));
+  }
+
+  LOG(DEBUG) << "Start reading evets to start/stop proxying";
   while (events->IsOpen()) {
     std::optional<monitor::ReadEventResult> received_event = monitor::ReadEvent(events);
 
@@ -135,12 +157,7 @@ void ListenEventsAndProxy(int events_fd, const monitor::Event start, const monit
     if (start != -1 && received_event->event == start) {
       if (!proxy) {
         LOG(INFO) << "Start event (" << start << ") received. Starting proxy";
-        LOG(INFO) << "From: " << server.Describe();
-        LOG(INFO) << "To: " << client.Describe();
-        auto started_proxy = cuttlefish::ProxyAsync(server.Start(), [&client] {
-          return client.Start();
-        });
-        proxy = std::move(started_proxy);
+        proxy = std::move(CF_EXPECT(StartProxyAsync(server, client)));
       }
       continue;
     }
@@ -151,6 +168,28 @@ void ListenEventsAndProxy(int events_fd, const monitor::Event start, const monit
       continue;
     }
   }
+
+  return {};
+}
+
+Result<void> Main() {
+  auto server = BuildServer();
+  auto client = BuildClient();
+
+  if (FLAGS_events_fd != -1) {
+    CF_EXPECT(FLAGS_start_event_id != -1, "start_event_id is required if events_fd is provided");
+
+    const monitor::Event start_event = static_cast<monitor::Event>(FLAGS_start_event_id);
+    const monitor::Event stop_event = static_cast<monitor::Event>(FLAGS_stop_event_id);
+
+    CF_EXPECT(ListenEventsAndProxy(FLAGS_events_fd, start_event, stop_event,
+                                   *server, *client));
+  } else {
+    LOG(DEBUG) << "Starting proxy";
+    Proxy(CF_EXPECT(server->Start()), [&client] { return client->Start(); });
+  }
+
+  return {};
 }
 
 }
@@ -171,20 +210,10 @@ int main(int argc, char* argv[]) {
     android::base::SetDefaultTag("proxy_" + FLAGS_label);
   }
 
-  auto server = cuttlefish::socket_proxy::BuildServer();
-  auto client = cuttlefish::socket_proxy::BuildClient();
-
-  if (FLAGS_events_fd != -1) {
-    CHECK(FLAGS_start_event_id != -1)
-        << "start_event_id is required if events_fd is provided";
-
-    const monitor::Event start_event = static_cast<monitor::Event>(FLAGS_start_event_id);
-    const monitor::Event stop_event = static_cast<monitor::Event>(FLAGS_stop_event_id);
-
-    cuttlefish::socket_proxy::ListenEventsAndProxy(FLAGS_events_fd, start_event, stop_event,
-                                                   *server, *client);
-  } else {
-    LOG(DEBUG) << "Starting proxy";
-    cuttlefish::Proxy(server->Start(), [&client] { return client->Start(); });
+  auto result = cuttlefish::socket_proxy::Main();
+  if (!result.ok()) {
+    LOG(FATAL) << "Failed to proxy: " << result.error().Message();
   }
+
+  return 0;
 }

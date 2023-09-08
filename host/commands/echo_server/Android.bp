@@ -16,7 +16,7 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-cc_library_host_static {
+cc_library {
     name: "libecho_server",
     shared_libs: [
         "libprotobuf-cpp-full",
@@ -42,6 +42,11 @@ cc_library_host_static {
         "external/grpc-grpc/include",
         "external/protobuf/src",
     ],
+    target: {
+        darwin: {
+            enabled: true,
+        },
+    },
 }
 
 cc_binary_host {
@@ -63,6 +68,11 @@ cc_binary_host {
         "-Wno-unused-parameter",
     ],
     defaults: ["cuttlefish_host"],
+    target: {
+        darwin: {
+            enabled: true,
+        },
+    },
 }
 
 filegroup {

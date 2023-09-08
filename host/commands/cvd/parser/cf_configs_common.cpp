@@ -21,8 +21,10 @@
 #include <vector>
 
 #include <android-base/logging.h>
+#include <android-base/strings.h>
 #include <json/json.h>
 
+#include "common/libs/utils/json.h"
 #include "common/libs/utils/result.h"
 
 namespace cuttlefish {
@@ -47,46 +49,36 @@ void InitIntConfigSubGroupVector(Json::Value& instances,
                                  const std::string& json_flag,
                                  int default_value) {
   // Allocate and initialize with default values
-  for (int i = 0; i < instances.size(); i++) {
-    if (!instances[i].isMember(group) ||
-        (!instances[i][group].isMember(subgroup)) ||
-        (instances[i][group][subgroup].size() == 0)) {
-      instances[i][group][subgroup][0][json_flag] = default_value;
+  for (auto& instance : instances) {
+    if (!instance.isMember(group) || (!instance[group].isMember(subgroup)) ||
+        (instance[group][subgroup].size() == 0)) {
+      instance[group][subgroup][0][json_flag] = default_value;
 
     } else {
       // Check the whole array
-      int vector_size = instances[i][group][subgroup].size();
-      for (int j = 0; j < vector_size; j++) {
-        if (!instances[i][group][subgroup][j].isMember(json_flag)) {
-          instances[i][group][subgroup][j][json_flag] = default_value;
+      for (auto& subgroup_member : instance[group][subgroup]) {
+        if (!subgroup_member.isMember(json_flag)) {
+          subgroup_member[json_flag] = default_value;
         }
       }
     }
   }
 }
 
+std::string GenerateGflag(const std::string& gflag_name,
+                          const std::vector<std::string>& values) {
+  std::stringstream buff;
+  buff << "--" << gflag_name << "=";
+  buff << android::base::Join(values, ',');
+  return buff.str();
+}
+
 Result<std::string> GenerateGflag(const Json::Value& instances,
                                   const std::string& gflag_name,
                                   const std::vector<std::string>& selectors) {
-  std::stringstream buff;
-  buff << "--" << gflag_name << "=";
-
-  int size = instances.size();
-  for (int i = 0; i < size; i++) {
-    const Json::Value* traversal = &instances[i];
-    for (const auto& selector : selectors) {
-      CF_EXPECTF(traversal->isMember(selector),
-                 "JSON selector \"{}\" does not exist when trying to create "
-                 "gflag \"{}\"",
-                 selector, gflag_name);
-      traversal = &(*traversal)[selector];
-    }
-    buff << traversal->asString();
-    if (i != size - 1) {
-      buff << ",";
-    }
-  }
-  return buff.str();
+  auto values = CF_EXPECTF(GetArrayValues<std::string>(instances, selectors),
+                           "Unable to get values for gflag \"{}\"", gflag_name);
+  return GenerateGflag(gflag_name, values);
 }
 
 std::vector<std::string> MergeResults(std::vector<std::string> first_list,
@@ -106,7 +98,6 @@ std::vector<std::string> MergeResults(std::vector<std::string> first_list,
  * @param src : input json object tree to be merged
  */
 void MergeTwoJsonObjs(Json::Value& dst, const Json::Value& src) {
-  // Merge all members of src into dst
   for (const auto& key : src.getMemberNames()) {
     if (src[key].type() == Json::arrayValue) {
       for (int i = 0; i < src[key].size(); i++) {
