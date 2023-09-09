@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2018 The Android Open Source Project
+// Copyright (C) 2023 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,27 +17,28 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-cc_binary {
-    name: "cvd_internal_host_bugreport",
-    symlinks: ["cvd_host_bugreport"],
+cc_library {
+    name: "libcuttlefish_transport",
     srcs: [
-        "main.cc",
+        "channel.cpp",
     ],
     shared_libs: [
+        "liblog",
         "libbase",
-	"libcuttlefish_command_util",
-        "libcuttlefish_device_config",
-        "libcuttlefish_device_config_proto",
-        "libcuttlefish_fs",
-        "libcuttlefish_utils",
-        "libfruit",
-        "libjsoncpp",
-        "libziparchive",
     ],
-    static_libs: [
-        "libcuttlefish_host_config",
-        "libcuttlefish_vm_manager",
-        "libgflags",
-    ],
+    target: {
+        linux: {
+            srcs: ["channel_sharedfd.cpp"],
+            shared_libs: ["libcuttlefish_fs"]
+        },
+        darwin: {
+            enabled: true,
+            srcs: ["channel_sharedfd.cpp"],
+            shared_libs: ["libcuttlefish_fs"]
+        },
+        windows: {
+            enabled: true,
+        },
+    },
     defaults: ["cuttlefish_host"],
 }

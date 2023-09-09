@@ -412,6 +412,13 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   crosvm_cmd.Cmd().AddParameter("run");
   crosvm_cmd.AddControlSocket(GetControlSocketPath(instance, crosvm_socket),
                               instance.crosvm_binary());
+
+  // --restore_path=<guest snapshot directory>
+  const std::string snapshot_dir = config.snapshot_path();
+  if (!snapshot_dir.empty()) {
+    CF_EXPECT(crosvm_cmd.SetToRestoreFromSnapshot(snapshot_dir, instance.id()));
+  }
+
   if (!instance.smt()) {
     crosvm_cmd.Cmd().AddParameter("--no-smt");
   }
@@ -693,11 +700,6 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   } else {
     crosvm_cmd.AddHvcSink();
   }
-
-  // /dev/hvc13 = sensors
-  crosvm_cmd.AddHvcReadWrite(
-      instance.PerInstanceInternalPath("sensors_fifo_vm.out"),
-      instance.PerInstanceInternalPath("sensors_fifo_vm.in"));
 
   for (auto i = 0; i < VmManager::kMaxDisks - disk_num; i++) {
     crosvm_cmd.AddHvcSink();
