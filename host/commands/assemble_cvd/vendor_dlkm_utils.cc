@@ -104,10 +104,29 @@ bool WriteFsConfig(const char* output_path, const std::string& fs_root,
 std::vector<std::string> GetRamdiskModules(
     const std::vector<std::string>& all_modules) {
   static constexpr auto kRamdiskModules = {
-      "failover.ko",   "nd_virtio.ko",      "net_failover.ko",
-      "virtio_blk.ko", "virtio_console.ko", "virtio_dma_buf.ko",
-      "virtio-gpu.ko", "virtio_input.ko",   "virtio_net.ko",
-      "virtio_pci.ko", "virtio-rng.ko",     "vmw_vsock_virtio_transport.ko",
+      "failover.ko",
+      "nd_virtio.ko",
+      "net_failover.ko",
+      "virtio_blk.ko",
+      "virtio_console.ko",
+      "virtio_dma_buf.ko",
+      "virtio-gpu.ko",
+      "virtio_input.ko",
+      "virtio_net.ko",
+      "virtio_pci.ko",
+      "virtio_pci_legacy_dev.ko",
+      "virtio_pci_modern_dev.ko",
+      "virtio-rng.ko",
+      "vmw_vsock_virtio_transport.ko",
+      "vmw_vsock_virtio_transport_common.ko",
+      "vsock.ko",
+      // TODO(b/176860479) once virt_wifi is deprecated fully,
+      // these following modules can be loaded in second stage init
+      "libarc4.ko",
+      "rfkill.ko",
+      "cfg80211.ko",
+      "mac80211.ko",
+      "mac80211_hwsim.ko",
   };
   std::vector<std::string> ramdisk_modules;
   for (const auto& mod_path : all_modules) {

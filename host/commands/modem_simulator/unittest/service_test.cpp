@@ -87,7 +87,7 @@ class ModemServiceTest : public ::testing::Test {
 
     cuttlefish::SharedFD server;
     auto channel_monitor =
-        std::make_unique<ChannelMonitor>(modem_simulator_, server);
+        std::make_unique<ChannelMonitor>(*modem_simulator_, server);
     modem_simulator_->Initialize(std::move(channel_monitor));
   }
 
@@ -106,7 +106,8 @@ class ModemServiceTest : public ::testing::Test {
   void ReadCommandResponse(std::vector<std::string>& response) {
     do {
       std::vector<char> buffer(4096);  // kMaxCommandLength
-      auto bytes_read = ril_side_->client_fd->Read(buffer.data(), buffer.size());
+      auto bytes_read =
+          ril_side_->client_fd->Read(buffer.data(), buffer.size());
       if (bytes_read <= 0) {
         // Close here to ensure the other side gets reset if it's still
         // connected

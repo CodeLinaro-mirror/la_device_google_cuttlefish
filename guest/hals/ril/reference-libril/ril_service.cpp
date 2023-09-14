@@ -11069,15 +11069,17 @@ void convertRilDataCallToHal(RIL_Data_Call_Response_v11* dcResponse,
     dcResult.ifname = convertCharPtrToHidlString(dcResponse->ifname);
 
     std::vector<::android::hardware::radio::V1_5::LinkAddress> linkAddresses;
-    std::stringstream ss(static_cast<std::string>(dcResponse->addresses));
-    std::string tok;
-    while(getline(ss, tok, ' ')) {
-        ::android::hardware::radio::V1_5::LinkAddress la;
-        la.address = hidl_string(tok);
-        la.properties = 0;
-        la.deprecationTime = INT64_MAX;  // LinkAddress.java LIFETIME_PERMANENT = Long.MAX_VALUE
-        la.expirationTime = INT64_MAX;  // --"--
-        linkAddresses.push_back(la);
+    if (dcResponse->addresses != NULL) {
+        std::stringstream ss(static_cast<std::string>(dcResponse->addresses));
+        std::string tok;
+        while (getline(ss, tok, ' ')) {
+            ::android::hardware::radio::V1_5::LinkAddress la;
+            la.address = hidl_string(tok);
+            la.properties = 0;
+            la.deprecationTime = INT64_MAX;  // LinkAddress.java LIFETIME_PERMANENT = Long.MAX_VALUE
+            la.expirationTime = INT64_MAX;   // --"--
+            linkAddresses.push_back(la);
+        }
     }
 
     dcResult.addresses = linkAddresses;
@@ -13382,6 +13384,13 @@ static void publishRadioHal(std::shared_ptr<compat::DriverContext> ctx, sp<V1_5:
 
     const auto instance = T::descriptor + "/"s + slot;
     RLOGD("Publishing %s", instance.c_str());
+
+    if (!AServiceManager_isDeclared(instance.c_str())) {
+        RLOGW("%s is not declared in VINTF (this may be intentional on `next` when interface is "
+              "not frozen)",
+              instance.c_str());
+        return;
+    }
 
     auto aidlHal = ndk::SharedRefBase::make<T>(ctx, hidlHal, cm);
     gPublishedHals.push_back(aidlHal);

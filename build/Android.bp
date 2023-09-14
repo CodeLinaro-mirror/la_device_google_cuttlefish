@@ -111,6 +111,7 @@ cvd_host_tools = [
     "record_cvd",
     "restart_cvd",
     "root-canal",
+    "casimir",
     "snapshot_util_cvd",
     "run_cvd",
     "secure_env",
@@ -131,6 +132,12 @@ cvd_host_tools = [
     "wmediumd",
     "wmediumd_gen_config",
     "vulkan.pastel",
+]
+
+cvd_host_tools_aarch64 = [
+    "aarch64_linux_gnu_crosvm",
+    "aarch64_linux_gnu_libgfxstream_backend.so_for_crosvm",
+    "aarch64_linux_gnu_libminijail.so_for_crosvm",
 ]
 
 cvd_openwrt_images = [
@@ -163,7 +170,6 @@ cvd_host_webrtc_assets = [
     "webrtc_index.css",
     "webrtc_controls.css",
     "webrtc_trusted.pem",
-    "webrtc_sensors.js",
 ]
 
 cvd_host_model_simulator_files = [
@@ -341,6 +347,7 @@ cvd_host_package_customization {
             },
         },
         arm64: {
+            deps: cvd_host_tools_aarch64,
             multilib: {
                 common: {
                     deps: cvd_host_seccomp_policy_aarch64,

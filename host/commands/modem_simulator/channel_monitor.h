@@ -19,7 +19,9 @@
 #include <thread>
 #include <vector>
 
-#include "common/libs/fs/shared_select.h"
+#include "common/libs/fs/shared_fd.h"
+
+class ModemServiceTest;
 
 namespace cuttlefish {
 
@@ -29,6 +31,17 @@ enum ModemSimulatorExitCodes : int {
   kSuccess = 0,
   kSelectError = 1,
   kServerError = 2,
+};
+
+class ClientId {
+ public:
+  ClientId();
+
+  bool operator==(const ClientId&) const;
+
+ private:
+  static size_t next_id_;
+  size_t id_;
 };
 
 /**
@@ -41,17 +54,10 @@ class Client {
  public:
   enum ClientType { RIL, REMOTE };
 
-  ClientType type = RIL;
-  cuttlefish::SharedFD client_fd;
-  std::string incomplete_command;
-  std::mutex write_mutex;
-  bool first_read_command_;  // Only used when ClientType::REMOTE
-  bool is_valid = true;
-
   Client() = default;
   ~Client() = default;
-  Client(cuttlefish::SharedFD fd);
-  Client(cuttlefish::SharedFD fd, ClientType client_type);
+  Client(SharedFD fd);
+  Client(SharedFD fd, ClientType client_type);
   Client(const Client& client) = delete;
   Client(Client&& client) = delete;
 
@@ -61,25 +67,40 @@ class Client {
 
   void SendCommandResponse(std::string response) const;
   void SendCommandResponse(const std::vector<std::string>& responses) const;
+
+  ClientId Id() const { return id_; }
+  ClientType Type() const { return type; }
+
+ private:
+  friend class ChannelMonitor;
+  friend class ::ModemServiceTest;
+
+  ClientId id_;
+  ClientType type = RIL;
+  SharedFD client_fd;
+  std::string incomplete_command;
+  mutable std::mutex write_mutex;
+  bool first_read_command_;  // Only used when ClientType::REMOTE
+  bool is_valid = true;
 };
 
 class ChannelMonitor {
  public:
-  ChannelMonitor(ModemSimulator* modem, cuttlefish::SharedFD server);
+  ChannelMonitor(ModemSimulator& modem, cuttlefish::SharedFD server);
   ~ChannelMonitor();
 
   ChannelMonitor(const ChannelMonitor&) = delete;
   ChannelMonitor& operator=(const ChannelMonitor&) = delete;
 
-  void SetRemoteClient(cuttlefish::SharedFD client,  bool is_accepted);
-  void SendRemoteCommand(cuttlefish::SharedFD client, std::string& response);
-  void CloseRemoteConnection(cuttlefish::SharedFD client);
+  ClientId SetRemoteClient(SharedFD client, bool is_accepted);
+  void SendRemoteCommand(ClientId client, std::string& response);
+  void CloseRemoteConnection(ClientId client);
 
   // For modem services to send unsolicited commands
   void SendUnsolicitedCommand(std::string& response);
 
  private:
-  ModemSimulator* modem_;
+  ModemSimulator& modem_;
   std::thread monitor_thread_;
   cuttlefish::SharedFD server_;
   cuttlefish::SharedFD read_pipe_;
@@ -92,6 +113,8 @@ class ChannelMonitor {
   void ReadCommand(Client& client);
 
   void MonitorLoop();
+  static void removeInvalidClients(
+      std::vector<std::unique_ptr<Client>>& clients);
 };
 
 }  // namespace cuttlefish

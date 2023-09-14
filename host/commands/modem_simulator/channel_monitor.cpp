@@ -16,20 +16,33 @@
 
 #include "host/commands/modem_simulator/channel_monitor.h"
 
+#include <algorithm>
+
 #include <android-base/logging.h>
 #include <android-base/strings.h>
 
-#include <algorithm>
-
+#include "common/libs/fs/shared_buf.h"
+#include "common/libs/fs/shared_select.h"
 #include "host/commands/modem_simulator/modem_simulator.h"
 
 namespace cuttlefish {
 
 constexpr int32_t kMaxCommandLength = 4096;
 
-Client::Client(cuttlefish::SharedFD fd) : client_fd(fd) {}
+size_t ClientId::next_id_ = 0;
 
-Client::Client(cuttlefish::SharedFD fd, ClientType client_type)
+ClientId::ClientId() {
+  id_ = next_id_;
+  next_id_++;
+}
+
+bool ClientId::operator==(const ClientId& other) const {
+  return id_ == other.id_;
+}
+
+Client::Client(SharedFD fd) : client_fd(fd) {}
+
+Client::Client(SharedFD fd, ClientType client_type)
     : type(client_type), client_fd(fd) {}
 
 bool Client::operator==(const Client& other) const {
@@ -47,8 +60,8 @@ void Client::SendCommandResponse(std::string response) const {
   }
   LOG(VERBOSE) << " AT< " << response;
 
-  std::lock_guard<std::mutex> autolock(const_cast<Client*>(this)->write_mutex);
-  client_fd->Write(response.data(), response.size());
+  std::lock_guard<std::mutex> lock(write_mutex);
+  WriteAll(client_fd, response);
 }
 
 void Client::SendCommandResponse(
@@ -58,19 +71,20 @@ void Client::SendCommandResponse(
   }
 }
 
-ChannelMonitor::ChannelMonitor(ModemSimulator* modem,
-                               cuttlefish::SharedFD server)
-    : modem_(modem), server_(server) {
-  if (!cuttlefish::SharedFD::Pipe(&read_pipe_, &write_pipe_)) {
+ChannelMonitor::ChannelMonitor(ModemSimulator& modem, SharedFD server)
+    : modem_(modem), server_(std::move(server)) {
+  if (!SharedFD::Pipe(&read_pipe_, &write_pipe_)) {
     LOG(ERROR) << "Unable to create pipe, ignore";
   }
 
-  if (server_->IsOpen())
+  if (server_->IsOpen()) {
     monitor_thread_ = std::thread([this]() { MonitorLoop(); });
+  }
 }
 
-void ChannelMonitor::SetRemoteClient(cuttlefish::SharedFD client, bool is_accepted) {
+ClientId ChannelMonitor::SetRemoteClient(SharedFD client, bool is_accepted) {
   auto remote_client = std::make_unique<Client>(client, Client::REMOTE);
+  auto id = remote_client->Id();
 
   if (is_accepted) {
     // There may be new data from remote client before select.
@@ -90,10 +104,11 @@ void ChannelMonitor::SetRemoteClient(cuttlefish::SharedFD client, bool is_accept
   } else {
     LOG(ERROR) << "Pipe created fail, can't trigger monitor loop";
   }
+  return id;
 }
 
 void ChannelMonitor::AcceptIncomingConnection() {
-  auto client_fd  = cuttlefish::SharedFD::Accept(*server_);
+  auto client_fd = SharedFD::Accept(*server_);
   if (!client_fd->IsOpen()) {
     LOG(ERROR) << "Error accepting connection on socket: " << client_fd->StrError();
   } else {
@@ -102,7 +117,7 @@ void ChannelMonitor::AcceptIncomingConnection() {
     clients_.push_back(std::move(client));
     if (clients_.size() == 1) {
       // The first connected client default to be the unsolicited commands channel
-      modem_->OnFirstClientConnected();
+      modem_.OnFirstClientConnected();
     }
   }
 }
@@ -145,7 +160,7 @@ void ChannelMonitor::ReadCommand(Client& client) {
   // Split into commands and dispatch
   size_t pos = 0, r_pos = 0;  // '\r' or '\n'
   while (r_pos != std::string::npos) {
-    if (modem_->IsWaitingSmsPdu()) {
+    if (modem_.IsWaitingSmsPdu()) {
       r_pos = commands.find('\032', pos);  // In sms, find ctrl-z
     } else {
       r_pos = commands.find('\r', pos);
@@ -154,7 +169,7 @@ void ChannelMonitor::ReadCommand(Client& client) {
       auto command = commands.substr(pos, r_pos - pos);
       if (command.size() > 0) {  // "\r\r" ?
         LOG(VERBOSE) << "AT> " << command;
-        modem_->DispatchCommand(client, command);
+        modem_.DispatchCommand(client, command);
       }
       pos = r_pos + 1;  // Skip '\r'
     } else if (pos < commands.length()) {  // Incomplete command
@@ -174,10 +189,10 @@ void ChannelMonitor::SendUnsolicitedCommand(std::string& response) {
   }
 }
 
-void ChannelMonitor::SendRemoteCommand(cuttlefish::SharedFD client, std::string& response) {
+void ChannelMonitor::SendRemoteCommand(ClientId client, std::string& response) {
   auto iter = remote_clients_.begin();
   for (; iter != remote_clients_.end(); ++iter) {
-    if (iter->get()->client_fd == client) {
+    if (iter->get()->Id() == client) {
       iter->get()->SendCommandResponse(response);
       return;
     }
@@ -185,10 +200,10 @@ void ChannelMonitor::SendRemoteCommand(cuttlefish::SharedFD client, std::string&
   LOG(DEBUG) << "Remote client has closed.";
 }
 
-void ChannelMonitor::CloseRemoteConnection(cuttlefish::SharedFD client) {
+void ChannelMonitor::CloseRemoteConnection(ClientId client) {
   auto iter = remote_clients_.begin();
   for (; iter != remote_clients_.end(); ++iter) {
-    if (iter->get()->client_fd == client) {
+    if (iter->get()->Id() == client) {
       iter->get()->client_fd->Close();
       iter->get()->is_valid = false;
 
@@ -216,7 +231,8 @@ ChannelMonitor::~ChannelMonitor() {
   }
 }
 
-static void removeInvalidClients(std::vector<std::unique_ptr<Client>>& clients) {
+void ChannelMonitor::removeInvalidClients(
+    std::vector<std::unique_ptr<Client>>& clients) {
   auto iter = clients.begin();
   for (; iter != clients.end();) {
     if (iter->get()->is_valid) {
