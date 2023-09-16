@@ -28,14 +28,14 @@ use android_hardware_light::aidl::android::hardware::light::{
 use binder::{ExceptionCode, Interface, Status};
 
 mod lights_vsock_server;
-use lights_vsock_server::VsockServer;
+use lights_vsock_server::{SerializableLight, VsockServer};
 
 struct Light {
     hw_light: HwLight,
     state: HwLightState,
 }
 
-const NUM_DEFAULT_LIGHTS: i32 = 3;
+const NUM_DEFAULT_LIGHTS: i32 = 1;
 
 /// Defined so we can implement the ILights AIDL interface.
 pub struct LightsService {
@@ -54,8 +54,6 @@ impl LightsService {
             lights_map.insert(hw_light.id, Light { hw_light, state: Default::default() });
         }
 
-        let mut service = Self { lights: Mutex::new(lights_map), vsock_server: VsockServer::new() };
-
         let lights_server_port: u32 = system_properties::read("ro.boot.vsock_lights_port")
             .unwrap_or(None)
             .unwrap_or("0".to_string())
@@ -67,16 +65,19 @@ impl LightsService {
             .parse()
             .unwrap();
 
-        service.vsock_server.start(lights_server_port, guest_cid);
-
-        service
+        // TODO(b/297094647): Add an on_client_connected callback and share it with the
+        // vsock_server through a Weak reference.
+        Self {
+            lights: Mutex::new(lights_map),
+            vsock_server: VsockServer::new(lights_server_port, guest_cid).unwrap(),
+        }
     }
 }
 
 impl Default for LightsService {
     fn default() -> Self {
         let id_mapping_closure =
-            |light_id| HwLight { id: light_id, ordinal: light_id, r#type: LightType::BACKLIGHT };
+            |light_id| HwLight { id: light_id, ordinal: light_id, r#type: LightType::BATTERY };
 
         Self::new((1..=NUM_DEFAULT_LIGHTS).map(id_mapping_closure))
     }
@@ -88,6 +89,27 @@ impl ILights for LightsService {
 
         if let Some(light) = self.lights.lock().unwrap().get_mut(&id) {
             light.state = *state;
+
+            let ser_light = SerializableLight::new(
+                light.hw_light.id as u32,
+                light.state.color as u32,
+                match light.hw_light.r#type {
+                    LightType::BACKLIGHT => 0,
+                    LightType::KEYBOARD => 1,
+                    LightType::BUTTONS => 2,
+                    LightType::BATTERY => 3,
+                    LightType::NOTIFICATIONS => 4,
+                    LightType::ATTENTION => 5,
+                    LightType::BLUETOOTH => 6,
+                    LightType::WIFI => 7,
+                    LightType::MICROPHONE => 8,
+                    LightType::CAMERA => 9,
+                    _ => todo!(),
+                },
+            );
+
+            self.vsock_server.send_lights_state(vec![ser_light]);
+
             Ok(())
         } else {
             Err(Status::new_exception(ExceptionCode::UNSUPPORTED_OPERATION, None))
