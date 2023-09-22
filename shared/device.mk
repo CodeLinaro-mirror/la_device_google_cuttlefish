@@ -346,7 +346,7 @@ DEVICE_PACKAGE_OVERLAYS += $(LOCAL_AUDIO_DEVICE_PACKAGE_OVERLAYS)
 # Contexthub HAL
 #
 LOCAL_CONTEXTHUB_PRODUCT_PACKAGE ?= \
-    android.hardware.contexthub-service.example
+    com.android.hardware.contexthub
 PRODUCT_PACKAGES += $(LOCAL_CONTEXTHUB_PRODUCT_PACKAGE)
 
 #
@@ -480,7 +480,7 @@ endif
 
 # BootControl HAL
 PRODUCT_PACKAGES += \
-    android.hardware.boot-service.default \
+    com.android.hardware.boot \
     android.hardware.boot-service.default_recovery
 
 
