@@ -17,7 +17,7 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-cc_binary {
+cc_binary_host {
     name: "run_cvd",
     srcs: [
         "boot_state_machine.cc",
@@ -59,6 +59,7 @@ cc_binary {
         "libfruit",
         "libjsoncpp",
         "libprotobuf-cpp-full",
+        "libsparse",
     ],
     static_libs: [
         "libbuildversion",

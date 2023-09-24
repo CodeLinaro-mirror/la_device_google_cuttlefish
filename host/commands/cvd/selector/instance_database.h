@@ -20,6 +20,7 @@
 #include <memory>
 #include <vector>
 
+#include "common/libs/utils/json.h"
 #include "common/libs/utils/result.h"
 #include "host/commands/cvd/selector/constant_reference.h"
 #include "host/commands/cvd/selector/instance_database_types.h"
@@ -134,6 +135,8 @@ class InstanceDatabase {
       const Value& group_name) const;
   Result<Set<ConstRef<LocalInstanceGroup>>> FindGroupsByInstanceName(
       const Value& instance_name) const;
+  Result<Set<ConstRef<LocalInstance>>> FindInstancesByHome(
+      const Value& home) const;
   Result<Set<ConstRef<LocalInstance>>> FindInstancesById(const Value& id) const;
   Result<Set<ConstRef<LocalInstance>>> FindInstancesByGroupName(
       const Value& instance_specific_name) const;

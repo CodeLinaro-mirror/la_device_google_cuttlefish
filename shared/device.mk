@@ -40,6 +40,8 @@ PRODUCT_SOONG_NAMESPACES += device/generic/goldfish # for audio and wifi
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
 
+PRODUCT_16K_DEVELOPER_OPTION := true
+
 # TODO(b/205788876) remove this condition when openwrt has an image for arm.
 ifndef PRODUCT_ENFORCE_MAC80211_HWSIM
 PRODUCT_ENFORCE_MAC80211_HWSIM := true
@@ -271,6 +273,12 @@ PRODUCT_PACKAGES += \
 
 # Packages for HAL implementations
 
+# TODO(b/218588089) remove this once cuttlefish can drop HIDL.
+# This adds hwservicemanager and the allocator service to the device.
+PRODUCT_PACKAGES += \
+    hwservicemanager \
+    android.hidl.allocator@1.0-service
+
 #
 # Weaver aidl HAL
 #
@@ -456,9 +464,7 @@ PRODUCT_PACKAGES += $(LOCAL_THERMAL_HAL_PRODUCT_PACKAGE)
 # NeuralNetworks HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.neuralnetworks-service-sample-all \
-    android.hardware.neuralnetworks-service-sample-limited \
-    android.hardware.neuralnetworks-shim-service-sample
+    com.android.hardware.neuralnetworks
 
 # USB
 PRODUCT_PACKAGES += \
@@ -625,13 +631,6 @@ PRODUCT_VENDOR_PROPERTIES += ro.vendor.fingerprint_virtual_hal_start=true
 PRODUCT_PACKAGES += \
    dlkm_loader
 
-# NFC AIDL HAL
-PRODUCT_PACKAGES += \
-    android.hardware.nfc-service.cuttlefish
-
-PRODUCT_COPY_FILES += \
-    frameworks/native/data/etc/android.hardware.nfc.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.nfc.xml
-
 # CAS AIDL HAL
 PRODUCT_PACKAGES += \
     android.hardware.cas-service.example
@@ -644,8 +643,8 @@ PRODUCT_COPY_FILES += \
 ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
 # Thread Network AIDL HAL and simulation CLI
 PRODUCT_PACKAGES += \
-    android.hardware.threadnetwork-service.sim \
+    com.android.hardware.threadnetwork \
     ot-cli-ftd
-PRODUCT_COPY_FILES += \
-    frameworks/native/data/etc/android.hardware.thread_network.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.thread_network.xml
 endif # RELEASE_AIDL_USE_UNFROZEN
+
+PRODUCT_CHECK_VENDOR_SEAPP_VIOLATIONS := true

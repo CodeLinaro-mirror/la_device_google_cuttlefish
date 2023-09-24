@@ -65,7 +65,8 @@ ServerLoopImpl::ServerLoopImpl(
     const CuttlefishConfig::InstanceSpecific& instance)
     : config_(config),
       instance_(instance),
-      vm_name_to_control_sock_{InitializeVmToControlSockPath(instance)} {}
+      vm_name_to_control_sock_{InitializeVmToControlSockPath(instance)},
+      device_status_{DeviceStatus::kUnknown} {}
 
 Result<void> ServerLoopImpl::LateInject(fruit::Injector<>& injector) {
   command_sources_ = injector.getMultibindings<CommandSource>();
@@ -87,6 +88,7 @@ Result<void> ServerLoopImpl::Run() {
   ProcessMonitor process_monitor(std::move(process_monitor_properties));
 
   CF_EXPECT(process_monitor.StartAndMonitorProcesses());
+  device_status_ = DeviceStatus::kActive;
 
   while (true) {
     // TODO: use select to handle simultaneous connections.
@@ -95,8 +97,7 @@ Result<void> ServerLoopImpl::Run() {
       auto launcher_action_with_info_result = ReadLauncherActionFromFd(client);
       if (!launcher_action_with_info_result.ok()) {
         LOG(ERROR) << "Reading launcher command from monitor failed: "
-                   << launcher_action_with_info_result.error().Message();
-        LOG(DEBUG) << launcher_action_with_info_result.error().Trace();
+                   << launcher_action_with_info_result.error().FormatForEnv();
         break;
       }
       auto launcher_action = std::move(*launcher_action_with_info_result);
@@ -110,7 +111,7 @@ Result<void> ServerLoopImpl::Run() {
       auto response = LauncherResponse::kSuccess;
       if (!result.ok()) {
         LOG(ERROR) << "Failed to handle extended action request.";
-        LOG(DEBUG) << result.error().Trace();
+        LOG(ERROR) << result.error().FormatForEnv();
         response = LauncherResponse::kError;
       }
       const auto n_written = client->Write(&response, sizeof(response));
@@ -141,15 +142,19 @@ Result<void> ServerLoopImpl::HandleExtended(
     case ExtendedActionType::kSuspend: {
       LOG(DEBUG) << "Run_cvd received suspend request.";
       CF_EXPECT(HandleSuspend(action_info.serialized_data, process_monitor));
+      device_status_ = DeviceStatus::kSuspended;
       return {};
     }
     case ExtendedActionType::kResume: {
       LOG(DEBUG) << "Run_cvd received resume request.";
       CF_EXPECT(HandleResume(action_info.serialized_data, process_monitor));
+      device_status_ = DeviceStatus::kActive;
       return {};
     }
     case ExtendedActionType::kSnapshotTake: {
-      LOG(DEBUG) << "Run_cvd received resume request.";
+      LOG(DEBUG) << "Run_cvd received snapshot request.";
+      CF_EXPECT(device_status_.load() == DeviceStatus::kSuspended,
+                "The device is not suspended, and snapshot cannot be taken");
       CF_EXPECT(HandleSnapshotTake(action_info.serialized_data));
       return {};
     }
@@ -180,8 +185,7 @@ void ServerLoopImpl::HandleActionWithNoData(const LauncherAction action,
         std::exit(0);
       } else {
         LOG(ERROR) << "Failed to stop subprocesses:\n"
-                   << stop.error().Message();
-        LOG(DEBUG) << "Failed to stop subprocesses:\n" << stop.error().Trace();
+                   << stop.error().FormatForEnv();
         auto response = LauncherResponse::kError;
         client->Write(&response, sizeof(response));
       }
@@ -206,8 +210,8 @@ void ServerLoopImpl::HandleActionWithNoData(const LauncherAction action,
 
       auto stop = process_monitor.StopMonitoredProcesses();
       if (!stop.ok()) {
-        LOG(ERROR) << "Stopping processes failed:\n" << stop.error().Message();
-        LOG(DEBUG) << "Stopping processes failed:\n" << stop.error().Trace();
+        LOG(ERROR) << "Stopping processes failed:\n"
+                   << stop.error().FormatForEnv();
         auto response = LauncherResponse::kError;
         client->Write(&response, sizeof(response));
         break;
@@ -231,8 +235,8 @@ void ServerLoopImpl::HandleActionWithNoData(const LauncherAction action,
     case LauncherAction::kRestart: {
       auto stop = process_monitor.StopMonitoredProcesses();
       if (!stop.ok()) {
-        LOG(ERROR) << "Stopping processes failed:\n" << stop.error().Message();
-        LOG(DEBUG) << "Stopping processes failed:\n" << stop.error().Trace();
+        LOG(ERROR) << "Stopping processes failed:\n"
+                   << stop.error().FormatForEnv();
         auto response = LauncherResponse::kError;
         client->Write(&response, sizeof(response));
         break;
@@ -369,6 +373,12 @@ void ServerLoopImpl::RestartRunCvd(int notification_fd) {
   execv("/proc/self/exe", argv.get());
   // execve should not return, so something went wrong.
   PLOG(ERROR) << "execv returned: ";
+}
+
+Result<std::string> ServerLoopImpl::VmControlSocket() const {
+  CF_EXPECT_EQ(config_.vm_manager(), "crosvm",
+               "Other VMs but crosvm is not yet supported.");
+  return instance_.PerInstanceInternalUdsPath("crosvm_control.sock");
 }
 
 }  // namespace run_cvd_impl
