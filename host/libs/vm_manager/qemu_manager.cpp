@@ -584,6 +584,11 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
     add_hvc_sink();
   }
 
+  // sensors_fifo_vm.{in/out} are created along with the streamer process,
+  // which is not created w/ QEMU.
+  // /dev/hvc13 = sensors
+  add_hvc_sink();
+
   auto disk_num = instance.virtual_disk_paths().size();
 
   for (auto i = 0; i < VmManager::kMaxDisks - disk_num; i++) {

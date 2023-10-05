@@ -388,7 +388,7 @@ PRODUCT_PACKAGES += \
 LOCAL_ENABLE_OEMLOCK ?= true
 ifeq ($(LOCAL_ENABLE_OEMLOCK),true)
 ifeq ($(LOCAL_OEMLOCK_PRODUCT_PACKAGE),)
-    LOCAL_OEMLOCK_PRODUCT_PACKAGE := android.hardware.oemlock-service.remote
+    LOCAL_OEMLOCK_PRODUCT_PACKAGE := com.google.cf.oemlock
 endif
 PRODUCT_PACKAGES += \
     $(LOCAL_OEMLOCK_PRODUCT_PACKAGE)
@@ -399,7 +399,7 @@ endif
 # Health
 ifeq ($(LOCAL_HEALTH_PRODUCT_PACKAGE),)
     LOCAL_HEALTH_PRODUCT_PACKAGE := \
-    android.hardware.health-service.cuttlefish \
+    com.google.cf.health \
     android.hardware.health-service.cuttlefish_recovery \
 
 endif
@@ -407,7 +407,7 @@ PRODUCT_PACKAGES += $(LOCAL_HEALTH_PRODUCT_PACKAGE)
 
 # Health Storage
 PRODUCT_PACKAGES += \
-    android.hardware.health.storage-service.cuttlefish
+    com.google.cf.health.storage
 
 PRODUCT_PACKAGES += \
     android.hardware.input.processor-service.example
@@ -420,7 +420,7 @@ PRODUCT_PACKAGES += \
 # Lights
 #
 PRODUCT_PACKAGES += \
-    android.hardware.lights-service.cuttlefish \
+    com.google.cf.light \
 
 #
 # KeyMint HAL
@@ -452,12 +452,12 @@ endif
 # Tetheroffload HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.tetheroffload-service.example
+    com.android.hardware.tetheroffload
 
 #
 # Thermal HAL
 #
-LOCAL_THERMAL_HAL_PRODUCT_PACKAGE ?= android.hardware.thermal-service.example
+LOCAL_THERMAL_HAL_PRODUCT_PACKAGE ?= com.android.hardware.thermal
 PRODUCT_PACKAGES += $(LOCAL_THERMAL_HAL_PRODUCT_PACKAGE)
 
 #
@@ -641,10 +641,11 @@ PRODUCT_COPY_FILES += \
 # New in-development HAL services using unfrozen interfaces. Do not include if
 # RELEASE_AIDL_USE_UNFROZEN is true (in the 'next' release configuration).
 ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
-# Thread Network AIDL HAL and simulation CLI
+# Thread Network AIDL HAL, simulation CLI and OT daemon controller
 PRODUCT_PACKAGES += \
     com.android.hardware.threadnetwork \
-    ot-cli-ftd
+    ot-cli-ftd \
+    ot-ctl
 endif # RELEASE_AIDL_USE_UNFROZEN
 
 PRODUCT_CHECK_VENDOR_SEAPP_VIOLATIONS := true
