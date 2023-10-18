@@ -126,6 +126,7 @@ fruit::Component<> runCvdComponent(
       .bindInstance(*instance)
       .bindInstance(*environment)
 #ifdef __linux__
+      .install(AutomotiveProxyComponent)
       .install(ConfigServerComponent)
       .install(launchModemComponent)
       .install(launchStreamerComponent)
@@ -157,6 +158,7 @@ fruit::Component<> runCvdComponent(
       .install(RootCanalComponent)
       .install(CasimirComponent)
       .install(NetsimServerComponent)
+      .install(SecureEnvFilesComponent)
       .install(SecureEnvComponent)
       .install(serverLoopComponent)
       .install(validationComponent)
