@@ -15,34 +15,29 @@
 
 #pragma once
 
-#include <condition_variable>
-#include <mutex>
+#include <atomic>
+#include <thread>
+
+#include "common/libs/fs/shared_fd.h"
+#include "common/libs/utils/result.h"
+#include "host/libs/command_util/runner/defs.h"
 
 namespace cuttlefish {
 
-/* only for secure_env, will be replaced with a better implementation
- * This is used for 1-to-1 communication only.
- *
- */
-class EventNotifier {
+class SnapshotCommandHandler {
  public:
-  EventNotifier() = default;
-  /*
-   * Always sleep if a thread calls this. Wakes up on notification.
-   */
-  void WaitAndReset();
-  void Notify();
+  ~SnapshotCommandHandler();
+  SnapshotCommandHandler(SharedFD channel_to_run_cvd,
+                         std::atomic<bool>& running);
 
  private:
-  std::mutex m_;
-  std::condition_variable cv_;
-  bool flag_ = false;
-};
+  Result<void> SuspendResumeHandler();
+  Result<ExtendedActionType> ReadRunCvdSnapshotCmd() const;
+  void Join();
 
-struct EventNotifiers {
-  EventNotifier keymaster_suspended_;
-  EventNotifier gatekeeper_suspended_;
-  EventNotifier oemlock_suspended_;
+  SharedFD channel_to_run_cvd_;
+  std::atomic<bool>& shared_running_;  // shared by other components outside
+  std::thread handler_thread_;
 };
 
 }  // namespace cuttlefish

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 The Android Open Source Project
+ * Copyright (C) 2023 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,28 +13,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #pragma once
 
-#include <thread>
-#include "host/libs/config/cuttlefish_config.h"
+#include <string>
+
+#include "common/libs/utils/result.h"
+#include "host/libs/command_util/runner/defs.h"
 
 namespace cuttlefish {
 
-class MetricsHostReceiver {
- private:
-  bool is_metrics_enabled_;
-  std::thread thread_;
-  std::string metrics_queue_name_;
-
-  void ServerLoop();
-  // Send different Clearcut events based on the received message
-  void ProcessMessage(const std::string& text);
-
- public:
-  MetricsHostReceiver(bool is_metrics_enabled);
-  ~MetricsHostReceiver();
-  bool Initialize(const std::string& metrics_queue_name);
-  void Join();
+struct RequestInfo {
+  std::string serialized_data;
+  ExtendedActionType extended_action_type;
 };
+
+Result<std::string> SerializeSuspendRequest();
+Result<std::string> SerializeResumeRequest();
+Result<std::string> SerializeSnapshotTakeRequest(
+    const std::string& snapshot_path);
+Result<std::string> SerializeStartScreenRecordingRequest();
+Result<std::string> SerializeStopScreenRecordingRequest();
 
 }  // namespace cuttlefish
