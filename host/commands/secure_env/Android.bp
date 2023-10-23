@@ -112,6 +112,7 @@ cc_library {
         "device_tpm.cpp",
         "oemlock/oemlock.cpp",
         "oemlock/oemlock_responder.cpp",
+        "snapshot_control.cpp",
         "storage/insecure_json_storage.cpp",
     ],
     target: {

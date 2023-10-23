@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2018 The Android Open Source Project
+// Copyright (C) 2023 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,25 +17,17 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-cc_binary_host {
-    name: "snapshot_util_cvd",
+cc_binary {
+    name: "metrics_launcher",
     srcs: [
-        "main.cc",
-        "parse.cc",
-        "snapshot_taker.cc",
+        "metrics_launcher.cpp",
     ],
-    shared_libs: [
-        "libbase",
-        "libcuttlefish_fs",
-        "libcuttlefish_utils",
-        "libjsoncpp",
-    ],
+        shared_libs: [
+        "libbase", ],
     static_libs: [
-        "libcuttlefish_command_util",
-        "libcuttlefish_host_config",
-        "libcuttlefish_run_cvd_proto",
         "libgflags",
-        "libprotobuf-cpp-full",
+        "libcuttlefish_msg_queue",
+        "libcuttlefish_metrics",
     ],
     defaults: ["cuttlefish_host"],
 }
