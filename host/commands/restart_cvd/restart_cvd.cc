@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <cstdlib>
+#include <iostream>
 
 #include <android-base/logging.h>
 #include <gflags/gflags.h>
@@ -76,9 +77,9 @@ int main(int argc, char** argv) {
   google::ParseCommandLineFlags(&argc, &argv, true);
 
   cuttlefish::Result<void> result = cuttlefish::RestartCvdMain();
+
   if (!result.ok()) {
-    LOG(ERROR) << result.error().Message();
-    LOG(DEBUG) << result.error().Trace();
+    LOG(ERROR) << result.error().FormatForEnv();
     return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;

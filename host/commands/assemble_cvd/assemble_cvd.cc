@@ -24,6 +24,7 @@
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
+#include "common/libs/utils/contains.h"
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/flag_parser.h"
@@ -34,6 +35,7 @@
 #include "host/commands/assemble_cvd/flag_feature.h"
 #include "host/commands/assemble_cvd/flags.h"
 #include "host/commands/assemble_cvd/flags_defaults.h"
+#include "host/libs/command_util/snapshot_utils.h"
 #include "host/libs/config/adb/adb.h"
 #include "host/libs/config/config_flag.h"
 #include "host/libs/config/custom_actions.h"
@@ -85,7 +87,7 @@ FetcherConfig FindFetcherConfig(const std::vector<std::string>& files) {
       LOG(ERROR) << "Could not load fetcher config file.";
     }
   }
-  LOG(ERROR) << "Could locate fetcher config file.";
+  LOG(DEBUG) << "Could not locate fetcher config file.";
   return fetcher_config;
 }
 
@@ -117,7 +119,8 @@ Result<void> SaveConfig(const CuttlefishConfig& tmp_config_obj) {
 #endif
 
 Result<void> CreateLegacySymlinks(
-    const CuttlefishConfig::InstanceSpecific& instance) {
+    const CuttlefishConfig::InstanceSpecific& instance,
+    const CuttlefishConfig::EnvironmentSpecific& environment) {
   std::string log_files[] = {"kernel.log",
                              "launcher.log",
                              "logcat",
@@ -157,7 +160,7 @@ Result<void> CreateLegacySymlinks(
   const auto mac80211_uds_name = "vhost_user_mac80211";
 
   const auto mac80211_uds_path =
-      instance.PerInstanceInternalUdsPath(mac80211_uds_name);
+      environment.PerEnvironmentUdsPath(mac80211_uds_name);
   const auto legacy_mac80211_uds_path =
       instance.PerInstanceInternalPath(mac80211_uds_name);
 
@@ -167,6 +170,81 @@ Result<void> CreateLegacySymlinks(
   }
 
   return {};
+}
+
+Result<void> RestoreHostFiles(const std::string& snapshot_dir_path) {
+  const auto meta_json_path = SnapshotMetaJsonPath(snapshot_dir_path);
+  const auto cuttlefish_home = StringFromEnv("HOME", CurrentDirectory());
+
+  auto guest_snapshot_dirs =
+      CF_EXPECT(GuestSnapshotDirectories(snapshot_dir_path));
+  auto filter_guest_dir =
+      [&guest_snapshot_dirs](const std::string& src_dir) -> bool {
+    return !Contains(guest_snapshot_dirs, src_dir);
+  };
+  // cp -r snapshot_dir_path HOME
+  CF_EXPECT(CopyDirectoryRecursively(snapshot_dir_path, cuttlefish_home,
+                                     /* delete destination first */ false,
+                                     filter_guest_dir));
+
+  return {};
+}
+
+Result<std::set<std::string>> PreservingOnResume(
+    const bool creating_os_disk, const int modem_simulator_count) {
+  const auto snapshot_path = FLAGS_snapshot_path;
+  const bool resume_requested = FLAGS_resume || !snapshot_path.empty();
+  if (!resume_requested) {
+    return std::set<std::string>{};
+  }
+  CF_EXPECT(snapshot_path.empty() || !creating_os_disk,
+            "Restoring from snapshot requires not creating OS disks");
+  if (creating_os_disk) {
+    // not snapshot restore, must be --resume
+    LOG(INFO) << "Requested resuming a previous session (the default behavior) "
+              << "but the base images have changed under the overlay, making "
+              << "the overlay incompatible. Wiping the overlay files.";
+    return std::set<std::string>{};
+  }
+
+  // either --resume && !creating_os_disk, or restoring from a snapshot
+  std::set<std::string> preserving;
+  preserving.insert("overlay.img");
+  preserving.insert("ap_overlay.img");
+  preserving.insert("os_composite_disk_config.txt");
+  preserving.insert("os_composite_gpt_header.img");
+  preserving.insert("os_composite_gpt_footer.img");
+  preserving.insert("os_composite.img");
+  preserving.insert("sdcard.img");
+  preserving.insert("sdcard_overlay.img");
+  preserving.insert("boot_repacked.img");
+  preserving.insert("vendor_dlkm_repacked.img");
+  preserving.insert("vendor_boot_repacked.img");
+  preserving.insert("access-kregistry");
+  preserving.insert("hwcomposer-pmem");
+  preserving.insert("NVChip");
+  preserving.insert("gatekeeper_secure");
+  preserving.insert("gatekeeper_insecure");
+  preserving.insert("keymint_secure_deletion_data");
+  preserving.insert("modem_nvram.json");
+  preserving.insert("recording");
+  preserving.insert("persistent_composite_disk_config.txt");
+  preserving.insert("persistent_composite_gpt_header.img");
+  preserving.insert("persistent_composite_gpt_footer.img");
+  preserving.insert("persistent_composite.img");
+  preserving.insert("persistent_composite_overlay.img");
+  preserving.insert("uboot_env.img");
+  preserving.insert("factory_reset_protected.img");
+  preserving.insert("misc.img");
+  preserving.insert("metadata.img");
+  preserving.insert("oemlock_secure");
+  preserving.insert("oemlock_insecure");
+  for (int i = 0; i < modem_simulator_count; i++) {
+    std::stringstream ss;
+    ss << "iccprofile_for_sim" << i << ".xml";
+    preserving.insert(ss.str());
+  }
+  return preserving;
 }
 
 Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
@@ -205,7 +283,6 @@ Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
     // which is used for preserving/deleting iccprofile_for_simX.xml files
     int modem_simulator_count = 0;
 
-    std::set<std::string> preserving;
     bool creating_os_disk = false;
     // if any device needs to rebuild its composite disk,
     // then don't preserve any files and delete everything.
@@ -226,61 +303,51 @@ Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
     // the overlay, then we want to keep this until userdata.img was externally
     // replaced.
     creating_os_disk &= FLAGS_use_overlay;
-    if (FLAGS_resume && creating_os_disk) {
-      LOG(INFO) << "Requested resuming a previous session (the default behavior) "
-                << "but the base images have changed under the overlay, making the "
-                << "overlay incompatible. Wiping the overlay files.";
-    } else if (FLAGS_resume && !creating_os_disk) {
-      preserving.insert("overlay.img");
-      preserving.insert("ap_overlay.img");
-      preserving.insert("os_composite_disk_config.txt");
-      preserving.insert("os_composite_gpt_header.img");
-      preserving.insert("os_composite_gpt_footer.img");
-      preserving.insert("os_composite.img");
-      preserving.insert("sdcard.img");
-      preserving.insert("sdcard_overlay.img");
-      preserving.insert("boot_repacked.img");
-      preserving.insert("vendor_dlkm_repacked.img");
-      preserving.insert("vendor_boot_repacked.img");
-      preserving.insert("access-kregistry");
-      preserving.insert("hwcomposer-pmem");
-      preserving.insert("NVChip");
-      preserving.insert("gatekeeper_secure");
-      preserving.insert("gatekeeper_insecure");
-      preserving.insert("keymint_secure_deletion_data");
-      preserving.insert("modem_nvram.json");
-      preserving.insert("recording");
-      preserving.insert("persistent_composite_disk_config.txt");
-      preserving.insert("persistent_composite_gpt_header.img");
-      preserving.insert("persistent_composite_gpt_footer.img");
-      preserving.insert("persistent_composite.img");
-      preserving.insert("persistent_composite_overlay.img");
-      preserving.insert("uboot_env.img");
-      preserving.insert("factory_reset_protected.img");
-      preserving.insert("misc.img");
-      preserving.insert("metadata.img");
-      preserving.insert("oemlock_secure");
-      preserving.insert("oemlock_insecure");
-      std::stringstream ss;
-      for (int i = 0; i < modem_simulator_count; i++) {
-        ss.clear();
-        ss << "iccprofile_for_sim" << i << ".xml";
-        preserving.insert(ss.str());
-        ss.str("");
-      }
+
+    std::set<std::string> preserving =
+        CF_EXPECT(PreservingOnResume(creating_os_disk, modem_simulator_count),
+                  "Error in Preserving set calculation.");
+
+    const std::string snapshot_path = FLAGS_snapshot_path;
+    if (!snapshot_path.empty()) {
+      CF_EXPECT(RestoreHostFiles(snapshot_path));
     }
-    CF_EXPECT(CleanPriorFiles(preserving, config.assembly_dir(),
-                              config.instance_dirs()),
+    auto instance_dirs = config.instance_dirs();
+    auto environment_dirs = config.environment_dirs();
+    std::vector<std::string> clean_dirs;
+    clean_dirs.push_back(config.assembly_dir());
+    clean_dirs.insert(clean_dirs.end(), instance_dirs.begin(),
+                      instance_dirs.end());
+    clean_dirs.insert(clean_dirs.end(), environment_dirs.begin(),
+                      environment_dirs.end());
+    CF_EXPECT(CleanPriorFiles(preserving, clean_dirs),
               "Failed to clean prior files");
 
-    auto defaultGroup = "cvdnetwork";
-    const mode_t defaultMode = S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH;
+    auto default_group = "cvdnetwork";
+    const mode_t default_mode = S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH;
 
     CF_EXPECT(EnsureDirectoryExists(config.root_dir()));
     CF_EXPECT(EnsureDirectoryExists(config.assembly_dir()));
     CF_EXPECT(EnsureDirectoryExists(config.instances_dir()));
-    CF_EXPECT(EnsureDirectoryExists(config.instances_uds_dir(), defaultMode,
-                                    defaultGroup));
+    CF_EXPECT(EnsureDirectoryExists(config.instances_uds_dir(), default_mode,
+                                    default_group));
+    CF_EXPECT(EnsureDirectoryExists(config.environments_dir(), default_mode,
+                                    default_group));
+    CF_EXPECT(EnsureDirectoryExists(config.environments_uds_dir(), default_mode,
+                                    default_group));
+
+    auto environment =
+        const_cast<const CuttlefishConfig&>(config).ForDefaultEnvironment();
+
+    CF_EXPECT(EnsureDirectoryExists(environment.environment_dir(), default_mode,
+                                    default_group));
+    CF_EXPECT(EnsureDirectoryExists(environment.environment_uds_dir(),
+                                    default_mode, default_group));
+    CF_EXPECT(EnsureDirectoryExists(environment.PerEnvironmentLogPath(""),
+                                    default_mode, default_group));
+    CF_EXPECT(
+        EnsureDirectoryExists(environment.PerEnvironmentGrpcSocketPath(""),
+                              default_mode, default_group));
 
     LOG(INFO) << "Path for instance UDS: " << config.instances_uds_dir();
 
@@ -300,15 +367,15 @@ Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
       CF_EXPECT(EnsureDirectoryExists(recording_dir));
       CF_EXPECT(EnsureDirectoryExists(instance.PerInstanceLogPath("")));
 
-      CF_EXPECT(EnsureDirectoryExists(instance.instance_uds_dir(), defaultMode,
-                                      defaultGroup));
+      CF_EXPECT(EnsureDirectoryExists(instance.instance_uds_dir(), default_mode,
+                                      default_group));
       CF_EXPECT(EnsureDirectoryExists(instance.instance_internal_uds_dir(),
-                                      defaultMode, defaultGroup));
+                                      default_mode, default_group));
       CF_EXPECT(EnsureDirectoryExists(instance.PerInstanceGrpcSocketPath(""),
-                                      defaultMode, defaultGroup));
+                                      default_mode, default_group));
 
       // TODO(schuffelen): Move this code somewhere better
-      CF_EXPECT(CreateLegacySymlinks(instance));
+      CF_EXPECT(CreateLegacySymlinks(instance, environment));
     }
     CF_EXPECT(SaveConfig(config), "Failed to initialize configuration");
   }
@@ -362,6 +429,22 @@ static void ExtractKernelParamsFromFetcherConfig(
 
   SetCommandLineOptionWithMode("initramfs_path", discovered_ramdisk.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
+}
+
+Result<void> VerifyConditionsOnSnapshotRestore(
+    const std::string& snapshot_path) {
+  if (snapshot_path.empty()) {
+    return {};
+  }
+  const std::string instance_dir(FLAGS_instance_dir);
+  const std::string assembly_dir(FLAGS_assembly_dir);
+  CF_EXPECT(snapshot_path.empty() || FLAGS_resume,
+            "--resume must be true when restoring from snapshot.");
+  CF_EXPECT_EQ(instance_dir, CF_DEFAULTS_INSTANCE_DIR,
+               "--snapshot_path does not allow customizing --instance_dir");
+  CF_EXPECT_EQ(assembly_dir, CF_DEFAULTS_ASSEMBLY_DIR,
+               "--snapshot_path does not allow customizing --assembly_dir");
+  return {};
 }
 
 fruit::Component<> FlagsComponent() {
@@ -449,10 +532,8 @@ Result<int> AssembleCvdMain(int argc, char** argv) {
     return 1;  // For parity with gflags
   }
 
-  // set --resume=true if --snapshot_path is not empty
-  const std::string snapshot_path(FLAGS_snapshot_path);
-  CF_EXPECT(snapshot_path.empty() || FLAGS_resume,
-            "--resume must be true when restoring from snapshot.");
+  CF_EXPECT(VerifyConditionsOnSnapshotRestore(FLAGS_snapshot_path),
+            "The conditions for --snapshot_path=<dir> do not meet.");
 
   // TODO(schuffelen): Put in "unknown flag" guards after gflags is removed.
   // gflags either consumes all arguments that start with - or leaves all of
@@ -479,7 +560,6 @@ int main(int argc, char** argv) {
   if (res.ok()) {
     return *res;
   }
-  LOG(ERROR) << "assemble_cvd failed: \n" << res.error().Message();
-  LOG(DEBUG) << "assemble_cvd failed: \n" << res.error().Trace();
+  LOG(ERROR) << "assemble_cvd failed: \n" << res.error().FormatForEnv();
   abort();
 }

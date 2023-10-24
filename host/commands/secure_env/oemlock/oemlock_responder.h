@@ -15,7 +15,7 @@
 
 #pragma once
 
-#include "common/libs/security/channel.h"
+#include "common/libs/transport/channel.h"
 #include "common/libs/utils/result.h"
 #include "host/commands/secure_env/oemlock/oemlock.h"
 
@@ -24,13 +24,13 @@ namespace oemlock {
 
 class OemLockResponder {
  public:
-  OemLockResponder(secure_env::Channel& channel,
+  OemLockResponder(transport::Channel& channel,
                    OemLock& oemlock);
 
   Result<void> ProcessMessage();
 
  private:
-  secure_env::Channel& channel_;
+  transport::Channel& channel_;
   OemLock& oemlock_;
 };
 

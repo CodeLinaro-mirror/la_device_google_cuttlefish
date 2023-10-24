@@ -35,7 +35,11 @@ static std::map<std::string, Json::ValueType> kConfigsKeyMap = {
     {"instances", Json::ValueType::arrayValue},
     {"fetch", Json::ValueType::objectValue},
     {"metrics", Json::ValueType::objectValue},
+    {"common", Json::ValueType::objectValue},
 };
+
+static std::map<std::string, Json::ValueType> kCommonKeyMap = {
+    {"group_name", Json::ValueType::stringValue}};
 
 static std::map<std::string, Json::ValueType> kFetchKeyMap = {
     {"api_key", Json::ValueType::stringValue},
@@ -47,6 +51,7 @@ static std::map<std::string, Json::ValueType> kFetchKeyMap = {
 
 static std::map<std::string, Json::ValueType> kInstanceKeyMap = {
     {"@import", Json::ValueType::stringValue},
+    {"name", Json::ValueType::stringValue},
     {"vm", Json::ValueType::objectValue},
     {"boot", Json::ValueType::objectValue},
     {"security", Json::ValueType::objectValue},
@@ -238,6 +243,8 @@ Result<void> ValidateCfConfigs(const Json::Value& root) {
 
   CF_EXPECT(ValidateTypo(root, kConfigsKeyMap),
             "Typo in config main parameters");
+  CF_EXPECT(ValidateTypo(root["common"], kCommonKeyMap),
+            "Typo in config common parameters");
   CF_EXPECT(ValidateTypo(root["fetch"], kFetchKeyMap),
             "Typo in config fetch parameters");
   CF_EXPECT(ValidateTypo(root["metrics"], kMetricsMap),

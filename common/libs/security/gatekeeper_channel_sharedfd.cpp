@@ -23,7 +23,7 @@ namespace cuttlefish {
 
 SharedFdGatekeeperChannel::SharedFdGatekeeperChannel(SharedFD input,
                                                      SharedFD output)
-    : channel_(secure_env::SharedFdChannel(std::move(input), std::move(output))) {}
+    : channel_(transport::SharedFdChannel(std::move(input), std::move(output))) {}
 
 bool SharedFdGatekeeperChannel::SendRequest(
     uint32_t command, const gatekeeper::GateKeeperMessage& message) {
@@ -39,9 +39,10 @@ bool SharedFdGatekeeperChannel::SendMessage(uint32_t command, bool is_response,
                                             const gatekeeper::GateKeeperMessage& message) {
   LOG(DEBUG) << "Sending message with id: " << command;
   auto payload_size = message.GetSerializedSize();
-  auto to_send_result = secure_env::CreateMessage(command, payload_size);
+  auto to_send_result = transport::CreateMessage(command, payload_size);
   if (!to_send_result.ok()) {
-    LOG(ERROR) << "Could not allocate Gatekeeper Message: " << to_send_result.error().Message();
+    LOG(ERROR) << "Could not allocate Gatekeeper Message: "
+               << to_send_result.error().FormatForEnv();
     return false;
   }
   auto to_send = std::move(to_send_result.value());
@@ -49,12 +50,13 @@ bool SharedFdGatekeeperChannel::SendMessage(uint32_t command, bool is_response,
 
   auto result = is_response ? channel_.SendResponse(*to_send) : channel_.SendRequest(*to_send);
   if (!result.ok()) {
-    LOG(ERROR) << "Could not write Gatekeeper Message: " << result.error().Message();
+    LOG(ERROR) << "Could not write Gatekeeper Message: "
+               << result.error().FormatForEnv();
   }
   return result.ok();
 }
 
-secure_env::ManagedMessage SharedFdGatekeeperChannel::ReceiveMessage() {
+transport::ManagedMessage SharedFdGatekeeperChannel::ReceiveMessage() {
   auto result = channel_.ReceiveMessage();
   if (!result.ok()) {
     return {};

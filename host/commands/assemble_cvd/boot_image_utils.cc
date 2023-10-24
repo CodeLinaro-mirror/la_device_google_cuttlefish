@@ -148,7 +148,7 @@ void UnpackRamdisk(const std::string& original_ramdisk_path,
                         << " . Exited with status " << success;
   }
   const auto ret = EnsureDirectoryExists(ramdisk_stage_dir);
-  CHECK(ret.ok()) << ret.error().Message();
+  CHECK(ret.ok()) << ret.error().FormatForEnv();
 
   success = Execute(
       {"/bin/bash", "-c",
@@ -464,7 +464,7 @@ Result<std::string> ReadAndroidVersionFromBootImage(
               << ". Defaulting to 0.0.0.";
     return "0.0.0";
   }
-  std::regex re("[1-9][0-9]*.[0-9]+.[0-9]+");
+  std::regex re("[1-9][0-9]*[.][0-9]+[.][0-9]+");
   CF_EXPECT(std::regex_match(os_version, re), "Version string is not a valid version \"" + os_version + "\"");
   return os_version;
 }

@@ -23,9 +23,10 @@
 #include <sstream>
 
 #include <android-base/file.h>
-#include "fmt/format.h"
+#include <android-base/scopeguard.h>
+#include <fmt/format.h>
 #include <fruit/fruit.h>
-#include "json/value.h"
+#include <json/value.h>
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
@@ -164,12 +165,11 @@ Result<void> InstanceManager::SetInstanceGroup(
   using InstanceInfo = selector::InstanceDatabase::InstanceInfo;
   std::vector<InstanceInfo> instances_info;
   for (const auto& instance : per_instance_info) {
-    InstanceInfo info{.name = instance.per_instance_name_,
-                      .id = instance.instance_id_};
+    InstanceInfo info{.id = instance.instance_id_,
+                      .name = instance.per_instance_name_};
     instances_info.push_back(info);
   }
-  auto result = instance_db.AddInstances(group_name, instances_info);
-  if (!result.ok()) {
+  android::base::ScopeGuard action_on_failure([&instance_db, &new_group]() {
     /*
      * The way InstanceManager uses the database is that it adds an empty
      * group, gets an handle, and add instances to it. Thus, failing to adding
@@ -181,8 +181,12 @@ Result<void> InstanceManager::SetInstanceGroup(
      *
      */
     instance_db.RemoveInstanceGroup(new_group.Get());
-    return CF_ERR(result.error().Trace());
-  }
+  });
+  CF_EXPECTF(instance_db.AddInstances(group_name, instances_info),
+             "Failed to add instances to the group \"{}\" so the group "
+             "is not added",
+             group_name);
+  action_on_failure.Disable();
   return {};
 }
 
@@ -294,8 +298,9 @@ Result<cvd::Status> InstanceManager::CvdFleetImpl(const uid_t uid,
     group_json["group_name"] = group->GroupName();
     auto result = IssueStatusCommand(*group, err);
     if (!result.ok()) {
-      WriteAll(err, fmt::format("Group '{}' status error: '{}'",
-                                group->GroupName(), result.error().Message()));
+      WriteAll(err,
+               fmt::format("Group '{}' status error: '{}'", group->GroupName(),
+                           result.error().FormatForEnv()));
       status.set_code(cvd::Status::INTERNAL);
       continue;
     }
@@ -400,7 +405,7 @@ cvd::Status InstanceManager::CvdClear(const SharedFD& out,
       if (config_path.ok()) {
         auto stop_result = IssueStopCommand(out, err, *config_path, *group);
         if (!stop_result.ok()) {
-          LOG(ERROR) << stop_result.error().Message();
+          LOG(ERROR) << stop_result.error().FormatForEnv();
         }
       }
       RemoveFile(group->HomeDir() + "/cuttlefish_runtime");

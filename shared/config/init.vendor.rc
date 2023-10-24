@@ -9,6 +9,8 @@ on early-init
     start vendor.dlkm_loader
     # specially load zram as it is a "leaf" GKI module
     exec u:r:modprobe:s0 -- /system/bin/modprobe -a -d /system/lib/modules zram.ko
+    # specially load memhealth as it is a "leaf" GKI module
+    exec u:r:modprobe:s0 -- /system/bin/modprobe -a -d /system/lib/modules memhealth.ko
 
 on init
     # ZRAM setup
@@ -117,7 +119,3 @@ service suspend_blocker /vendor/bin/suspend_blocker
     class early_hal # Start together with system_suspend HAL
     group system
     user root
-
-on boot && property:ro.boot.enable_confirmationui=*
-   enable vendor.confirmationui_default
-   start vendor.confirmationui_default

@@ -34,9 +34,11 @@
 
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
+#include "common/libs/utils/json.h"
 #include "common/libs/utils/network.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
+#include "host/libs/command_util/snapshot_utils.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/known_paths.h"
 #include "host/libs/vm_manager/crosvm_builder.h"
@@ -44,16 +46,6 @@
 
 namespace cuttlefish {
 namespace vm_manager {
-
-namespace {
-
-std::string GetControlSocketPath(
-    const CuttlefishConfig::InstanceSpecific& instance,
-    const std::string& socket_name) {
-  return instance.PerInstanceInternalUdsPath(socket_name.c_str());
-}
-
-}  // namespace
 
 bool CrosvmManager::IsSupported() {
 #ifdef __ANDROID__
@@ -164,8 +156,6 @@ std::string ToSingleLineString(const Json::Value& value) {
   builder["indentation"] = "";
   return Json::writeString(builder, value);
 }
-
-constexpr auto crosvm_socket = "crosvm_control.sock";
 
 void MaybeConfigureVulkanIcd(const CuttlefishConfig& config, Command* command) {
   const auto& gpu_mode = config.ForDefaultInstance().gpu_mode();
@@ -353,7 +343,7 @@ Result<void> ConfigureGpu(const CuttlefishConfig& config, Command* crosvm_cmd) {
   if (gpu_mode == kGpuModeGuestSwiftshader) {
     crosvm_cmd->AddParameter("--gpu=backend=2D", gpu_common_string);
   } else if (gpu_mode == kGpuModeDrmVirgl) {
-    crosvm_cmd->AddParameter("--gpu=backend=virglrenderer",
+    crosvm_cmd->AddParameter("--gpu=backend=virglrenderer,context-types=virgl2",
                              gpu_common_3d_string);
   } else if (gpu_mode == kGpuModeGfxstream) {
     crosvm_cmd->AddParameter(
@@ -396,6 +386,7 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     const CuttlefishConfig& config,
     std::vector<VmmDependencyCommand*>& dependencyCommands) {
   auto instance = config.ForDefaultInstance();
+  auto environment = config.ForDefaultEnvironment();
 
   CrosvmBuilder crosvm_cmd;
   crosvm_cmd.Cmd().AddPrerequisite([&dependencyCommands]() -> Result<void> {
@@ -406,11 +397,34 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     return {};
   });
 
+  // Add "--restore_path=<guest snapshot directory>" if there is a snapshot
+  // path supplied.
+  //
+  // Use the process_restarter "-first_time_argument" flag to only do this for
+  // the first invocation. If the guest requests a restart, we don't want crosvm
+  // to restore again. It should reboot normally.
+  std::string first_time_argument;
+  const std::string snapshot_dir_path = config.snapshot_path();
+  if (!snapshot_dir_path.empty()) {
+    auto meta_info_json = CF_EXPECT(LoadMetaJson(snapshot_dir_path));
+    const std::vector<std::string> selectors{kGuestSnapshotField,
+                                             instance.id()};
+    const auto guest_snapshot_dir_suffix =
+        CF_EXPECT(GetValue<std::string>(meta_info_json, selectors));
+    // guest_snapshot_dir_suffix is a relative to
+    // the snapshot_path
+    const auto restore_path = snapshot_dir_path + "/" +
+                              guest_snapshot_dir_suffix + "/" +
+                              kGuestSnapshotBase;
+    first_time_argument = "--restore=" + restore_path;
+  }
+
   crosvm_cmd.ApplyProcessRestarter(instance.crosvm_binary(),
-                                   kCrosvmVmResetExitCode);
+                                   first_time_argument, kCrosvmVmResetExitCode);
   crosvm_cmd.Cmd().AddParameter("run");
-  crosvm_cmd.AddControlSocket(GetControlSocketPath(instance, crosvm_socket),
+  crosvm_cmd.AddControlSocket(instance.CrosvmSocketPath(),
                               instance.crosvm_binary());
+
   if (!instance.smt()) {
     crosvm_cmd.Cmd().AddParameter("--no-smt");
   }
@@ -427,9 +441,9 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   }
 
   if (config.virtio_mac80211_hwsim() &&
-      !config.vhost_user_mac80211_hwsim().empty()) {
+      !environment.vhost_user_mac80211_hwsim().empty()) {
     crosvm_cmd.Cmd().AddParameter("--vhost-user-mac80211-hwsim=",
-                                  config.vhost_user_mac80211_hwsim());
+                                  environment.vhost_user_mac80211_hwsim());
   }
 
   if (instance.protected_vm()) {
@@ -518,7 +532,7 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     crosvm_cmd.AddTap(instance.mobile_tap_name(), instance.mobile_mac());
     crosvm_cmd.AddTap(instance.ethernet_tap_name(), instance.ethernet_mac());
 
-    if (!config.virtio_mac80211_hwsim() && config.enable_wifi()) {
+    if (!config.virtio_mac80211_hwsim() && environment.enable_wifi()) {
       wifi_tap = crosvm_cmd.AddTap(instance.wifi_tap_name());
     }
   }
@@ -692,6 +706,11 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   } else {
     crosvm_cmd.AddHvcSink();
   }
+
+  // /dev/hvc13 = sensors
+  crosvm_cmd.AddHvcReadWrite(
+      instance.PerInstanceInternalPath("sensors_fifo_vm.out"),
+      instance.PerInstanceInternalPath("sensors_fifo_vm.in"));
 
   for (auto i = 0; i < VmManager::kMaxDisks - disk_num; i++) {
     crosvm_cmd.AddHvcSink();

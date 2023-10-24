@@ -18,7 +18,6 @@
 
 #include <unistd.h>
 
-#include <chrono>
 #include <cstdio>
 #include <fstream>
 #include <string>
@@ -36,6 +35,7 @@
 #include "host/commands/cvd/parser/cf_flags_validator.h"
 #include "host/commands/cvd/parser/fetch_cvd_parser.h"
 #include "host/commands/cvd/parser/launch_cvd_parser.h"
+#include "host/commands/cvd/parser/selector_parser.h"
 
 namespace cuttlefish {
 namespace {
@@ -154,26 +154,27 @@ Json::Value ParseArgsToJson(const std::vector<std::string>& strings) {
 }  // namespace
 
 Result<Json::Value> ParseJsonFile(const std::string& file_path) {
-  CF_EXPECT(FileExists(file_path), "provided File to cvd load does not exist");
+  CF_EXPECTF(FileExists(file_path),
+             "Provided file \"{}\" to cvd load does not exist", file_path);
 
   std::string file_content;
   using android::base::ReadFileToString;
-  CF_EXPECT(ReadFileToString(file_path.c_str(), &file_content,
-                             /* follow_symlinks */ true),
-            "Failed to read file");
-  auto root = CF_EXPECT(ParseJson(file_content), "Failed parsing JSON file");
+  CF_EXPECTF(ReadFileToString(file_path.c_str(), &file_content,
+                              /* follow_symlinks */ true),
+             "Failed to read file \"{}\"", file_path);
+  auto root = CF_EXPECTF(ParseJson(file_content),
+                         "Failed parsing file \"{}\" as JSON", file_path);
   return root;
 }
 
 Result<Json::Value> GetOverridedJsonConfig(
     const std::string& config_path,
     const std::vector<std::string>& override_flags) {
-  Json::Value result = CF_EXPECT(ParseJsonFile(config_path),
-                                 "Parsing json config input file failed");
+  Json::Value result = CF_EXPECT(ParseJsonFile(config_path));
 
   if (override_flags.size() > 0) {
     CF_EXPECT(ValidateArgsFormat(override_flags),
-              "override parameters are not in the correct format");
+              "override flag parameters are not in the correct format");
     auto args_tree = ParseArgsToJson(override_flags);
     MergeTwoJsonObjs(result, args_tree);
   }
@@ -181,15 +182,13 @@ Result<Json::Value> GetOverridedJsonConfig(
   return result;
 }
 
-Result<LoadDirectories> GenerateLoadDirectories(const int num_instances) {
+Result<LoadDirectories> GenerateLoadDirectories(const std::string& parent_directory,
+                                                const int num_instances) {
   CF_EXPECT_GT(num_instances, 0, "No instances in config to load");
-
-  auto parent_directory = "/tmp/cvd/" + std::to_string(getuid()) + "/";
-  auto time = std::chrono::system_clock::now().time_since_epoch().count();
   auto result = LoadDirectories{
-      .target_directory = parent_directory + std::to_string(time),
-      .launch_home_directory =
-          parent_directory + std::to_string(time) + "_home/"};
+      .target_directory = parent_directory + "/artifacts",
+      .launch_home_directory = parent_directory + "/home",
+  };
 
   std::vector<std::string> system_image_directories;
   for (int i = 0; i < num_instances; i++) {
@@ -212,6 +211,7 @@ Result<CvdFlags> ParseCvdConfigs(Json::Value& root,
                                  const LoadDirectories& load_directories) {
   CF_EXPECT(ValidateCfConfigs(root), "Loaded Json validation failed");
   return CvdFlags{.launch_cvd_flags = CF_EXPECT(ParseLaunchCvdConfigs(root)),
+                  .selector_flags = CF_EXPECT(ParseSelectorConfigs(root)),
                   .fetch_cvd_flags = CF_EXPECT(ParseFetchCvdConfigs(
                       root, load_directories.target_directory,
                       load_directories.target_subdirectories))};

@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 The Android Open Source Project
+ * Copyright (C) 2023 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,25 +16,16 @@
 
 #pragma once
 
-#include "common/libs/fs/shared_fd.h"
-#include "common/libs/security/channel.h"
+#include <string>
+#include <vector>
+
+#include <json/json.h>
+
+#include "common/libs/utils/result.h"
 
 namespace cuttlefish {
-namespace secure_env {
 
-class SharedFdChannel : public Channel {
- public:
-  SharedFdChannel(SharedFD input, SharedFD output);
-  Result<void> SendRequest(RawMessage& message) override;
-  Result<void> SendResponse(RawMessage& message) override;
-  Result<ManagedMessage> ReceiveMessage() override;
+Result<std::vector<std::string>> ParseSelectorConfigs(Json::Value& root);
 
- private:
-  SharedFD input_;
-  SharedFD output_;
+};  // namespace cuttlefish
 
-  Result<void> SendMessage(RawMessage& message, bool response);
-};
-
-}  // namespace secure_env
-}  // namespace cuttlefish

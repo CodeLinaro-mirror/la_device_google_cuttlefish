@@ -26,13 +26,14 @@ TARGET_CPU_ABI := riscv64
 
 AUDIOSERVER_MULTILIB := first
 
+
+ifndef RISCV64_BUILD_X86_64_HOST_TOOLS
 HOST_CROSS_OS := linux_musl
 HOST_CROSS_ARCH := arm64
 HOST_CROSS_2ND_ARCH :=
-
+endif
 # Include 64-bit mediaserver to support 64-bit only devices
 TARGET_DYNAMIC_64_32_MEDIASERVER := true
-
 # Temporary hack while prebuilt modules are missing riscv64.
 ALLOW_MISSING_DEPENDENCIES := true
 

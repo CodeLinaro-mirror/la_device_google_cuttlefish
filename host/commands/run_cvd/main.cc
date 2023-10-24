@@ -116,6 +116,7 @@ class InstanceLifecycle : public LateInjected {
 
 fruit::Component<> runCvdComponent(
     const CuttlefishConfig* config,
+    const CuttlefishConfig::EnvironmentSpecific* environment,
     const CuttlefishConfig::InstanceSpecific* instance) {
   return fruit::createComponent()
       .addMultibinding<DiagnosticInformation, CuttlefishEnvironment>()
@@ -123,7 +124,9 @@ fruit::Component<> runCvdComponent(
       .addMultibinding<LateInjected, InstanceLifecycle>()
       .bindInstance(*config)
       .bindInstance(*instance)
+      .bindInstance(*environment)
 #ifdef __linux__
+      .install(AutomotiveProxyComponent)
       .install(ConfigServerComponent)
       .install(launchModemComponent)
       .install(launchStreamerComponent)
@@ -155,6 +158,7 @@ fruit::Component<> runCvdComponent(
       .install(RootCanalComponent)
       .install(CasimirComponent)
       .install(NetsimServerComponent)
+      .install(SecureEnvFilesComponent)
       .install(SecureEnvComponent)
       .install(serverLoopComponent)
       .install(validationComponent)
@@ -230,12 +234,13 @@ Result<void> RunCvdMain(int argc, char** argv) {
 
   CF_EXPECT(StdinValid(), "Invalid stdin");
   auto config = CF_EXPECT(FindConfigFromStdin());
+  auto environment = config->ForDefaultEnvironment();
   auto instance = config->ForDefaultInstance();
 
   ConfigureLogs(*config, instance);
   CF_EXPECT(ChdirIntoRuntimeDir(instance));
 
-  fruit::Injector<> injector(runCvdComponent, config, &instance);
+  fruit::Injector<> injector(runCvdComponent, config, &environment, &instance);
 
   for (auto& late_injected : injector.getMultibindings<LateInjected>()) {
     CF_EXPECT(late_injected->LateInject(injector));
@@ -257,7 +262,6 @@ int main(int argc, char** argv) {
   if (result.ok()) {
     return 0;
   }
-  LOG(ERROR) << result.error().Message();
-  LOG(DEBUG) << result.error().Trace();
+  LOG(ERROR) << result.error().FormatForEnv();
   abort();
 }

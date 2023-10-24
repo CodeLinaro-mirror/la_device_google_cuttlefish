@@ -18,11 +18,10 @@ package com.android.cuttlefish.tests;
 import static org.junit.Assert.assertEquals;
 
 import com.android.tradefed.device.TestDeviceState;
-import com.android.tradefed.invoker.TestInformation;
 import com.android.tradefed.testtype.DeviceJUnit4ClassRunner;
-import com.android.tradefed.testtype.junit4.AfterClassWithInfo;
 import com.android.tradefed.testtype.junit4.BaseHostJUnit4Test;
 
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -36,14 +35,14 @@ public class FastbootRebootTest extends BaseHostJUnit4Test {
         getDevice().rebootIntoBootloader();
     }
 
-    @AfterClassWithInfo
-    public static void rebootToAndroid(TestInformation information) throws Exception {
-        information.getDevice().reboot();
+    @After
+    public void rebootToAndroid() throws Exception {
+        getDevice().reboot();
     }
 
     @Test
     public void testReboot() throws Exception {
-        getDevice().rebootUserspace();
+        getDevice().reboot();
         assertEquals(TestDeviceState.ONLINE, getDevice().getDeviceState());
     }
 
@@ -60,7 +59,7 @@ public class FastbootRebootTest extends BaseHostJUnit4Test {
     }
 
     @Test
-    @Ignore("b/296629925")
+    @Ignore("b/303236495")
     public void testRebootFastboot() throws Exception {
         getDevice().rebootIntoFastbootd();
         assertEquals(TestDeviceState.FASTBOOTD, getDevice().getDeviceState());

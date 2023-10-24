@@ -15,10 +15,12 @@
  */
 #include "host/commands/cvd/server_command/load_configs.h"
 
+#include <chrono>
 #include <iostream>
 #include <mutex>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <android-base/strings.h>
@@ -37,6 +39,83 @@
 #include "host/commands/cvd/types.h"
 
 namespace cuttlefish {
+
+namespace {
+
+constexpr std::string_view kCredentialSourceOverride =
+    "fetch.credential_source=";
+
+struct LoadFlags {
+  bool help = false;
+  std::vector<std::string> overrides;
+  std::string config_path;
+  std::string credential_source;
+  std::string base_dir;
+};
+
+std::vector<Flag> GetFlagsVector(LoadFlags& load_flags) {
+  std::vector<Flag> flags;
+  flags.emplace_back(GflagsCompatFlag("help", load_flags.help));
+  flags.emplace_back(
+      GflagsCompatFlag("credential_source", load_flags.credential_source));
+  flags.emplace_back(
+      GflagsCompatFlag("base_directory", load_flags.base_dir)
+          .Help("Parent directory for artifacts and runtime files. Defaults to "
+                "/tmp/cvd/<uid>/<timestamp>."));
+  FlagAlias alias = {FlagAliasMode::kFlagPrefix, "--override="};
+  flags.emplace_back(Flag().Alias(alias).Setter(
+      [&overrides = load_flags.overrides](const FlagMatch& m) -> Result<void> {
+        overrides.push_back(m.value);
+        return {};
+      }));
+  return flags;
+}
+
+std::string DefaultBaseDir() {
+    auto time = std::chrono::system_clock::now().time_since_epoch().count();
+    std::stringstream ss;
+    ss << "/tmp/cvd/" << getuid() << "/" << time;
+    return ss.str();
+}
+
+void MakeAbsolute(std::string& path, const std::string& working_dir) {
+    if (path.size() > 0 && path[0] == '/') {
+      return;
+    }
+    path.insert(0, working_dir + "/");
+}
+
+Result<LoadFlags> GetFlags(const RequestWithStdio& request) {
+  LoadFlags load_flags;
+  auto flags = GetFlagsVector(load_flags);
+  auto args = ParseInvocation(request.Message()).arguments;
+  CF_EXPECT(ParseFlags(flags, args));
+  CF_EXPECT(load_flags.help || args.size() > 0,
+            "No arguments provided to cvd load command, please provide at "
+            "least one argument (help or path to json file)");
+  auto working_directory = request.Message().command_request().working_directory();
+
+  if (load_flags.base_dir.empty()) {
+    load_flags.base_dir = DefaultBaseDir();
+  }
+  MakeAbsolute(load_flags.base_dir, working_directory);
+
+  load_flags.config_path = args.front();
+  MakeAbsolute(load_flags.config_path, working_directory);
+
+  if (!load_flags.credential_source.empty()) {
+    for (const auto& name : load_flags.overrides) {
+      CF_EXPECT(!android::base::StartsWith(name, kCredentialSourceOverride),
+                "Specifying both --override=fetch.credential_source and the "
+                "--credential_source flag is not allowed.");
+    }
+    load_flags.overrides.emplace_back(std::string(kCredentialSourceOverride) +
+                                      load_flags.credential_source);
+  }
+  return load_flags;
+}
+
+}  // namespace
 
 class LoadConfigsCommand : public CvdServerHandler {
  public:
@@ -74,40 +153,20 @@ class LoadConfigsCommand : public CvdServerHandler {
 
   Result<std::vector<RequestWithStdio>> CreateCommandSequence(
       const RequestWithStdio& request) {
-    bool help = false;
+    const auto flags = CF_EXPECT(GetFlags(request));
 
-    std::vector<Flag> flags;
-    flags.emplace_back(GflagsCompatFlag("help", help));
-    std::vector<std::string> overrides;
-    FlagAlias alias = {FlagAliasMode::kFlagPrefix, "--override="};
-    flags.emplace_back(Flag().Alias(alias).Setter(
-        [&overrides](const FlagMatch& m) -> Result<void> {
-          overrides.push_back(m.value);
-          return {};
-        }));
-    auto args = ParseInvocation(request.Message()).arguments;
-    CF_EXPECT(ParseFlags(flags, args));
-    CF_EXPECT(args.size() > 0,
-              "No arguments provided to cvd load command, please provide at "
-              "least one argument (help or path to json file)");
-
-    if (help) {
+    if (flags.help) {
       std::stringstream help_msg_stream;
-      help_msg_stream << "Usage: cvd " << kLoadSubCmd;
+      help_msg_stream << "Usage: cvd " << kLoadSubCmd << "\n";
       const auto help_msg = help_msg_stream.str();
       CF_EXPECT(WriteAll(request.Out(), help_msg) == help_msg.size());
       return {};
     }
 
-    std::string config_path = args.front();
-    if (config_path[0] != '/') {
-      config_path = request.Message().command_request().working_directory() +
-                    "/" + config_path;
-    }
     Json::Value json_configs =
-        CF_EXPECT(GetOverridedJsonConfig(config_path, overrides));
+        CF_EXPECT(GetOverridedJsonConfig(flags.config_path, flags.overrides));
     const auto load_directories =
-        CF_EXPECT(GenerateLoadDirectories(json_configs["instances"].size()));
+        CF_EXPECT(GenerateLoadDirectories(flags.base_dir, json_configs["instances"].size()));
     auto cvd_flags = CF_EXPECT(ParseCvdConfigs(json_configs, load_directories),
                                "parsing json configs failed");
     std::vector<cvd::Request> req_protos;
@@ -143,7 +202,7 @@ class LoadConfigsCommand : public CvdServerHandler {
       (*launch_cmd.mutable_env()).erase(kAndroidProductOut);
     }
 
-    /* cvd load will always create instances in deamon mode (to be independent
+    /* cvd load will always create instances in daemon mode (to be independent
      of terminal) and will enable reporting automatically (to run automatically
      without question during launch)
      */
@@ -156,8 +215,11 @@ class LoadConfigsCommand : public CvdServerHandler {
     // Add system flag for multi-build scenario
     launch_cmd.add_args(load_directories.system_image_directory_flag);
 
-    launch_cmd.mutable_selector_opts()->add_args(
-        std::string("--") + selector::SelectorFlags::kDisableDefaultGroup);
+    auto selector_opts = launch_cmd.mutable_selector_opts();
+
+    for (const auto& flag: cvd_flags.selector_flags) {
+      selector_opts->add_args(flag);
+    }
 
     /*Verbose is disabled by default*/
     auto dev_null = SharedFD::Open("/dev/null", O_RDWR);

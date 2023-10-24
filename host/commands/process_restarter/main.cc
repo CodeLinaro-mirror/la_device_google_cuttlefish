@@ -32,18 +32,18 @@ namespace cuttlefish {
 namespace {
 
 static bool ShouldRestartProcess(siginfo_t const& info, const Parser& parsed) {
-  if (info.si_code == CLD_DUMPED && parsed.WhenDumped()) {
+  if (info.si_code == CLD_DUMPED && parsed.when_dumped) {
     return true;
   }
-  if (info.si_code == CLD_KILLED && parsed.WhenKilled()) {
+  if (info.si_code == CLD_KILLED && parsed.when_killed) {
     return true;
   }
-  if (info.si_code == CLD_EXITED && parsed.WhenExitedWithFailure() &&
+  if (info.si_code == CLD_EXITED && parsed.when_exited_with_failure &&
       info.si_status != 0) {
     return true;
   }
   if (info.si_code == CLD_EXITED &&
-      info.si_status == parsed.WhenExitedWithCode()) {
+      info.si_status == parsed.when_exited_with_code) {
     return true;
   }
   return false;
@@ -54,17 +54,27 @@ Result<int> RunProcessRestarter(std::vector<std::string> args) {
   auto parsed = CF_EXPECT(Parser::ConsumeAndParse(args));
 
   // move-assign the remaining args to exec_args
-  const std::vector<std::string> exec_args = std::move(args);
-  const std::string& exec_cmd = exec_args.front();
+  std::vector<std::string> exec_args = std::move(args);
+
+  bool needs_pop = false;
+  if (!parsed.first_time_argument.empty()) {
+    exec_args.push_back(parsed.first_time_argument);
+    needs_pop = true;
+  }
 
   siginfo_t info;
   do {
-    LOG(VERBOSE) << "Starting monitored process " << exec_cmd;
+    LOG(VERBOSE) << "Starting monitored process " << exec_args.front();
     // The Execute() API and all APIs effectively called by it show the proper
     // error message using LOG(ERROR).
     info = CF_EXPECT(
         Execute(exec_args, SubprocessOptions().ExitWithParent(true), WEXITED),
         "Executing " << android::base::Join(exec_args, " ") << " failed.");
+
+    if (needs_pop) {
+      needs_pop = false;
+      exec_args.pop_back();
+    }
   } while (ShouldRestartProcess(info, parsed));
   return info.si_status;
 }
@@ -77,8 +87,7 @@ int main(int argc, char** argv) {
   auto result = cuttlefish::RunProcessRestarter(
       std::move(cuttlefish::ArgsToVec(argc - 1, argv + 1)));
   if (!result.ok()) {
-    LOG(ERROR) << result.error().Message();
-    LOG(DEBUG) << result.error().Trace();
+    LOG(DEBUG) << result.error().FormatForEnv();
     return EXIT_FAILURE;
   }
   return result.value();

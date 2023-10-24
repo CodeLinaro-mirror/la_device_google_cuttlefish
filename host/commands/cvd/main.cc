@@ -29,8 +29,6 @@
 #include "host/commands/cvd/fetch/fetch_cvd.h"
 #include "host/commands/cvd/flag.h"
 #include "host/commands/cvd/frontline_parser.h"
-#include "host/commands/cvd/handle_reset.h"
-#include "host/commands/cvd/reset_client_utils.h"
 #include "host/commands/cvd/run_server.h"
 #include "host/commands/cvd/server_constants.h"
 #include "host/libs/config/host_tools_version.h"
@@ -85,7 +83,7 @@ Result<void> KillOldServer() {
     LOG(ERROR) << "Old server listening on \"cvd_server\" socket "
                << "must be killed first but failed to terminate it.";
     LOG(ERROR) << "Perhaps, try cvd reset -y";
-    CF_EXPECT(result.ok(), result.error().Trace());
+    CF_EXPECT(std::move(result));
   }
   return {};
 }
@@ -123,19 +121,13 @@ Result<void> CvdMain(int argc, char** argv, char** envp,
          .acloud_translator_optout = parsed.acloud_translator_optout});
   }
 
-  /*
-   * For now, the parser needs a running server. The parser will
-   * be moved to the server side, and then it won't.
-   *
-   */
-  CF_EXPECT(client.ValidateServerVersion(),
-            "Unable to ensure cvd_server is running.");
-
   if (android::base::Basename(all_args[0]) == "cvd") {
     CF_EXPECT(client.HandleCvdCommand(all_args, env));
     return {};
   }
 
+  CF_EXPECT(client.ValidateServerVersion(),
+            "Unable to ensure cvd_server is running.");
   CF_EXPECT(client.HandleCommand(all_args, env, {}));
 
   return {};
@@ -155,7 +147,7 @@ int main(int argc, char** argv, char** envp) {
   if (result.ok()) {
     return 0;
   } else {
-    std::cerr << result.error().Trace() << std::endl;
+    std::cerr << result.error().FormatForEnv() << std::endl;
     return -1;
   }
 }

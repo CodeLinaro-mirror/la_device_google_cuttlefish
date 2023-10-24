@@ -26,10 +26,10 @@
 #include <tss2/tss2_rc.h>
 
 #include "common/libs/fs/shared_fd.h"
-#include "common/libs/security/channel_sharedfd.h"
 #include "common/libs/security/confui_sign.h"
 #include "common/libs/security/gatekeeper_channel_sharedfd.h"
 #include "common/libs/security/keymaster_channel_sharedfd.h"
+#include "common/libs/transport/channel_sharedfd.h"
 #include "host/commands/kernel_log_monitor/kernel_log_server.h"
 #include "host/commands/kernel_log_monitor/utils.h"
 #include "host/commands/secure_env/confui_sign_server.h"
@@ -37,10 +37,11 @@
 #include "host/commands/secure_env/gatekeeper_responder.h"
 #include "host/commands/secure_env/in_process_tpm.h"
 #include "host/commands/secure_env/keymaster_responder.h"
-#include "host/commands/secure_env/oemlock/oemlock_responder.h"
 #include "host/commands/secure_env/oemlock/oemlock.h"
+#include "host/commands/secure_env/oemlock/oemlock_responder.h"
 #include "host/commands/secure_env/proxy_keymaster_context.h"
 #include "host/commands/secure_env/rust/kmr_ta.h"
+#include "host/commands/secure_env/snapshot_control.h"
 #include "host/commands/secure_env/soft_gatekeeper.h"
 #include "host/commands/secure_env/storage/insecure_json_storage.h"
 #include "host/commands/secure_env/storage/storage.h"
@@ -53,6 +54,7 @@
 #include "host/libs/config/logging.h"
 
 DEFINE_int32(confui_server_fd, -1, "A named socket to serve confirmation UI");
+DEFINE_int32(snapshot_control_fd, -1, "A named socket for snapshot operations");
 DEFINE_int32(keymaster_fd_in, -1, "A pipe for keymaster communication");
 DEFINE_int32(keymaster_fd_out, -1, "A pipe for keymaster communication");
 DEFINE_int32(keymint_fd_in, -1, "A pipe for keymint communication");
@@ -223,7 +225,7 @@ SecureEnvComponent() {
 
 }  // namespace
 
-int SecureEnvMain(int argc, char** argv) {
+Result<void> SecureEnvMain(int argc, char** argv) {
   DefaultSubprocessLogging(argv);
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   keymaster::SoftKeymasterLogger km_logger;
@@ -247,8 +249,7 @@ int SecureEnvMain(int argc, char** argv) {
   } else if (FLAGS_keymint_impl == "tpm") {
     security_level = KM_SECURITY_LEVEL_TRUSTED_ENVIRONMENT;
   } else {
-    LOG(FATAL) << "Unknown keymint implementation " << FLAGS_keymint_impl;
-    return -1;
+    return CF_ERR("Unknown Keymint Implementation: " + FLAGS_keymint_impl);
   }
 
   // The guest image may have either the C++ implementation of
@@ -273,17 +274,18 @@ int SecureEnvMain(int argc, char** argv) {
   // Start the C++ reference implementation of KeyMint.
   LOG(INFO) << "starting C++ KeyMint implementation in a thread with FDs in="
             << FLAGS_keymaster_fd_in << ", out=" << FLAGS_keymaster_fd_out;
+  CF_EXPECTF(security_level == KM_SECURITY_LEVEL_SOFTWARE ||
+                 security_level == KM_SECURITY_LEVEL_TRUSTED_ENVIRONMENT,
+             "Unknown keymaster security_level \"{}\" for \"{}\"",
+             security_level, FLAGS_keymint_impl);
   if (security_level == KM_SECURITY_LEVEL_SOFTWARE) {
     keymaster_context.reset(new keymaster::PureSoftKeymasterContext(
         keymaster::KmVersion::KEYMINT_3, KM_SECURITY_LEVEL_SOFTWARE));
-  } else if (security_level == KM_SECURITY_LEVEL_TRUSTED_ENVIRONMENT) {
+  } else /* KM_SECURITY_LEVEL_TRUSTED_ENVIRONMENT */ {
     keymaster_context.reset(
         new TpmKeymasterContext(*resource_manager, *keymaster_enforcement));
-  } else {
-    LOG(FATAL) << "Unknown keymaster security level " << security_level
-               << " for " << FLAGS_keymint_impl;
-    return -1;
   }
+
   // keymaster::AndroidKeymaster puts the context pointer into a UniquePtr,
   // taking ownership.
   keymaster.reset(new keymaster::AndroidKeymaster(
@@ -291,51 +293,89 @@ int SecureEnvMain(int argc, char** argv) {
       keymaster::MessageVersion(keymaster::KmVersion::KEYMINT_3,
                                 0 /* km_date */)));
 
+  SharedFD channel_to_run_cvd = DupFdFlag(FLAGS_snapshot_control_fd);
+  std::shared_ptr<SnapshotController> snapshot_controller = std::move(CF_EXPECT(
+      SnapshotController::CreateSnapshotController(channel_to_run_cvd)));
+  CF_EXPECT(snapshot_controller != nullptr);
+  threads.emplace_back([&snapshot_controller]() {
+    // will send suspend/resume commands to all the other worker threads
+    snapshot_controller->ControllerLoop();
+  });
+
   auto keymaster_in = DupFdFlag(FLAGS_keymaster_fd_in);
   auto keymaster_out = DupFdFlag(FLAGS_keymaster_fd_out);
   keymaster::AndroidKeymaster* borrowed_km = keymaster.get();
-  threads.emplace_back([keymaster_in, keymaster_out, borrowed_km]() {
+  threads.emplace_back([keymaster_in, keymaster_out, borrowed_km,
+                        &snapshot_controller]() {
     while (true) {
       SharedFdKeymasterChannel keymaster_channel(keymaster_in, keymaster_out);
 
       KeymasterResponder keymaster_responder(keymaster_channel, *borrowed_km);
 
-      while (keymaster_responder.ProcessMessage()) {
-      }
+      bool loop_continue = true;
+      do {
+        std::shared_lock<std::shared_mutex> reader_lock;
+        if (snapshot_controller->Enabled()) {
+          reader_lock =
+              std::move(snapshot_controller->WaitInitializedOrResumed());
+        }
+        loop_continue = keymaster_responder.ProcessMessage();
+        // release the reader lock.
+      } while (loop_continue);
     }
   });
 
   auto gatekeeper_in = DupFdFlag(FLAGS_gatekeeper_fd_in);
   auto gatekeeper_out = DupFdFlag(FLAGS_gatekeeper_fd_out);
-  threads.emplace_back([gatekeeper_in, gatekeeper_out, &gatekeeper]() {
+  threads.emplace_back([gatekeeper_in, gatekeeper_out, &gatekeeper,
+                        &snapshot_controller]() {
     while (true) {
       SharedFdGatekeeperChannel gatekeeper_channel(gatekeeper_in,
                                                    gatekeeper_out);
 
       GatekeeperResponder gatekeeper_responder(gatekeeper_channel, *gatekeeper);
 
-      while (gatekeeper_responder.ProcessMessage()) {
-      }
+      bool loop_continue = true;
+      do {
+        std::shared_lock<std::shared_mutex> reader_lock;
+        if (snapshot_controller->Enabled()) {
+          reader_lock =
+              std::move(snapshot_controller->WaitInitializedOrResumed());
+        }
+        loop_continue = gatekeeper_responder.ProcessMessage();
+        // release the reader lock.
+      } while (loop_continue);
     }
   });
 
   auto oemlock_in = DupFdFlag(FLAGS_oemlock_fd_in);
   auto oemlock_out = DupFdFlag(FLAGS_oemlock_fd_out);
-  threads.emplace_back([oemlock_in, oemlock_out, &oemlock]() {
-    while (true) {
-      secure_env::SharedFdChannel channel(oemlock_in, oemlock_out);
-      oemlock::OemLockResponder responder(channel, *oemlock);
-      while (responder.ProcessMessage().ok()) {
-      }
-    }
-  });
+  threads.emplace_back(
+      [oemlock_in, oemlock_out, &oemlock, &snapshot_controller]() {
+        while (true) {
+          transport::SharedFdChannel channel(oemlock_in, oemlock_out);
+          oemlock::OemLockResponder responder(channel, *oemlock);
+          bool loop_continue = true;
+          do {
+            std::shared_lock<std::shared_mutex> reader_lock;
+            if (snapshot_controller->Enabled()) {
+              reader_lock =
+                  std::move(snapshot_controller->WaitInitializedOrResumed());
+            }
+            loop_continue = responder.ProcessMessage().ok();
+            // release the reader lock.
+          } while (loop_continue);
+        }
+      });
 
   auto confui_server_fd = DupFdFlag(FLAGS_confui_server_fd);
-  threads.emplace_back([confui_server_fd, resource_manager]() {
-    ConfUiSignServer confui_sign_server(*resource_manager, confui_server_fd);
-    // no return, infinite loop
-    confui_sign_server.MainLoop();
-  });
+  threads.emplace_back(
+      [confui_server_fd, resource_manager, &snapshot_controller]() {
+        ConfUiSignServer confui_sign_server(
+            *resource_manager, snapshot_controller, confui_server_fd);
+        // no return, infinite loop
+        confui_sign_server.MainLoop();
+      });
 
   auto kernel_events_fd = DupFdFlag(FLAGS_kernel_events_fd);
   threads.emplace_back(StartKernelEventMonitor(kernel_events_fd));
@@ -344,11 +384,16 @@ int SecureEnvMain(int argc, char** argv) {
     t.join();
   }
 
-  return 0;
+  return {};
 }
 
 }  // namespace cuttlefish
 
 int main(int argc, char** argv) {
-  return cuttlefish::SecureEnvMain(argc, argv);
+  auto result = cuttlefish::SecureEnvMain(argc, argv);
+  if (result.ok()) {
+    return 0;
+  }
+  LOG(FATAL) << result.error().Trace();
+  return -1;
 }

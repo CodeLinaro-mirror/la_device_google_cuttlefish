@@ -189,6 +189,9 @@ DEFINE_bool(netsim_bt, CF_DEFAULTS_NETSIM_BT,
 DEFINE_string(netsim_args, CF_DEFAULTS_NETSIM_ARGS,
               "Space-separated list of netsim args.");
 
+DEFINE_bool(enable_automotive_proxy, CF_DEFAULTS_ENABLE_AUTOMOTIVE_PROXY,
+            "Enable the automotive proxy service on the host.");
+
 /**
  * crosvm sandbox feature requires /var/empty and seccomp directory
  *
@@ -432,15 +435,6 @@ DEFINE_vec(crosvm_use_rng, "true",
 
 DEFINE_vec(use_pmem, "true",
            "Make this flag false to disable pmem with crosvm");
-
-/* TODO(kwstephenkim): replace this flag with "--start-from-snapshot" or so.
- *
- * This flag only makes sense to be "false" if cuttlefish device starts from
- * the saved snapshot.
- */
-DEFINE_vec(sock_vsock_proxy_wait_adbd_start, "true",
-           "Make this flag false for sock_vsock_proxy not to wait for adbd"
-           "This is needed when the device is restored from a snapshot.");
 
 DEFINE_bool(enable_wifi, true, "Enables the guest WIFI. Mainly for Minidroid");
 
@@ -959,14 +953,13 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   tmp_config_obj.set_sig_server_strict(FLAGS_verify_sig_server_certificate);
 
   tmp_config_obj.set_enable_metrics(FLAGS_report_anonymous_usage_stats);
+  // TODO(moelsherif): Handle this flag (set_metrics_binary) in the future
 
 #ifdef ENFORCE_MAC80211_HWSIM
   tmp_config_obj.set_virtio_mac80211_hwsim(true);
 #else
   tmp_config_obj.set_virtio_mac80211_hwsim(false);
 #endif
-
-  tmp_config_obj.set_vhost_user_mac80211_hwsim(FLAGS_vhost_user_mac80211_hwsim);
 
   if ((FLAGS_ap_rootfs_image.empty()) != (FLAGS_ap_kernel_image.empty())) {
     LOG(FATAL) << "Either both ap_rootfs_image and ap_kernel_image should be "
@@ -982,15 +975,13 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   tmp_config_obj.set_ap_rootfs_image(ap_rootfs_image);
   tmp_config_obj.set_ap_kernel_image(FLAGS_ap_kernel_image);
 
-  tmp_config_obj.set_wmediumd_config(FLAGS_wmediumd_config);
-
   // netsim flags allow all radios or selecting a specific radio
   bool is_any_netsim = FLAGS_netsim || FLAGS_netsim_bt;
   bool is_bt_netsim = FLAGS_netsim || FLAGS_netsim_bt;
 
   // crosvm should create fifos for Bluetooth
-  tmp_config_obj.set_enable_host_bluetooth(FLAGS_enable_host_bluetooth || is_bt_netsim);
-  tmp_config_obj.set_enable_wifi(FLAGS_enable_wifi);
+  tmp_config_obj.set_enable_host_bluetooth(FLAGS_enable_host_bluetooth ||
+                                           is_bt_netsim);
 
   // rootcanal and bt_connector should handle Bluetooth (instead of netsim)
   tmp_config_obj.set_enable_host_bluetooth_connector(FLAGS_enable_host_bluetooth && !is_bt_netsim);
@@ -1003,6 +994,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     tmp_config_obj.netsim_radio_enable(CuttlefishConfig::NetsimRadio::Bluetooth);
   }
   // end of vectorize ap_rootfs_image, ap_kernel_image, wmediumd_config
+
+  tmp_config_obj.set_enable_automotive_proxy(FLAGS_enable_automotive_proxy);
 
   auto instance_nums =
       CF_EXPECT(InstanceNumsCalculator().FromGlobalGflags().Calculate());
@@ -1124,8 +1117,9 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   std::vector<bool> use_rng_vec =
       CF_EXPECT(GET_FLAG_BOOL_VALUE(crosvm_use_rng));
   std::vector<bool> use_pmem_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(use_pmem));
-  std::vector<bool> sock_vsock_proxy_wait_adbd_vec =
-      CF_EXPECT(GET_FLAG_BOOL_VALUE(sock_vsock_proxy_wait_adbd_start));
+  const bool restore_from_snapshot = !std::string(FLAGS_snapshot_path).empty();
+  std::vector<bool> sock_vsock_proxy_wait_adbd_vec(instance_nums.size(),
+                                                   !restore_from_snapshot);
   std::vector<std::string> device_external_network_vec =
       CF_EXPECT(GET_FLAG_STR_VALUE(device_external_network));
 
@@ -1153,11 +1147,22 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     casimir_instance_num = FLAGS_casimir_instance_num - 1;
   }
   tmp_config_obj.set_casimir_nci_port(7100 + casimir_instance_num);
+  tmp_config_obj.set_casimir_rf_port(8100 + casimir_instance_num);
+  LOG(DEBUG) << "casimir_instance_num: " << casimir_instance_num;
+  LOG(DEBUG) << "launch casimir: " << (FLAGS_casimir_instance_num <= 0);
 
   int netsim_instance_num = *instance_nums.begin() - 1;
   tmp_config_obj.set_netsim_instance_num(netsim_instance_num);
   LOG(DEBUG) << "netsim_instance_num: " << netsim_instance_num;
   tmp_config_obj.set_netsim_args(FLAGS_netsim_args);
+  // netsim built-in connector will forward packets to another daemon instance,
+  // filling the role of bluetooth_connector when is_bt_netsim is true.
+  auto netsim_connector_instance_num = netsim_instance_num;
+  if (netsim_instance_num != rootcanal_instance_num) {
+    netsim_connector_instance_num = rootcanal_instance_num;
+  }
+  tmp_config_obj.set_netsim_connector_instance_num(
+      netsim_connector_instance_num);
 
   // crosvm should create fifos for UWB
   auto pica_instance_num = *instance_nums.begin() - 1;
@@ -1170,6 +1175,44 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   LOG(DEBUG) << "pica_instance_num: " << pica_instance_num;
   LOG(DEBUG) << "launch pica: " << (FLAGS_pica_instance_num <= 0);
 
+  // Environment specific configs
+  // Currently just setting for the default environment
+  auto environment_name =
+      std::string("env-") + std::to_string(instance_nums[0]);
+  auto mutable_env_config = tmp_config_obj.ForEnvironment(environment_name);
+  auto env_config = const_cast<const CuttlefishConfig&>(tmp_config_obj)
+                        .ForEnvironment(environment_name);
+
+  mutable_env_config.set_enable_wifi(FLAGS_enable_wifi);
+
+  mutable_env_config.set_vhost_user_mac80211_hwsim(
+      FLAGS_vhost_user_mac80211_hwsim);
+
+  mutable_env_config.set_wmediumd_config(FLAGS_wmediumd_config);
+
+  // Start wmediumd process for the first instance if
+  // vhost_user_mac80211_hwsim is not specified.
+  const bool start_wmediumd = tmp_config_obj.virtio_mac80211_hwsim() &&
+                              FLAGS_vhost_user_mac80211_hwsim.empty() &&
+                              FLAGS_enable_wifi;
+  if (start_wmediumd) {
+    auto vhost_user_socket_path =
+        env_config.PerEnvironmentUdsPath("vhost_user_mac80211");
+    auto wmediumd_api_socket_path =
+        env_config.PerEnvironmentUdsPath("wmediumd_api_server");
+
+    if (instance_nums.size()) {
+      mutable_env_config.set_wmediumd_mac_prefix(5554);
+    }
+    mutable_env_config.set_vhost_user_mac80211_hwsim(vhost_user_socket_path);
+    mutable_env_config.set_wmediumd_api_server_socket(wmediumd_api_socket_path);
+
+    mutable_env_config.set_start_wmediumd(true);
+  } else {
+    mutable_env_config.set_start_wmediumd(false);
+  }
+
+  // Instance specific configs
   bool is_first_instance = true;
   int instance_index = 0;
   auto num_to_webrtc_device_id_flag_map =
@@ -1186,7 +1229,6 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     } else {
       iface_config = DefaultNetworkInterfaces(num);
     }
-
 
     auto instance = tmp_config_obj.ForInstance(num);
     auto const_instance =
@@ -1332,6 +1374,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 
     instance.set_uuid(FLAGS_uuid);
 
+    instance.set_environment_name(environment_name);
+
     instance.set_modem_simulator_host_id(1000 + num);  // Must be 4 digits
     // the deprecated vnc was 6444 + num - 1, and qemu_vnc was vnc - 5900
     instance.set_qemu_vnc_server_port(544 + num - 1);
@@ -1414,10 +1458,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     }
     comma_str = ",";
 
-    auto graphics_check = vmm->ConfigureGraphics(const_instance);
-    if (!graphics_check.ok()) {
-      LOG(FATAL) << graphics_check.error().Message();
-    }
+    CF_EXPECT(vmm->ConfigureGraphics(const_instance));
 
     // end of gpu related settings
 
@@ -1513,31 +1554,12 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
           !FLAGS_start_webrtc_sig_server);
     }
 
-    // Start wmediumd process for the first instance if
-    // vhost_user_mac80211_hwsim is not specified.
-    const bool start_wmediumd = tmp_config_obj.virtio_mac80211_hwsim() &&
-                                FLAGS_vhost_user_mac80211_hwsim.empty() &&
-                                is_first_instance && FLAGS_enable_wifi;
-    if (start_wmediumd) {
-      // TODO(b/199020470) move this to the directory for shared resources
-      auto vhost_user_socket_path =
-          const_instance.PerInstanceInternalUdsPath("vhost_user_mac80211");
-      auto wmediumd_api_socket_path =
-          const_instance.PerInstanceInternalUdsPath("wmediumd_api_server");
-
-      tmp_config_obj.set_vhost_user_mac80211_hwsim(vhost_user_socket_path);
-      tmp_config_obj.set_wmediumd_api_server_socket(wmediumd_api_socket_path);
-      instance.set_start_wmediumd(true);
-    } else {
-      instance.set_start_wmediumd(false);
-    }
-
     instance.set_start_netsim(is_first_instance && is_any_netsim);
 
     instance.set_start_rootcanal(is_first_instance && !is_bt_netsim &&
                                  (FLAGS_rootcanal_instance_num <= 0));
 
-    instance.set_start_casimir(FLAGS_casimir_instance_num <= 0);
+    instance.set_start_casimir(is_first_instance && FLAGS_casimir_instance_num <= 0);
 
     instance.set_start_pica(is_first_instance && FLAGS_pica_instance_num <= 0);
 

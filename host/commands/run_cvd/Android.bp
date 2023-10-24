@@ -17,10 +17,11 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-cc_binary {
+cc_binary_host {
     name: "run_cvd",
     srcs: [
         "boot_state_machine.cc",
+        "launch/automotive_proxy.cpp",
         "launch/bluetooth_connector.cpp",
         "launch/nfc_connector.cpp",
         "launch/uwb_connector.cpp",
@@ -38,6 +39,7 @@ cc_binary {
         "launch/casimir.cpp",
         "launch/pica.cpp",
         "launch/secure_env.cpp",
+        "launch/secure_env_files.cpp",
         "launch/streamer.cpp",
         "launch/netsim_server.cpp",
         "main.cc",

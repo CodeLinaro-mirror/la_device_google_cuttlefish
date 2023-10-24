@@ -24,6 +24,7 @@ cc_defaults {
         "libcppbor_external",
         "libcppcose_rkp",
         "libcuttlefish_security",
+        "libcuttlefish_transport",
         "libgatekeeper",
         "libjsoncpp",
         "libkeymaster_portable",
@@ -111,6 +112,7 @@ cc_library {
         "device_tpm.cpp",
         "oemlock/oemlock.cpp",
         "oemlock/oemlock_responder.cpp",
+        "snapshot_control.cpp",
         "storage/insecure_json_storage.cpp",
     ],
     target: {
