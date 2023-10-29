@@ -31,6 +31,7 @@ namespace {
 constexpr int kLogSourceId = 1753;
 // 971 for atest internal events, while 934 for external events
 constexpr int kAtestInternalLogSourceId = 971;
+constexpr char kToolName[] = "cvd";
 
 constexpr char kLogSourceStr[] = "CUTTLEFISH_METRICS";
 constexpr int kCppClientType =
@@ -83,6 +84,7 @@ std::unique_ptr<AtestLogEventInternal> BuildAtestLogEvent(
   std::string dir = CurrentDirectory();
   event->set_user_key(user_key);
   event->set_run_id(run_id);
+  event->set_tool_name(kToolName);
   event->set_user_type(UserType::GOOGLE);
 
   // Create and populate AtestStartEvent
@@ -154,15 +156,15 @@ std::unique_ptr<LogRequest> BuildAtestLogRequest(
   ClientInfo* client_info = log_request->mutable_client_info();
   client_info->set_client_type(kCppClientType);
 
-  std::string cfLogStr;
-  if (!cfEvent->SerializeToString(&cfLogStr)) {
+  std::string atest_log_event;
+  if (!cfEvent->SerializeToString(&atest_log_event)) {
     LOG(ERROR) << "Serialization failed for atest event";
     return nullptr;
   }
 
   LogEvent* logEvent = log_request->add_log_event();
   logEvent->set_event_time_ms(now_ms);
-  logEvent->set_source_extension(cfLogStr);
+  logEvent->set_source_extension(atest_log_event);
 
   return log_request;
 }
@@ -227,7 +229,7 @@ int Clearcut::SendLaunchCommand(const std::string& command_line) {
     LOG(ERROR) << "Serialization failed for atest LogRequest";
     return MetricsExitCodes::kMetricsError;
   }
-  return metrics::PostRequest(logRequestStr, metrics::kLocal);
+  return metrics::PostRequest(logRequestStr, metrics::kProd);
 }
 
 }  // namespace cuttlefish

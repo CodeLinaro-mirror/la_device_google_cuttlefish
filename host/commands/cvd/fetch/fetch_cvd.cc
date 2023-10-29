@@ -46,6 +46,7 @@
 #include "common/libs/utils/tee_logging.h"
 #include "host/libs/config/fetcher_config.h"
 #include "host/libs/web/build_api.h"
+#include "host/libs/web/build_string.h"
 #include "host/libs/web/credential_source.h"
 #include "host/libs/web/http_client/http_client.h"
 
@@ -67,29 +68,30 @@ struct BuildApiFlags {
   std::string credential_source = kDefaultCredentialSource;
   std::chrono::seconds wait_retry_period = kDefaultWaitRetryPeriod;
   bool external_dns_resolver = kDefaultExternalDnsResolver;
+  std::string api_base_url = kAndroidBuildServiceUrl;
 };
 
 struct VectorFlags {
-  std::vector<std::string> default_build;
-  std::vector<std::string> system_build;
-  std::vector<std::string> kernel_build;
-  std::vector<std::string> boot_build;
-  std::vector<std::string> bootloader_build;
-  std::vector<std::string> otatools_build;
-  std::vector<std::string> host_package_build;
+  std::vector<std::optional<BuildString>> default_build;
+  std::vector<std::optional<BuildString>> system_build;
+  std::vector<std::optional<BuildString>> kernel_build;
+  std::vector<std::optional<BuildString>> boot_build;
+  std::vector<std::optional<BuildString>> bootloader_build;
+  std::vector<std::optional<BuildString>> otatools_build;
+  std::vector<std::optional<BuildString>> host_package_build;
   std::vector<std::string> boot_artifact;
   std::vector<bool> download_img_zip;
   std::vector<bool> download_target_files_zip;
 };
 
 struct BuildSourceFlags {
-  std::string default_build;
-  std::string system_build;
-  std::string kernel_build;
-  std::string boot_build;
-  std::string bootloader_build;
-  std::string otatools_build;
-  std::string host_package_build;
+  std::optional<BuildString> default_build;
+  std::optional<BuildString> system_build;
+  std::optional<BuildString> kernel_build;
+  std::optional<BuildString> boot_build;
+  std::optional<BuildString> bootloader_build;
+  std::optional<BuildString> otatools_build;
+  std::optional<BuildString> host_package_build;
 };
 
 struct DownloadFlags {
@@ -175,6 +177,9 @@ std::vector<Flag> GetFlagsVector(FetchFlags& fetch_flags,
       GflagsCompatFlag("external_dns_resolver",
                        build_api_flags.external_dns_resolver)
           .Help("Use an out-of-process mechanism to resolve DNS queries"));
+  flags.emplace_back(
+      GflagsCompatFlag("api_base_url", build_api_flags.api_base_url)
+          .Help("The base url for API requests to download artifacts from"));
 
   flags.emplace_back(
       GflagsCompatFlag("default_build", vector_flags.default_build)
@@ -262,20 +267,20 @@ MapToBuildTargetFlags(const VectorFlags& flags, const int num_builds) {
       num_builds);
   for (int i = 0; i < result.size(); ++i) {
     auto build_source = BuildSourceFlags{
-        .default_build = AccessOrDefault<std::string>(flags.default_build, i,
-                                                      kDefaultBuildString),
-        .system_build = AccessOrDefault<std::string>(flags.system_build, i,
-                                                     kDefaultBuildString),
-        .kernel_build = AccessOrDefault<std::string>(flags.kernel_build, i,
-                                                     kDefaultBuildString),
-        .boot_build = AccessOrDefault<std::string>(flags.boot_build, i,
-                                                   kDefaultBuildString),
-        .bootloader_build = AccessOrDefault<std::string>(
-            flags.bootloader_build, i, kDefaultBuildString),
-        .otatools_build = AccessOrDefault<std::string>(flags.otatools_build, i,
-                                                       kDefaultBuildString),
-        .host_package_build = AccessOrDefault<std::string>(
-            flags.host_package_build, i, kDefaultBuildString),
+        .default_build = AccessOrDefault<std::optional<BuildString>>(
+            flags.default_build, i, std::nullopt),
+        .system_build = AccessOrDefault<std::optional<BuildString>>(
+            flags.system_build, i, std::nullopt),
+        .kernel_build = AccessOrDefault<std::optional<BuildString>>(
+            flags.kernel_build, i, std::nullopt),
+        .boot_build = AccessOrDefault<std::optional<BuildString>>(
+            flags.boot_build, i, std::nullopt),
+        .bootloader_build = AccessOrDefault<std::optional<BuildString>>(
+            flags.bootloader_build, i, std::nullopt),
+        .otatools_build = AccessOrDefault<std::optional<BuildString>>(
+            flags.otatools_build, i, std::nullopt),
+        .host_package_build = AccessOrDefault<std::optional<BuildString>>(
+            flags.host_package_build, i, std::nullopt),
     };
     auto download = DownloadFlags{
         .boot_artifact =
@@ -405,18 +410,18 @@ Result<BuildApi> GetBuildApi(const BuildApiFlags& flags) {
 
   return BuildApi(std::move(retrying_http_client), std::move(curl),
                   std::move(credential_source), flags.api_key,
-                  flags.wait_retry_period);
+                  flags.wait_retry_period, flags.api_base_url);
 }
 
-Result<std::optional<Build>> GetBuildHelper(BuildApi& build_api,
-                                            const std::string& build_source,
-                                            const std::string& build_target) {
-  if (build_source == "") {
+Result<std::optional<Build>> GetBuildHelper(
+    BuildApi& build_api, const std::optional<BuildString>& build_source,
+    const std::string& fallback_target) {
+  if (!build_source) {
     return std::nullopt;
   }
-  return CF_EXPECT(build_api.ArgumentToBuild(build_source, build_target),
-                   "Unable to create build from source ("
-                       << build_source << ") and target (" << build_target
+  return CF_EXPECT(build_api.GetBuild(*build_source, fallback_target),
+                   "Unable to create build from ("
+                       << *build_source << ") and target (" << fallback_target
                        << ")");
 }
 
@@ -740,7 +745,7 @@ Result<void> InnerMain(const FetchFlags& flags,
       const Builds builds =
           CF_EXPECT(GetBuildsFromSources(build_api, build_source_flags));
       const bool is_host_package_build =
-          build_source_flags.host_package_build != "";
+          build_source_flags.host_package_build.has_value();
       CF_EXPECT(Fetch(build_api, builds, target_directories, download_flags,
                       flags.keep_downloaded_archives, is_host_package_build,
                       config));

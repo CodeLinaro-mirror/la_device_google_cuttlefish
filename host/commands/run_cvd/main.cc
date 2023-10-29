@@ -37,9 +37,9 @@
 #include "host/commands/run_cvd/boot_state_machine.h"
 #include "host/commands/run_cvd/launch/launch.h"
 #include "host/commands/run_cvd/reporting.h"
-#include "host/commands/run_cvd/runner_defs.h"
 #include "host/commands/run_cvd/server_loop.h"
 #include "host/commands/run_cvd/validate.h"
+#include "host/libs/command_util/runner/defs.h"
 #include "host/libs/config/adb/adb.h"
 #include "host/libs/config/config_flag.h"
 #include "host/libs/config/config_fragment.h"
@@ -126,12 +126,12 @@ fruit::Component<> runCvdComponent(
       .bindInstance(*instance)
       .bindInstance(*environment)
 #ifdef __linux__
-      .install(AutomotiveProxyComponent)
-      .install(ConfigServerComponent)
-      .install(launchModemComponent)
+      .install(AutoCmd<AutomotiveProxyService>::Component)
+      .install(AutoCmd<ConfigServer>::Component)
+      .install(AutoCmd<ModemSimulator>::Component)
       .install(launchStreamerComponent)
       .install(OpenWrtComponent)
-      .install(TombstoneReceiverComponent)
+      .install(AutoCmd<TombstoneReceiver>::Component)
       .install(WmediumdServerComponent)
 #endif
       .install(AdbConfigComponent)
@@ -143,24 +143,25 @@ fruit::Component<> runCvdComponent(
       .install(CustomActionsComponent)
       .install(LaunchAdbComponent)
       .install(LaunchFastbootComponent)
-      .install(BluetoothConnectorComponent)
+      .install(AutoCmd<BluetoothConnector>::Component)
       .install(NfcConnectorComponent)
-      .install(UwbConnectorComponent)
+      .install(AutoCmd<UwbConnector>::Component)
       .install(ConsoleForwarderComponent)
       .install(ControlEnvProxyServerComponent)
-      .install(EchoServerComponent)
-      .install(GnssGrpcProxyServerComponent)
+      .install(AutoCmd<EchoServer>::Component)
+      .install(AutoCmd<GnssGrpcProxyServer>::Component)
       .install(LogcatReceiverComponent)
       .install(KernelLogMonitorComponent)
-      .install(MetricsServiceComponent)
+      .install(AutoCmd<MetricsService>::Component)
       .install(OpenwrtControlServerComponent)
-      .install(PicaComponent)
+      .install(AutoCmd<Pica>::Component)
       .install(RootCanalComponent)
-      .install(CasimirComponent)
+      .install(AutoCmd<Casimir>::Component)
       .install(NetsimServerComponent)
-      .install(SecureEnvFilesComponent)
-      .install(SecureEnvComponent)
+      .install(AutoSecureEnvFiles::Component)
+      .install(AutoCmd<SecureEnv>::Component)
       .install(serverLoopComponent)
+      .install(WebRtcRecorderComponent)
       .install(validationComponent)
       .install(vm_manager::VmManagerComponent);
 }
@@ -236,7 +237,6 @@ Result<void> RunCvdMain(int argc, char** argv) {
   auto config = CF_EXPECT(FindConfigFromStdin());
   auto environment = config->ForDefaultEnvironment();
   auto instance = config->ForDefaultInstance();
-
   ConfigureLogs(*config, instance);
   CF_EXPECT(ChdirIntoRuntimeDir(instance));
 

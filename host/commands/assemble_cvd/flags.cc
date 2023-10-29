@@ -175,7 +175,7 @@ DEFINE_int32(
 DEFINE_string(casimir_args, CF_DEFAULTS_CASIMIR_ARGS,
               "Space-separated list of casimir args.");
 DEFINE_bool(enable_host_uwb, CF_DEFAULTS_ENABLE_HOST_UWB,
-            "Enable Pica in the host.");
+            "Enable the uwb host and the uwb connector.");
 DEFINE_int32(
     pica_instance_num, CF_DEFAULTS_ENABLE_PICA_INSTANCE_NUM,
     "If it is greater than 0, use an existing pica instance which is "
@@ -441,6 +441,11 @@ DEFINE_bool(enable_wifi, true, "Enables the guest WIFI. Mainly for Minidroid");
 DEFINE_vec(device_external_network, CF_DEFAULTS_DEVICE_EXTERNAL_NETWORK,
            "The mechanism to connect to the public internet.");
 
+// disable wifi, disable sandbox, use guest_swiftshader
+DEFINE_bool(snapshot_compatible, false,
+            "Declaring that device is snapshot'able and runs with only "
+            "supported ones.");
+
 DECLARE_string(assembly_dir);
 DECLARE_string(boot_image);
 DECLARE_string(system_image_dir);
@@ -482,7 +487,7 @@ Result<std::vector<GuestConfig>> ReadGuestConfig() {
     GuestConfig ret{};
     ret.target_arch = HostArch();
     ret.bootconfig_supported = true;
-    ret.android_version_number = "0.0.0";
+    ret.android_version_number = "0";
     rets.push_back(ret);
   }
   return rets;
@@ -571,7 +576,9 @@ Result<std::vector<GuestConfig>> ReadGuestConfig() {
     guest_config.hctr2_supported =
         (config.find("\nCONFIG_CRYPTO_HCTR2=y") != std::string::npos) &&
         (guest_config.android_version_number != "11.0.0") &&
-        (guest_config.android_version_number != "13.0.0");
+        (guest_config.android_version_number != "13.0.0") &&
+        (guest_config.android_version_number != "11") &&
+        (guest_config.android_version_number != "13");
 
     unlink(ikconfig_path.c_str());
     guest_configs.push_back(guest_config);
@@ -892,6 +899,43 @@ Result<std::string> InitializeGpuMode(
   return gpu_mode;
 }
 
+Result<void> CheckSnapshotCompatible(
+    const bool must_be_compatible, const bool enable_wifi,
+    const std::vector<bool>& enable_sandbox_vec,
+    const std::map<int, std::string>& calculated_gpu_mode) {
+  if (!must_be_compatible) {
+    return {};
+  }
+
+  /*
+   * TODO(kwstephenkim@): delete this block once openwrt snapshot is supported
+   */
+  CF_EXPECTF(!enable_wifi,
+             "--enable_wifi should be disabled for snapshot, consider \"{}\"",
+             "--enable_wifi=false");
+
+  /*
+   * TODO(kwstephenkim@): delete this block once virtio-fs is supported
+   */
+  for (const auto& enable_sandbox : enable_sandbox_vec) {
+    CF_EXPECTF(!enable_sandbox,
+               "--enable_sandbox should be false for snapshot, consider \"{}\"",
+               "--enable_sandbox=false");
+  }
+
+  /*
+   * TODO(kwstephenkim@): delete this block once 3D gpu mode snapshots are
+   * supported
+   */
+  for (const auto& [instance_index, instance_gpu_mode] : calculated_gpu_mode) {
+    CF_EXPECTF(
+        instance_gpu_mode == "guest_swiftshader",
+        "Only 2D guest_swiftshader is supported for snapshot. Consider \"{}\"",
+        "--gpu_mode=guest_swiftshader");
+  }
+  return {};
+}
+
 } // namespace
 
 Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
@@ -1080,6 +1124,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 
   std::vector<std::string> gpu_mode_vec =
       CF_EXPECT(GET_FLAG_STR_VALUE(gpu_mode));
+  std::map<int, std::string> calculated_gpu_mode_vec;
+
   std::vector<std::string> gpu_capture_binary_vec =
       CF_EXPECT(GET_FLAG_STR_VALUE(gpu_capture_binary));
   std::vector<bool> restart_subprocesses_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(
@@ -1170,9 +1216,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     pica_instance_num = FLAGS_pica_instance_num - 1;
   }
   tmp_config_obj.set_enable_host_uwb(FLAGS_enable_host_uwb);
-  tmp_config_obj.set_enable_host_uwb_connector(FLAGS_enable_host_uwb);
   tmp_config_obj.set_pica_uci_port(7000 + pica_instance_num);
-  LOG(DEBUG) << "pica_instance_num: " << pica_instance_num;
   LOG(DEBUG) << "launch pica: " << (FLAGS_pica_instance_num <= 0);
 
   // Environment specific configs
@@ -1407,6 +1451,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
         gpu_mode_vec[instance_index], enable_gpu_vhost_user_vec[instance_index],
         vm_manager_vec[instance_index], guest_configs[instance_index],
         &instance));
+    calculated_gpu_mode_vec[instance_index] = gpu_mode_vec[instance_index];
 
     instance.set_restart_subprocesses(restart_subprocesses_vec[instance_index]);
     instance.set_gpu_capture_binary(gpu_capture_binary_vec[instance_index]);
@@ -1631,6 +1676,16 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_enable_sandbox(enable_sandbox_vec[instance_index]);
     instance_index++;
   }
+
+  const auto& environment_specific =
+      (static_cast<const CuttlefishConfig&>(tmp_config_obj))
+          .ForEnvironment(environment_name);
+  CF_EXPECT(CheckSnapshotCompatible(
+                FLAGS_snapshot_compatible &&
+                    (tmp_config_obj.vm_manager() == CrosvmManager::name()),
+                environment_specific.enable_wifi(), enable_sandbox_vec,
+                calculated_gpu_mode_vec),
+            "The set of flags is incompatible with snapshot");
 
   DiskImageFlagsVectorization(tmp_config_obj, fetcher_config);
 
