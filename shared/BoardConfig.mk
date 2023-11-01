@@ -42,6 +42,8 @@ RAMDISK_KERNEL_MODULES := \
     virtio_pci.ko \
     virtio-rng.ko \
     vmw_vsock_virtio_transport.ko \
+    virtio_snd.ko \
+    system_heap.ko \
 
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES := \
     $(patsubst %,$(KERNEL_MODULES_PATH)/%,$(RAMDISK_KERNEL_MODULES))
