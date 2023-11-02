@@ -438,6 +438,14 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.keystore.app_attest_key.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.keystore.app_attest_key.xml
 
 #
+# Non-secure implementation of AuthGraph HAL for compliance.
+#
+ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
+PRODUCT_PACKAGES += \
+    android.hardware.security.authgraph-service.nonsecure
+endif
+
+#
 # Power and PowerStats HALs
 #
 ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
@@ -609,3 +617,7 @@ PRODUCT_PACKAGES += \
 endif # RELEASE_AIDL_USE_UNFROZEN
 
 PRODUCT_CHECK_VENDOR_SEAPP_VIOLATIONS := true
+
+ifeq ($(RELEASE_DEPRECATE_VNDK),true)
+KEEP_VNDK ?= false
+endif
