@@ -91,10 +91,10 @@ static std::map<std::string, Json::ValueType> kBootKeyMap = {
     {"enable_bootanimation", Json::ValueType::booleanValue},
     {"build", Json::ValueType::stringValue},
     {"bootloader", Json::ValueType::objectValue},
+    {"bootconfig_args", Json::ValueType::stringValue},
 };
 
 static std::map<std::string, Json::ValueType> kKernelKeyMap = {
-    {"extra_kernel_cmdline", Json::ValueType::stringValue},
     {"build", Json::ValueType::stringValue},
 };
 
