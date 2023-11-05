@@ -15,9 +15,9 @@
 
 #include "host/commands/metrics/host_receiver.h"
 #include "host/commands/metrics/events.h"
+#include "host/commands/metrics/metrics_configs.h"
 #include "host/commands/metrics/metrics_defs.h"
-#include "host/commands/metrics/proto/cf_metrics_proto.h"
-#include "host/libs/config/cuttlefish_config.h"
+#include "host/commands/metrics/proto/cf_metrics_protos.h"
 #include "host/libs/metrics/metrics_receiver.h"
 #include "host/libs/msg_queue/msg_queue.h"
 
@@ -25,16 +25,15 @@ using cuttlefish::MetricsExitCodes;
 
 namespace cuttlefish {
 
-MetricsHostReceiver::MetricsHostReceiver(
-    const cuttlefish::CuttlefishConfig& config)
-    : config_(config) {}
+MetricsHostReceiver::MetricsHostReceiver(bool is_metrics_enabled)
+    : is_metrics_enabled_(is_metrics_enabled) {}
 
 MetricsHostReceiver::~MetricsHostReceiver() {}
 
 void MetricsHostReceiver::ServerLoop() {
-  auto msg_queue = cuttlefish::SysVMessageQueue::Create("cuttlefish_ipc", 'a');
+  auto msg_queue = SysVMessageQueue::Create(metrics_queue_name_);
   if (msg_queue == NULL) {
-    LOG(FATAL) << "create: failed to create cuttlefish_ipc";
+    LOG(FATAL) << "create: failed to create" << metrics_queue_name_;
   }
 
   struct msg_buffer msg = {0, {0}};
@@ -56,8 +55,9 @@ void MetricsHostReceiver::ServerLoop() {
 
 void MetricsHostReceiver::Join() { thread_.join(); }
 
-bool MetricsHostReceiver::Initialize() {
-  if (!config_.enable_metrics()) {
+bool MetricsHostReceiver::Initialize(const std::string& metrics_queue_name) {
+  metrics_queue_name_ = metrics_queue_name;
+  if (!is_metrics_enabled_) {
     LOG(ERROR) << "init: metrics not enabled";
     return false;
   }

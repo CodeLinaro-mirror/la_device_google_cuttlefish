@@ -29,6 +29,7 @@
 #include <memory>
 
 #include "common/libs/utils/tee_logging.h"
+#include "host/commands/metrics/metrics_configs.h"
 #include "host/commands/metrics/metrics_defs.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/msg_queue/msg_queue.h"
@@ -37,14 +38,10 @@ using cuttlefish::MetricsExitCodes;
 
 namespace cuttlefish {
 
-MetricsReceiver::MetricsReceiver() {}
-
-MetricsReceiver::~MetricsReceiver() {}
-
-void MetricsReceiver::SendHelper(const std::string &message) {
-  auto msg_queue = SysVMessageQueue::Create("cuttlefish_ipc", 'a', false);
+void SendHelper(const std::string &queue_name, const std::string &message) {
+  auto msg_queue = SysVMessageQueue::Create(queue_name, false);
   if (msg_queue == NULL) {
-    LOG(FATAL) << "Create: failed to create cuttlefish_ipc";
+    LOG(FATAL) << "Create: failed to create" << queue_name;
   }
 
   struct msg_buffer msg;
@@ -56,16 +53,23 @@ void MetricsReceiver::SendHelper(const std::string &message) {
   }
 }
 
-void MetricsReceiver::LogMetricsVMStart() { SendHelper("VMStart"); }
+void MetricsReceiver::LogMetricsVMStart() {
+  SendHelper(kCfMetricsQueueName, "VMStart");
+}
 
-void MetricsReceiver::LogMetricsVMStop() { SendHelper("VMStop"); }
+void MetricsReceiver::LogMetricsVMStop() {
+  SendHelper(kCfMetricsQueueName, "VMStop");
+}
 
-void MetricsReceiver::LogMetricsDeviceBoot() { SendHelper("DeviceBoot"); }
+void MetricsReceiver::LogMetricsDeviceBoot() {
+  SendHelper(kCfMetricsQueueName, "DeviceBoot");
+}
 
-void MetricsReceiver::LogMetricsLockScreen() { SendHelper("LockScreen"); }
+void MetricsReceiver::LogMetricsLockScreen() {
+  SendHelper(kCfMetricsQueueName, "LockScreen");
+}
 
-void MetricsReceiver::LogMetricsSendLaunchCommand(
-    const std::string& command_line) {
-  SendHelper(command_line);
+void AtestMetricsReceiver::LogMetricsSendCmd(const std::string &command_line) {
+  SendHelper(kAtestMetricsQueueName, command_line);
 }
 }  // namespace cuttlefish

@@ -19,25 +19,25 @@
 
 namespace cuttlefish {
 
-const uint32_t MAX_MSG_SIZE = 200;
-
-typedef struct msg_buffer {
-  long mesg_type;
-  char mesg_text[MAX_MSG_SIZE];
-} msg_buffer;
-
 class MetricsReceiver {
- private:
-  static void SendHelper(const std::string &message);
-
  public:
-  MetricsReceiver();
-  ~MetricsReceiver();
+  MetricsReceiver() = default;
+  ;
+  ~MetricsReceiver() = default;
+  ;
   static void LogMetricsVMStart();
   static void LogMetricsVMStop();
   static void LogMetricsDeviceBoot();
   static void LogMetricsLockScreen();
-  static void LogMetricsSendLaunchCommand(const std::string& command_line);
+};
+
+class AtestMetricsReceiver {
+ public:
+  AtestMetricsReceiver() = default;
+  ;
+  ~AtestMetricsReceiver() = default;
+  ;
+  static void LogMetricsSendCmd(const std::string& command_line);
 };
 
 }  // namespace cuttlefish
