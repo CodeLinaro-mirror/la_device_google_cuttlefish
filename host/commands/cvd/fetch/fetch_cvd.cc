@@ -57,8 +57,12 @@ constexpr char kDefaultBuildTarget[] =
     "aosp_cf_x86_64_phone-trunk_staging-userdebug";
 constexpr char kUsageMessage[] =
     "*_build flags accept values in the following format:\n"
-    "{<branch> | <build_id>}[/<build_target>]\n"
+    "{<branch> | <build_id>}[/<build_target>][{<filepath>}]\n"
+    "For example: "
+    "\"aosp-main/aosp_cf_x86_64_phone-trunk_staging-userdebug{file.txt}\""
     "<branch> fetches artifacts from the latest build of the argument\n"
+    "{<filepath>} is used for certain artifacts to specify the file to "
+    "download location in the build artifacts\n"
     "if <build_target> is not specified then the default build target is: ";
 constexpr mode_t kRwxAllMode = S_IRWXU | S_IRWXG | S_IRWXO;
 constexpr bool kOverrideEntries = true;
@@ -79,12 +83,23 @@ struct VectorFlags {
   std::vector<std::optional<BuildString>> bootloader_build;
   std::vector<std::optional<BuildString>> otatools_build;
   std::vector<std::optional<BuildString>> host_package_build;
-  std::vector<std::string> boot_artifact;
   std::vector<bool> download_img_zip;
   std::vector<bool> download_target_files_zip;
+  std::vector<std::string> boot_artifact;
 };
 
-struct BuildSourceFlags {
+struct FetchFlags {
+  std::string target_directory = kDefaultTargetDirectory;
+  std::vector<std::string> target_subdirectory;
+  bool keep_downloaded_archives = kDefaultKeepDownloadedArchives;
+  android::base::LogSeverity verbosity = android::base::INFO;
+  bool helpxml = false;
+  BuildApiFlags build_api_flags;
+  VectorFlags vector_flags;
+  int number_of_builds = 0;
+};
+
+struct BuildStrings {
   std::optional<BuildString> default_build;
   std::optional<BuildString> system_build;
   std::optional<BuildString> kernel_build;
@@ -95,20 +110,21 @@ struct BuildSourceFlags {
 };
 
 struct DownloadFlags {
-  std::string boot_artifact;
   bool download_img_zip;
   bool download_target_files_zip;
 };
 
-struct FetchFlags {
-  std::string target_directory = kDefaultTargetDirectory;
-  std::vector<std::string> target_subdirectory;
-  bool keep_downloaded_archives = kDefaultKeepDownloadedArchives;
-  android::base::LogSeverity verbosity = android::base::INFO;
-  bool helpxml = false;
-  BuildApiFlags build_api_flags;
-  std::vector<std::tuple<BuildSourceFlags, DownloadFlags, int>>
-      build_target_flags;
+struct TargetDirectories {
+  std::string root;
+  std::string otatools;
+  std::string default_target_files;
+  std::string system_target_files;
+};
+
+struct Target {
+  BuildStrings build_strings;
+  DownloadFlags download_flags;
+  TargetDirectories directories;
 };
 
 struct Builds {
@@ -119,13 +135,6 @@ struct Builds {
   std::optional<Build> bootloader;
   std::optional<Build> otatools;
   Build host_package;
-};
-
-struct TargetDirectories {
-  std::string root;
-  std::string otatools;
-  std::string default_target_files;
-  std::string system_target_files;
 };
 
 Flag GflagsCompatFlagSeconds(const std::string& name,
@@ -249,52 +258,6 @@ Result<int> GetNumberOfBuilds(
   return number_of_builds.value_or(1);
 }
 
-template <typename T>
-T AccessOrDefault(const std::vector<T>& vector, const int i,
-                  const T& default_value) {
-  if (i < vector.size()) {
-    return vector[i];
-  } else {
-    return default_value;
-  }
-}
-
-// Maps existing vectors of flags to the flag collections used for each build's
-// fetch, providing default values for flags that were not provided
-Result<std::vector<std::tuple<BuildSourceFlags, DownloadFlags, int>>>
-MapToBuildTargetFlags(const VectorFlags& flags, const int num_builds) {
-  std::vector<std::tuple<BuildSourceFlags, DownloadFlags, int>> result(
-      num_builds);
-  for (int i = 0; i < result.size(); ++i) {
-    auto build_source = BuildSourceFlags{
-        .default_build = AccessOrDefault<std::optional<BuildString>>(
-            flags.default_build, i, std::nullopt),
-        .system_build = AccessOrDefault<std::optional<BuildString>>(
-            flags.system_build, i, std::nullopt),
-        .kernel_build = AccessOrDefault<std::optional<BuildString>>(
-            flags.kernel_build, i, std::nullopt),
-        .boot_build = AccessOrDefault<std::optional<BuildString>>(
-            flags.boot_build, i, std::nullopt),
-        .bootloader_build = AccessOrDefault<std::optional<BuildString>>(
-            flags.bootloader_build, i, std::nullopt),
-        .otatools_build = AccessOrDefault<std::optional<BuildString>>(
-            flags.otatools_build, i, std::nullopt),
-        .host_package_build = AccessOrDefault<std::optional<BuildString>>(
-            flags.host_package_build, i, std::nullopt),
-    };
-    auto download = DownloadFlags{
-        .boot_artifact =
-            AccessOrDefault<std::string>(flags.boot_artifact, i, ""),
-        .download_img_zip = AccessOrDefault<bool>(flags.download_img_zip, i,
-                                                  kDefaultDownloadImgZip),
-        .download_target_files_zip = AccessOrDefault<bool>(
-            flags.download_target_files_zip, i, kDefaultDownloadTargetFilesZip),
-    };
-    result[i] = {build_source, download, i};
-  }
-  return result;
-}
-
 Result<FetchFlags> GetFlagValues(int argc, char** argv) {
   FetchFlags fetch_flags;
   BuildApiFlags build_api_flags;
@@ -316,13 +279,118 @@ Result<FetchFlags> GetFlagValues(int argc, char** argv) {
       fetch_flags.target_directory = CurrentDirectory();
     }
   }
+  fetch_flags.target_directory = AbsolutePath(fetch_flags.target_directory);
+
+  if (!vector_flags.boot_artifact.empty()) {
+    LOG(ERROR) << "Please use the build string filepath syntax instead of "
+                  "deprecated --boot_artifact";
+    for (const auto& build_string : vector_flags.boot_build) {
+      if (build_string) {
+        CF_EXPECT(!GetFilepath(*build_string),
+                  "Cannot use both the --boot_artifact flag and set the "
+                  "filepath in the boot build string.  Please use only the "
+                  "build string filepath");
+      }
+    }
+  }
 
   fetch_flags.build_api_flags = build_api_flags;
-  const int num_builds = CF_EXPECT(
-      GetNumberOfBuilds(vector_flags, fetch_flags.target_subdirectory));
-  fetch_flags.build_target_flags =
-      CF_EXPECT(MapToBuildTargetFlags(vector_flags, num_builds));
+  fetch_flags.vector_flags = vector_flags;
+  fetch_flags.number_of_builds = CF_EXPECT(GetNumberOfBuilds(
+      fetch_flags.vector_flags, fetch_flags.target_subdirectory));
   return {fetch_flags};
+}
+
+template <typename T>
+T AccessOrDefault(const std::vector<T>& vector, const int i,
+                  const T& default_value) {
+  if (i < vector.size()) {
+    return vector[i];
+  } else {
+    return default_value;
+  }
+}
+
+BuildStrings GetBuildStrings(const VectorFlags& flags, const int index) {
+  auto build_strings = BuildStrings{
+      .default_build = AccessOrDefault<std::optional<BuildString>>(
+          flags.default_build, index, std::nullopt),
+      .system_build = AccessOrDefault<std::optional<BuildString>>(
+          flags.system_build, index, std::nullopt),
+      .kernel_build = AccessOrDefault<std::optional<BuildString>>(
+          flags.kernel_build, index, std::nullopt),
+      .boot_build = AccessOrDefault<std::optional<BuildString>>(
+          flags.boot_build, index, std::nullopt),
+      .bootloader_build = AccessOrDefault<std::optional<BuildString>>(
+          flags.bootloader_build, index, std::nullopt),
+      .otatools_build = AccessOrDefault<std::optional<BuildString>>(
+          flags.otatools_build, index, std::nullopt),
+      .host_package_build = AccessOrDefault<std::optional<BuildString>>(
+          flags.host_package_build, index, std::nullopt),
+  };
+  auto possible_boot_artifact =
+      AccessOrDefault<std::string>(flags.boot_artifact, index, "");
+  if (!possible_boot_artifact.empty() && build_strings.boot_build) {
+    SetFilepath(*build_strings.boot_build, possible_boot_artifact);
+  }
+  return build_strings;
+}
+
+DownloadFlags GetDownloadFlags(const VectorFlags& flags, const int index) {
+  return DownloadFlags{
+      .download_img_zip = AccessOrDefault<bool>(flags.download_img_zip, index,
+                                                kDefaultDownloadImgZip),
+      .download_target_files_zip =
+          AccessOrDefault<bool>(flags.download_target_files_zip, index,
+                                kDefaultDownloadTargetFilesZip),
+  };
+}
+
+TargetDirectories GetTargetDirectories(
+    const std::string& target_directory,
+    const std::vector<std::string>& target_subdirectories, const int index,
+    const bool append_subdirectory) {
+  std::string base_directory = target_directory;
+  if (append_subdirectory) {
+    base_directory +=
+        "/" + AccessOrDefault<std::string>(target_subdirectories, index,
+                                           "instance_" + std::to_string(index));
+  }
+  return TargetDirectories{.root = base_directory,
+                           .otatools = base_directory + "/otatools/",
+                           .default_target_files = base_directory + "/default",
+                           .system_target_files = base_directory + "/system"};
+}
+
+std::vector<Target> GetFetchTargets(const FetchFlags& flags) {
+  const bool append_subdirectory =
+      flags.number_of_builds > 1 || !flags.target_subdirectory.empty();
+  std::vector<Target> result(flags.number_of_builds);
+
+  for (int i = 0; i < result.size(); ++i) {
+    result[i] = Target{
+        .build_strings = GetBuildStrings(flags.vector_flags, i),
+        .download_flags = GetDownloadFlags(flags.vector_flags, i),
+        .directories = GetTargetDirectories(flags.target_directory,
+                                            flags.target_subdirectory, i,
+                                            append_subdirectory),
+    };
+  }
+  return result;
+}
+
+Result<void> EnsureDirectoriesExist(const std::string& target_directory,
+                                    const std::vector<Target>& targets) {
+  CF_EXPECT(EnsureDirectoryExists(target_directory));
+  for (const auto& target : targets) {
+    CF_EXPECT(EnsureDirectoryExists(target.directories.root, kRwxAllMode));
+    CF_EXPECT(EnsureDirectoryExists(target.directories.otatools, kRwxAllMode));
+    CF_EXPECT(EnsureDirectoryExists(target.directories.default_target_files,
+                                    kRwxAllMode));
+    CF_EXPECT(EnsureDirectoryExists(target.directories.system_target_files,
+                                    kRwxAllMode));
+  }
+  return {};
 }
 
 std::unique_ptr<CredentialSource> TryParseServiceAccount(
@@ -335,10 +403,8 @@ std::unique_ptr<CredentialSource> TryParseServiceAccount(
     LOG(DEBUG) << "Could not parse credential file as Service Account";
     return {};
   }
-  static constexpr char BUILD_SCOPE[] =
-      "https://www.googleapis.com/auth/androidbuild.internal";
   auto result = ServiceAccountOauthCredentialSource::FromJson(
-      http_client, content, BUILD_SCOPE);
+      http_client, content, kBuildScope);
   if (!result.ok()) {
     LOG(DEBUG) << "Failed to load service account json file: \n"
                << result.error().FormatForEnv();
@@ -356,6 +422,51 @@ Result<std::vector<std::string>> ProcessHostPackage(
   return ExtractArchiveContents(host_tools_filepath, target_dir, keep_archives);
 }
 
+Result<std::unique_ptr<CredentialSource>> GetCredentialSource(
+    HttpClient& http_client, const std::string& credential_source) {
+  std::unique_ptr<CredentialSource> result;
+  if (credential_source == "gce") {
+    result = GceMetadataCredentialSource::Make(http_client);
+  } else if (credential_source == "") {
+    std::string file = StringFromEnv("HOME", ".") + "/.acloud_oauth2.dat";
+    LOG(VERBOSE) << "Probing acloud credentials at " << file;
+    if (FileExists(file)) {
+      std::ifstream stream(file);
+      auto attempt_load =
+          RefreshCredentialSource::FromOauth2ClientFile(http_client, stream);
+      if (attempt_load.ok()) {
+        result.reset(new RefreshCredentialSource(std::move(*attempt_load)));
+      } else {
+        LOG(DEBUG) << "Failed to load acloud credentials: "
+                   << attempt_load.error().FormatForEnv();
+      }
+    } else {
+      LOG(INFO) << "\"" << file << "\" missing, running without credentials";
+    }
+  } else if (!FileExists(credential_source)) {
+    // If the parameter doesn't point to an existing file it must be the
+    // credentials.
+    result = FixedCredentialSource::Make(credential_source);
+  } else {
+    // Read the file only once in case it's a pipe.
+    LOG(DEBUG) << "Attempting to open credentials file \"" << credential_source
+               << "\"";
+    auto file = SharedFD::Open(credential_source, O_RDONLY);
+    CF_EXPECT(file->IsOpen(),
+              "Failed to open credential_source file: " << file->StrError());
+    std::string file_content;
+    auto size = ReadAll(file, &file_content);
+    CF_EXPECT(size >= 0,
+              "Failed to read credentials file: " << file->StrError());
+    if (auto crds = TryParseServiceAccount(http_client, file_content)) {
+      result = std::move(crds);
+    } else {
+      result = FixedCredentialSource::Make(file_content);
+    }
+  }
+  return result;
+}
+
 Result<BuildApi> GetBuildApi(const BuildApiFlags& flags) {
   auto resolver =
       flags.external_dns_resolver ? GetEntDnsResolve : NameResolver();
@@ -365,48 +476,8 @@ Result<BuildApi> GetBuildApi(const BuildApiFlags& flags) {
   std::unique_ptr<HttpClient> retrying_http_client =
       HttpClient::ServerErrorRetryClient(*curl, 10,
                                          std::chrono::milliseconds(5000));
-  std::unique_ptr<CredentialSource> credential_source;
-  if (flags.credential_source == "gce") {
-    credential_source =
-        GceMetadataCredentialSource::make(*retrying_http_client);
-  } else if (flags.credential_source == "") {
-    std::string file = StringFromEnv("HOME", ".") + "/.acloud_oauth2.dat";
-    LOG(VERBOSE) << "Probing acloud credentials at " << file;
-    if (FileExists(file)) {
-      std::ifstream stream(file);
-      auto attempt_load =
-          RefreshCredentialSource::FromOauth2ClientFile(*curl, stream);
-      if (attempt_load.ok()) {
-        credential_source.reset(
-            new RefreshCredentialSource(std::move(*attempt_load)));
-      } else {
-        LOG(DEBUG) << "Failed to load acloud credentials: "
-                   << attempt_load.error().FormatForEnv();
-      }
-    } else {
-      LOG(INFO) << "\"" << file << "\" missing, running without credentials";
-    }
-  } else if (!FileExists(flags.credential_source)) {
-    // If the parameter doesn't point to an existing file it must be the
-    // credentials.
-    credential_source = FixedCredentialSource::make(flags.credential_source);
-  } else {
-    // Read the file only once in case it's a pipe.
-    LOG(DEBUG) << "Attempting to open credentials file \""
-               << flags.credential_source << "\"";
-    auto file = SharedFD::Open(flags.credential_source, O_RDONLY);
-    CF_EXPECT(file->IsOpen(),
-              "Failed to open credential_source file: " << file->StrError());
-    std::string file_content;
-    auto size = ReadAll(file, &file_content);
-    CF_EXPECT(size >= 0,
-              "Failed to read credentials file: " << file->StrError());
-    if (auto crds = TryParseServiceAccount(*curl, file_content)) {
-      credential_source = std::move(crds);
-    } else {
-      credential_source = FixedCredentialSource::make(file_content);
-    }
-  }
+  std::unique_ptr<CredentialSource> credential_source = CF_EXPECT(
+      GetCredentialSource(*retrying_http_client, flags.credential_source));
 
   return BuildApi(std::move(retrying_http_client), std::move(curl),
                   std::move(credential_source), flags.api_key,
@@ -425,8 +496,8 @@ Result<std::optional<Build>> GetBuildHelper(
                        << ")");
 }
 
-Result<Builds> GetBuildsFromSources(BuildApi& build_api,
-                                    const BuildSourceFlags& build_sources) {
+Result<Builds> GetBuilds(BuildApi& build_api,
+                         const BuildStrings& build_sources) {
   auto default_build = CF_EXPECT(GetBuildHelper(
       build_api, build_sources.default_build, kDefaultBuildTarget));
   auto host_package_build = CF_EXPECT(GetBuildHelper(
@@ -460,22 +531,6 @@ Result<Builds> GetBuildsFromSources(BuildApi& build_api,
   return {result};
 }
 
-Result<TargetDirectories> CreateDirectories(
-    const std::string& target_directory) {
-  TargetDirectories targets =
-      TargetDirectories{.root = target_directory,
-                        .otatools = target_directory + "/otatools/",
-                        .default_target_files = target_directory + "/default",
-                        .system_target_files = target_directory + "/system"};
-
-  for (const auto& dir_path :
-       {targets.root, targets.otatools, targets.default_target_files,
-        targets.system_target_files}) {
-    CF_EXPECT(EnsureDirectoryExists(dir_path, kRwxAllMode));
-  }
-  return {targets};
-}
-
 Result<void> SaveConfig(FetcherConfig& config,
                         const std::string& target_directory) {
   // Due to constraints of the build system, artifacts intentionally cannot
@@ -493,11 +548,12 @@ Result<void> SaveConfig(FetcherConfig& config,
   return {};
 }
 
-Result<void> Fetch(BuildApi& build_api, const Builds& builds,
-                   const TargetDirectories& target_directories,
-                   const DownloadFlags& flags,
-                   const bool keep_downloaded_archives,
-                   const bool is_host_package_build, FetcherConfig& config) {
+Result<void> FetchTarget(BuildApi& build_api, const Builds& builds,
+                         const TargetDirectories& target_directories,
+                         const DownloadFlags& flags,
+                         const bool keep_downloaded_archives,
+                         const bool is_host_package_build,
+                         FetcherConfig& config) {
   auto process_pkg_ret = std::async(
       std::launch::async, ProcessHostPackage, std::ref(build_api),
       std::cref(builds.host_package), std::cref(target_directories.root),
@@ -635,23 +691,23 @@ Result<void> Fetch(BuildApi& build_api, const Builds& builds,
 
   if (builds.boot) {
     std::string boot_img_zip_name = GetBuildZipName(*builds.boot, "img");
-    std::string boot_filepath;
-    if (flags.boot_artifact != "") {
-      boot_filepath = CF_EXPECT(build_api.DownloadFileWithBackup(
-          *builds.boot, target_directories.root, flags.boot_artifact,
+    std::string downloaded_boot_filepath;
+    std::optional<std::string> boot_filepath = GetFilepath(*builds.boot);
+    if (boot_filepath) {
+      downloaded_boot_filepath = CF_EXPECT(build_api.DownloadFileWithBackup(
+          *builds.boot, target_directories.root, *boot_filepath,
           boot_img_zip_name));
     } else {
-      boot_filepath = CF_EXPECT(build_api.DownloadFile(
+      downloaded_boot_filepath = CF_EXPECT(build_api.DownloadFile(
           *builds.boot, target_directories.root, boot_img_zip_name));
     }
 
     std::vector<std::string> boot_files;
     // downloaded a zip that needs to be extracted
-    if (android::base::EndsWith(boot_filepath, boot_img_zip_name)) {
-      std::string extract_target =
-          flags.boot_artifact != "" ? flags.boot_artifact : "boot.img";
-      std::string extracted_boot = CF_EXPECT(
-          ExtractImage(boot_filepath, target_directories.root, extract_target));
+    if (android::base::EndsWith(downloaded_boot_filepath, boot_img_zip_name)) {
+      std::string extract_target = boot_filepath.value_or("boot.img");
+      std::string extracted_boot = CF_EXPECT(ExtractImage(
+          downloaded_boot_filepath, target_directories.root, extract_target));
       std::string target_boot = CF_EXPECT(
           RenameFile(extracted_boot, target_directories.root + "/boot.img"));
       boot_files.push_back(target_boot);
@@ -659,13 +715,13 @@ Result<void> Fetch(BuildApi& build_api, const Builds& builds,
       // keep_downloaded_archives flag used because this is the last extract
       // on this archive
       Result<std::string> extracted_vendor_boot_result =
-          ExtractImage(boot_filepath, target_directories.root,
+          ExtractImage(downloaded_boot_filepath, target_directories.root,
                        "vendor_boot.img", keep_downloaded_archives);
       if (extracted_vendor_boot_result.ok()) {
         boot_files.push_back(extracted_vendor_boot_result.value());
       }
     } else {
-      boot_files.push_back(boot_filepath);
+      boot_files.push_back(downloaded_boot_filepath);
     }
     const auto [boot_id, boot_target] = GetBuildIdAndTarget(*builds.boot);
     CF_EXPECT(config.AddFilesToConfig(
@@ -716,44 +772,34 @@ Result<void> Fetch(BuildApi& build_api, const Builds& builds,
   return {};
 }
 
-Result<void> InnerMain(const FetchFlags& flags,
-                       const std::string& fetch_root_directory) {
+Result<void> Fetch(const FetchFlags& flags,
+                   const std::vector<Target>& targets) {
 #ifdef __BIONIC__
   // TODO(schuffelen): Find a better way to deal with tzdata
   setenv("ANDROID_TZDATA_ROOT", "/", /* overwrite */ 0);
   setenv("ANDROID_ROOT", "/", /* overwrite */ 0);
 #endif
-  const bool add_subdirectory =
-      flags.build_target_flags.size() > 1 || !flags.target_subdirectory.empty();
 
   curl_global_init(CURL_GLOBAL_DEFAULT);
   {
     BuildApi build_api = CF_EXPECT(GetBuildApi(flags.build_api_flags));
 
-    for (const auto& [build_source_flags, download_flags, index] :
-         flags.build_target_flags) {
-      std::string build_directory = fetch_root_directory;
-      if (add_subdirectory) {
-        build_directory += "/" + AccessOrDefault<std::string>(
-                                     flags.target_subdirectory, index,
-                                     "build_" + std::to_string(index));
-      }
-      LOG(INFO) << "Starting fetch to \"" << build_directory << "\"";
-      const TargetDirectories target_directories =
-          CF_EXPECT(CreateDirectories(build_directory));
+    for (const auto& target : targets) {
+      LOG(INFO) << "Starting fetch to \"" << target.directories.root << "\"";
       FetcherConfig config;
       const Builds builds =
-          CF_EXPECT(GetBuildsFromSources(build_api, build_source_flags));
+          CF_EXPECT(GetBuilds(build_api, target.build_strings));
       const bool is_host_package_build =
-          build_source_flags.host_package_build.has_value();
-      CF_EXPECT(Fetch(build_api, builds, target_directories, download_flags,
-                      flags.keep_downloaded_archives, is_host_package_build,
-                      config));
-      CF_EXPECT(SaveConfig(config, target_directories.root));
-      LOG(INFO) << "Completed fetch to \"" << build_directory << "\"";
+          target.build_strings.host_package_build.has_value();
+      CF_EXPECT(FetchTarget(
+          build_api, builds, target.directories, target.download_flags,
+          flags.keep_downloaded_archives, is_host_package_build, config));
+      CF_EXPECT(SaveConfig(config, target.directories.root));
+      LOG(INFO) << "Completed fetch to \"" << target.directories.root << "\"";
     }
   }
   curl_global_cleanup();
+  LOG(INFO) << "Completed all fetches";
   return {};
 }
 
@@ -762,13 +808,13 @@ Result<void> InnerMain(const FetchFlags& flags,
 Result<void> FetchCvdMain(int argc, char** argv) {
   android::base::InitLogging(argv, android::base::StderrLogger);
   const FetchFlags flags = CF_EXPECT(GetFlagValues(argc, argv));
-  const std::string fetch_root_directory = AbsolutePath(flags.target_directory);
-  CF_EXPECT(EnsureDirectoryExists(fetch_root_directory, kRwxAllMode));
+  const std::vector<Target> targets = GetFetchTargets(flags);
+  CF_EXPECT(EnsureDirectoriesExist(flags.target_directory, targets));
   android::base::SetLogger(
-      LogToStderrAndFiles({fetch_root_directory + "/fetch.log"}));
+      LogToStderrAndFiles({flags.target_directory + "/fetch.log"}));
   android::base::SetMinimumLogSeverity(flags.verbosity);
 
-  auto result = InnerMain(flags, fetch_root_directory);
+  auto result = Fetch(flags, targets);
   if (!result.ok()) {
     LOG(ERROR) << result.error().FormatForEnv();
   }

@@ -115,9 +115,12 @@ cc_library {
     srcs: common_libsecure_srcs + [
         "confui_sign_server.cpp",
         "device_tpm.cpp",
+        "event_fds_manager.cpp",
+        "event_notifier.cpp",
         "oemlock/oemlock.cpp",
         "oemlock/oemlock_responder.cpp",
         "storage/insecure_json_storage.cpp",
+        "suspend_resume_handler.cpp",
     ],
     target: {
         darwin: {
@@ -161,7 +164,6 @@ cc_binary_host {
         not_windows: {
             srcs: [
                 "secure_env_not_windows_main.cpp",
-                "snapshot_control.cpp",
             ],
             static_libs: [
                 "libcuttlefish_command_util",
