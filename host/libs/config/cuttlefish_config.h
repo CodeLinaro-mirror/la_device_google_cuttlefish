@@ -107,6 +107,7 @@ class CuttlefishConfig {
   // Saves the configuration object in a file, it can then be read in other
   // processes by passing the --config_file option.
   bool SaveToFile(const std::string& file) const;
+  bool LoadFromFile(const char* file);
 
   bool SaveFragment(const ConfigFragment&);
   bool LoadFragment(ConfigFragment&) const;
@@ -140,6 +141,15 @@ class CuttlefishConfig {
     int height;
     int dpi;
     int refresh_rate_hz;
+  };
+
+  struct TouchpadConfig {
+    int width;
+    int height;
+
+    static Json::Value Serialize(
+        const CuttlefishConfig::TouchpadConfig& config);
+    static TouchpadConfig Deserialize(const Json::Value& config_json);
   };
 
   void set_secure_hals(const std::set<std::string>& hals);
@@ -552,6 +562,7 @@ class CuttlefishConfig {
     int gdb_port() const;
 
     std::vector<DisplayConfig> display_configs() const;
+    std::vector<TouchpadConfig> touchpad_configs() const;
 
     std::string grpc_socket_path() const;
     int memory_mb() const;
@@ -740,6 +751,8 @@ class CuttlefishConfig {
     void set_blank_data_image_mb(int blank_data_image_mb);
     void set_gdb_port(int gdb_port);
     void set_display_configs(const std::vector<DisplayConfig>& display_configs);
+    void set_touchpad_configs(
+        const std::vector<TouchpadConfig>& touchpad_configs);
     void set_memory_mb(int memory_mb);
     void set_ddr_mem_mb(int ddr_mem_mb);
     Result<void> set_setupwizard_mode(const std::string& title);
@@ -924,7 +937,6 @@ class CuttlefishConfig {
  private:
   std::unique_ptr<Json::Value> dictionary_;
 
-  bool LoadFromFile(const char* file);
   static CuttlefishConfig* BuildConfigImpl(const std::string& path);
 
   CuttlefishConfig(const CuttlefishConfig&) = delete;

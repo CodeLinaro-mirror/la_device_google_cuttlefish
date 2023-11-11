@@ -48,12 +48,14 @@
 #include "host/commands/assemble_cvd/disk_flags.h"
 #include "host/commands/assemble_cvd/display.h"
 #include "host/commands/assemble_cvd/flags_defaults.h"
+#include "host/commands/assemble_cvd/touchpad.h"
 #include "host/libs/config/config_flag.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/display.h"
 #include "host/libs/config/esp.h"
 #include "host/libs/config/host_tools_version.h"
 #include "host/libs/config/instance_nums.h"
+#include "host/libs/config/touchpad.h"
 #include "host/libs/graphics_detector/graphics_configuration.h"
 #include "host/libs/graphics_detector/graphics_detector.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
@@ -948,6 +950,25 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     const std::vector<GuestConfig>& guest_configs,
     fruit::Injector<>& injector, const FetcherConfig& fetcher_config) {
   CuttlefishConfig tmp_config_obj;
+  // If a snapshot path is provided, do not read all flags to set up the config.
+  // Instead, read the config that was saved at time of snapshot and restore
+  // that for this run.
+  // TODO (khei@/kwstephenkim@): b/310034839
+  const std::string snapshot_path = FLAGS_snapshot_path;
+  if (!snapshot_path.empty()) {
+    const std::string snapshot_path_config =
+        snapshot_path + "/assembly/cuttlefish_config.json";
+    tmp_config_obj.LoadFromFile(snapshot_path_config.c_str());
+    tmp_config_obj.set_snapshot_path(snapshot_path);
+    auto instance_nums =
+        CF_EXPECT(InstanceNumsCalculator().FromGlobalGflags().Calculate());
+
+    for (const auto& num : instance_nums) {
+      auto instance = tmp_config_obj.ForInstance(num);
+      instance.set_sock_vsock_proxy_wait_adbd_start(false);
+    }
+    return tmp_config_obj;
+  }
 
   for (const auto& fragment : injector.getMultibindings<ConfigFragment>()) {
     CHECK(tmp_config_obj.SaveFragment(*fragment))
@@ -1390,6 +1411,13 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       }
     }
     instance.set_display_configs(display_configs);
+
+    auto touchpad_configs_bindings =
+        injector.getMultibindings<TouchpadsConfigs>();
+    CF_EXPECT_EQ(touchpad_configs_bindings.size(), 1,
+                 "Expected a single binding?");
+    auto touchpad_configs = touchpad_configs_bindings[0]->GetConfigs();
+    instance.set_touchpad_configs(touchpad_configs);
 
     instance.set_memory_mb(memory_mb_vec[instance_index]);
     instance.set_ddr_mem_mb(memory_mb_vec[instance_index] * 1.2);
