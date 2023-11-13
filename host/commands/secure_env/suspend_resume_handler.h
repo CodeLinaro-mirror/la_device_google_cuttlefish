@@ -15,11 +15,11 @@
 
 #pragma once
 
-#include <atomic>
 #include <thread>
 
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/result.h"
+#include "host/commands/secure_env/snapshot_running_flag.h"
 #include "host/libs/command_util/runner/defs.h"
 
 namespace cuttlefish {
@@ -28,7 +28,7 @@ class SnapshotCommandHandler {
  public:
   ~SnapshotCommandHandler();
   SnapshotCommandHandler(SharedFD channel_to_run_cvd,
-                         std::atomic<bool>& running);
+                         SnapshotRunningFlag& running);
 
  private:
   Result<void> SuspendResumeHandler();
@@ -36,7 +36,7 @@ class SnapshotCommandHandler {
   void Join();
 
   SharedFD channel_to_run_cvd_;
-  std::atomic<bool>& shared_running_;  // shared by other components outside
+  SnapshotRunningFlag& shared_running_;  // shared by other components outside
   std::thread handler_thread_;
 };
 

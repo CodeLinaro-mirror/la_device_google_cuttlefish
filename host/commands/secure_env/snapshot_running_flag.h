@@ -13,29 +13,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package {
-    default_applicable_licenses: ["Android-Apache-2.0"],
-}
+#pragma once
 
-cc_binary_host {
-    name: "record_cvd",
-    srcs: [
-        "record_cvd.cc",
-    ],
-    shared_libs: [
-        "libbase",
-        "libcuttlefish_fs",
-        "libcuttlefish_runner_proto",
-        "libcuttlefish_run_cvd_proto",
-        "libcuttlefish_utils",
-        "libjsoncpp",
-        "libprotobuf-cpp-full",
-    ],
-    static_libs: [
-        "libcuttlefish_command_util",
-        "libcuttlefish_host_config",
-        "libgflags",
-    ],
-    defaults: ["cuttlefish_host"],
-}
+#include <condition_variable>
+#include <mutex>
 
+namespace cuttlefish {
+
+class SnapshotRunningFlag {
+ public:
+  SnapshotRunningFlag() {}
+  // called by Suspend handler
+  void UnsetRunning();
+
+  // called by Resume handler
+  void SetRunning();
+
+  // called by each worker thread
+  // blocks if running_ is false, and wakes up on running_ == true
+  void WaitRunning();
+
+ private:
+  bool running_ = true;
+  std::mutex running_mutex_;
+  std::condition_variable running_true_cv_;
+};
+
+}  // namespace cuttlefish

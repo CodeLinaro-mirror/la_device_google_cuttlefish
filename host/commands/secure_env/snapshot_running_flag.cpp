@@ -13,29 +13,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package {
-    default_applicable_licenses: ["Android-Apache-2.0"],
+#include "host/commands/secure_env/snapshot_running_flag.h"
+
+#include <condition_variable>
+#include <mutex>
+
+namespace cuttlefish {
+
+void SnapshotRunningFlag::UnsetRunning() {
+  std::lock_guard lock(running_mutex_);
+  running_ = false;
 }
 
-cc_binary_host {
-    name: "record_cvd",
-    srcs: [
-        "record_cvd.cc",
-    ],
-    shared_libs: [
-        "libbase",
-        "libcuttlefish_fs",
-        "libcuttlefish_runner_proto",
-        "libcuttlefish_run_cvd_proto",
-        "libcuttlefish_utils",
-        "libjsoncpp",
-        "libprotobuf-cpp-full",
-    ],
-    static_libs: [
-        "libcuttlefish_command_util",
-        "libcuttlefish_host_config",
-        "libgflags",
-    ],
-    defaults: ["cuttlefish_host"],
+void SnapshotRunningFlag::SetRunning() {
+  std::lock_guard lock(running_mutex_);
+  running_ = true;
+  running_true_cv_.notify_all();
 }
 
+void SnapshotRunningFlag::WaitRunning() {
+  std::unique_lock lock(running_mutex_);
+  while (!running_) {
+    running_true_cv_.wait(lock);
+  }
+}
+
+}  // namespace cuttlefish

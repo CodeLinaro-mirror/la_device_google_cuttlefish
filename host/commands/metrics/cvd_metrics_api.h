@@ -15,25 +15,13 @@
  */
 #pragma once
 
-#include "host/commands/metrics/proto/cf_metrics_protos.h"
-
 namespace cuttlefish {
 
-class Clearcut {
- private:
-  static int SendEvent(cuttlefish::CuttlefishLogEvent::DeviceType device_type,
-                       cuttlefish::MetricsEvent::EventType event_type);
-
+class CvdMetrics {
  public:
-  Clearcut() = default;
-  ~Clearcut() = default;
-  static int SendVMStart(
-      cuttlefish::CuttlefishLogEvent::DeviceType device_type);
-  static int SendVMStop(cuttlefish::CuttlefishLogEvent::DeviceType device_type);
-  static int SendDeviceBoot(
-      cuttlefish::CuttlefishLogEvent::DeviceType device_type);
-  static int SendLockScreen(
-      cuttlefish::CuttlefishLogEvent::DeviceType device_type);
+  CvdMetrics() = default;
+  ~CvdMetrics() = default;
+  static int SendLaunchCommand(const std::string& command_line);
 };
 
 }  // namespace cuttlefish
