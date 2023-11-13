@@ -13,7 +13,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <android-base/logging.h>
+
 #include "host/commands/metrics/host_receiver.h"
+#include "host/commands/metrics/cvd_metrics_api.h"
 #include "host/commands/metrics/events.h"
 #include "host/commands/metrics/metrics_configs.h"
 #include "host/commands/metrics/metrics_defs.h"
@@ -81,7 +84,7 @@ void MetricsHostReceiver::ProcessMessage(const std::string& text) {
   } else if (text == "LockScreen") {
     rc = Clearcut::SendLockScreen(hostDev);
   } else {
-    rc = Clearcut::SendLaunchCommand(text);
+    rc = CvdMetrics::SendLaunchCommand(text);
   }
 
   if (rc != MetricsExitCodes::kSuccess) {

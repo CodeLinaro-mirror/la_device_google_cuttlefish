@@ -13,6 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <sys/utsname.h>
 #include <uuid.h>
 
 #include "common/libs/utils/files.h"
@@ -20,8 +21,10 @@
 #include "host/commands/metrics/events.h"
 #include "host/commands/metrics/metrics_defs.h"
 #include "host/commands/metrics/proto/cf_metrics_protos.h"
-#include "host/commands/metrics/proto/cvd_metrics_protos.h"
 #include "host/commands/metrics/utils.h"
+#include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/vm_manager/crosvm_manager.h"
+#include "host/libs/vm_manager/qemu_manager.h"
 #include "shared/api_level.h"
 
 namespace cuttlefish {
@@ -29,9 +32,6 @@ namespace cuttlefish {
 namespace {
 
 constexpr int kLogSourceId = 1753;
-// 971 for atest internal events, while 934 for external events
-constexpr int kAtestInternalLogSourceId = 971;
-constexpr char kToolName[] = "cvd";
 
 constexpr char kLogSourceStr[] = "CUTTLEFISH_METRICS";
 constexpr int kCppClientType =
@@ -63,38 +63,44 @@ std::unique_ptr<CuttlefishLogEvent> BuildCfLogEvent(
   return cfEvent;
 }
 
-std::string GenerateUUID() {
-  uuid_t uuid;
-  uuid_generate_random(uuid);
-  std::string uuid_str = "xxxxxxxx-xxxx-Mxxx-Nxxx-xxxxxxxxxxxx";
-  uuid_unparse(uuid, uuid_str.data());
-  LOG(INFO) << "uuid_str: " << uuid_str;
-  return uuid_str;
+cuttlefish::MetricsEvent::OsType GetOsType() {
+  struct utsname buf;
+  if (uname(&buf) != 0) {
+    LOG(ERROR) << "failed to retrieve system information";
+    return cuttlefish::MetricsEvent::CUTTLEFISH_OS_TYPE_UNSPECIFIED;
+  }
+  std::string sysname(buf.sysname);
+  std::string machine(buf.machine);
+
+  if (sysname != "Linux") {
+    return cuttlefish::MetricsEvent::CUTTLEFISH_OS_TYPE_UNSPECIFIED;
+  }
+  if (machine == "x86_64") {
+    return cuttlefish::MetricsEvent::CUTTLEFISH_OS_TYPE_LINUX_X86_64;
+  }
+  if (machine == "x86") {
+    return cuttlefish::MetricsEvent::CUTTLEFISH_OS_TYPE_LINUX_X86;
+  }
+  if (machine == "aarch64" || machine == "arm64") {
+    return cuttlefish::MetricsEvent::CUTTLEFISH_OS_TYPE_LINUX_AARCH64;
+  }
+  if (machine[0] == 'a') {
+    return cuttlefish::MetricsEvent::CUTTLEFISH_OS_TYPE_LINUX_AARCH32;
+  }
+  return cuttlefish::MetricsEvent::CUTTLEFISH_OS_TYPE_UNSPECIFIED;
 }
 
-std::unique_ptr<AtestLogEventInternal> BuildAtestLogEvent(
-    const std::string& command_line) {
-  std::unique_ptr<AtestLogEventInternal> event =
-      std::make_unique<AtestLogEventInternal>();
-
-  //  Set common fields
-  std::string user_key = GenerateUUID();
-  std::string run_id = GenerateUUID();
-  std::string os_name = metrics::GetOsName();
-  std::string dir = CurrentDirectory();
-  event->set_user_key(user_key);
-  event->set_run_id(run_id);
-  event->set_tool_name(kToolName);
-  event->set_user_type(UserType::GOOGLE);
-
-  // Create and populate AtestStartEvent
-  AtestLogEventInternal::AtestStartEvent* start_event =
-      event->mutable_atest_start_event();
-  start_event->set_command_line(command_line);
-  start_event->set_cwd(dir);
-  start_event->set_os(os_name);
-
-  return event;
+cuttlefish::MetricsEvent::VmmType GetVmmManager() {
+  auto config = cuttlefish::CuttlefishConfig::Get();
+  CHECK(config) << "Could not open cuttlefish config";
+  auto vmm = config->vm_manager();
+  if (vmm == cuttlefish::vm_manager::CrosvmManager::name()) {
+    return cuttlefish::MetricsEvent::CUTTLEFISH_VMM_TYPE_CROSVM;
+  }
+  if (vmm == cuttlefish::vm_manager::QemuManager::name()) {
+    return cuttlefish::MetricsEvent::CUTTLEFISH_VMM_TYPE_QEMU;
+  }
+  return cuttlefish::MetricsEvent::CUTTLEFISH_VMM_TYPE_UNSPECIFIED;
 }
 
 // Builds the 2nd level MetricsEvent.
@@ -105,9 +111,9 @@ void AddCfMetricsEventToLog(uint64_t now_ms, CuttlefishLogEvent* cfEvent,
   // "metrics_event" is the 2nd level MetricsEvent
   cuttlefish::MetricsEvent* metrics_event = cfEvent->mutable_metrics_event();
   metrics_event->set_event_type(event_type);
-  metrics_event->set_os_type(metrics::GetOsType());
+  metrics_event->set_os_type(GetOsType());
   metrics_event->set_os_version(metrics::GetOsVersion());
-  metrics_event->set_vmm_type(metrics::GetVmmManager());
+  metrics_event->set_vmm_type(GetVmmManager());
 
   if (!metrics::GetVmmVersion().empty()) {
     metrics_event->set_vmm_version(metrics::GetVmmVersion());
@@ -144,35 +150,7 @@ std::unique_ptr<LogRequest> BuildLogRequest(uint64_t now_ms,
 
   return log_request;
 }
-
-std::unique_ptr<LogRequest> BuildAtestLogRequest(
-    uint64_t now_ms, AtestLogEventInternal* cfEvent) {
-  // "log_request" is the top level LogRequest
-  auto log_request = std::make_unique<LogRequest>();
-  log_request->set_request_time_ms(now_ms);
-  log_request->set_log_source(kAtestInternalLogSourceId);
-  log_request->set_log_source_name(kLogSourceStr);
-
-  ClientInfo* client_info = log_request->mutable_client_info();
-  client_info->set_client_type(kCppClientType);
-
-  std::string atest_log_event;
-  if (!cfEvent->SerializeToString(&atest_log_event)) {
-    LOG(ERROR) << "Serialization failed for atest event";
-    return nullptr;
-  }
-
-  LogEvent* logEvent = log_request->add_log_event();
-  logEvent->set_event_time_ms(now_ms);
-  logEvent->set_source_extension(atest_log_event);
-
-  return log_request;
-}
-
 }  // namespace
-
-Clearcut::Clearcut() = default;
-Clearcut::~Clearcut() = default;
 
 int Clearcut::SendEvent(CuttlefishLogEvent::DeviceType device_type,
                         MetricsEvent::EventType event_type) {
@@ -214,22 +192,21 @@ int Clearcut::SendLockScreen(CuttlefishLogEvent::DeviceType device) {
                    MetricsEvent::CUTTLEFISH_EVENT_TYPE_LOCK_SCREEN_AVAILABLE);
 }
 
-int Clearcut::SendLaunchCommand(const std::string& command_line) {
-  uint64_t now_ms = metrics::GetEpochTimeMs();
-  auto cfEvent = BuildAtestLogEvent(command_line);
+// TODO (moelsherif@): remove this function in the future since it is not used
+cuttlefish::CuttlefishLogEvent* sampleEvent() {
+  cuttlefish::CuttlefishLogEvent* event = new cuttlefish::CuttlefishLogEvent();
+  event->set_device_type(
+      cuttlefish::CuttlefishLogEvent::CUTTLEFISH_DEVICE_TYPE_HOST);
+  return event;
+}
 
-  auto logRequest = BuildAtestLogRequest(now_ms, cfEvent.get());
-  if (!logRequest) {
-    LOG(ERROR) << "Failed to build atest LogRequest";
-    return MetricsExitCodes::kMetricsError;
+// TODO (moelsherif@): remove this function in the future since it is not used
+std::string ProtoToString(LogEvent* event) {
+  std::string output;
+  if (!event->SerializeToString(&output)) {
+    LOG(ERROR) << "failed to serialize proto LogEvent";
   }
-
-  std::string logRequestStr;
-  if (!logRequest->SerializeToString(&logRequestStr)) {
-    LOG(ERROR) << "Serialization failed for atest LogRequest";
-    return MetricsExitCodes::kMetricsError;
-  }
-  return metrics::PostRequest(logRequestStr, metrics::kProd);
+  return output;
 }
 
 }  // namespace cuttlefish
