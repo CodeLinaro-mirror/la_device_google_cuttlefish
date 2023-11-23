@@ -139,6 +139,7 @@ fruit::Component<> runCvdComponent(
       .install(FastbootConfigComponent)
       .install(FastbootConfigFragmentComponent)
       .install(bootStateMachineComponent)
+      .install(AutoCmd<CasimirControlServer>::Component)
       .install(ConfigFlagPlaceholder)
       .install(CustomActionsComponent)
       .install(LaunchAdbComponent)
@@ -162,7 +163,9 @@ fruit::Component<> runCvdComponent(
       .install(AutoCmd<SecureEnv>::Component)
       .install(serverLoopComponent)
       .install(WebRtcRecorderComponent)
-      .install(validationComponent)
+      .install(AutoSetup<ValidateTapDevices>::Component)
+      .install(AutoSetup<ValidateHostConfiguration>::Component)
+      .install(AutoSetup<ValidateHostKernel>::Component)
       .install(vm_manager::VmManagerComponent);
 }
 

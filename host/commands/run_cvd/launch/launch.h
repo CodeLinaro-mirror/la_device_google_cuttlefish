@@ -38,12 +38,12 @@
 
 namespace cuttlefish {
 
-Result<std::optional<MonitorCommand>> UwbConnector(const CuttlefishConfig&,
-                                    const CuttlefishConfig::InstanceSpecific&);
+Result<std::optional<MonitorCommand>> UwbConnector(
+    const CuttlefishConfig&, const CuttlefishConfig::InstanceSpecific&);
 
 std::optional<MonitorCommand> AutomotiveProxyService(const CuttlefishConfig&);
 
-Result<MonitorCommand> BluetoothConnector(
+Result<std::optional<MonitorCommand>> BluetoothConnector(
     const CuttlefishConfig&, const CuttlefishConfig::InstanceSpecific&);
 
 Result<MonitorCommand> NfcConnector(const CuttlefishConfig&,
@@ -55,6 +55,10 @@ KernelLogMonitorComponent();
 
 fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>>
 LogcatReceiverComponent();
+
+Result<std::optional<MonitorCommand>> CasimirControlServer(
+    const CuttlefishConfig&, const CuttlefishConfig::InstanceSpecific&,
+    GrpcSocketCreator&);
 
 Result<MonitorCommand> ConfigServer(const CuttlefishConfig::InstanceSpecific&);
 
