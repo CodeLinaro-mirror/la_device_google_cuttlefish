@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "cuttlefish_config.h"
 #include "host/libs/config/cuttlefish_config.h"
 
 #include <string_view>
@@ -974,6 +975,45 @@ void CuttlefishConfig::MutableInstanceSpecific::set_display_configs(
   (*Dictionary())[kDisplayConfigs] = display_configs_json;
 }
 
+static constexpr char kTouchpadConfigs[] = "touchpad_configs";
+
+Json::Value CuttlefishConfig::TouchpadConfig::Serialize(
+    const CuttlefishConfig::TouchpadConfig& config) {
+  Json::Value config_json(Json::objectValue);
+  config_json[kXRes] = config.width;
+  config_json[kYRes] = config.height;
+
+  return config_json;
+}
+
+CuttlefishConfig::TouchpadConfig CuttlefishConfig::TouchpadConfig::Deserialize(
+    const Json::Value& config_json) {
+  TouchpadConfig touchpad_config = {};
+  touchpad_config.width = config_json[kXRes].asInt();
+  touchpad_config.height = config_json[kYRes].asInt();
+
+  return touchpad_config;
+}
+
+std::vector<CuttlefishConfig::TouchpadConfig>
+CuttlefishConfig::InstanceSpecific::touchpad_configs() const {
+  std::vector<TouchpadConfig> touchpad_configs;
+  for (auto& touchpad_config_json : (*Dictionary())[kTouchpadConfigs]) {
+    auto touchpad_config = TouchpadConfig::Deserialize(touchpad_config_json);
+    touchpad_configs.emplace_back(touchpad_config);
+  }
+  return touchpad_configs;
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_touchpad_configs(
+    const std::vector<TouchpadConfig>& touchpad_configs) {
+  Json::Value touchpad_configs_json(Json::arrayValue);
+
+  for (const TouchpadConfig& touchpad_config : touchpad_configs) {
+    touchpad_configs_json.append(TouchpadConfig::Serialize(touchpad_config));
+  }
+
+  (*Dictionary())[kTouchpadConfigs] = touchpad_configs_json;
+}
 
 static constexpr char kTargetArch[] = "target_arch";
 void CuttlefishConfig::MutableInstanceSpecific::set_target_arch(
@@ -990,6 +1030,14 @@ void CuttlefishConfig::MutableInstanceSpecific::set_enable_sandbox(const bool en
 }
 bool CuttlefishConfig::InstanceSpecific::enable_sandbox() const {
   return (*Dictionary())[kEnableSandbox].asBool();
+}
+static constexpr char kEnableVirtiofs[] = "enable_virtiofs";
+void CuttlefishConfig::MutableInstanceSpecific::set_enable_virtiofs(
+    const bool enable_virtiofs) {
+  (*Dictionary())[kEnableVirtiofs] = enable_virtiofs;
+}
+bool CuttlefishConfig::InstanceSpecific::enable_virtiofs() const {
+  return (*Dictionary())[kEnableVirtiofs].asBool();
 }
 static constexpr char kConsole[] = "console";
 void CuttlefishConfig::MutableInstanceSpecific::set_console(bool console) {
@@ -1534,9 +1582,9 @@ bool CuttlefishConfig::InstanceSpecific::sock_vsock_proxy_wait_adbd_start()
 }
 
 std::string CuttlefishConfig::InstanceSpecific::touch_socket_path(
-    int screen_idx) const {
+    int touch_dev_idx) const {
   return PerInstanceInternalUdsPath(
-      ("touch_" + std::to_string(screen_idx) + ".sock").c_str());
+      ("touch_" + std::to_string(touch_dev_idx) + ".sock").c_str());
 }
 
 std::string CuttlefishConfig::InstanceSpecific::rotary_socket_path() const {

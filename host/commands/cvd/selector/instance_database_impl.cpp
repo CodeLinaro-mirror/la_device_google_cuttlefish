@@ -104,14 +104,6 @@ Result<void> InstanceDatabase::AddInstances(
   return {};
 }
 
-Result<void> InstanceDatabase::SetBuildId(const std::string& group_name,
-                                          const std::string& build_id) {
-  auto* group_ptr = CF_EXPECT(FindMutableGroup(group_name));
-  auto& group = *group_ptr;
-  group.SetBuildId(build_id);
-  return {};
-}
-
 Result<LocalInstanceGroup*> InstanceDatabase::FindMutableGroup(
     const std::string& group_name) {
   LocalInstanceGroup* group_ptr = nullptr;
@@ -186,6 +178,24 @@ InstanceDatabase::FindGroupsByGroupName(const std::string& group_name) const {
                    GenerateTooManyInstancesErrorMsg(1, kGroupNameField));
 }
 
+Result<Set<ConstRef<LocalInstanceGroup>>> InstanceDatabase::FindGroupsById(
+    const std::string& id_str) const {
+  auto subset = CollectToSet<LocalInstanceGroup>(
+      local_instance_groups_,
+      [&id_str](const std::unique_ptr<LocalInstanceGroup>& group) {
+        if (!group) {
+          return false;
+        }
+        int id;
+        if (!android::base::ParseInt(id_str, &id)) {
+          return false;
+        }
+        auto group_set_result = group->FindById(static_cast<unsigned>(id));
+        return group_set_result.ok() && (group_set_result->size() == 1);
+      });
+  return subset;
+}
+
 Result<Set<ConstRef<LocalInstanceGroup>>>
 InstanceDatabase::FindGroupsByInstanceName(
     const std::string& instance_name) const {
@@ -207,10 +217,9 @@ Result<Set<ConstRef<LocalInstance>>> InstanceDatabase::FindInstancesByHome(
       [&home](const std::unique_ptr<LocalInstanceGroup>& group)
       -> Result<Set<ConstRef<LocalInstance>>> {
     CF_EXPECT(group != nullptr);
-    CF_EXPECTF(group->HomeDir() == home,
-               "Group Home, \"{}\", is different from the input home query "
-               "\"{}\"",
-               group->HomeDir(), home);
+    if (group->HomeDir() != home) {
+      return Set<ConstRef<LocalInstance>>{};
+    }
     return (group->FindAllInstances());
   };
   return CollectAllElements<LocalInstance, LocalInstanceGroup>(
@@ -286,20 +295,11 @@ Result<void> InstanceDatabase::LoadGroupFromJson(
       group_json[LocalInstanceGroup::kJsonHostArtifactPath].asString();
   const std::string product_out_path =
       group_json[LocalInstanceGroup::kJsonProductOutPath].asString();
-  const std::string build_id_value =
-      group_json[LocalInstanceGroup::kJsonBuildId].asString();
-  std::optional<std::string> build_id;
-  if (build_id_value != LocalInstanceGroup::kJsonUnknownBuildId) {
-    build_id = build_id_value;
-  }
   const auto new_group_ref =
       CF_EXPECT(AddInstanceGroup({.group_name = group_name,
                                   .home_dir = home_dir,
                                   .host_artifacts_path = host_artifacts_path,
                                   .product_out_path = product_out_path}));
-  if (build_id) {
-    CF_EXPECT(SetBuildId(group_name, *build_id));
-  }
   android::base::ScopeGuard remove_already_added_new_group(
       [&new_group_ref, this]() {
         this->RemoveInstanceGroup(new_group_ref.Get());

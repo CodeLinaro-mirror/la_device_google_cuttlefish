@@ -75,33 +75,15 @@ class ConnectionObserverImpl : public webrtc_streaming::ConnectionObserver {
   }
 
   void OnConnected() override {
-    auto display_handler = weak_display_handler_.lock();
-    if (display_handler) {
-      std::thread th([this]() {
-        // The encoder in libwebrtc won't drop 5 consecutive frames due to frame
-        // size, so we make sure at least 5 frames are sent every time a client
-        // connects to ensure they receive at least one.
-        constexpr int kNumFrames = 5;
-        constexpr int kMillisPerFrame = 16;
-        for (int i = 0; i < kNumFrames; ++i) {
-          auto display_handler = weak_display_handler_.lock();
-          display_handler->SendLastFrame();
-          if (i < kNumFrames - 1) {
-            std::this_thread::sleep_for(
-                std::chrono::milliseconds(kMillisPerFrame));
-          }
-        }
-      });
-      th.detach();
-    }
+    SendLastFrameAsync(/*all displays*/ std::nullopt);
   }
 
-  void OnTouchEvent(const std::string &display_label, int x, int y,
+  void OnTouchEvent(const std::string &device_label, int x, int y,
                     bool down) override {
-    input_connector_.SendTouchEvent(display_label, x, y, down);
+    input_connector_.SendTouchEvent(device_label, x, y, down);
   }
 
-  void OnMultiTouchEvent(const std::string &display_label, Json::Value id,
+  void OnMultiTouchEvent(const std::string &device_label, Json::Value id,
                          Json::Value slot, Json::Value x, Json::Value y,
                          bool down, int size) {
     std::vector<MultitouchSlot> slots(size);
@@ -111,7 +93,7 @@ class ConnectionObserverImpl : public webrtc_streaming::ConnectionObserver {
       slots[i].x = x[i].asInt();
       slots[i].y = y[i].asInt();
     }
-    input_connector_.SendMultiTouchEvent(display_label, slots, down);
+    input_connector_.SendMultiTouchEvent(device_label, slots, down);
   }
 
   void OnKeyboardEvent(uint16_t code, bool down) override {
@@ -301,6 +283,23 @@ class ConnectionObserverImpl : public webrtc_streaming::ConnectionObserver {
     }
   }
 
+  void OnDisplayControlMsg(const Json::Value &msg) override {
+    static constexpr const char kRefreshDisplay[] = "refresh_display";
+    if (!msg.isMember(kRefreshDisplay)) {
+      LOG(ERROR) << "Unknown display control command.";
+      return;
+    }
+    const auto display_number_json = msg[kRefreshDisplay];
+    if (!display_number_json.isInt()) {
+      LOG(ERROR) << "Invalid display control command.";
+      return;
+    }
+    const auto display_number =
+        static_cast<uint32_t>(display_number_json.asInt());
+    LOG(VERBOSE) << "Refresh display " << display_number;
+    SendLastFrameAsync(display_number);
+  }
+
   void OnCameraData(const std::vector<char> &data) override {
     if (camera_controller_) {
       camera_controller_->HandleMessage(data);
@@ -311,6 +310,29 @@ class ConnectionObserverImpl : public webrtc_streaming::ConnectionObserver {
   }
 
  private:
+  void SendLastFrameAsync(std::optional<uint32_t> display_number) {
+    auto display_handler = weak_display_handler_.lock();
+    if (display_handler) {
+      std::thread th([this, display_number]() {
+        // The encoder in libwebrtc won't drop 5 consecutive frames due to frame
+        // size, so we make sure at least 5 frames are sent every time a client
+        // connects to ensure they receive at least one.
+        constexpr int kNumFrames = 5;
+        constexpr int kMillisPerFrame = 16;
+        for (int i = 0; i < kNumFrames; ++i) {
+          auto display_handler = weak_display_handler_.lock();
+          display_handler->SendLastFrame(display_number);
+
+          if (i < kNumFrames - 1) {
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds(kMillisPerFrame));
+          }
+        }
+      });
+      th.detach();
+    }
+  }
+
   InputConnector& input_connector_;
   KernelLogEventsHandler *kernel_log_events_handler_;
   int kernel_log_subscription_id_ = -1;

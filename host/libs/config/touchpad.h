@@ -14,16 +14,27 @@
  * limitations under the License.
  */
 
-#pragma once
-
+#include <optional>
 #include <string>
 
 #include "common/libs/utils/result.h"
+#include "host/libs/config/cuttlefish_config.h"
 
 namespace cuttlefish {
-namespace cvd_start_impl {
 
-Result<std::string> ExtractBuildId(const std::string& home_dir);
+constexpr const char kTouchpadFlag[] = "touchpad";
+constexpr const char kTouchpadHelp[] =
+    "Comma separated key=value pairs of touchpad properties. Supported "
+    "properties:\n"
+    " 'width': required, width of the touchpad in pixels\n"
+    " 'height': required, height of the touchpad in pixels\n"
+    ". Example usage: \n"
+    "--touchpad=width=640,height=480\n";
 
-}  // namespace cvd_start_impl
+Result<CuttlefishConfig::TouchpadConfig> ParseTouchpadConfig(
+    const std::string& flag);
+
+Result<std::vector<CuttlefishConfig::TouchpadConfig>>
+ParseTouchpadConfigsFromArgs(std::vector<std::string>& args);
+
 }  // namespace cuttlefish
