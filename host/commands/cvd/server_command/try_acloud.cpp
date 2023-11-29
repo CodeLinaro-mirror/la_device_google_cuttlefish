@@ -30,7 +30,21 @@
 #include "host/commands/cvd/server_command/utils.h"
 #include "host/commands/cvd/types.h"
 
+#define ENABLE_CVDR_TRANSLATION 0
+
 namespace cuttlefish {
+namespace {
+
+constexpr char kCvdrBinName[] = "cvdr";
+
+bool CheckIfCvdrExist() {
+  auto cmd = Command("which").AddParameter(kCvdrBinName);
+  int ret = RunWithManagedStdio(std::move(cmd), nullptr, nullptr, nullptr,
+                                SubprocessOptions());
+  return ret == 0;
+}
+
+}  // namespace
 
 class TryAcloudCommand : public CvdServerHandler {
  public:
@@ -51,14 +65,17 @@ class TryAcloudCommand : public CvdServerHandler {
    * - `cvd` for local instance management, determined by flag
    * `--local-instance`.
    *
-   * - Or `cvdr` for remote instance management.
+   * - Or `cvdr` for remote instance management (#if ENABLE_CVDR_TRANSLATION).
    *
    * If the test fails, the command will be handed to the `python acloud CLI`.
    *
    */
   Result<cvd::Response> Handle(const RequestWithStdio& request) override {
+#if ENABLE_CVDR_TRANSLATION
     auto res = VerifyWithCvdRemote(request);
     return res.ok() ? res : VerifyWithCvd(request);
+#endif
+    return VerifyWithCvd(request);
   }
 
   Result<void> Interrupt() override {
@@ -122,7 +139,8 @@ Result<cvd::Response> TryAcloudCommand::VerifyWithCvdRemote(
   const uid_t uid = request.Credentials()->uid;
   auto filename = CF_EXPECT(GetDefaultConfigFile(uid));
   auto config = CF_EXPECT(LoadAcloudConfig(filename, uid));
-  CF_EXPECT(config.use_cvdr == true);
+  CF_EXPECT(config.use_legacy_acloud == false);
+  CF_EXPECT(CheckIfCvdrExist());
   auto args = ParseInvocation(request.Message()).arguments;
   CF_EXPECT(acloud_impl::CompileFromAcloudToCvdr(args));
   std::string cvdr_service_url =
