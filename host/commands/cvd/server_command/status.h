@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 The Android Open Source Project
+ * Copyright (C) 2023 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,12 +21,11 @@
 #include "host/commands/cvd/instance_manager.h"
 #include "host/commands/cvd/server_command/host_tool_target_manager.h"
 #include "host/commands/cvd/server_command/server_handler.h"
-#include "host/commands/cvd/server_command/subprocess_waiter.h"
 
 namespace cuttlefish {
 
-std::unique_ptr<CvdServerHandler> NewCvdFleetCommandHandler(
-    InstanceManager& instance_manager, SubprocessWaiter& subprocess_waiter,
+std::unique_ptr<CvdServerHandler> NewCvdStatusCommandHandler(
+    InstanceManager& instance_manager,
     HostToolTargetManager& host_tool_target_manager);
 
 }  // namespace cuttlefish
