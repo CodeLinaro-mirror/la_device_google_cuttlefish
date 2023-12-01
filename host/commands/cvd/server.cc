@@ -30,9 +30,7 @@
 #include <android-base/logging.h>
 #include <android-base/scopeguard.h>
 #include <android-base/strings.h>
-#include <fruit/fruit.h>
-
-#include "cvd_server.pb.h"
+#include <fmt/core.h>
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
@@ -42,14 +40,14 @@
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/shared_fd_flag.h"
 #include "common/libs/utils/subprocess.h"
-#include "host/commands/cvd/build_api.h"
+#include "cvd_server.pb.h"
 #include "host/commands/cvd/command_sequence.h"
 #include "host/commands/cvd/common_utils.h"
-#include "host/commands/cvd/demo_multi_vd.h"
 #include "host/commands/cvd/epoll_loop.h"
 #include "host/commands/cvd/logger.h"
+#include "host/commands/cvd/request_context.h"
+#include "host/commands/cvd/run_server.h"
 #include "host/commands/cvd/selector/selector_constants.h"
-#include "host/commands/cvd/server_command/acloud.h"
 #include "host/commands/cvd/server_command/cmd_list.h"
 #include "host/commands/cvd/server_command/display.h"
 #include "host/commands/cvd/server_command/env.h"
@@ -60,10 +58,10 @@
 #include "host/commands/cvd/server_command/reset.h"
 #include "host/commands/cvd/server_command/snapshot.h"
 #include "host/commands/cvd/server_command/start.h"
+#include "host/commands/cvd/server_command/status.h"
 #include "host/commands/cvd/server_command/subcmd.h"
 #include "host/commands/cvd/server_constants.h"
 #include "host/libs/config/cuttlefish_config.h"
-#include "host/libs/config/inject.h"
 #include "host/libs/config/known_paths.h"
 
 using android::base::ScopeGuard;
@@ -104,35 +102,6 @@ CvdServer::~CvdServer() {
   auto wakeup = BestEffortWakeup();
   CHECK(wakeup.ok()) << wakeup.error().FormatForEnv();
   Join();
-}
-
-fruit::Component<> CvdServer::RequestComponent(CvdServer* server) {
-  return fruit::createComponent()
-      .bindInstance(*server)
-      .bindInstance(server->instance_manager_)
-      .bindInstance(server->build_api_)
-      .bindInstance(server->host_tool_target_manager_)
-      .bindInstance<
-          fruit::Annotated<AcloudTranslatorOptOut, std::atomic<bool>>>(
-          server->optout_)
-      .install(CvdAcloudComponent)
-      .install(CvdCmdlistComponent)
-      .install(CommandSequenceExecutorComponent)
-      .install(cvdCommandComponent)
-      .install(CvdDevicePowerComponent)
-      .install(CvdDisplayComponent)
-      .install(CvdEnvComponent)
-      .install(cvdGenericCommandComponent)
-      .install(CvdHandlerProxyComponent)
-      .install(CvdHelpComponent)
-      .install(CvdResetComponent)
-      .install(CvdRestartComponent)
-      .install(CvdSnapshotComponent)
-      .install(cvdShutdownComponent)
-      .install(CvdStartCommandComponent)
-      .install(cvdVersionComponent)
-      .install(DemoMultiVdComponent)
-      .install(LoadConfigsComponent);
 }
 
 Result<void> CvdServer::BestEffortWakeup() {
@@ -200,18 +169,13 @@ Result<void> CvdServer::Exec(const ExecParam& exec_param) {
   android::base::unique_fd client_dup{
       exec_param.carryover_client_fd->UNMANAGED_Dup()};
   CF_EXPECT(client_dup.get() >= 0, "dup: \"" << server_fd_->StrError() << "\"");
-  std::string acloud_translator_opt_out_arg(
-      "-INTERNAL_acloud_translator_optout=");
-  if (optout_) {
-    acloud_translator_opt_out_arg.append("true");
-  } else {
-    acloud_translator_opt_out_arg.append("false");
-  }
+
   cvd_common::Args argv_str = {
       kServerExecPath,
-      "-INTERNAL_server_fd=" + std::to_string(server_dup.get()),
-      "-INTERNAL_carryover_client_fd=" + std::to_string(client_dup.get()),
-      acloud_translator_opt_out_arg,
+      fmt::format("-{}={}", kInternalServerFd, server_dup.get()),
+      fmt::format("-{}={}", kInternalCarryoverClientFd, client_dup.get()),
+      fmt::format("-{}={}", kInternalAcloudTranslatorOptOut, optout_),
+      fmt::format("-{}={}", kInternalRestartedInProcess, true),
   };
 
   int in_memory_dup = -1;
@@ -226,8 +190,8 @@ Result<void> CvdServer::Exec(const ExecParam& exec_param) {
     in_memory_dup = exec_param.in_memory_data_fd.value()->UNMANAGED_Dup();
     CF_EXPECTF(in_memory_dup >= 0, "dup: \"{}\"",
                exec_param.in_memory_data_fd.value()->StrError());
-    argv_str.push_back("-INTERNAL_memory_carryover_fd=" +
-                       std::to_string(in_memory_dup));
+    argv_str.push_back(
+        ConcatToString("-", kInternalMemoryCarryoverFd, "=", in_memory_dup));
   }
 
   std::vector<char*> argv_cstr;
@@ -248,22 +212,6 @@ Result<void> CvdServer::Exec(const ExecParam& exec_param) {
     free(argv);
   }
   return CF_ERR("fexecve failed: \"" << strerror(errno) << "\"");
-}
-
-Result<CvdServerHandler*> RequestHandler(
-    const RequestWithStdio& request,
-    const std::vector<CvdServerHandler*>& handlers) {
-  Result<cvd::Response> response;
-  std::vector<CvdServerHandler*> compatible_handlers;
-  for (auto& handler : handlers) {
-    if (CF_EXPECT(handler->CanHandle(request))) {
-      compatible_handlers.push_back(handler);
-    }
-  }
-  CF_EXPECT(compatible_handlers.size() == 1,
-            "Expected exactly one handler for message, found "
-                << compatible_handlers.size());
-  return compatible_handlers[0];
 }
 
 Result<void> CvdServer::StartServer(SharedFD server_fd) {
@@ -451,19 +399,14 @@ Result<cvd::Response> CvdServer::HandleRequest(RequestWithStdio orig_request,
       CF_EXPECT(Verbosity(request, request.Message().verbosity()));
   server_logger_.SetSeverity(verbosity);
 
-  fruit::Injector<> injector(RequestComponent, this);
-
-  for (auto& late_injected : injector.getMultibindings<LateInjected>()) {
-    CF_EXPECT(late_injected->LateInject(injector));
-  }
-
-  auto possible_handlers = injector.getMultibindings<CvdServerHandler>();
+  RequestContext context(*this, instance_manager_, build_api_,
+                         host_tool_target_manager_, optout_);
 
   // Even if the interrupt callback outlives the request handler, it'll only
   // hold on to this struct which will be cleaned out when the request handler
   // exits.
   auto shared = std::make_shared<OngoingRequest>();
-  shared->handler = CF_EXPECT(RequestHandler(request, possible_handlers));
+  shared->handler = CF_EXPECT(context.Handler(request));
   shared->thread_id = std::this_thread::get_id();
 
   {
@@ -507,21 +450,15 @@ Result<void> CvdServer::InstanceDbFromJson(const std::string& json_string) {
   return {};
 }
 
-static fruit::Component<> ServerComponent(ServerLogger* server_logger) {
-  return fruit::createComponent()
-      .addMultibinding<CvdServer, CvdServer>()
-      .bindInstance(*server_logger)
-      .install(BuildApiModule)
-      .install(EpollLoopComponent)
-      .install(HostToolTargetManagerComponent);
-}
-
 Result<int> CvdServerMain(ServerMainParam&& param) {
   SetMinimumVerbosity(android::base::VERBOSE);
 
   LOG(INFO) << "Starting server";
 
-  CF_EXPECT(daemon(0, 0) != -1, strerror(errno));
+  if (!param.restarted_in_process) {
+    LOG(INFO) << "Server is being daemonized...";
+    CF_EXPECT(daemon(0, 0) != -1, strerror(errno));
+  }
 
   signal(SIGPIPE, SIG_IGN);
 
@@ -529,16 +466,13 @@ Result<int> CvdServerMain(ServerMainParam&& param) {
   CF_EXPECT(server_fd->IsOpen(), "Did not receive a valid cvd_server fd");
 
   std::unique_ptr<ServerLogger> server_logger = std::move(param.server_logger);
-  fruit::Injector<> injector(ServerComponent, server_logger.get());
-
-  for (auto& late_injected : injector.getMultibindings<LateInjected>()) {
-    CF_EXPECT(late_injected->LateInject(injector));
-  }
-
-  auto server_bindings = injector.getMultibindings<CvdServer>();
-  CF_EXPECT(server_bindings.size() == 1,
-            "Expected 1 server binding, got " << server_bindings.size());
-  auto& server = *(server_bindings[0]);
+  BuildApi build_api;
+  EpollPool epoll_pool;
+  auto host_tool_target_manager = NewHostToolTargetManager();
+  InstanceLockFileManager lock_manager;
+  InstanceManager instance_manager(lock_manager, *host_tool_target_manager);
+  CvdServer server(build_api, epoll_pool, instance_manager,
+                   *host_tool_target_manager, *server_logger);
 
   std::optional<SharedFD> memory_carryover_fd =
       std::move(param.memory_carryover_fd);
