@@ -40,7 +40,6 @@
 #include "host/commands/cvd/server_command/subprocess_waiter.h"
 #include "host/commands/cvd/server_command/utils.h"
 #include "host/commands/cvd/types.h"
-#include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/instance_nums.h"
 
 namespace cuttlefish {
@@ -118,6 +117,8 @@ CvdGenericCommandHandler::CvdGenericCommandHandler(
       host_tool_target_manager_(host_tool_target_manager),
       command_to_binary_map_{{"host_bugreport", kHostBugreportBin},
                              {"cvd_host_bugreport", kHostBugreportBin},
+                             {"status", kBinGeneratedAtRuntime},
+                             {"cvd_status", kBinGeneratedAtRuntime},
                              {"stop", kBinGeneratedAtRuntime},
                              {"stop_cvd", kBinGeneratedAtRuntime},
                              {"clear", kClearBin},

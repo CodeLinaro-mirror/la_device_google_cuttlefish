@@ -697,6 +697,16 @@ void CuttlefishConfig::MutableInstanceSpecific::set_gpu_capture_binary(const std
   (*Dictionary())[kGpuCaptureBinary] = name;
 }
 
+static constexpr char kGpuGfxstreamTransport[] = "gpu_gfxstream_transport";
+std::string CuttlefishConfig::InstanceSpecific::gpu_gfxstream_transport()
+    const {
+  return (*Dictionary())[kGpuGfxstreamTransport].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_gpu_gfxstream_transport(
+    const std::string& transport) {
+  (*Dictionary())[kGpuGfxstreamTransport] = transport;
+}
+
 static constexpr char kRestartSubprocesses[] = "restart_subprocesses";
 bool CuttlefishConfig::InstanceSpecific::restart_subprocesses() const {
   return (*Dictionary())[kRestartSubprocesses].asBool();
@@ -930,6 +940,15 @@ void CuttlefishConfig::MutableInstanceSpecific::set_vhost_net(bool vhost_net) {
 }
 bool CuttlefishConfig::InstanceSpecific::vhost_net() const {
   return (*Dictionary())[kVhostNet].asBool();
+}
+
+static constexpr char kVhostUserVsock[] = "vhost_user_vsock";
+void CuttlefishConfig::MutableInstanceSpecific::set_vhost_user_vsock(
+    bool vhost_user_vsock) {
+  (*Dictionary())[kVhostUserVsock] = vhost_user_vsock;
+}
+bool CuttlefishConfig::InstanceSpecific::vhost_user_vsock() const {
+  return (*Dictionary())[kVhostUserVsock].asBool();
 }
 
 static constexpr char kRilDns[] = "ril_dns";

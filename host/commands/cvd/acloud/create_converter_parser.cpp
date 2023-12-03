@@ -159,10 +159,6 @@ Result<Tokens> ParseForCvdRemoteCreate(cvd_common::Args& arguments) {
       StringParser(kFlagBranch),
       StringParser(kFlagBuildId, "build-id"),
       StringParser(kFlagBuildTarget, "build-target"),
-      StringParser(kFlagBootloaderBuildId, "bootloader-build-id"),
-      StringParser(kFlagBootloaderBuildTarget, "bootloader-build-target"),
-      StringParser(kFlagBootloaderBranch, "bootloader-branch"),
-      StringParser(kFlagLocalImage, true),
   };
 
   std::vector<Flag> parsers;
@@ -222,7 +218,7 @@ Result<ConverterParsed> ParseAcloudCreateFlags(cvd_common::Args& arguments) {
       .bootloader =
           {
               .build_id = tokens.StringVal(kFlagBootloaderBuildId),
-              .build_target = tokens.StringVal(kFlagBuildTarget),
+              .build_target = tokens.StringVal(kFlagBootloaderBuildTarget),
               .branch = tokens.StringVal(kFlagBootloaderBranch),
           },
   };
