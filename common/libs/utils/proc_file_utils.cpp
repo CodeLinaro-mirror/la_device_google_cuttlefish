@@ -17,6 +17,7 @@
 #include "common/libs/utils/proc_file_utils.h"
 
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include <regex>
 #include <sstream>
@@ -27,12 +28,21 @@
 #include <android-base/file.h>
 #include <android-base/parseint.h>
 #include <android-base/strings.h>
+#include <fmt/core.h>
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/files.h"
 
 namespace cuttlefish {
+
+// sometimes, files under /proc/<pid> owned by a different user
+// e.g. /proc/<pid>/exe
+static Result<uid_t> FileOwnerUid(const std::string& file_path) {
+  struct stat buf;
+  CF_EXPECT_EQ(::stat(file_path.data(), &buf), 0);
+  return buf.st_uid;
+}
 
 // TODO(kwstephenkim): This logic is used broadly, so consider
 // to create a new library.
@@ -136,7 +146,7 @@ Result<std::vector<pid_t>> CollectPids(const uid_t uid) {
 
 Result<std::vector<std::string>> GetCmdArgs(const pid_t pid) {
   std::string cmdline_file_path = PidDirPath(pid) + "/cmdline";
-  auto owner = CF_EXPECT(OwnerUid(cmdline_file_path));
+  auto owner = CF_EXPECT(FileOwnerUid(cmdline_file_path));
   CF_EXPECT(getuid() == owner);
   std::string contents = CF_EXPECT(ReadAll(cmdline_file_path));
   return TokenizeByNullChar(contents);
@@ -208,21 +218,78 @@ Result<std::vector<pid_t>> CollectPidsByArgv0(const std::string& expected_argv0,
   return output_pids;
 }
 
-Result<uid_t> OwnerUid(const pid_t pid) {
-  auto proc_pid_path = PidDirPath(pid);
-  auto uid = CF_EXPECT(OwnerUid(proc_pid_path));
-  return uid;
+// /proc/<pid>/status has Uid: <uid> <uid> <uid> <uid> line
+// It normally is separated by a tab or more but that's not guaranteed forever
+static Result<std::vector<uid_t>> UidsFromUidLine(std::string uid_line) {
+  auto start = uid_line.find_first_of("0123456789");
+  if (start == std::string::npos) {
+    return {};
+  }
+
+  auto end = uid_line.find_first_not_of("0123456789", start);
+  std::string token = (end != std::string::npos)
+                          ? uid_line.substr(start, end - start)
+                          : uid_line.substr(start);
+
+  int current_uid;
+  CF_EXPECT(android::base::ParseInt(token, &current_uid));
+  std::vector<uid_t> uids{static_cast<uid_t>(current_uid)};
+
+  if (end == std::string::npos) {
+    return uids;
+  }
+  auto the_rest = CF_EXPECT(UidsFromUidLine(uid_line.substr(end)));
+  uids.insert(uids.end(), the_rest.begin(), the_rest.end());
+  return uids;
 }
 
-Result<uid_t> OwnerUid(const std::string& path) {
-  struct stat buf;
-  CF_EXPECT_EQ(::stat(path.data(), &buf), 0);
-  return buf.st_uid;
+struct ProcStatusUids {
+  uid_t real_;
+  uid_t effective_;
+  uid_t saved_set_;
+  uid_t filesystem_;
+};
+static Result<ProcStatusUids> OwnerUids(const pid_t pid) {
+  // parse from /proc/<pid>/status
+  std::regex uid_pattern(R"(Uid:\s+[0-9]+\s+[0-9]+\s+[0-9]+\s+[0-9]+)");
+  std::string status_path = fmt::format("/proc/{}/status", pid);
+  std::string status_content;
+  CF_EXPECT(android::base::ReadFileToString(status_path, &status_content));
+  std::vector<uid_t> uids;
+  uids.reserve(4);
+  for (const std::string& line :
+       android::base::Tokenize(status_content, "\n")) {
+    if (!std::regex_match(line, uid_pattern)) {
+      continue;
+    }
+    uids = CF_EXPECT(UidsFromUidLine(line));
+    CF_EXPECT_EQ(uids.size(), 4,
+                 fmt::format("Error in the Uid line: \"{}\"", line));
+    break;
+  }
+  CF_EXPECT(!uids.empty(), "The \"Uid:\" line was not found");
+  return ProcStatusUids{
+      .real_ = uids.at(0),
+      .effective_ = uids.at(1),
+      .saved_set_ = uids.at(2),
+      .filesystem_ = uids.at(3),
+  };
+}
+
+Result<uid_t> OwnerUid(const pid_t pid) {
+  // parse from /proc/<pid>/status
+  auto uids_result = OwnerUids(pid);
+  if (!uids_result.ok()) {
+    LOG(DEBUG) << uids_result.error().Trace();
+    LOG(DEBUG) << "Falling back to the old OwnerUid logic";
+    return CF_EXPECT(FileOwnerUid(PidDirPath(pid)));
+  }
+  return uids_result->real_;
 }
 
 Result<std::unordered_map<std::string, std::string>> GetEnvs(const pid_t pid) {
   std::string environ_file_path = PidDirPath(pid) + "/environ";
-  auto owner = CF_EXPECT(OwnerUid(environ_file_path));
+  auto owner = CF_EXPECT(FileOwnerUid(environ_file_path));
   CF_EXPECT(getuid() == owner, "Owned by another user of uid" << owner);
   std::string environ = CF_EXPECT(ReadAll(environ_file_path));
   std::vector<std::string> lines = TokenizeByNullChar(environ);
@@ -242,10 +309,31 @@ Result<std::unordered_map<std::string, std::string>> GetEnvs(const pid_t pid) {
 }
 
 Result<ProcInfo> ExtractProcInfo(const pid_t pid) {
+  auto owners = CF_EXPECT(OwnerUids(pid));
   return ProcInfo{.pid_ = pid,
+                  .real_owner_ = owners.real_,
+                  .effective_owner_ = owners.effective_,
                   .actual_exec_path_ = CF_EXPECT(GetExecutablePath(pid)),
                   .envs_ = CF_EXPECT(GetEnvs(pid)),
                   .args_ = CF_EXPECT(GetCmdArgs(pid))};
+}
+
+Result<pid_t> Ppid(const pid_t pid) {
+  // parse from /proc/<pid>/status
+  std::regex uid_pattern(R"(PPid:\s*([0-9]+))");
+  std::string status_path = fmt::format("/proc/{}/status", pid);
+  std::string status_content;
+  CF_EXPECT(android::base::ReadFileToString(status_path, &status_content));
+  for (const auto& line : android::base::Tokenize(status_content, "\n")) {
+    std::smatch matches;
+    if (!std::regex_match(line, matches, uid_pattern)) {
+      continue;
+    }
+    unsigned ppid;
+    CF_EXPECT(android::base::ParseUint(matches[1], &ppid));
+    return static_cast<pid_t>(ppid);
+  }
+  return CF_ERR("Status file does not have PPid: line in the right format");
 }
 
 }  // namespace cuttlefish
