@@ -16,6 +16,7 @@
 
 #include "host/commands/cvd/selector/instance_group_record.h"
 
+#include "host/commands/cvd/selector/instance_database_types.h"
 #include "host/commands/cvd/selector/instance_database_utils.h"
 #include "host/commands/cvd/selector/selector_constants.h"
 
@@ -27,7 +28,11 @@ LocalInstanceGroup::LocalInstanceGroup(const InstanceGroupParam& param)
       host_artifacts_path_{param.host_artifacts_path},
       product_out_path_{param.product_out_path},
       internal_group_name_(GenInternalGroupName()),
-      group_name_(param.group_name) {}
+      group_name_(param.group_name),
+      start_time_(param.start_time) {
+  LOG(VERBOSE) << "Creating a group \"" << group_name_ << "\" ("
+               << Format(start_time_) << ")";
+}
 
 LocalInstanceGroup::LocalInstanceGroup(const LocalInstanceGroup& src)
     : home_dir_{src.home_dir_},
@@ -35,6 +40,7 @@ LocalInstanceGroup::LocalInstanceGroup(const LocalInstanceGroup& src)
       product_out_path_{src.product_out_path_},
       internal_group_name_{src.internal_group_name_},
       group_name_{src.group_name_},
+      start_time_{src.start_time_},
       instances_{CopyInstances(src.instances_)} {}
 
 LocalInstanceGroup& LocalInstanceGroup::operator=(
@@ -133,6 +139,8 @@ Json::Value LocalInstanceGroup::Serialize() const {
   group_json[kJsonHomeDir] = home_dir_;
   group_json[kJsonHostArtifactPath] = host_artifacts_path_;
   group_json[kJsonProductOutPath] = product_out_path_;
+  group_json[kJsonStartTime] = SerializeTimePoint(start_time_);
+
   int i = 0;
   Json::Value instances_array_json;
   for (const auto& instance : instances_) {
