@@ -13,16 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 #pragma once
 
 #include <memory>
-#include <vector>
 
 #include "host/commands/cvd/server_command/server_handler.h"
 
 namespace cuttlefish {
 
-std::unique_ptr<CvdServerHandler> NewCvdHelpHandler(
-    const std::vector<std::unique_ptr<CvdServerHandler>>& server_handlers);
-}
+std::unique_ptr<CvdServerHandler> NewLintCommand();
+
+}  // namespace cuttlefish
