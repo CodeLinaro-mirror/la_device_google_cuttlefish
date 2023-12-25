@@ -935,6 +935,11 @@ class CuttlefishConfig {
   CuttlefishConfig& operator=(const CuttlefishConfig&) = delete;
 };
 
+// Vhost-user-vsock modes
+extern const char* const kVhostUserVsockModeAuto;
+extern const char* const kVhostUserVsockModeTrue;
+extern const char* const kVhostUserVsockModeFalse;
+
 // GPU modes
 extern const char* const kGpuModeAuto;
 extern const char* const kGpuModeDrmVirgl;
@@ -955,3 +960,6 @@ extern const char* const kHwComposerDrm;
 extern const char* const kHwComposerRanchu;
 extern const char* const kHwComposerNone;
 }  // namespace cuttlefish
+
+template <>
+struct fmt::formatter<cuttlefish::ExternalNetworkMode> : ostream_formatter {};
