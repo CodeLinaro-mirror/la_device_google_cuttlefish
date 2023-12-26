@@ -489,9 +489,10 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
       }
     }
 
-    qemu_cmd.AddParameter(gpu_device, ",id=gpu0",
-                          ",xres=", display_config.width,
-                          ",yres=", display_config.height);
+    qemu_cmd.AddParameter(
+        gpu_device, ",id=gpu0",
+        fmt::format(",bus=pci.0,addr={:0>2x}.0", VmManager::kGpuPciSlotNum),
+        ",xres=", display_config.width, ",yres=", display_config.height);
   }
 
   if (!instance.console()) {
@@ -771,7 +772,7 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
     }
     default:
       return CF_ERRF("Unexpected net mode {}",
-                     fmt::underlying(instance.external_network_mode()));
+                     instance.external_network_mode());
   }
 
   // The ordering of virtio-net devices is important. Make sure any change here
