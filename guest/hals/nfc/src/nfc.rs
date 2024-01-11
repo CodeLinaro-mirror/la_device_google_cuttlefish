@@ -193,6 +193,7 @@ impl NfcService {
                     }
                 } else {
                     info!("Nfc service is closed. Dropping incoming packets");
+                    break;
                 }
             }
         });

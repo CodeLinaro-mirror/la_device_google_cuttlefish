@@ -18,8 +18,6 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
-#include <set>
-#include <string>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -51,12 +49,6 @@ class ProcessMonitor {
     Properties& AddCommand(MonitorCommand) &;
     Properties AddCommand(MonitorCommand) &&;
 
-    Properties& StraceCommands(std::set<std::string>) &;
-    Properties StraceCommands(std::set<std::string>) &&;
-
-    Properties& StraceLogDir(std::string) &;
-    Properties StraceLogDir(std::string) &&;
-
     template <typename T>
     Properties& AddCommands(T commands) & {
       for (auto& command : commands) {
@@ -73,8 +65,6 @@ class ProcessMonitor {
    private:
     bool restart_subprocesses_;
     std::vector<MonitorEntry> entries_;
-    std::set<std::string> strace_commands_;
-    std::string strace_log_dir_;
 
     friend class ProcessMonitor;
   };
@@ -93,7 +83,6 @@ class ProcessMonitor {
   Result<void> ResumeMonitoredProcesses();
 
  private:
-  Result<void> StartSubprocesses(Properties& properties);
   Result<void> MonitorRoutine();
   Result<void> ReadMonitorSocketLoop(std::atomic_bool&);
   /*
