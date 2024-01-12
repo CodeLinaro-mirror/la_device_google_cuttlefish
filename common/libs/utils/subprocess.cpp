@@ -150,15 +150,6 @@ SubprocessOptions SubprocessOptions::InGroup(bool in_group) && {
   return *this;
 }
 
-SubprocessOptions& SubprocessOptions::Strace(std::string s) & {
-  strace_ = std::move(s);
-  return *this;
-}
-SubprocessOptions SubprocessOptions::Strace(std::string s) && {
-  strace_ = std::move(s);
-  return *this;
-}
-
 Subprocess::Subprocess(Subprocess&& subprocess)
     : pid_(subprocess.pid_.load()),
       started_(subprocess.started_),
@@ -378,18 +369,6 @@ Command Command::AddPrerequisite(
 
 Subprocess Command::Start(SubprocessOptions options) const {
   auto cmd = ToCharPointers(command_);
-
-  if (!options.Strace().empty()) {
-    auto strace_args = {
-        "/usr/bin/strace",
-        "--daemonize",
-        "--output-separately",  // Add .pid suffix
-        "--follow-forks",
-        "-o",  // Write to a separate file.
-        options.Strace().c_str(),
-    };
-    cmd.insert(cmd.begin(), strace_args);
-  }
 
   if (!validate_redirects(redirects_, inherited_fds_)) {
     return Subprocess(-1, {});

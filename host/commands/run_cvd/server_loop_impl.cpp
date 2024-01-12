@@ -79,11 +79,9 @@ Result<void> ServerLoopImpl::LateInject(fruit::Injector<>& injector) {
 
 Result<void> ServerLoopImpl::Run() {
   // Monitor and restart host processes supporting the CVD
-  auto process_monitor_properties =
-      ProcessMonitor::Properties()
-          .RestartSubprocesses(instance_.restart_subprocesses())
-          .StraceLogDir(instance_.PerInstanceLogPath(""))
-          .StraceCommands(config_.straced_host_executables());
+  ProcessMonitor::Properties process_monitor_properties;
+  process_monitor_properties.RestartSubprocesses(
+      instance_.restart_subprocesses());
 
   for (auto& command_source : command_sources_) {
     if (command_source->Enabled()) {
