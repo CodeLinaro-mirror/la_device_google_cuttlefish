@@ -445,15 +445,8 @@ class DeviceControlApp {
   }
 
   async #onSensorsMessage(message) {
-    let data = message.data;
-    if (data.arrayBuffer != undefined) {
-      // On firefox these messages are not ArrayBuffer, but have an
-      // arrayBuffer() method returning a promise of one.
-      data = await data.arrayBuffer();
-    }
-
     var decoder = new TextDecoder("utf-8");
-    message = decoder.decode(data);
+    message = decoder.decode(message.data);
 
     // Get sensor values from message.
     var sensor_vals = message.split(" ");
@@ -630,26 +623,14 @@ class DeviceControlApp {
     }
 
     document.querySelectorAll('.device-display-video').forEach((v, i) => {
-      const stream = v.srcObject;
-      if (stream == null) {
-        console.error('Missing corresponding device display video stream', l);
+      const width = v.videoWidth;
+      const height = v.videoHeight;
+      if (!width  || !height) {
+        console.error('Stream dimensions not yet available?', v);
         return;
       }
 
-      const streamVideoTracks = stream.getVideoTracks();
-      if (streamVideoTracks == null || streamVideoTracks.length == 0) {
-        return;
-      }
-
-      const streamSettings = stream.getVideoTracks()[0].getSettings();
-      const streamWidth = streamSettings.width;
-      const streamHeight = streamSettings.height;
-      if (streamWidth == 0 || streamHeight == 0) {
-        console.error('Stream dimensions not yet available?', stream);
-        return;
-      }
-
-      const aspectRatio = streamWidth / streamHeight;
+      const aspectRatio = width / height;
 
       let keyFrames = [];
       let from = this.#currentScreenStyles[v.id];
