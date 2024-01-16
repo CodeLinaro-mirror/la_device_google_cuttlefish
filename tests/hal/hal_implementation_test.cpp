@@ -98,6 +98,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.graphics.composer@2.4", // converted to AIDL, see b/193240715
     "android.hardware.graphics.mapper@2.1",
     "android.hardware.graphics.mapper@3.0",
+    "android.hardware.graphics.mapper@4.0", // converted to Stable C, see b/205761028
     "android.hardware.health.storage@1.0", // converted to AIDL, see b/177470478
     "android.hardware.health@2.1", // converted to AIDL, see b/177269435
     "android.hardware.input.classifier@1.0", // converted to AIDL, see b/205761620
@@ -139,6 +140,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.wifi.supplicant@1.4", // Converted to AIDL (see b/196235436)
     "android.hidl.base@1.0",
     "android.hidl.memory.token@1.0",
+    "android.hidl.memory@1.0", // Deprecated (see b/205764958)
     "android.system.net.netd@1.1", // Converted to AIDL (see b/205764585)
     "android.system.suspend@1.0", // Converted to AIDL (see b/170260236)
     "android.system.wifi.keystore@1.0", // Converted to AIDL (see b/205764502)
@@ -175,6 +177,7 @@ static const std::set<std::string> kAutomotiveOnlyAidl = {
     "android.hardware.automotive.remoteaccess",
     "android.hardware.automotive.vehicle",
     "android.hardware.automotive.ivn",
+    "android.hardware.macsec",
 };
 
 static const std::set<std::string> kTvOnlyAidl = {
@@ -221,6 +224,7 @@ static const std::set<std::string> kAlwaysMissingAidl = {
     "android.media.audio.common.types",
     "android.hardware.radio",
     "android.hardware.uwb.fira_android",
+    "android.hardware.wifi.common",
     "android.hardware.keymaster",
     "android.hardware.automotive.vehicle.property",
     // not on Cuttlefish since it's needed only on systems using HIDL audio HAL
@@ -258,7 +262,6 @@ static const std::vector<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.se.omapi.", 1, 266870904},
     {"android.hardware.soundtrigger3.", 1, 266941225},
     {"android.media.soundtrigger.", 1, 266941225},
-    {"android.hardware.media.c2.", 1, 251850069},
     {"android.hardware.weaver.", 2, 262418065},
 
     {"android.automotive.computepipe.registry.", 2, 273549907},

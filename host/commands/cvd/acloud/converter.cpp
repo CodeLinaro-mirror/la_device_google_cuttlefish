@@ -30,6 +30,7 @@
 #include <google/protobuf/text_format.h>
 
 #include "common/libs/fs/shared_fd.h"
+#include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/flag_parser.h"
 #include "common/libs/utils/result.h"
@@ -44,7 +45,7 @@
 #include "host/commands/cvd/server_client.h"
 #include "host/commands/cvd/server_command/utils.h"
 #include "host/commands/cvd/types.h"
-#include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/config/config_constants.h"
 
 namespace cuttlefish {
 namespace {
@@ -102,7 +103,7 @@ static Result<BranchBuildTargetInfo> GetDefaultBranchBuildTarget(
     .stdin_ = nullptr,
     .callback_ = callback_unlock
   };
-  callback_lock();
+  CF_EXPECT(callback_lock());
   RunOutput output_git = CF_EXPECT(waiter.RunWithManagedStdioInterruptable(param_git));
 
   output_git.stdout_.erase(std::remove(
@@ -627,22 +628,19 @@ Result<ConvertedAcloudCreateCommand> ConvertAcloudCreate(
   }
 
   if (launch_args) {
-    callback_lock();
+    CF_EXPECT(callback_lock());
     for (const auto& arg : CF_EXPECT(BashTokenize(
              *launch_args, waiter, callback_unlock))) {
       start_command.add_args(arg);
     }
   }
   if (acloud_config.launch_args != "") {
-    callback_lock();
+    CF_EXPECT(callback_lock());
     for (const auto& arg : CF_EXPECT(BashTokenize(
              acloud_config.launch_args, waiter, callback_unlock))) {
       start_command.add_args(arg);
     }
   }
-  start_command.mutable_selector_opts()->add_args(
-      std::string("--") + selector::SelectorFlags::kDisableDefaultGroup +
-      "=true");
   if (pet_name) {
     const auto [group_name, instance_name] =
         CF_EXPECT(selector::BreakDeviceName(*pet_name),

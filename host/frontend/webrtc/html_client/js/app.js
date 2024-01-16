@@ -746,6 +746,7 @@ class DeviceControlApp {
       }
     }
     if (message_data.event == 'VIRTUAL_DEVICE_DISPLAY_POWER_MODE_CHANGED') {
+      this.#deviceConnection.expectStreamChange();
       this.#updateDisplayVisibility(metadata.display, metadata.mode);
     }
   }
@@ -837,6 +838,8 @@ class DeviceControlApp {
         stream.addEventListener('removetrack', evt => {
           this.#updateDeviceDisplays();
         });
+
+        this.#requestNewFrameForDisplay(i);
       } else {
         console.debug('Removing display', i);
 
@@ -850,6 +853,15 @@ class DeviceControlApp {
     }
 
     this.#updateDeviceDisplaysInfo();
+  }
+
+  #requestNewFrameForDisplay(display_number) {
+    let message = {
+      command: "display",
+      refresh_display: display_number,
+    };
+    this.#deviceConnection.sendControlMessage(JSON.stringify(message));
+    console.debug('Control message sent: ', JSON.stringify(message));
   }
 
   #initializeAdb() {
@@ -935,6 +947,11 @@ class DeviceControlApp {
   }
 
   #onKeyEvent(e) {
+    if (e.cancelable) {
+      // Some keyboard events cause unwanted side effects, like elements losing
+      // focus, if the default behavior is not prevented.
+      e.preventDefault();
+    }
     this.#deviceConnection.sendKeyEvent(e.code, e.type);
   }
 
@@ -953,153 +970,7 @@ class DeviceControlApp {
   }
 
   #addMouseTracking(displayDeviceVideo) {
-    let $this = this;
-    let mouseIsDown = false;
-    let mouseCtx = {
-      down: false,
-      touchIdSlotMap: new Map(),
-      touchSlots: [],
-    };
-    function onStartDrag(e) {
-      // Can't prevent event default behavior to allow the element gain focus
-      // when touched and start capturing keyboard input in the parent.
-      // console.debug("mousedown at " + e.pageX + " / " + e.pageY);
-      mouseCtx.down = true;
-
-      $this.#sendEventUpdate(mouseCtx, e);
-    }
-
-    function onEndDrag(e) {
-      // Can't prevent event default behavior to allow the element gain focus
-      // when touched and start capturing keyboard input in the parent.
-      // console.debug("mouseup at " + e.pageX + " / " + e.pageY);
-      mouseCtx.down = false;
-
-      $this.#sendEventUpdate(mouseCtx, e);
-    }
-
-    function onContinueDrag(e) {
-      // Can't prevent event default behavior to allow the element gain focus
-      // when touched and start capturing keyboard input in the parent.
-      // console.debug("mousemove at " + e.pageX + " / " + e.pageY + ", down=" +
-      // mouseIsDown);
-      if (mouseCtx.down) {
-        $this.#sendEventUpdate(mouseCtx, e);
-      }
-    }
-
-    if (window.PointerEvent) {
-      displayDeviceVideo.addEventListener('pointerdown', onStartDrag);
-      displayDeviceVideo.addEventListener('pointermove', onContinueDrag);
-      displayDeviceVideo.addEventListener('pointerup', onEndDrag);
-    } else if (window.TouchEvent) {
-      displayDeviceVideo.addEventListener('touchstart', onStartDrag);
-      displayDeviceVideo.addEventListener('touchmove', onContinueDrag);
-      displayDeviceVideo.addEventListener('touchend', onEndDrag);
-    } else if (window.MouseEvent) {
-      displayDeviceVideo.addEventListener('mousedown', onStartDrag);
-      displayDeviceVideo.addEventListener('mousemove', onContinueDrag);
-      displayDeviceVideo.addEventListener('mouseup', onEndDrag);
-    }
-  }
-
-  #sendEventUpdate(ctx, e) {
-    let eventType = e.type.substring(0, 5);
-
-    // The <video> element:
-    const deviceDisplay = e.target;
-
-    // Before the first video frame arrives there is no way to know width and
-    // height of the device's screen, so turn every click into a click at 0x0.
-    // A click at that position is not more dangerous than anywhere else since
-    // the user is clicking blind anyways.
-    const videoWidth = deviceDisplay.videoWidth ? deviceDisplay.videoWidth : 1;
-    const elementWidth =
-        deviceDisplay.offsetWidth ? deviceDisplay.offsetWidth : 1;
-    const scaling = videoWidth / elementWidth;
-
-    let xArr = [];
-    let yArr = [];
-    let idArr = [];
-    let slotArr = [];
-
-    if (eventType == 'mouse' || eventType == 'point') {
-      xArr.push(e.offsetX);
-      yArr.push(e.offsetY);
-
-      let thisId = -1;
-      if (eventType == 'point') {
-        thisId = e.pointerId;
-      }
-
-      slotArr.push(0);
-      idArr.push(thisId);
-    } else if (eventType == 'touch') {
-      // touchstart: list of touch points that became active
-      // touchmove: list of touch points that changed
-      // touchend: list of touch points that were removed
-      let changes = e.changedTouches;
-      let rect = e.target.getBoundingClientRect();
-      for (let i = 0; i < changes.length; i++) {
-        xArr.push(changes[i].pageX - rect.left);
-        yArr.push(changes[i].pageY - rect.top);
-        if (ctx.touchIdSlotMap.has(changes[i].identifier)) {
-          let slot = ctx.touchIdSlotMap.get(changes[i].identifier);
-
-          slotArr.push(slot);
-          if (e.type == 'touchstart') {
-            // error
-            console.error('touchstart when already have slot');
-            return;
-          } else if (e.type == 'touchmove') {
-            idArr.push(changes[i].identifier);
-          } else if (e.type == 'touchend') {
-            ctx.touchSlots[slot] = false;
-            ctx.touchIdSlotMap.delete(changes[i].identifier);
-            idArr.push(-1);
-          }
-        } else {
-          if (e.type == 'touchstart') {
-            let slot = -1;
-            for (let j = 0; j < ctx.touchSlots.length; j++) {
-              if (!ctx.touchSlots[j]) {
-                slot = j;
-                break;
-              }
-            }
-            if (slot == -1) {
-              slot = ctx.touchSlots.length;
-              ctx.touchSlots.push(true);
-            }
-            slotArr.push(slot);
-            ctx.touchSlots[slot] = true;
-            ctx.touchIdSlotMap.set(changes[i].identifier, slot);
-            idArr.push(changes[i].identifier);
-          } else if (e.type == 'touchmove') {
-            // error
-            console.error('touchmove when no slot');
-            return;
-          } else if (e.type == 'touchend') {
-            // error
-            console.error('touchend when no slot');
-            return;
-          }
-        }
-      }
-    }
-
-    for (let i = 0; i < xArr.length; i++) {
-      xArr[i] = Math.trunc(xArr[i] * scaling);
-      yArr[i] = Math.trunc(yArr[i] * scaling);
-    }
-
-    // NOTE: Rotation is handled automatically because the CSS rotation through
-    // transforms also rotates the coordinates of events on the object.
-
-    const display_label = deviceDisplay.id;
-
-    this.#deviceConnection.sendMultiTouch(
-        {idArr, xArr, yArr, down: ctx.down, slotArr, display_label});
+    trackPointerEvents(displayDeviceVideo, this.#deviceConnection);
   }
 
   #updateDisplayVisibility(displayId, powerMode) {
@@ -1114,10 +985,18 @@ class DeviceControlApp {
       console.error('Unknown display id: ' + displayId);
       return;
     }
+
+    const display_number = parseInt(displayId);
+    if (isNaN(display_number)) {
+      console.error('Invalid display id: ' + displayId);
+      return;
+    }
+
     powerMode = powerMode.toLowerCase();
     switch (powerMode) {
       case 'on':
         display.style.visibility = 'visible';
+        this.#requestNewFrameForDisplay(display_number);
         break;
       case 'off':
         display.style.visibility = 'hidden';

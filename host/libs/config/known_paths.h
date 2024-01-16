@@ -20,6 +20,7 @@
 namespace cuttlefish {
 
 std::string AdbConnectorBinary();
+std::string CasimirControlServerBinary();
 std::string ConfigServerBinary();
 std::string ConsoleForwarderBinary();
 std::string ControlEnvProxyServerBinary();
@@ -35,6 +36,7 @@ std::string PicaBinary();
 std::string ProcessRestarterBinary();
 std::string RootCanalBinary();
 std::string CasimirBinary();
+std::string ScreenRecordingServerBinary();
 std::string SecureEnvBinary();
 std::string SocketVsockProxyBinary();
 std::string StopCvdBinary();

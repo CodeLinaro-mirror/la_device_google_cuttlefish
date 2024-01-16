@@ -14,9 +14,9 @@
 # limitations under the License.
 #
 
-
+# set LOCAL_SENSOR_FILE_OVERRIDES := true if a device has a custom list of sensors. Otherwise
+# install the default set like below
 ifneq ($(LOCAL_SENSOR_FILE_OVERRIDES),true)
-ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
     PRODUCT_COPY_FILES += \
         frameworks/native/data/etc/android.hardware.sensor.ambient_temperature.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.ambient_temperature.xml \
         frameworks/native/data/etc/android.hardware.sensor.barometer.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.barometer.xml \
@@ -26,19 +26,14 @@ ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
         frameworks/native/data/etc/android.hardware.sensor.proximity.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.proximity.xml \
         frameworks/native/data/etc/android.hardware.sensor.relative_humidity.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.relative_humidity.xml
 endif
-endif
 
 PRODUCT_SOONG_NAMESPACES += device/google/cuttlefish/shared/sensors/multihal
 
-#
-# Sensors
-#
+# Set LOCAL_SENSOR_PRODUCT_PACKAGE := <package list> if a device wants to install custom implementations
+# Should check if the default feature list is okay with the implementation. Otherwise, it should set
+# LOCAL_SENSOR_FILE_OVERRIDES and copy feature files.
 ifeq ($(LOCAL_SENSOR_PRODUCT_PACKAGE),)
-ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
        LOCAL_SENSOR_PRODUCT_PACKAGE := com.android.hardware.sensors
-else
-       LOCAL_SENSOR_PRODUCT_PACKAGE := android.hardware.sensors-service.example
-endif
 endif
 PRODUCT_PACKAGES += \
     $(LOCAL_SENSOR_PRODUCT_PACKAGE)

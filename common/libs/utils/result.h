@@ -23,10 +23,9 @@
 #include <utility>
 #include <vector>
 
+#include <android-base/format.h>  // IWYU pragma: export
 #include <android-base/logging.h>
 #include <android-base/result.h>  // IWYU pragma: export
-#include <fmt/core.h>             // IWYU pragma: export
-#include <fmt/format.h>
 
 namespace cuttlefish {
 
@@ -360,12 +359,14 @@ class StackTraceError {
   }
   const std::vector<StackTraceEntry>& Stack() const { return stack_; }
 
-  std::string Message() const { return fmt::format("{:m}", *this); }
+  std::string Message() const {
+    return fmt::format(fmt::runtime("{:m}"), *this);
+  }
 
-  std::string Trace() const { return fmt::format("{:v}", *this); }
+  std::string Trace() const { return fmt::format(fmt::runtime("{:v}"), *this); }
 
   std::string FormatForEnv() const {
-    return fmt::format(ResultErrorFormat(), *this);
+    return fmt::format(fmt::runtime(ResultErrorFormat()), *this);
   }
 
   template <typename T>
@@ -609,7 +610,7 @@ auto ErrorFromType(Result<T>&& value) {
       current_entry << "Expected \"" << #LHS_RESULT << "\" " << #COMPARE_OP \
                     << " \"" << #RHS_RESULT << "\" but was "                \
                     << lhs_macro_intermediate_result << " vs "              \
-                    << rhs_macro_intermediate_result << ".";                \
+                    << rhs_macro_intermediate_result << ". ";               \
       current_entry << MSG;                                                 \
       auto error = ErrorFromType(false);                                    \
       error.PushEntry(std::move(current_entry));                            \

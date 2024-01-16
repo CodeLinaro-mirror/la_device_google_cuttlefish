@@ -22,15 +22,9 @@
 #include <json/json.h>
 
 #include "common/libs/utils/result.h"
-#include "host/commands/cvd/parser/fetch_cvd_parser.h"
+#include "host/commands/cvd/parser/fetch_config_parser.h"
 
 namespace cuttlefish {
-
-typedef struct _CvdFlags {
-  std::vector<std::string> launch_cvd_flags;
-  std::vector<std::string> selector_flags;
-  std::vector<std::string> fetch_cvd_flags;
-} CvdFlags;
 
 struct LoadDirectories {
   std::string target_directory;
@@ -38,6 +32,13 @@ struct LoadDirectories {
   std::string launch_home_directory;
   std::string host_package_directory;
   std::string system_image_directory_flag;
+};
+
+struct CvdFlags {
+  std::vector<std::string> launch_cvd_flags;
+  std::vector<std::string> selector_flags;
+  std::vector<std::string> fetch_cvd_flags;
+  LoadDirectories load_directories;
 };
 
 struct Override {
@@ -58,16 +59,6 @@ struct LoadFlags {
 Result<LoadFlags> GetFlags(std::vector<std::string>& args,
                            const std::string& working_directory);
 
-Result<Json::Value> ParseJsonFile(const std::string& file_path);
-
-Result<Json::Value> GetOverriddenConfig(
-    const std::string& config_path,
-    const std::vector<Override>& override_flags);
-
-Result<LoadDirectories> GenerateLoadDirectories(
-    const std::string& parent_directory, const int num_instances);
-
-Result<CvdFlags> ParseCvdConfigs(Json::Value& root,
-                                 const LoadDirectories& load_directories);
+Result<CvdFlags> GetCvdFlags(const LoadFlags& flags);
 
 };  // namespace cuttlefish

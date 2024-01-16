@@ -49,7 +49,7 @@
 #include <android-base/cmsg.h>
 
 #ifdef __linux__
-#include "vm_sockets.h"
+#include <linux/vm_sockets.h>
 #endif
 
 #include "common/libs/utils/result.h"
@@ -78,6 +78,8 @@ namespace cuttlefish {
 struct PollSharedFd;
 class Epoll;
 class FileInstance;
+struct VhostUserVsockCid;
+struct VsockCid;
 
 /**
  * Counted reference to a FileInstance.
@@ -128,6 +130,10 @@ class SharedFD {
  public:
   inline SharedFD();
   SharedFD(const std::shared_ptr<FileInstance>& in) : value_(in) {}
+  SharedFD(SharedFD const&) = default;
+  SharedFD(SharedFD&& other);
+  SharedFD& operator=(SharedFD const&) = default;
+  SharedFD& operator=(SharedFD&& other);
   // Reference the listener as a FileInstance to make this FD type agnostic.
   static SharedFD Accept(const FileInstance& listener, struct sockaddr* addr,
                          socklen_t* addrlen);
@@ -139,7 +145,7 @@ class SharedFD {
   static SharedFD Open(const std::string& pathname, int flags, mode_t mode = 0);
   static SharedFD Creat(const std::string& pathname, mode_t mode);
   static int Fchdir(SharedFD);
-  static SharedFD Fifo(const std::string& pathname, mode_t mode);
+  static Result<SharedFD> Fifo(const std::string& pathname, mode_t mode);
   static bool Pipe(SharedFD* fd0, SharedFD* fd1);
 #ifdef __linux__
   static SharedFD Event(int initval = 0, int flags = 0);
@@ -151,6 +157,8 @@ class SharedFD {
   static int Poll(std::vector<PollSharedFd>& fds, int timeout);
   static bool SocketPair(int domain, int type, int protocol, SharedFD* fd0,
                          SharedFD* fd1);
+  static Result<std::pair<SharedFD, SharedFD>> SocketPair(int domain, int type,
+                                                          int protocol);
   static SharedFD Socket(int domain, int socket_type, int protocol);
   static SharedFD SocketLocalClient(const std::string& name, bool is_abstract,
                                     int in_type);
@@ -166,10 +174,27 @@ class SharedFD {
   static SharedFD SocketLocalServer(int port, int type);
 
 #ifdef __linux__
+  // For binding in vsock, svm_cid from `cid` param would be either
+  // VMADDR_CID_ANY, VMADDR_CID_LOCAL, VMADDR_CID_HOST or their own CID, and it
+  // is used for indicating connections which it accepts from.
+  //  * VMADDR_CID_ANY: accept from any
+  //  * VMADDR_CID_LOCAL: accept from local
+  //  * VMADDR_CID_HOST: accept from child vm
+  //  * their own CID: accept from parent vm
+  // With vhost-user-vsock, it is basically similar to VMADDR_CID_HOST, but for
+  // now it has limitations that it should bind to a specific socket file which
+  // is for a certain cid. So for vhost-user-vsock, we need to specify the
+  // expected client's cid. That's why vhost_user_vsock_listening_cid is
+  // necessary.
+  // TODO: combining them when vhost-user-vsock impl supports a kind of
+  // VMADDR_CID_HOST
   static SharedFD VsockServer(unsigned int port, int type,
+                              std::optional<int> vhost_user_vsock_listening_cid,
                               unsigned int cid = VMADDR_CID_ANY);
-  static SharedFD VsockServer(int type);
-  static SharedFD VsockClient(unsigned int cid, unsigned int port, int type);
+  static SharedFD VsockServer(
+      int type, std::optional<int> vhost_user_vsock_listening_cid);
+  static SharedFD VsockClient(unsigned int cid, unsigned int port, int type,
+                              bool vhost_user);
 #endif
 
   bool operator==(const SharedFD& rhs) const { return value_ == rhs.value_; }
@@ -280,9 +305,9 @@ class FileInstance {
   // Otherwise an error will be set either on this file or the input.
   // The non-const reference is needed to avoid binding this to a particular
   // reference type.
-  bool CopyFrom(FileInstance& in, size_t length);
+  bool CopyFrom(FileInstance& in, size_t length, FileInstance* stop = nullptr);
   // Same as CopyFrom, but reads from input until EOF is reached.
-  bool CopyAllFrom(FileInstance& in);
+  bool CopyAllFrom(FileInstance& in, FileInstance* stop = nullptr);
 
   int UNMANAGED_Dup();
   int UNMANAGED_Dup2(int newfd);

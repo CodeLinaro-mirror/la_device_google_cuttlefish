@@ -41,8 +41,8 @@ namespace cuttlefish {
 
 class CvdDisplayCommandHandler : public CvdServerHandler {
  public:
-  INJECT(CvdDisplayCommandHandler(InstanceManager& instance_manager,
-                                  SubprocessWaiter& subprocess_waiter))
+  CvdDisplayCommandHandler(InstanceManager& instance_manager,
+                           SubprocessWaiter& subprocess_waiter)
       : instance_manager_{instance_manager},
         subprocess_waiter_(subprocess_waiter),
         cvd_display_operations_{"display"} {}
@@ -63,7 +63,7 @@ class CvdDisplayCommandHandler : public CvdServerHandler {
 
     auto [_, subcmd_args] = ParseInvocation(request.Message());
 
-    bool is_help = IsHelp(subcmd_args);
+    bool is_help = CF_EXPECT(IsHelp(subcmd_args));
     // may modify subcmd_args by consuming in parsing
     Command command =
         is_help ? CF_EXPECT(HelpCommand(request, uid, subcmd_args, envs))
@@ -169,9 +169,9 @@ class CvdDisplayCommandHandler : public CvdServerHandler {
     return command;
   }
 
-  bool IsHelp(const cvd_common::Args& cmd_args) const {
+  Result<bool> IsHelp(const cvd_common::Args& cmd_args) const {
     // cvd display --help, --helpxml, etc or simply cvd display
-    if (cmd_args.empty() || IsHelpSubcmd(cmd_args)) {
+    if (cmd_args.empty() || CF_EXPECT(IsHelpSubcmd(cmd_args))) {
       return true;
     }
     // cvd display help <subcommand> format
@@ -186,10 +186,10 @@ class CvdDisplayCommandHandler : public CvdServerHandler {
   static constexpr char kDisplayBin[] = "cvd_internal_display";
 };
 
-fruit::Component<fruit::Required<InstanceManager, SubprocessWaiter>>
-CvdDisplayComponent() {
-  return fruit::createComponent()
-      .addMultibinding<CvdServerHandler, CvdDisplayCommandHandler>();
+std::unique_ptr<CvdServerHandler> NewCvdDisplayCommandHandler(
+    InstanceManager& instance_manager, SubprocessWaiter& subprocess_waiter) {
+  return std::unique_ptr<CvdServerHandler>(
+      new CvdDisplayCommandHandler(instance_manager, subprocess_waiter));
 }
 
 }  // namespace cuttlefish

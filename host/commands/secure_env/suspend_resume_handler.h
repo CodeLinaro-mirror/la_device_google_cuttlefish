@@ -19,16 +19,51 @@
 
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/result.h"
-#include "host/commands/secure_env/snapshot_running_flag.h"
 #include "host/libs/command_util/runner/defs.h"
 
 namespace cuttlefish {
 
+// `SnapshotCommandHandler` can request threads to suspend and resume using the
+// following protocol. Each message on the socket is 1 byte.
+//
+// Suspend flow:
+//
+//   1. `SnapshotCommandHandler` writes `kSuspend` to the socket.
+//   2. When the worker thread sees the socket is readable, it should assume the
+//      incoming message is `kSuspend`, finish all non-blocking work, read the
+//      `kSuspend` message, write a `kSuspendAck` message back into the socket,
+//      and then, finally, block until it receives another message from the
+//      socket (which will always be `kResume`).
+//   3. `SnapshotCommandHandler` waits for the `kSuspendAck` to ensure the
+//      worker thread is actually suspended and then proceeds.
+//
+// Resume flow:
+//
+//   1. The worker thread is already blocked waiting for a `kResume` from the
+//      socket.
+//   2. `SnapshotCommandHandler` sends a `kResume`.
+//   3. The worker thread sees it and goes back to normal operation.
+//
+// WARNING: Keep in sync with the `SNAPSHOT_SOCKET_MESSAGE_*` constants in
+// secure_env/rust/lib.rs.
+enum SnapshotSocketMessage : uint8_t {
+  kSuspend = 1,
+  kSuspendAck = 2,
+  kResume = 3,
+};
+
 class SnapshotCommandHandler {
  public:
+  struct SnapshotSockets {
+    SharedFD rust;
+    SharedFD keymaster;
+    SharedFD gatekeeper;
+    SharedFD oemlock;
+  };
+
   ~SnapshotCommandHandler();
   SnapshotCommandHandler(SharedFD channel_to_run_cvd,
-                         SnapshotRunningFlag& running);
+                         SnapshotSockets snapshot_sockets);
 
  private:
   Result<void> SuspendResumeHandler();
@@ -36,7 +71,7 @@ class SnapshotCommandHandler {
   void Join();
 
   SharedFD channel_to_run_cvd_;
-  SnapshotRunningFlag& shared_running_;  // shared by other components outside
+  SnapshotSockets snapshot_sockets_;
   std::thread handler_thread_;
 };
 

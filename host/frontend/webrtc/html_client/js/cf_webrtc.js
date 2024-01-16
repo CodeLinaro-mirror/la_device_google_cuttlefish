@@ -267,6 +267,10 @@ class DeviceConnection {
     this.#streamChangeCallback = cb;
   }
 
+  expectStreamChange() {
+    this.#control.expectMessagesSoon(5000);
+  }
+
   #sendJsonInput(evt) {
     this.#inputChannel.send(JSON.stringify(evt));
   }
@@ -283,16 +287,16 @@ class DeviceConnection {
 
   // TODO (b/124121375): This should probably be an array of pointer events and
   // have different properties.
-  sendMultiTouch({idArr, xArr, yArr, down, slotArr, display_label}) {
-    this.#sendJsonInput({
-      type: 'multi-touch',
-      id: idArr,
-      x: xArr,
-      y: yArr,
-      down: down ? 1 : 0,
-      slot: slotArr,
-      display_label: display_label,
-    });
+  sendMultiTouch({idArr, xArr, yArr, down, device_label}) {
+    let events = {
+            type: 'multi-touch',
+            id: idArr,
+            x: xArr,
+            y: yArr,
+            down: down ? 1 : 0,
+            device_label: device_label,
+          };
+    this.#sendJsonInput(events);
   }
 
   sendKeyEvent(code, type) {
@@ -560,6 +564,14 @@ class Controller {
   #onIceCandidate(iceCandidate) {
     console.debug(`Remote ICE Candidate: `, iceCandidate);
     this.#pc.addIceCandidate(iceCandidate);
+  }
+
+  expectMessagesSoon(durationMilliseconds) {
+    if (this.#serverConnector.expectMessagesSoon) {
+      this.#serverConnector.expectMessagesSoon(durationMilliseconds);
+    } else {
+      console.warn(`Unavailable expectMessagesSoon(). Messages may be slow.`);
+    }
   }
 
   // This effectively ensures work that changes connection state doesn't run

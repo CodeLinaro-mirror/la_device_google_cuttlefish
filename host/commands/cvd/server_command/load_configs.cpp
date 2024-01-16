@@ -22,7 +22,6 @@
 #include <string_view>
 #include <vector>
 
-#include <fruit/fruit.h>
 #include <json/json.h>
 
 #include "common/libs/fs/shared_buf.h"
@@ -39,8 +38,7 @@ namespace cuttlefish {
 
 class LoadConfigsCommand : public CvdServerHandler {
  public:
-  INJECT(LoadConfigsCommand(CommandSequenceExecutor& executor))
-      : executor_(executor) {}
+  LoadConfigsCommand(CommandSequenceExecutor& executor) : executor_(executor) {}
   ~LoadConfigsCommand() = default;
 
   Result<bool> CanHandle(const RequestWithStdio& request) const override {
@@ -86,12 +84,8 @@ class LoadConfigsCommand : public CvdServerHandler {
       return {};
     }
 
-    Json::Value json_configs =
-        CF_EXPECT(GetOverriddenConfig(flags.config_path, flags.overrides));
-    const auto load_directories =
-        CF_EXPECT(GenerateLoadDirectories(flags.base_dir, json_configs["instances"].size()));
-    auto cvd_flags = CF_EXPECT(ParseCvdConfigs(json_configs, load_directories),
-                               "parsing json configs failed");
+    auto cvd_flags = CF_EXPECT(GetCvdFlags(flags));
+
     std::vector<cvd::Request> req_protos;
     const auto& client_env = request.Message().command_request().env();
 
@@ -110,17 +104,18 @@ class LoadConfigsCommand : public CvdServerHandler {
     mkdir_cmd.add_args("cvd");
     mkdir_cmd.add_args("mkdir");
     mkdir_cmd.add_args("-p");
-    mkdir_cmd.add_args(load_directories.launch_home_directory);
+    mkdir_cmd.add_args(cvd_flags.load_directories.launch_home_directory);
 
     auto& launch_cmd = *req_protos.emplace_back().mutable_command_request();
-    launch_cmd.set_working_directory(load_directories.host_package_directory);
+    launch_cmd.set_working_directory(
+        cvd_flags.load_directories.host_package_directory);
     *launch_cmd.mutable_env() = client_env;
     (*launch_cmd.mutable_env())["HOME"] =
-        load_directories.launch_home_directory;
+        cvd_flags.load_directories.launch_home_directory;
     (*launch_cmd.mutable_env())[kAndroidHostOut] =
-        load_directories.host_package_directory;
+        cvd_flags.load_directories.host_package_directory;
     (*launch_cmd.mutable_env())[kAndroidSoongHostOut] =
-        load_directories.host_package_directory;
+        cvd_flags.load_directories.host_package_directory;
     if (Contains(*launch_cmd.mutable_env(), kAndroidProductOut)) {
       (*launch_cmd.mutable_env()).erase(kAndroidProductOut);
     }
@@ -136,11 +131,11 @@ class LoadConfigsCommand : public CvdServerHandler {
       launch_cmd.add_args(parsed_flag);
     }
     // Add system flag for multi-build scenario
-    launch_cmd.add_args(load_directories.system_image_directory_flag);
+    launch_cmd.add_args(cvd_flags.load_directories.system_image_directory_flag);
 
     auto selector_opts = launch_cmd.mutable_selector_opts();
 
-    for (const auto& flag: cvd_flags.selector_flags) {
+    for (const auto& flag : cvd_flags.selector_flags) {
       selector_opts->add_args(flag);
     }
 
@@ -167,10 +162,9 @@ class LoadConfigsCommand : public CvdServerHandler {
   bool interrupted_ = false;
 };
 
-fruit::Component<fruit::Required<CommandSequenceExecutor>>
-LoadConfigsComponent() {
-  return fruit::createComponent()
-      .addMultibinding<CvdServerHandler, LoadConfigsCommand>();
+std::unique_ptr<CvdServerHandler> NewLoadConfigsCommand(
+    CommandSequenceExecutor& executor) {
+  return std::unique_ptr<CvdServerHandler>(new LoadConfigsCommand(executor));
 }
 
 }  // namespace cuttlefish

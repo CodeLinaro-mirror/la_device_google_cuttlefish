@@ -20,8 +20,6 @@
 
 #include <map>
 
-#include <fruit/fruit.h>
-
 #include "common/libs/utils/contains.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/result.h"
@@ -35,8 +33,11 @@ namespace {
 const std::map<std::string, std::vector<std::string>>& OpToBinsMap() {
   static const auto& map = *new std::map<std::string, std::vector<std::string>>{
       {"stop", {"cvd_internal_stop", "stop_cvd"}},
+      {"stop_cvd", {"cvd_internal_stop", "stop_cvd"}},
       {"start", {"cvd_internal_start", "launch_cvd"}},
+      {"launch_cvd", {"cvd_internal_start", "launch_cvd"}},
       {"status", {"cvd_internal_status", "cvd_status"}},
+      {"cvd_status", {"cvd_internal_status", "cvd_status"}},
       {"restart", {"restart_cvd"}},
       {"powerwash", {"powerwash_cvd"}},
       {"suspend", {"snapshot_util_cvd"}},
@@ -75,11 +76,13 @@ Result<HostToolTarget> HostToolTarget::Create(
     command.AddEnvironmentVariable(kAndroidSoongHostOut, artifacts_path);
 
     std::string xml_str;
+    std::string err_out;
     RunWithManagedStdio(std::move(command), nullptr, std::addressof(xml_str),
-                        nullptr);
+                        std::addressof(err_out));
     auto flags_opt = CollectFlagsFromHelpxml(xml_str);
     if (!flags_opt) {
       LOG(ERROR) << bin_path << " --helpxml failed.";
+      LOG(ERROR) << err_out;
       continue;
     }
     auto flags = std::move(*flags_opt);

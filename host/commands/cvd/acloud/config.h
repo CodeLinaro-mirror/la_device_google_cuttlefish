@@ -23,20 +23,23 @@
 #include "user_config.pb.h"
 
 #include "common/libs/utils/result.h"
-#include "host/libs/config/inject.h"
 
 namespace cuttlefish {
 
 class AcloudConfig {
  public:
-  INJECT(AcloudConfig(const acloud::UserConfig&));
+  AcloudConfig(const acloud::UserConfig&);
   ~AcloudConfig() = default;
 
  public:
   // UserConfig/user_config.proto members
   std::string launch_args;
 
-  bool use_cvdr;
+  std::string project;
+
+  std::string zone;
+
+  bool use_legacy_acloud;
 
   // InternalConfig/internal_config.proto members
 

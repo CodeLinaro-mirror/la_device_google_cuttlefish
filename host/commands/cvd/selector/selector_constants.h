@@ -68,10 +68,9 @@ class SelectorFlags {
   static constexpr char kInstanceName[] = "instance_name";
   static constexpr char kAcquireFileLock[] = "acquire_file_lock";
   static constexpr char kAcquireFileLockEnv[] = "CVD_ACQUIRE_FILE_LOCK";
-  static constexpr char kDisableDefaultGroup[] = "disable_default_group";
   static constexpr char kVerbosity[] = "verbosity";
   static const SelectorFlags& Get();
-  static const SelectorFlags New();
+  static Result<SelectorFlags> New();
 
   Result<CvdFlagProxy> GetFlag(const std::string& search_key) const {
     auto flag = CF_EXPECT(flags_.GetFlag(search_key));
@@ -82,21 +81,13 @@ class SelectorFlags {
   const auto& FlagsAsCollection() const { return flags_; }
 
  private:
-  SelectorFlags() {
-    flags_.EnrollFlag(GroupNameFlag(kGroupName));
-    flags_.EnrollFlag(InstanceNameFlag(kInstanceName));
-    flags_.EnrollFlag(DisableDefaultGroupFlag(kDisableDefaultGroup, false));
-    flags_.EnrollFlag(AcquireFileLockFlag(kAcquireFileLock, true));
-    flags_.EnrollFlag(VerbosityFlag(kVerbosity));
-  }
+  SelectorFlags() = default;
 
-  CvdFlag<std::string> GroupNameFlag(const std::string& name);
-  CvdFlag<std::string> InstanceNameFlag(const std::string& name);
-  CvdFlag<bool> DisableDefaultGroupFlag(const std::string& name,
-                                        const bool default_val);
-  CvdFlag<bool> AcquireFileLockFlag(const std::string& name,
-                                    const bool default_val);
-  CvdFlag<std::string> VerbosityFlag(const std::string& name);
+  static CvdFlag<std::string> GroupNameFlag(const std::string& name);
+  static CvdFlag<std::string> InstanceNameFlag(const std::string& name);
+  static CvdFlag<bool> AcquireFileLockFlag(const std::string& name,
+                                           const bool default_val);
+  static CvdFlag<std::string> VerbosityFlag(const std::string& name);
 
   FlagCollection flags_;
 };

@@ -14,21 +14,29 @@
  * limitations under the License.
  */
 
+#include <unistd.h>
+
+#include <cstdio>
 #include <iostream>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
+#include <android-base/scopeguard.h>
+#include <android-base/strings.h>
 
 #include "common/libs/utils/contains.h"
+#include "common/libs/utils/environment.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/commands/cvd/client.h"
 #include "host/commands/cvd/common_utils.h"
 #include "host/commands/cvd/fetch/fetch_cvd.h"
 #include "host/commands/cvd/flag.h"
 #include "host/commands/cvd/frontline_parser.h"
+#include "host/commands/cvd/metrics/cvd_metrics_api.h"
 #include "host/commands/cvd/run_server.h"
 #include "host/commands/cvd/server_constants.h"
 #include "host/libs/config/host_tools_version.h"
@@ -95,7 +103,19 @@ Result<void> CvdMain(int argc, char** argv, char** envp,
   cvd_common::Args all_args = ArgsToVec(argc, argv);
   CF_EXPECT(!all_args.empty());
 
+  if (IsServerModeExpected(all_args[0])) {
+    auto parsed = CF_EXPECT(ParseIfServer(all_args));
+    return RunServer(
+        {.internal_server_fd = parsed.internal_server_fd,
+         .carryover_client_fd = parsed.carryover_client_fd,
+         .memory_carryover_fd = parsed.memory_carryover_fd,
+         .verbosity_level = parsed.verbosity_level,
+         .acloud_translator_optout = parsed.acloud_translator_optout,
+         .restarted_in_process = parsed.restarted_in_process});
+  }
+
   auto env = EnvpToMap(envp);
+  CvdMetrics::SendCvdMetrics(all_args);
 
   if (android::base::Basename(all_args[0]) == "fetch_cvd") {
     CF_EXPECT(FetchCvdMain(argc, argv));
@@ -109,17 +129,6 @@ Result<void> CvdMain(int argc, char** argv, char** envp,
     return client.HandleAcloud(all_args, env);
   }
 
-  if (IsServerModeExpected(all_args[0])) {
-    auto parsed = CF_EXPECT(ParseIfServer(all_args));
-
-    return RunServer(
-        {.internal_server_fd = parsed.internal_server_fd,
-         .carryover_client_fd = parsed.carryover_client_fd,
-         .memory_carryover_fd = parsed.memory_carryover_fd,
-         .verbosity_level = parsed.verbosity_level,
-         .acloud_translator_optout = parsed.acloud_translator_optout});
-  }
-
   if (android::base::Basename(all_args[0]) == "cvd") {
     CF_EXPECT(client.HandleCvdCommand(all_args, env));
     return {};
@@ -130,6 +139,48 @@ Result<void> CvdMain(int argc, char** argv, char** envp,
   CF_EXPECT(client.HandleCommand(all_args, env, {}));
 
   return {};
+}
+
+/**
+ * Returns the URL as a colored string
+ *
+ * If stderr is not terminal, no color.
+ * If stderr is a tty, tries to use ".deb" file color
+ * If .deb is not available in LS_COLORS, uses .zip
+ * color. If none are available, use a default color that
+ * is red.
+ */
+std::string ColoredUrl(const std::string& url) {
+  if (!isatty(STDERR_FILENO)) {
+    return url;
+  }
+  std::string coloring_prefix = "\033[01;31m";
+  std::string output;
+  auto ls_colors = StringFromEnv("LS_COLORS", "");
+  std::vector<std::string> colors_vec = android::base::Tokenize(ls_colors, ":");
+  std::unordered_map<std::string, std::string> colors;
+  for (const auto& color_entry : colors_vec) {
+    std::vector<std::string> tokenized =
+        android::base::Tokenize(color_entry, "=");
+    if (tokenized.size() != 2) {
+      continue;
+    }
+    colors[tokenized.front()] = tokenized.back();
+  }
+
+  android::base::ScopeGuard return_action([&coloring_prefix, url, &output]() {
+    static constexpr char kRestoreColor[] = "\033[0m";
+    output = fmt::format("{}{}{}", coloring_prefix, url, kRestoreColor);
+  });
+  auto deb_color_itr = colors.find("*.deb");
+  auto zip_color_itr = colors.find("*.zip");
+  if (deb_color_itr == colors.end() && zip_color_itr == colors.end()) {
+    return output;
+  }
+  coloring_prefix = fmt::format(
+      "{}{}m", "\033[",
+      (deb_color_itr == colors.end() ? colors["*.zip"] : colors["*.deb"]));
+  return output;
 }
 
 }  // namespace
@@ -146,7 +197,18 @@ int main(int argc, char** argv, char** envp) {
   if (result.ok()) {
     return 0;
   } else {
+    // TODO: we should not print the stack trace, instead, we should rely on
+    // each handler to print the error message directly in the client's
+    // std::cerr. We print the stack trace only in the verbose mode.
     std::cerr << result.error().FormatForEnv() << std::endl;
+    // TODO(kwstephenkim): better coloring
+    constexpr char kUserReminder[] =
+        R"(    If the error above is unclear, please copy the text into an issue at:)";
+    constexpr char kCuttlefishBugUrl[] = "http://go/cuttlefish-bug";
+    std::cerr << std::endl << kUserReminder << std::endl;
+    std::cerr << "        " << cuttlefish::ColoredUrl(kCuttlefishBugUrl)
+              << std::endl
+              << std::endl;
     return -1;
   }
 }

@@ -91,7 +91,7 @@ class InputChannelHandler : public DataChannelHandler {
     std::unique_ptr<Json::CharReader> json_reader(builder.newCharReader());
     std::string errorMessage;
     auto str = msg.data.cdata<char>();
-    if (!json_reader->parse(str, str + size, &evt, &errorMessage) < 0) {
+    if (!json_reader->parse(str, str + size, &evt, &errorMessage)) {
       LOG(ERROR) << "Received invalid JSON object over input channel: "
                  << errorMessage;
       return;
@@ -113,7 +113,7 @@ class InputChannelHandler : public DataChannelHandler {
         LOG(ERROR) << result.error().FormatForEnv();
         return;
       }
-      auto label = evt["display_label"].asString();
+      auto label = evt["device_label"].asString();
       int32_t down = evt["down"].asInt();
       int32_t x = evt["x"].asInt();
       int32_t y = evt["y"].asInt();
@@ -126,14 +126,13 @@ class InputChannelHandler : public DataChannelHandler {
                               {"down", Json::ValueType::intValue},
                               {"x", Json::ValueType::arrayValue},
                               {"y", Json::ValueType::arrayValue},
-                              {"slot", Json::ValueType::arrayValue},
-                              {"display_label", Json::ValueType::stringValue}});
+                              {"device_label", Json::ValueType::stringValue}});
       if (!result.ok()) {
         LOG(ERROR) << result.error().FormatForEnv();
         return;
       }
 
-      auto label = evt["display_label"].asString();
+      auto label = evt["device_label"].asString();
       auto idArr = evt["id"];
       int32_t down = evt["down"].asInt();
       auto xArr = evt["x"];
@@ -218,6 +217,9 @@ class ControlChannelHandler : public DataChannelHandler {
       return;
     } else if (command.rfind("camera_", 0) == 0) {
       observer()->OnCameraControlMsg(evt);
+      return;
+    } else if (command == "display") {
+      observer()->OnDisplayControlMsg(evt);
       return;
     }
 

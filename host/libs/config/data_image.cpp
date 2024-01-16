@@ -24,6 +24,7 @@
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
+#include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/esp.h"
 #include "host/libs/config/mbr.h"
 #include "host/libs/config/openwrt_args.h"
@@ -40,8 +41,9 @@ static constexpr std::string_view kDataPolicyResizeUpTo = "resize_up_to";
 const int FSCK_ERROR_CORRECTED = 1;
 const int FSCK_ERROR_CORRECTED_REQUIRES_REBOOT = 2;
 
-bool ForceFsckImage(const std::string& data_image,
-                    const CuttlefishConfig::InstanceSpecific& instance) {
+Result<void> ForceFsckImage(
+    const std::string& data_image,
+    const CuttlefishConfig::InstanceSpecific& instance) {
   std::string fsck_path;
   if (instance.userdata_format() == "f2fs") {
     fsck_path = HostBinaryPath("fsck.f2fs");
@@ -49,54 +51,41 @@ bool ForceFsckImage(const std::string& data_image,
     fsck_path = "/sbin/e2fsck";
   }
   int fsck_status = Execute({fsck_path, "-y", "-f", data_image});
-  if (fsck_status & ~(FSCK_ERROR_CORRECTED|FSCK_ERROR_CORRECTED_REQUIRES_REBOOT)) {
-    LOG(ERROR) << "`" << fsck_path << " -y -f " << data_image << "` failed with code "
-               << fsck_status;
-    return false;
-  }
-  return true;
+  CF_EXPECTF(!(fsck_status &
+               ~(FSCK_ERROR_CORRECTED | FSCK_ERROR_CORRECTED_REQUIRES_REBOOT)),
+             "`{} -y -f {}` failed with code {}", fsck_path, data_image,
+             fsck_status);
+  return {};
 }
 
-bool ResizeImage(const std::string& data_image, int data_image_mb,
-                 const CuttlefishConfig::InstanceSpecific& instance) {
+Result<void> ResizeImage(const std::string& data_image, int data_image_mb,
+                         const CuttlefishConfig::InstanceSpecific& instance) {
   auto file_mb = FileSize(data_image) >> 20;
-  if (file_mb > data_image_mb) {
-    LOG(ERROR) << data_image << " is already " << file_mb << " MB, will not "
-               << "resize down.";
-    return false;
-  } else if (file_mb == data_image_mb) {
+  CF_EXPECTF(data_image_mb <= file_mb, "'{}' is already {} MB, won't downsize",
+             data_image, file_mb);
+  if (file_mb == data_image_mb) {
     LOG(INFO) << data_image << " is already the right size";
-    return true;
-  } else {
-    off_t raw_target = static_cast<off_t>(data_image_mb) << 20;
-    auto fd = SharedFD::Open(data_image, O_RDWR);
-    if (fd->Truncate(raw_target) != 0) {
-      LOG(ERROR) << "`truncate --size=" << data_image_mb << "M "
-                  << data_image << "` failed:" << fd->StrError();
-      return false;
-    }
-    bool fsck_success = ForceFsckImage(data_image, instance);
-    if (!fsck_success) {
-      return false;
-    }
-    std::string resize_path;
-    if (instance.userdata_format() == "f2fs") {
-      resize_path = HostBinaryPath("resize.f2fs");
-    } else if (instance.userdata_format() == "ext4") {
-      resize_path = "/sbin/resize2fs";
-    }
-    int resize_status = Execute({resize_path, data_image});
-    if (resize_status != 0) {
-      LOG(ERROR) << "`" << resize_path << " " << data_image << "` failed with code "
-                 << resize_status;
-      return false;
-    }
-    fsck_success = ForceFsckImage(data_image, instance);
-    if (!fsck_success) {
-      return false;
-    }
+    return {};
   }
-  return true;
+  off_t raw_target = static_cast<off_t>(data_image_mb) << 20;
+  auto fd = SharedFD::Open(data_image, O_RDWR);
+  CF_EXPECTF(fd->IsOpen(), "Can't open '{}': '{}'", data_image, fd->StrError());
+  CF_EXPECTF(fd->Truncate(raw_target) == 0, "`truncate --size={}M {} fail: {}",
+             data_image_mb, data_image, fd->StrError());
+  CF_EXPECT(ForceFsckImage(data_image, instance));
+  std::string resize_path;
+  if (instance.userdata_format() == "f2fs") {
+    resize_path = HostBinaryPath("resize.f2fs");
+  } else if (instance.userdata_format() == "ext4") {
+    resize_path = "/sbin/resize2fs";
+  }
+  if (resize_path != "") {
+    CF_EXPECT_EQ(Execute({resize_path, data_image}), 0,
+                 "`" << resize_path << " " << data_image << "` failed");
+    CF_EXPECT(ForceFsckImage(data_image, instance));
+  }
+
+  return {};
 }
 } // namespace
 
@@ -344,10 +333,9 @@ class InitializeEspImageImpl : public InitializeEspImage {
 
   bool EspRequiredForBootFlow() const {
     const auto flow = instance_.boot_flow();
-    return flow ==
-               CuttlefishConfig::InstanceSpecific::BootFlow::AndroidEfiLoader ||
-           flow == CuttlefishConfig::InstanceSpecific::BootFlow::Linux ||
-           flow == CuttlefishConfig::InstanceSpecific::BootFlow::Fuchsia;
+    using BootFlow = CuttlefishConfig::InstanceSpecific::BootFlow;
+    return flow == BootFlow::AndroidEfiLoader || flow == BootFlow::ChromeOs ||
+           flow == BootFlow::Linux || flow == BootFlow::Fuchsia;
   }
 
   bool EspRequiredForAPBootFlow() const {
@@ -378,6 +366,16 @@ class InitializeEspImageImpl : public InitializeEspImage {
         android_efi_loader.EfiLoaderPath(instance_.android_efi_loader())
             .Architecture(instance_.target_arch());
         return android_efi_loader.Build();
+      }
+      case CuttlefishConfig::InstanceSpecific::BootFlow::ChromeOs: {
+        auto linux = LinuxEspBuilder(instance_.esp_image_path());
+        InitChromeOsArgs(linux);
+
+        linux.Root("/dev/vda3")
+            .Architecture(instance_.target_arch())
+            .Kernel(instance_.chromeos_kernel_path());
+
+        return linux.Build();
       }
       case CuttlefishConfig::InstanceSpecific::BootFlow::Linux: {
         auto linux = LinuxEspBuilder(instance_.esp_image_path());
@@ -431,6 +429,28 @@ class InitializeEspImageImpl : public InitializeEspImage {
              .Argument("noexec", "off");
         break;
     }
+  }
+
+  void InitChromeOsArgs(LinuxEspBuilder& linux) {
+    linux.Root("/dev/vda2")
+        .Argument("console", "ttyS0")
+        .Argument("panic", "-1")
+        .Argument("noefi")
+        .Argument("init=/sbin/init")
+        .Argument("boot=local")
+        .Argument("rootwait")
+        .Argument("noresume")
+        .Argument("noswap")
+        .Argument("loglevel=7")
+        .Argument("noinitrd")
+        .Argument("cros_efi")
+        .Argument("cros_debug")
+        .Argument("earlyprintk=serial,ttyS0,115200")
+        .Argument("earlycon=uart8250,io,0x3f8")
+        .Argument("pnpacpi", "off")
+        .Argument("acpi", "noirq")
+        .Argument("reboot", "k")
+        .Argument("noexec", "off");
   }
 
   const CuttlefishConfig& config_;

@@ -34,7 +34,6 @@
 #include "host/commands/cvd/common_utils.h"
 #include "host/commands/cvd/selector/instance_database_utils.h"
 #include "host/commands/cvd/selector/selector_constants.h"
-#include "host/libs/config/cuttlefish_config.h"
 
 namespace cuttlefish {
 namespace selector {
@@ -183,7 +182,7 @@ CreationAnalyzer::AnalyzeInstanceIdsInternal() {
   }
   auto unused_id_pool =
       CF_EXPECT(CollectUnusedIds(instance_database_, std::move(id_pool)));
-  auto unique_id_allocator = std::move(IdAllocator::New(unused_id_pool));
+  auto unique_id_allocator = IdAllocator::New(unused_id_pool);
   CF_EXPECT(unique_id_allocator != nullptr,
             "Memory allocation for UniqueResourceAllocator failed.");
 
@@ -191,9 +190,6 @@ CreationAnalyzer::AnalyzeInstanceIdsInternal() {
   // In this case, the user may expect the instance id to be 1+
   using ReservationSet = UniqueResourceAllocator<unsigned>::ReservationSet;
   std::optional<ReservationSet> allocated_ids_opt;
-  if (selector_options_parser_.IsMaybeDefaultGroup()) {
-    allocated_ids_opt = unique_id_allocator->TakeRange(1, 1 + n_instances);
-  }
   if (!allocated_ids_opt) {
     allocated_ids_opt =
         unique_id_allocator->UniqueConsecutiveItems(n_instances);
@@ -254,7 +250,7 @@ static Result<std::vector<std::string>> UpdateInstanceArgs(
       GflagsCompatFlag("num_instances", old_num_instances),
       GflagsCompatFlag("base_instance_num", old_base_instance_num)};
   // discard old ones
-  ParseFlags(instance_id_flags, new_args);
+  CF_EXPECT(ParseFlags(instance_id_flags, new_args));
 
   auto max = *(std::max_element(ids.cbegin(), ids.cend()));
   auto min = *(std::min_element(ids.cbegin(), ids.cend()));
@@ -312,7 +308,8 @@ Result<GroupCreationInfo> CreationAnalyzer::Analyze() {
   }
   cmd_args_ = CF_EXPECT(UpdateInstanceArgs(std::move(cmd_args_), ids));
 
-  group_name_ = CF_EXPECT(AnalyzeGroupName(instance_info));
+  auto group_info = CF_EXPECT(ExtractGroup(instance_info));
+  group_name_ = group_info.group_name;
   cmd_args_ =
       CF_EXPECT(UpdateWebrtcDeviceId(std::move(cmd_args_), instance_info));
 
@@ -329,14 +326,19 @@ Result<GroupCreationInfo> CreationAnalyzer::Analyze() {
                               .group_name = group_name_,
                               .instances = std::move(instance_info),
                               .args = cmd_args_,
-                              .envs = envs_};
+                              .envs = envs_,
+                              .is_default_group = group_info.default_group};
   return report;
 }
 
-Result<std::string> CreationAnalyzer::AnalyzeGroupName(
+Result<CreationAnalyzer::GroupInfo> CreationAnalyzer::ExtractGroup(
     const std::vector<PerInstanceInfo>& per_instance_infos) const {
   if (selector_options_parser_.GroupName()) {
-    return selector_options_parser_.GroupName().value();
+    CreationAnalyzer::GroupInfo group_name_info = {
+      .group_name = selector_options_parser_.GroupName().value(),
+      .default_group = false
+    };
+    return group_name_info;
   }
   // auto-generate group name
   std::vector<unsigned> ids;
@@ -345,17 +347,6 @@ Result<std::string> CreationAnalyzer::AnalyzeGroupName(
     ids.push_back(per_instance_info.instance_id_);
   }
   std::string base_name = GenDefaultGroupName();
-  if (selector_options_parser_.IsMaybeDefaultGroup()) {
-    /*
-     * this base_name might be already taken. In that case, the user's
-     * request should fail in the InstanceDatabase
-     */
-    auto groups =
-        CF_EXPECT(instance_database_.FindGroups({kGroupNameField, base_name}));
-    CF_EXPECT(groups.empty(), "The default instance group name, \""
-                                  << base_name << "\" has been already taken.");
-    return base_name;
-  }
 
   /* We cannot return simply "cvd" as we do not want duplication in the group
    * name across the instance groups owned by the user. Note that the set of ids
@@ -365,21 +356,17 @@ Result<std::string> CreationAnalyzer::AnalyzeGroupName(
    */
   auto unique_suffix =
       std::to_string(*std::min_element(ids.begin(), ids.end()));
-  return base_name + "_" + unique_suffix;
+  CreationAnalyzer::GroupInfo group_name_info = {
+    .group_name = base_name + "_" + unique_suffix,
+    .default_group = selector_options_parser_.IsMaybeDefaultGroup()
+  };
+  return group_name_info;
 }
 
 Result<std::string> CreationAnalyzer::AnalyzeHome() const {
   auto system_wide_home = CF_EXPECT(SystemWideUserHome(credential_.uid));
   if (Contains(envs_, "HOME") && envs_.at("HOME") != system_wide_home) {
     return envs_.at("HOME");
-  }
-
-  if (selector_options_parser_.IsMaybeDefaultGroup()) {
-    auto groups = CF_EXPECT(
-        instance_database_.FindGroups({kHomeField, system_wide_home}));
-    if (groups.empty()) {
-      return system_wide_home;
-    }
   }
 
   CF_EXPECT(!group_name_.empty(),

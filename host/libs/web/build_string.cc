@@ -141,7 +141,7 @@ std::ostream& operator<<(std::ostream& out, const BuildString& build_string) {
 std::ostream& operator<<(std::ostream& out,
                          const std::optional<BuildString>& build_string) {
   if (build_string) {
-    fmt::print(out, "has_value({})", *build_string);
+    out << "has_value(" << *build_string << ")";
   } else {
     out << "no_value()";
   }
@@ -166,6 +166,23 @@ Result<BuildString> ParseBuildString(const std::string& build_string) {
   } else {
     return CF_EXPECT(ParseDeviceBuildString(remaining_build_string, filepath));
   }
+}
+
+Flag GflagsCompatFlag(const std::string& name,
+                      std::optional<BuildString>& value) {
+  return GflagsCompatFlag(name)
+      .Getter([&value]() {
+        std::stringstream result;
+        result << value;
+        return result.str();
+      })
+      .Setter([&value](const FlagMatch& match) -> Result<void> {
+        value = std::nullopt;
+        if (!match.value.empty()) {
+          value = CF_EXPECT(ParseBuildString(match.value));
+        }
+        return {};
+      });
 }
 
 Flag GflagsCompatFlag(const std::string& name,

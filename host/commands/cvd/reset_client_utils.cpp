@@ -28,92 +28,31 @@
 
 #include <android-base/file.h>
 #include <android-base/parseint.h>
+#include <android-base/strings.h>
+#include <fmt/core.h>
 
 #include "common/libs/utils/contains.h"
+#include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/proc_file_utils.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/commands/cvd/common_utils.h"
 #include "host/commands/cvd/reset_client_utils.h"
-#include "host/libs/config/cuttlefish_config.h"
+#include "host/commands/cvd/run_cvd_proc_collector.h"
+#include "host/commands/cvd/run_server.h"
+#include "host/libs/config/config_constants.h"
 
 namespace cuttlefish {
 
-static bool IsTrue(const std::string& value) {
-  std::unordered_set<std::string> true_strings = {"y", "yes", "true"};
-  std::string value_in_lower_case = value;
-  /*
-   * https://en.cppreference.com/w/cpp/string/byte/tolower
-   *
-   * char should be converted to unsigned char first.
-   */
-  std::transform(value_in_lower_case.begin(), value_in_lower_case.end(),
-                 value_in_lower_case.begin(),
-                 [](unsigned char c) { return std::tolower(c); });
-  return Contains(true_strings, value_in_lower_case);
+Result<RunCvdProcessManager> RunCvdProcessManager::Get() {
+  RunCvdProcessCollector run_cvd_collector =
+      CF_EXPECT(RunCvdProcessCollector::Get());
+  RunCvdProcessManager run_cvd_processes_manager(std::move(run_cvd_collector));
+  return run_cvd_processes_manager;
 }
 
-Result<RunCvdProcessManager::RunCvdProcInfo>
-RunCvdProcessManager::AnalyzeRunCvdProcess(const pid_t pid) {
-  auto proc_info = CF_EXPECT(ExtractProcInfo(pid));
-  RunCvdProcInfo info;
-  info.pid_ = proc_info.pid_;
-  info.exec_path_ = proc_info.actual_exec_path_;
-  info.cmd_args_ = std::move(proc_info.args_);
-  info.envs_ = std::move(proc_info.envs_);
-  CF_EXPECT(Contains(info.envs_, "HOME"));
-  info.home_ = info.envs_.at("HOME");
-  if (Contains(info.envs_, kAndroidHostOut)) {
-    info.android_host_out_ = info.envs_[kAndroidHostOut];
-  } else {
-    if (Contains(info.envs_, kAndroidSoongHostOut)) {
-      info.android_host_out_ = info.envs_[kAndroidSoongHostOut];
-    }
-  }
-  CF_EXPECT(Contains(info.envs_, kCuttlefishInstanceEnvVarName));
-  int id;
-  CF_EXPECT(android::base::ParseInt(
-      info.envs_.at(kCuttlefishInstanceEnvVarName), &id));
-  info.id_ = static_cast<unsigned>(id);
-  if (!Contains(info.envs_, kAndroidHostOut) &&
-      !Contains(info.envs_, kAndroidSoongHostOut)) {
-    const std::string server_host_out =
-        android::base::Dirname(android::base::GetExecutableDirectory());
-    info.envs_[kAndroidHostOut] = server_host_out;
-    info.envs_[kAndroidSoongHostOut] = server_host_out;
-  }
-
-  if (Contains(info.envs_, kCvdMarkEnv) && IsTrue(info.envs_.at(kCvdMarkEnv))) {
-    info.is_cvd_server_started_ = true;
-  }
-
-  std::vector<std::string> stop_bins{"cvd_internal_stop", "stop_cvd"};
-
-  if (Contains(info.envs_, kAndroidHostOut)) {
-    for (const auto& bin : stop_bins) {
-      std::string internal_stop_path =
-          ConcatToString(info.envs_.at(kAndroidHostOut), "/bin/", bin);
-      if (!FileExists(internal_stop_path)) {
-        continue;
-      }
-      info.stop_cvd_path_ = std::move(internal_stop_path);
-      return info;
-    }
-  }
-
-  for (const auto& bin : stop_bins) {
-    std::string stop_cvd_path =
-        ConcatToString(info.envs_.at(kAndroidSoongHostOut), "/bin/", bin);
-    if (!FileExists(stop_cvd_path)) {
-      continue;
-    }
-    info.stop_cvd_path_ = std::move(stop_cvd_path);
-    return info;
-  }
-
-  return CF_ERR("cvd_internal_stop or stop_cvd cannot be found for "
-                << " pid #" << pid);
-}
+RunCvdProcessManager::RunCvdProcessManager(RunCvdProcessCollector&& collector)
+    : run_cvd_process_collector_(std::move(collector)) {}
 
 static Command CreateStopCvdCommand(const std::string& stopper_path,
                                     const cvd_common::Envs& envs,
@@ -124,69 +63,14 @@ static Command CreateStopCvdCommand(const std::string& stopper_path,
     command.AddParameter(arg);
   }
   for (const auto& [key, value] : envs) {
+    command.UnsetFromEnvironment(key);
     command.AddEnvironmentVariable(key, value);
   }
   return command;
 }
 
-Result<RunCvdProcessManager> RunCvdProcessManager::Get() {
-  RunCvdProcessManager run_cvd_processes_manager;
-  run_cvd_processes_manager.cf_groups_ =
-      CF_EXPECT(run_cvd_processes_manager.CollectInfo());
-  return run_cvd_processes_manager;
-}
-
-Result<std::vector<RunCvdProcessManager::GroupProcInfo>>
-RunCvdProcessManager::CollectInfo() {
-  auto run_cvd_pids = CF_EXPECT(CollectPidsByExecName("run_cvd"));
-  std::vector<RunCvdProcInfo> run_cvd_infos;
-  run_cvd_infos.reserve(run_cvd_pids.size());
-  for (const auto run_cvd_pid : run_cvd_pids) {
-    auto run_cvd_info_result = AnalyzeRunCvdProcess(run_cvd_pid);
-    if (!run_cvd_info_result.ok()) {
-      LOG(ERROR) << "Failed to collect information for run_cvd at #"
-                 << run_cvd_pid << std::endl
-                 << run_cvd_info_result.error().FormatForEnv();
-      continue;
-    }
-    run_cvd_infos.push_back(*run_cvd_info_result);
-  }
-
-  // home --> group map
-  std::unordered_map<std::string, GroupProcInfo> groups;
-  for (auto& run_cvd_info : run_cvd_infos) {
-    const auto home = run_cvd_info.home_;
-    if (!Contains(groups, home)) {
-      // create using a default constructor
-      groups[home] = GroupProcInfo();
-      groups[home].home_ = home;
-      groups[home].exec_path_ = run_cvd_info.exec_path_;
-      groups[home].stop_cvd_path_ = run_cvd_info.stop_cvd_path_;
-      groups[home].is_cvd_server_started_ = run_cvd_info.is_cvd_server_started_;
-      groups[home].android_host_out_ = run_cvd_info.android_host_out_;
-    }
-    auto& id_instance_map = groups[home].instances_;
-    if (!Contains(id_instance_map, run_cvd_info.id_)) {
-      id_instance_map[run_cvd_info.id_] = GroupProcInfo::InstanceInfo{
-          .pids_ = std::set<pid_t>{run_cvd_info.pid_},
-          .envs_ = std::move(run_cvd_info.envs_),
-          .cmd_args_ = std::move(run_cvd_info.cmd_args_),
-          .id_ = run_cvd_info.id_};
-      continue;
-    }
-    // this is the other run_cvd process under the same instance i
-    id_instance_map[run_cvd_info.id_].pids_.insert(run_cvd_info.pid_);
-  }
-  std::vector<GroupProcInfo> output;
-  output.reserve(groups.size());
-  for (auto& [_, group] : groups) {
-    output.push_back(std::move(group));
-  }
-  return output;
-}
-
 Result<void> RunCvdProcessManager::RunStopCvd(const GroupProcInfo& group_info,
-                                              const bool clear_runtime_dirs) {
+                                              bool clear_runtime_dirs) {
   const auto& stopper_path = group_info.stop_cvd_path_;
   int ret_code = 0;
   cvd_common::Envs stop_cvd_envs;
@@ -243,9 +127,9 @@ Result<void> RunCvdProcessManager::RunStopCvd(const GroupProcInfo& group_info,
   return {};
 }
 
-Result<void> RunCvdProcessManager::RunStopCvdAll(
-    const bool cvd_server_children_only, const bool clear_instance_dirs) {
-  for (const auto& group_info : cf_groups_) {
+Result<void> RunCvdProcessManager::RunStopCvdAll(bool cvd_server_children_only,
+                                                 bool clear_instance_dirs) {
+  for (const auto& group_info : run_cvd_process_collector_.CfGroups()) {
     if (cvd_server_children_only && !group_info.is_cvd_server_started_) {
       continue;
     }
@@ -259,11 +143,11 @@ Result<void> RunCvdProcessManager::RunStopCvdAll(
 }
 
 static bool IsStillRunCvd(const pid_t pid) {
-  std::string pid_dir = ConcatToString("/proc/", pid);
+  std::string pid_dir = fmt::format("/proc/{}", pid);
   if (!FileExists(pid_dir)) {
     return false;
   }
-  auto owner_result = OwnerUid(pid_dir);
+  auto owner_result = OwnerUid(pid);
   if (!owner_result.ok() || (getuid() != *owner_result)) {
     return false;
   }
@@ -275,113 +159,56 @@ static bool IsStillRunCvd(const pid_t pid) {
           "run_cvd");
 }
 
-Result<void> RunCvdProcessManager::SendSignals(
-    const bool cvd_server_children_only) {
-  auto recollected_run_cvd_pids = CF_EXPECT(CollectPidsByExecName("run_cvd"));
-  std::unordered_set<pid_t> failed_pids;
-  for (const auto& group_info : cf_groups_) {
-    if (cvd_server_children_only && !group_info.is_cvd_server_started_) {
-      continue;
-    }
-    for (const auto& [_, instance] : group_info.instances_) {
-      const auto& pids = instance.pids_;
-      for (const auto pid : pids) {
-        if (!Contains(recollected_run_cvd_pids, pid)) {
-          // pid is alive but reassigned to non-run_cvd process
-          continue;
-        }
-        if (!IsStillRunCvd(pid)) {
-          // pid is now assigned to a different process
-          continue;
-        }
-        auto ret_sigkill = kill(pid, SIGKILL);
-        if (ret_sigkill == 0) {
-          LOG(ERROR) << "SIGKILL was delivered to pid #" << pid;
-        } else {
-          LOG(ERROR) << "SIGKILL was not delivered to pid #" << pid;
-        }
-        if (!IsStillRunCvd(pid)) {
-          continue;
-        }
-        LOG(ERROR) << "Will still send SIGHUP as run_cvd #" << pid
-                   << " has not been terminated by SIGKILL.";
-        auto ret_sighup = kill(pid, SIGHUP);
-        if (ret_sighup != 0) {
-          LOG(ERROR) << "SIGHUP sent to process #" << pid << " but all failed.";
-        }
-        if (ret_sigkill != 0 && ret_sighup != 0) {
-          failed_pids.insert(pid);
-        }
+Result<void> RunCvdProcessManager::SendSignal(bool cvd_server_children_only,
+                                              const GroupProcInfo& group_info) {
+  std::vector<pid_t> failed_pids;
+  if (cvd_server_children_only && !group_info.is_cvd_server_started_) {
+    return {};
+  }
+  for (const auto& [unused, instance] : group_info.instances_) {
+    for (const auto parent_run_cvd_pid : instance.parent_run_cvd_pids_) {
+      if (!IsStillRunCvd(parent_run_cvd_pid)) {
+        continue;
+      }
+      if (kill(parent_run_cvd_pid, SIGKILL) == 0) {
+        LOG(VERBOSE) << "Successfully SIGKILL'ed " << parent_run_cvd_pid;
+      } else {
+        failed_pids.push_back(parent_run_cvd_pid);
       }
     }
   }
-  std::stringstream error_msg_stream;
-  error_msg_stream << "Some run_cvd processes were not killed: {";
-  for (const auto& pid : failed_pids) {
-    error_msg_stream << pid << ",";
-  }
-  auto error_msg = error_msg_stream.str();
-  if (!failed_pids.empty()) {
-    error_msg.pop_back();
-  }
-  error_msg.append("}");
-  CF_EXPECT(failed_pids.empty(), error_msg);
+  CF_EXPECTF(failed_pids.empty(),
+             "Some run_cvd processes were not killed: [{}]",
+             fmt::join(failed_pids, ", "));
   return {};
 }
 
-static Result<void> DeleteAllLockFiles(const std::string& lock_dir) {
-  CF_EXPECT(DirectoryExists(lock_dir), lock_dir + " does not exist");
-  const auto all_files =
-      CF_EXPECT(DirectoryContents(lock_dir),
-                "Failed pull out the contents of " + lock_dir);
-  for (const auto& base_name : all_files) {
-    const std::string file_in_lock_dir =
-        ConcatToString(lock_dir, "/", base_name);
-    std::regex lock_file_name_pattern("local[-]instance[-][0-9]+[.]lock");
-    if (std::regex_match(base_name, lock_file_name_pattern)) {
-      LOG(VERBOSE) << "Deleting " << file_in_lock_dir;
-      if (!RemoveFile(file_in_lock_dir)) {
-        // TODO(weihsu): demote the verbosity level to DEBUG
-        // print ERROR only if the file belongs to the user
-        LOG(ERROR) << "Failed to delete " << file_in_lock_dir;
-      }
-    }
-  }
-  return {};
-}
-
-void RunCvdProcessManager::DeleteLockFiles(
-    const bool cvd_server_children_only) {
+Result<void> RunCvdProcessManager::DeleteLockFile(
+    bool cvd_server_children_only, const GroupProcInfo& group_info) {
   const std::string lock_dir = "/tmp/acloud_cvd_temp";
   std::string lock_file_prefix = lock_dir;
   lock_file_prefix.append("/local-instance-");
 
-  if (!cvd_server_children_only) {
-    auto delete_all_result = DeleteAllLockFiles(lock_dir);
-    if (!delete_all_result.ok()) {
-      LOG(ERROR) << delete_all_result.error().FormatForEnv();
-    }
-    return;
+  if (cvd_server_children_only && !group_info.is_cvd_server_started_) {
+    return {};
   }
-
-  for (const auto& group_info : cf_groups_) {
-    if (!group_info.is_cvd_server_started_) {
-      continue;
-    }
-    const auto& instances = group_info.instances_;
-    for (const auto& [id, _] : instances) {
-      std::stringstream lock_file_path_stream;
-      lock_file_path_stream << lock_file_prefix << id << ".lock";
-      auto lock_file_path = lock_file_path_stream.str();
-      if (FileExists(lock_file_path) && !DirectoryExists(lock_file_path)) {
-        if (RemoveFile(lock_file_path)) {
-          LOG(ERROR) << "Reset the lock file: " << lock_file_path;
-        } else {
-          LOG(ERROR) << "Failed to reset lock file: " << lock_file_path;
-        }
+  bool all_success = true;
+  const auto& instances = group_info.instances_;
+  for (const auto& [id, _] : instances) {
+    std::stringstream lock_file_path_stream;
+    lock_file_path_stream << lock_file_prefix << id << ".lock";
+    auto lock_file_path = lock_file_path_stream.str();
+    if (FileExists(lock_file_path) && !DirectoryExists(lock_file_path)) {
+      if (RemoveFile(lock_file_path)) {
+        LOG(DEBUG) << "Reset the lock file: " << lock_file_path;
+      } else {
+        all_success = false;
+        LOG(ERROR) << "Failed to remove the lock file: " << lock_file_path;
       }
     }
   }
+  CF_EXPECT(all_success == true);
+  return {};
 }
 
 Result<void> KillAllCuttlefishInstances(const DeviceClearOptions& options) {
@@ -419,7 +246,7 @@ Result<void> KillCvdServerProcess() {
       continue;
     }
     for (const auto& arg : proc_info_result->args_) {
-      if (Contains(arg, "INTERNAL_server_fd")) {
+      if (Contains(arg, kInternalServerFd)) {
         cvd_server_pids.push_back(pid);
         break;
       }
@@ -436,12 +263,57 @@ Result<void> KillCvdServerProcess() {
   }
   for (const auto pid : cvd_server_pids) {
     auto kill_ret = kill(pid, SIGKILL);
-    if (kill_ret != 0) {
-      LOG(ERROR) << "kill(" << pid << ", SIGKILL) failed.";
-    } else {
+    if (kill_ret == 0) {
       LOG(ERROR) << "Cvd server process #" << pid << " is killed.";
+    } else {
+      LOG(ERROR) << "kill(" << pid << ", SIGKILL) failed.";
     }
   }
+  return {};
+}
+
+Result<void> RunCvdProcessManager::KillAllCuttlefishInstances(
+    bool cvd_server_children_only, bool clear_runtime_dirs) {
+  auto stop_cvd_result =
+      RunStopCvdAll(cvd_server_children_only, clear_runtime_dirs);
+  if (!stop_cvd_result.ok()) {
+    LOG(ERROR) << stop_cvd_result.error().FormatForEnv();
+  }
+  for (const auto& group_info : run_cvd_process_collector_.CfGroups()) {
+    auto result = ForcefullyStopGroup(cvd_server_children_only, group_info);
+    if (!result.ok()) {
+      LOG(ERROR) << result.error().FormatForEnv();
+    }
+  }
+  return {};
+}
+
+Result<void> RunCvdProcessManager::ForcefullyStopGroup(
+    bool cvd_server_children_only, const uid_t id) {
+  auto groups_info = run_cvd_process_collector_.CfGroups();
+  for (const auto& group_info : groups_info) {
+    if (!Contains(group_info.instances_, static_cast<unsigned>(id))) {
+      continue;
+    }
+    CF_EXPECT(ForcefullyStopGroup(cvd_server_children_only, group_info));
+  }
+  // run_cvd is not created yet as.. ctrl+C was in assembly phase, etc
+  return {};
+}
+
+Result<void> RunCvdProcessManager::ForcefullyStopGroup(
+    bool cvd_server_children_only, const GroupProcInfo& group) {
+  if (cvd_server_children_only && !group.is_cvd_server_started_) {
+    return {};
+  }
+  CF_EXPECTF(SendSignal(cvd_server_children_only, group),
+             "Tried SIGKILL to a group of run_cvd processes rooted at "
+             "HOME={} but failed",
+             group.home_);
+  CF_EXPECTF(DeleteLockFile(cvd_server_children_only, group),
+             "Tried to delete instance lock file for the group rooted at "
+             "HOME={} but failed.",
+             group.home_);
   return {};
 }
 

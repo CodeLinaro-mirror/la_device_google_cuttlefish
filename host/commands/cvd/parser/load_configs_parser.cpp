@@ -34,9 +34,10 @@
 #include "common/libs/utils/flag_parser.h"
 #include "common/libs/utils/json.h"
 #include "common/libs/utils/result.h"
+#include "host/commands/cvd/fetch/fetch_cvd.h"
 #include "host/commands/cvd/parser/cf_configs_common.h"
 #include "host/commands/cvd/parser/cf_flags_validator.h"
-#include "host/commands/cvd/parser/fetch_cvd_parser.h"
+#include "host/commands/cvd/parser/fetch_config_parser.h"
 #include "host/commands/cvd/parser/launch_cvd_parser.h"
 #include "host/commands/cvd/parser/selector_parser.h"
 
@@ -46,6 +47,10 @@ namespace {
 constexpr std::string_view kOverrideSeparator = ":";
 constexpr std::string_view kCredentialSourceOverride =
     "fetch.credential_source";
+
+bool IsLocalBuild(std::string path) {
+  return android::base::StartsWith(path, "/");
+}
 
 Flag GflagsCompatFlagOverride(const std::string& name,
                               std::vector<Override>& values) {
@@ -176,7 +181,116 @@ void MakeAbsolute(std::string& path, const std::string& working_dir) {
   path.insert(0, working_dir + "/");
 }
 
+Result<Json::Value> ParseJsonFile(const std::string& file_path) {
+  CF_EXPECTF(FileExists(file_path),
+             "Provided file \"{}\" to cvd command does not exist", file_path);
+
+  std::string file_content;
+  using android::base::ReadFileToString;
+  CF_EXPECTF(ReadFileToString(file_path.c_str(), &file_content,
+                              /* follow_symlinks */ true),
+             "Failed to read file \"{}\"", file_path);
+  auto root = CF_EXPECTF(ParseJson(file_content),
+                         "Failed parsing file \"{}\" as JSON", file_path);
+  return root;
+}
+
+Result<std::vector<std::string>> GetConfiguredSystemImagePaths(
+    Json::Value& root) {
+  return CF_EXPECTF(
+      GetArrayValues<std::string>(root["instances"], {"disk", "default_build"}),
+      "Instance is missing required Image path", "");
+}
+
+std::optional<std::string> GetConfiguredSystemHostPath(Json::Value& root) {
+  auto result = GetValue<std::string>(root, {"common", "host_package"});
+  if (result.ok()) {
+    return std::optional<std::string>{*result};
+  }
+  return std::nullopt;
+}
+
+Result<Json::Value> GetOverriddenConfig(
+    const std::string& config_path,
+    const std::vector<Override>& override_flags) {
+  Json::Value result = CF_EXPECT(ParseJsonFile(config_path));
+
+  if (override_flags.size() > 0) {
+    for (const auto& flag : override_flags) {
+      MergeTwoJsonObjs(result,
+                       OverrideToJson(flag.config_path, flag.new_value));
+    }
+  }
+
+  return result;
+}
+
+Result<LoadDirectories> GenerateLoadDirectories(
+    const std::string& parent_directory,
+    std::vector<std::string>& system_image_path_configs,
+    std::optional<std::string> system_host_path, const int num_instances) {
+  CF_EXPECT_GT(num_instances, 0, "No instances in config to load");
+  auto result = LoadDirectories{
+      .target_directory = parent_directory + "/artifacts",
+      .launch_home_directory = parent_directory + "/home",
+  };
+
+  std::vector<std::string> system_image_directories;
+  int num_remote = 0;
+  for (int i = 0; i < num_instances; i++) {
+    const std::string instance_build_path = system_image_path_configs[i];
+    CF_EXPECT_EQ(system_image_path_configs.size(), num_instances,
+                 "Number of instances is inconsistent");
+
+    auto target_subdirectory = std::to_string(i);
+    result.target_subdirectories.emplace_back(target_subdirectory);
+    if (IsLocalBuild(instance_build_path)) {
+      system_image_directories.emplace_back(instance_build_path);
+    } else {
+      const std::string dir =
+          result.target_directory + "/" + target_subdirectory;
+      system_image_directories.emplace_back(dir);
+      num_remote++;
+    }
+    LOG(INFO) << "Instance " << i << " directory is "
+              << system_image_directories.back();
+  }
+
+  CF_EXPECT(system_host_path || num_remote > 0,
+            "Host tools path must be provided when using only local artifacts");
+
+  if (system_host_path && IsLocalBuild(system_host_path.value())) {
+    // If config specifies a host tools path, we use this.
+    result.host_package_directory = system_host_path.value();
+  } else {
+    result.host_package_directory =
+        result.target_directory + "/" + kHostToolsSubdirectory;
+  }
+
+  result.system_image_directory_flag =
+      "--system_image_dir=" +
+      android::base::Join(system_image_directories, ',');
+  return result;
+}
+
+Result<CvdFlags> ParseCvdConfigs(Json::Value& root,
+                                 const LoadDirectories& load_directories) {
+  CF_EXPECT(ValidateCfConfigs(root), "Loaded Json validation failed");
+  return CvdFlags{.launch_cvd_flags = CF_EXPECT(ParseLaunchCvdConfigs(root)),
+                  .selector_flags = CF_EXPECT(ParseSelectorConfigs(root)),
+                  .fetch_cvd_flags = CF_EXPECT(ParseFetchCvdConfigs(
+                      root, load_directories.target_directory,
+                      load_directories.target_subdirectories)),
+                  .load_directories = load_directories};
+}
+
 }  // namespace
+
+std::ostream& operator<<(std::ostream& out, const Override& override) {
+  fmt::print(out, "(config_path=\"{}\", new_value=\"{}\")",
+             override.config_path, override.new_value);
+  return out;
+}
 
 Result<LoadFlags> GetFlags(std::vector<std::string>& args,
                            const std::string& working_directory) {
@@ -184,7 +298,7 @@ Result<LoadFlags> GetFlags(std::vector<std::string>& args,
   auto flags = GetFlagsVector(load_flags);
   CF_EXPECT(ParseFlags(flags, args));
   CF_EXPECT(load_flags.help || args.size() > 0,
-            "No arguments provided to cvd load command, please provide at "
+            "No arguments provided to cvd command, please provide at "
             "least one argument (help or path to json file)");
 
   if (load_flags.base_dir.empty()) {
@@ -209,74 +323,20 @@ Result<LoadFlags> GetFlags(std::vector<std::string>& args,
   return load_flags;
 }
 
-Result<Json::Value> ParseJsonFile(const std::string& file_path) {
-  CF_EXPECTF(FileExists(file_path),
-             "Provided file \"{}\" to cvd load does not exist", file_path);
+Result<CvdFlags> GetCvdFlags(const LoadFlags& flags) {
+  Json::Value json_configs =
+      CF_EXPECT(GetOverriddenConfig(flags.config_path, flags.overrides));
 
-  std::string file_content;
-  using android::base::ReadFileToString;
-  CF_EXPECTF(ReadFileToString(file_path.c_str(), &file_content,
-                              /* follow_symlinks */ true),
-             "Failed to read file \"{}\"", file_path);
-  auto root = CF_EXPECTF(ParseJson(file_content),
-                         "Failed parsing file \"{}\" as JSON", file_path);
-  return root;
-}
+  std::vector<std::string> system_image_path_configs =
+      CF_EXPECT(GetConfiguredSystemImagePaths(json_configs));
+  std::optional<std::string> host_package_dir =
+      GetConfiguredSystemHostPath(json_configs);
 
-Result<Json::Value> GetOverriddenConfig(
-    const std::string& config_path,
-    const std::vector<Override>& override_flags) {
-  Json::Value result = CF_EXPECT(ParseJsonFile(config_path));
-
-  if (override_flags.size() > 0) {
-    for (const auto& flag : override_flags) {
-      MergeTwoJsonObjs(result,
-                       OverrideToJson(flag.config_path, flag.new_value));
-    }
-  }
-
-  return result;
-}
-
-std::ostream& operator<<(std::ostream& out, const Override& override) {
-  fmt::print(out, "(config_path=\"{}\", new_value=\"{}\")",
-             override.config_path, override.new_value);
-  return out;
-}
-
-Result<LoadDirectories> GenerateLoadDirectories(const std::string& parent_directory,
-                                                const int num_instances) {
-  CF_EXPECT_GT(num_instances, 0, "No instances in config to load");
-  auto result = LoadDirectories{
-      .target_directory = parent_directory + "/artifacts",
-      .launch_home_directory = parent_directory + "/home",
-  };
-
-  std::vector<std::string> system_image_directories;
-  for (int i = 0; i < num_instances; i++) {
-    LOG(INFO) << "Instance " << i << " directory is " << result.target_directory
-              << "/" << std::to_string(i);
-    auto target_subdirectory = std::to_string(i);
-    result.target_subdirectories.emplace_back(target_subdirectory);
-    system_image_directories.emplace_back(result.target_directory + "/" +
-                                          target_subdirectory);
-  }
-  result.host_package_directory =
-      result.target_directory + "/" + result.target_subdirectories[0];
-  result.system_image_directory_flag =
-      "--system_image_dir=" +
-      android::base::Join(system_image_directories, ',');
-  return result;
-}
-
-Result<CvdFlags> ParseCvdConfigs(Json::Value& root,
-                                 const LoadDirectories& load_directories) {
-  CF_EXPECT(ValidateCfConfigs(root), "Loaded Json validation failed");
-  return CvdFlags{.launch_cvd_flags = CF_EXPECT(ParseLaunchCvdConfigs(root)),
-                  .selector_flags = CF_EXPECT(ParseSelectorConfigs(root)),
-                  .fetch_cvd_flags = CF_EXPECT(ParseFetchCvdConfigs(
-                      root, load_directories.target_directory,
-                      load_directories.target_subdirectories))};
+  const auto load_directories = CF_EXPECT(GenerateLoadDirectories(
+      flags.base_dir, system_image_path_configs, host_package_dir,
+      json_configs["instances"].size()));
+  return CF_EXPECT(ParseCvdConfigs(json_configs, load_directories),
+                   "Parsing json configs failed");
 }
 
 }  // namespace cuttlefish

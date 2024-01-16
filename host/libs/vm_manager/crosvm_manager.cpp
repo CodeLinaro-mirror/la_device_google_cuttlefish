@@ -47,6 +47,8 @@
 namespace cuttlefish {
 namespace vm_manager {
 
+constexpr auto kTouchpadDefaultPrefix = "Crosvm_Virtio_Multitouch_Touchpad_";
+
 bool CrosvmManager::IsSupported() {
 #ifdef __ANDROID__
   return true;
@@ -95,9 +97,12 @@ CrosvmManager::ConfigureGraphics(
         instance.gpu_mode() == kGpuModeGfxstreamGuestAngleHostSwiftShader;
 
     const std::string gles_impl = uses_angle ? "angle" : "emulation";
-    const std::string gltransport =
-        (instance.guest_android_version() == "11.0.0") ? "virtio-gpu-pipe"
-                                                       : "virtio-gpu-asg";
+
+    const std::string gfxstream_transport = instance.gpu_gfxstream_transport();
+    CF_EXPECT(gfxstream_transport == "virtio-gpu-asg" ||
+                  gfxstream_transport == "virtio-gpu-pipe",
+              "Invalid Gfxstream transport option: \"" << gfxstream_transport
+                                                       << "\"");
 
     bootconfig_args = {
         {"androidboot.cpuvulkan.version", "0"},
@@ -106,7 +111,7 @@ CrosvmManager::ConfigureGraphics(
         {"androidboot.hardware.hwcomposer.display_finder_mode", "drm"},
         {"androidboot.hardware.egl", gles_impl},
         {"androidboot.hardware.vulkan", "ranchu"},
-        {"androidboot.hardware.gltransport", gltransport},
+        {"androidboot.hardware.gltransport", gfxstream_transport},
         {"androidboot.opengles.version", "196609"},  // OpenGL ES 3.1
     };
   } else if (instance.gpu_mode() == kGpuModeNone) {
@@ -204,11 +209,7 @@ Result<VhostUserDeviceCommands> BuildVhostUserGpu(
 
   auto gpu_device_logs_path =
       instance.PerInstanceInternalPath("crosvm_vhost_user_gpu.fifo");
-  auto gpu_device_logs = SharedFD::Fifo(gpu_device_logs_path, 0666);
-  CF_EXPECT(
-      gpu_device_logs->IsOpen(),
-      "Failed to create log fifo for crosvm vhost user gpu's stdout/stderr: "
-          << gpu_device_logs->StrError());
+  auto gpu_device_logs = CF_EXPECT(SharedFD::Fifo(gpu_device_logs_path, 0666));
 
   Command gpu_device_logs_cmd(HostBinaryPath("log_tee"));
   gpu_device_logs_cmd.AddParameter("--process_name=crosvm_gpu");
@@ -501,18 +502,24 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   }
 
   if (instance.enable_webrtc()) {
-    auto touch_type_parameter =
-        instance.enable_webrtc() ? "--multi-touch=" : "--single-touch=";
+    auto touch_type_parameter = "--multi-touch=";
 
     auto display_configs = instance.display_configs();
     CF_EXPECT(display_configs.size() >= 1);
 
-    for (int i = 0; i < display_configs.size(); ++i) {
-      auto display_config = display_configs[i];
+    int touch_idx = 0;
+    for (auto& display_config : display_configs) {
       crosvm_cmd.Cmd().AddParameter(
-          touch_type_parameter, instance.touch_socket_path(i), ":",
+          touch_type_parameter, instance.touch_socket_path(touch_idx++), ":",
           display_config.width, ":", display_config.height);
-
+    }
+    auto touchpad_configs = instance.touchpad_configs();
+    for (int i = 0; i < touchpad_configs.size(); ++i) {
+      auto touchpad_config = touchpad_configs[i];
+      crosvm_cmd.Cmd().AddParameter(
+          touch_type_parameter, instance.touch_socket_path(touch_idx++), ":",
+          touchpad_config.width, ":", touchpad_config.height, ":",
+          kTouchpadDefaultPrefix, i);
     }
     crosvm_cmd.Cmd().AddParameter("--rotary=",
                                   instance.rotary_socket_path());
@@ -565,7 +572,13 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   }
 
   if (instance.vsock_guest_cid() >= 2) {
-    crosvm_cmd.Cmd().AddParameter("--cid=", instance.vsock_guest_cid());
+    if (instance.vhost_user_vsock()) {
+      auto param = fmt::format("/tmp/vhost{}.socket,max-queue-size=256",
+                               instance.vsock_guest_cid());
+      crosvm_cmd.Cmd().AddParameter("--vhost-user-vsock=", param);
+    } else {
+      crosvm_cmd.Cmd().AddParameter("--cid=", instance.vsock_guest_cid());
+    }
   }
 
   // /dev/hvc0 = kernel console
@@ -617,10 +630,7 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   }
 
   auto crosvm_logs_path = instance.PerInstanceInternalPath("crosvm.fifo");
-  auto crosvm_logs = SharedFD::Fifo(crosvm_logs_path, 0666);
-  CF_EXPECT(crosvm_logs->IsOpen(),
-            "Failed to create log fifo for crosvm's stdout/stderr: "
-                << crosvm_logs->StrError());
+  auto crosvm_logs = CF_EXPECT(SharedFD::Fifo(crosvm_logs_path, 0666));
 
   Command crosvm_log_tee_cmd(HostBinaryPath("log_tee"));
   crosvm_log_tee_cmd.AddParameter("--process_name=crosvm");
@@ -707,10 +717,29 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     crosvm_cmd.AddHvcSink();
   }
 
+
   // /dev/hvc13 = sensors
   crosvm_cmd.AddHvcReadWrite(
       instance.PerInstanceInternalPath("sensors_fifo_vm.out"),
       instance.PerInstanceInternalPath("sensors_fifo_vm.in"));
+
+  // /dev/hvc14 = MCU CONTROL
+  if (instance.mcu()["control"]["type"].asString() == "serial") {
+    auto path = instance.PerInstanceInternalPath("mcu");
+    path += "/" + instance.mcu()["control"]["path"].asString();
+    crosvm_cmd.AddHvcReadWrite(path, path);
+  } else {
+    crosvm_cmd.AddHvcSink();
+  }
+
+  // /dev/hvc15 = MCU UART
+  if (instance.mcu()["uart0"]["type"].asString() == "serial") {
+    auto path = instance.PerInstanceInternalPath("mcu");
+    path += "/" + instance.mcu()["uart0"]["path"].asString();
+    crosvm_cmd.AddHvcReadWrite(path, path);
+  } else {
+    crosvm_cmd.AddHvcSink();
+  }
 
   for (auto i = 0; i < VmManager::kMaxDisks - disk_num; i++) {
     crosvm_cmd.AddHvcSink();
@@ -728,7 +757,9 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
 
   // TODO(b/162071003): virtiofs crashes without sandboxing, this should be
   // fixed
-  if (instance.enable_sandbox()) {
+  if (instance.enable_virtiofs()) {
+    CF_EXPECT(instance.enable_sandbox(),
+              "virtiofs is currently not supported without sandboxing");
     // Set up directory shared with virtiofs
     crosvm_cmd.Cmd().AddParameter(
         "--shared-dir=", instance.PerInstancePath(kSharedDirName),
@@ -749,10 +780,8 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
 
     auto gpu_capture_logs_path =
         instance.PerInstanceInternalPath("gpu_capture.fifo");
-    auto gpu_capture_logs = SharedFD::Fifo(gpu_capture_logs_path, 0666);
-    CF_EXPECT(gpu_capture_logs->IsOpen(),
-              "Failed to create log fifo for gpu capture's stdout/stderr: "
-                  << gpu_capture_logs->StrError());
+    auto gpu_capture_logs =
+        CF_EXPECT(SharedFD::Fifo(gpu_capture_logs_path, 0666));
 
     Command gpu_capture_log_tee_cmd(HostBinaryPath("log_tee"));
     gpu_capture_log_tee_cmd.AddParameter("--process_name=",

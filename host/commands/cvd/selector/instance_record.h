@@ -16,10 +16,10 @@
 
 #pragma once
 
-#include <optional>
 #include <string>
 
 #include "common/libs/utils/result.h"
+#include "host/commands/cvd/selector/instance_database_types.h"
 
 namespace cuttlefish {
 namespace selector {
@@ -36,6 +36,9 @@ class LocalInstance {
   friend class InstanceDatabase;
 
  public:
+  static constexpr const char kJsonInstanceId[] = "Instance Id";
+  static constexpr const char kJsonInstanceName[] = "Per-Instance Name";
+
   /* names:
    *
    * Many components in Cuttlefish traditionally expect the name to be "cvd-N,"
@@ -61,7 +64,7 @@ class LocalInstance {
       std::string host_artifacts_path;
       std::string internal_group_name;
       std::string group_name;
-      std::optional<std::string> build_id;
+      TimeStamp start_time;
     };
 
    public:
@@ -80,14 +83,14 @@ class LocalInstance {
       const std::string& HostArtifactsPath() const {
         return host_artifacts_path_;
       }
-      const std::optional<std::string>& BuildId() const { return build_id_; }
+      auto StartTime() const { return start_time_; }
 
      private:
       std::string home_dir_;
       std::string host_artifacts_path_;
       std::string internal_group_name_;
       std::string group_name_;
-      std::optional<std::string> build_id_;
+      TimeStamp start_time_;
     };
     Copy(const LocalInstance& src);
     const std::string& InternalName() const { return internal_name_; }
@@ -112,9 +115,6 @@ class LocalInstance {
  private:
   LocalInstance(const LocalInstanceGroup& parent_group,
                 const unsigned instance_id, const std::string& instance_name);
-
-  static constexpr const char kJsonInstanceId[] = "Instance Id";
-  static constexpr const char kJsonInstanceName[] = "Per-Instance Name";
 
   const LocalInstanceGroup& parent_group_;
   unsigned instance_id_;

@@ -16,6 +16,8 @@
 
 #include "host/commands/cvd/server_command/host_tool_target_manager.h"
 
+#include <memory>
+
 #include "common/libs/utils/contains.h"
 #include "common/libs/utils/files.h"
 #include "host/commands/cvd/common_utils.h"
@@ -24,7 +26,7 @@ namespace cuttlefish {
 
 class HostToolTargetManagerImpl : public HostToolTargetManager {
  public:
-  INJECT(HostToolTargetManagerImpl()) = default;
+  HostToolTargetManagerImpl() = default;
 
   Result<FlagInfo> ReadFlag(const HostToolFlagRequestForm& request) override;
   Result<std::string> ExecBaseName(
@@ -61,7 +63,7 @@ Result<void> HostToolTargetManagerImpl::UpdateOutdated(
   if (!host_target.IsDirty()) {
     return {};
   }
-  LOG(ERROR) << artifacts_path << " is new, so updating HostToolTarget";
+  LOG(INFO) << artifacts_path << " is new, so updating HostToolTarget";
   host_target_table_.erase(artifacts_path);
   HostToolTarget new_host_tool_target =
       CF_EXPECT(HostToolTarget::Create(artifacts_path));
@@ -96,9 +98,9 @@ Result<std::string> HostToolTargetManagerImpl::ExecBaseName(
   return base_name;
 }
 
-fruit::Component<HostToolTargetManager> HostToolTargetManagerComponent() {
-  return fruit::createComponent()
-      .bind<HostToolTargetManager, HostToolTargetManagerImpl>();
+std::unique_ptr<HostToolTargetManager> NewHostToolTargetManager() {
+  return std::unique_ptr<HostToolTargetManager>(
+      new HostToolTargetManagerImpl());
 }
 
 }  // namespace cuttlefish

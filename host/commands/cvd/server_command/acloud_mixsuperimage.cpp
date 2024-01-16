@@ -19,7 +19,6 @@
 #include <iostream>
 
 #include <android-base/file.h>
-#include <fruit/fruit.h>
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/utils/files.h"
@@ -31,7 +30,7 @@
 #include "host/commands/cvd/server_command/server_handler.h"
 #include "host/commands/cvd/server_command/utils.h"
 #include "host/commands/cvd/types.h"
-#include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/config/config_utils.h"
 
 namespace cuttlefish {
 
@@ -158,7 +157,7 @@ Result<void> _RewriteMiscInfo(
 
 class AcloudMixSuperImageCommand : public CvdServerHandler {
  public:
-  INJECT(AcloudMixSuperImageCommand()) {}
+  AcloudMixSuperImageCommand() {}
   ~AcloudMixSuperImageCommand() = default;
 
   Result<bool> CanHandle(const RequestWithStdio& request) const override {
@@ -243,8 +242,8 @@ class AcloudMixSuperImageCommand : public CvdServerHandler {
 
     TemporaryFile new_misc_info;
     std::string new_misc_info_path = new_misc_info.path;
-    _RewriteMiscInfo(new_misc_info_path, misc_info_path, lpmake_binary,
-                     get_image);
+    CF_EXPECT(_RewriteMiscInfo(new_misc_info_path, misc_info_path,
+                               lpmake_binary, get_image));
 
     Command command(build_super_image_binary);
     command.AddParameter(new_misc_info_path);
@@ -253,7 +252,7 @@ class AcloudMixSuperImageCommand : public CvdServerHandler {
     auto subprocess = command.Start(options);
     CF_EXPECT(subprocess.Started());
     CF_EXPECT(waiter_.Setup(std::move(subprocess)));
-    callback_unlock();
+    CF_EXPECT(callback_unlock());
     CF_EXPECT(waiter_.Wait());
     return {};
   }
@@ -313,10 +312,8 @@ class AcloudMixSuperImageCommand : public CvdServerHandler {
   SubprocessWaiter waiter_;
 };
 
-fruit::Component<fruit::Required<>>
-AcloudMixSuperImageCommandComponent() {
-  return fruit::createComponent()
-      .addMultibinding<CvdServerHandler, AcloudMixSuperImageCommand>();
+std::unique_ptr<CvdServerHandler> NewAcloudMixSuperImageCommand() {
+  return std::unique_ptr<CvdServerHandler>(new AcloudMixSuperImageCommand());
 }
 
 }  // namespace cuttlefish

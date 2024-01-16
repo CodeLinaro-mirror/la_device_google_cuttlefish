@@ -26,11 +26,15 @@
 #include <fruit/fruit.h>
 
 #include "common/libs/utils/result.h"
+#include "common/libs/utils/type_name.h"
 #include "host/libs/config/command_source.h"
 #include "host/libs/config/feature.h"
 #include "host/libs/config/kernel_log_pipe_provider.h"
 
 namespace cuttlefish {
+
+template <class...>
+constexpr std::false_type CommandAlwaysFalse{};
 
 template <auto Fn, typename R, typename... Args>
 class GenericCommandSource : public CommandSource,
@@ -63,7 +67,7 @@ class GenericCommandSource : public CommandSource,
     } else {
       //TODO: b/307808444 - 13684156136015732577 - Build Failure for boot_state_machine.o
       //TODO: b/308214228 - 350640852809607874 - Build Failure for main.o
-      //static_assert(false, "Unexpected AutoCmd return type");
+      //static_assert(CommandAlwaysFalse<R>, "Unexpected AutoCmd return type");
     }
     return {};
   }
@@ -73,7 +77,8 @@ class GenericCommandSource : public CommandSource,
   }
 
   std::string Name() const override {
-    return ExtractAutoFn(__PRETTY_FUNCTION__, "GenericCommandSource");
+    static constexpr auto kName = ValueName<Fn>();
+    return std::string(kName);
   }
 
   std::unordered_set<SetupFeature*> Dependencies() const override {

@@ -25,6 +25,7 @@
 #include <unistd.h>
 
 #include <cstdlib>
+#include <iomanip>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -207,7 +208,8 @@ QemuManager::ConfigureBootDevices(
     case Arch::X86_64: {
       // QEMU has additional PCI devices for an ISA bridge and PIIX4
       // virtio_gpu precedes the first console or disk
-      return ConfigureMultipleBootDevices("pci0000:00/0000:00:", 2 + num_gpu,
+      int pci_offset = 2 + num_gpu - VmManager::kDefaultNumHvcs;
+      return ConfigureMultipleBootDevices("pci0000:00/0000:00:", pci_offset,
                                           num_disks);
     }
   }
@@ -258,7 +260,7 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
     qemu_cmd.AddParameter("-device");
     qemu_cmd.AddParameter(
         "virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial",
-        hvc_num);
+        hvc_num, ",bus=hvc-bridge,addr=", fmt::format("{:0>2x}", hvc_num + 1));
     qemu_cmd.AddParameter("-device");
     qemu_cmd.AddParameter("virtconsole,bus=virtio-serial", hvc_num,
                           ".0,chardev=hvc", hvc_num);
@@ -295,7 +297,7 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
     qemu_cmd.AddParameter("-device");
     qemu_cmd.AddParameter(
         "virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial",
-        hvc_num);
+        hvc_num, ",bus=hvc-bridge,addr=", fmt::format("{:0>2x}", hvc_num + 1));
     qemu_cmd.AddParameter("-device");
     qemu_cmd.AddParameter("virtconsole,bus=virtio-serial", hvc_num,
                           ".0,chardev=hvc", hvc_num);
@@ -307,7 +309,19 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
     qemu_cmd.AddParameter("-device");
     qemu_cmd.AddParameter(
         "virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial",
-        hvc_num);
+        hvc_num, ",bus=hvc-bridge,addr=", fmt::format("{:0>2x}", hvc_num + 1));
+    qemu_cmd.AddParameter("-device");
+    qemu_cmd.AddParameter("virtconsole,bus=virtio-serial", hvc_num,
+                          ".0,chardev=hvc", hvc_num);
+    hvc_num++;
+  };
+  auto add_hvc_serial = [&qemu_cmd, &hvc_num](const std::string& prefix) {
+    qemu_cmd.AddParameter("-chardev");
+    qemu_cmd.AddParameter("serial,id=hvc", hvc_num, ",path=", prefix);
+    qemu_cmd.AddParameter("-device");
+    qemu_cmd.AddParameter(
+        "virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial",
+        hvc_num, ",bus=hvc-bridge,addr=", fmt::format("{:0>2x}", hvc_num + 1));
     qemu_cmd.AddParameter("-device");
     qemu_cmd.AddParameter("virtconsole,bus=virtio-serial", hvc_num,
                           ".0,chardev=hvc", hvc_num);
@@ -435,6 +449,13 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
     qemu_cmd.AddParameter("none");
   }
 
+  qemu_cmd.AddParameter("-device");
+  if (is_x86) {
+    qemu_cmd.AddParameter("pcie-pci-bridge,id=hvc-bridge,addr=01.2");
+  } else {
+    qemu_cmd.AddParameter("pcie-pci-bridge,id=hvc-bridge");
+  }
+
   if (instance.hwcomposer() != kHwComposerNone) {
     auto display_configs = instance.display_configs();
     CF_EXPECT(display_configs.size() >= 1);
@@ -449,13 +470,13 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
       gpu_device = "virtio-gpu-gl-pci";
     } else if (gpu_mode == kGpuModeGfxstream) {
       gpu_device =
-          "virtio-gpu-rutabaga-pci,capset_names=gfxstream-gles:gfxstream-"
-          "vulkan:gfxstream-composer,hostmem=256M";
+          "virtio-gpu-rutabaga,x-gfxstream-gles=on,gfxstream-vulkan=on,"
+          "x-gfxstream-composer=on,hostmem=256M";
     } else if (gpu_mode == kGpuModeGfxstreamGuestAngle ||
                gpu_mode == kGpuModeGfxstreamGuestAngleHostSwiftShader) {
       gpu_device =
-          "virtio-gpu-rutabaga-pci,capset_names=gfxstream-vulkan:gfxstream-"
-          "composer,hostmem=256M";
+          "virtio-gpu-rutabaga,gfxstream-vulkan=on,"
+          "x-gfxstream-composer=on,hostmem=256M";
 
       if (gpu_mode == kGpuModeGfxstreamGuestAngleHostSwiftShader) {
         // See https://github.com/KhronosGroup/Vulkan-Loader.
@@ -588,6 +609,24 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
   // which is not created w/ QEMU.
   // /dev/hvc13 = sensors
   add_hvc_sink();
+
+  // /dev/hvc14 = MCU CONTROL
+  if (instance.mcu()["control"]["type"].asString() == "serial") {
+    auto path = instance.PerInstanceInternalPath("mcu");
+    path += "/" + instance.mcu()["control"]["path"].asString();
+    add_hvc_serial(path);
+  } else {
+    add_hvc_sink();
+  }
+
+  // /dev/hvc15 = MCU UART
+  if (instance.mcu()["uart0"]["type"].asString() == "serial") {
+    auto path = instance.PerInstanceInternalPath("mcu");
+    path += "/" + instance.mcu()["uart0"]["path"].asString();
+    add_hvc_serial(path);
+  } else {
+    add_hvc_sink();
+  }
 
   auto disk_num = instance.virtual_disk_paths().size();
 
@@ -732,7 +771,7 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
     }
     default:
       return CF_ERRF("Unexpected net mode {}",
-                     instance.external_network_mode());
+                     fmt::underlying(instance.external_network_mode()));
   }
 
   // The ordering of virtio-net devices is important. Make sure any change here
@@ -774,7 +813,9 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
 #endif
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("AC97");
+  qemu_cmd.AddParameter("AC97,audiodev=audio_none");
+  qemu_cmd.AddParameter("-audiodev");
+  qemu_cmd.AddParameter("driver=none,id=audio_none");
 
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("qemu-xhci,id=xhci");
@@ -791,8 +832,6 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
     qemu_cmd.AddParameter("-gdb");
     qemu_cmd.AddParameter("tcp::", instance.gdb_port());
   }
-
-  qemu_cmd.AddEnvironmentVariable("QEMU_AUDIO_DRV", "none");
 
   std::vector<MonitorCommand> commands;
   commands.emplace_back(std::move(qemu_cmd), true);

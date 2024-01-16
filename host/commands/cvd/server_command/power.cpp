@@ -42,9 +42,9 @@ namespace cuttlefish {
 
 class CvdDevicePowerCommandHandler : public CvdServerHandler {
  public:
-  INJECT(CvdDevicePowerCommandHandler(
-      HostToolTargetManager& host_tool_target_manager,
-      InstanceManager& instance_manager, SubprocessWaiter& subprocess_waiter))
+  CvdDevicePowerCommandHandler(HostToolTargetManager& host_tool_target_manager,
+                               InstanceManager& instance_manager,
+                               SubprocessWaiter& subprocess_waiter)
       : host_tool_target_manager_(host_tool_target_manager),
         instance_manager_{instance_manager},
         subprocess_waiter_(subprocess_waiter) {
@@ -73,7 +73,7 @@ class CvdDevicePowerCommandHandler : public CvdServerHandler {
         cvd_common::ConvertToEnvs(request.Message().command_request().env());
 
     auto [op, subcmd_args] = ParseInvocation(request.Message());
-    bool is_help = IsHelp(subcmd_args);
+    bool is_help = CF_EXPECT(IsHelp(subcmd_args));
 
     // may modify subcmd_args by consuming in parsing
     Command command =
@@ -205,12 +205,12 @@ class CvdDevicePowerCommandHandler : public CvdServerHandler {
     return command;
   }
 
-  bool IsHelp(const cvd_common::Args& cmd_args) const {
+  Result<bool> IsHelp(const cvd_common::Args& cmd_args) const {
     if (cmd_args.empty()) {
       return false;
     }
     // cvd restart/powerwash --help, --helpxml, etc or simply cvd restart
-    if (IsHelpSubcmd(cmd_args)) {
+    if (CF_EXPECT(IsHelpSubcmd(cmd_args))) {
       return true;
     }
     // cvd restart/powerwash help <subcommand> format
@@ -233,11 +233,11 @@ class CvdDevicePowerCommandHandler : public CvdServerHandler {
   std::unordered_map<std::string, BinGetter> cvd_power_operations_;
 };
 
-fruit::Component<
-    fruit::Required<HostToolTargetManager, InstanceManager, SubprocessWaiter>>
-CvdDevicePowerComponent() {
-  return fruit::createComponent()
-      .addMultibinding<CvdServerHandler, CvdDevicePowerCommandHandler>();
+std::unique_ptr<CvdServerHandler> NewCvdDevicePowerCommandHandler(
+    HostToolTargetManager& host_tool_target_manager,
+    InstanceManager& instance_manager, SubprocessWaiter& subprocess_waiter) {
+  return std::unique_ptr<CvdServerHandler>(new CvdDevicePowerCommandHandler(
+      host_tool_target_manager, instance_manager, subprocess_waiter));
 }
 
 }  // namespace cuttlefish

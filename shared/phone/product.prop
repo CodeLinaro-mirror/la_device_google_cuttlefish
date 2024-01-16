@@ -23,11 +23,8 @@ bluetooth.profile.pan.nap.enabled=true
 bluetooth.profile.pan.panu.enabled=true
 bluetooth.profile.pbap.server.enabled=true
 
-# Disable LeAudio related profile as there is no support for it
-bluetooth.profile.bap.broadcast.assist.enabled=false
-bluetooth.profile.bap.unicast.client.enabled=false
-bluetooth.profile.bas.client.enabled=false
-bluetooth.profile.ccp.server.enabled=false
-bluetooth.profile.csip.set_coordinator.enabled=false
-bluetooth.profile.hap.client.enabled=false
-bluetooth.profile.vcp.controller.enabled=false
+# Increase timeouts for virtual devices
+ro.bluetooth.ble_start_timeout_delay=8000
+ro.bluetooth.ble_stop_timeout_delay=8000
+bluetooth.gd.start_timeout=7000
+bluetooth.gd.stop_timeout=7000

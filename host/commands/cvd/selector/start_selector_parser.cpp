@@ -32,7 +32,7 @@
 #include "host/commands/cvd/selector/selector_constants.h"
 #include "host/commands/cvd/selector/selector_option_parser_utils.h"
 #include "host/commands/cvd/types.h"
-#include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/config/config_constants.h"
 #include "host/libs/config/instance_nums.h"
 
 namespace cuttlefish {
@@ -233,16 +233,8 @@ StartSelectorParser::HandleInstanceIds(
 }
 
 Result<bool> StartSelectorParser::CalcMayBeDefaultGroup() {
-  auto disable_default_group_flag = CF_EXPECT(
-      SelectorFlags::Get().GetFlag(SelectorFlags::kDisableDefaultGroup));
-  if (CF_EXPECT(
-          disable_default_group_flag.CalculateFlag<bool>(selector_args_))) {
-    return false;
-  }
   /*
-   * --disable_default_group instructs that the default group
-   * should be disabled anyway. If not given, the logic to determine
-   * whether this group is the default one or not is:
+   * the logic to determine whether this group is the default one or not:
    *  If HOME is not overridden and no selector options, then
    *   the default group
    *  Or, not a default group
@@ -334,9 +326,10 @@ Result<void> StartSelectorParser::ParseOptions() {
   std::optional<std::string> instance_nums;
   std::optional<std::string> base_instance_num;
   // set num_instances as std::nullptr or the value of --num_instances
-  FilterSelectorFlag(cmd_args_, "num_instances", num_instances);
-  FilterSelectorFlag(cmd_args_, "instance_nums", instance_nums);
-  FilterSelectorFlag(cmd_args_, "base_instance_num", base_instance_num);
+  CF_EXPECT(FilterSelectorFlag(cmd_args_, "num_instances", num_instances));
+  CF_EXPECT(FilterSelectorFlag(cmd_args_, "instance_nums", instance_nums));
+  CF_EXPECT(
+      FilterSelectorFlag(cmd_args_, "base_instance_num", base_instance_num));
 
   InstanceIdsParams instance_nums_param{
       .num_instances = std::move(num_instances),

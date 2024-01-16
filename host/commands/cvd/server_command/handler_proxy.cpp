@@ -32,7 +32,7 @@ namespace cuttlefish {
 
 class CvdServerHandlerProxy : public CvdServerHandler {
  public:
-  INJECT(CvdServerHandlerProxy(CommandSequenceExecutor& executor))
+  CvdServerHandlerProxy(CommandSequenceExecutor& executor)
       : executor_(executor) {}
 
   Result<bool> CanHandle(const RequestWithStdio& request) const override {
@@ -62,7 +62,7 @@ class CvdServerHandlerProxy : public CvdServerHandler {
 
     auto subcmds = executor_.CmdList();
     auto selector_flag_collection =
-        selector::SelectorFlags::New().FlagsAsCollection();
+        CF_EXPECT(selector::SelectorFlags::New()).FlagsAsCollection();
 
     FrontlineParser::ParserParam server_param{
         .server_supported_subcmds = subcmds,
@@ -97,10 +97,20 @@ class CvdServerHandlerProxy : public CvdServerHandler {
     interrupt_lock.unlock();
     SharedFD dev_null = SharedFD::Open("/dev/null", O_RDWR);
     CF_EXPECT(dev_null->IsOpen(), "Failed to open /dev/null");
-    const auto responses =
-        CF_EXPECT(executor_.Execute({std::move(forwarded_request)}, dev_null));
-    CF_EXPECT_EQ(responses.size(), 1);
-    return responses.front();
+
+    cvd::Response response;
+    auto invocation_args =
+        ParseInvocation(forwarded_request.Message()).arguments;
+    auto handler = CF_EXPECT(executor_.GetHandler(forwarded_request));
+    if (CF_EXPECT(IsHelpSubcmd(invocation_args)) &&
+        handler->ShouldInterceptHelp()) {
+      std::string output =
+          CF_EXPECT(handler->DetailedHelp(invocation_args)) + "\n";
+      response = CF_EXPECT(WriteToFd(forwarded_request.Out(), output));
+    } else {
+      response = CF_EXPECT(executor_.ExecuteOne(forwarded_request, dev_null));
+    }
+    return response;
   }
 
   Result<void> Interrupt() override {
@@ -119,10 +129,9 @@ class CvdServerHandlerProxy : public CvdServerHandler {
   CommandSequenceExecutor& executor_;
 };
 
-fruit::Component<fruit::Required<CommandSequenceExecutor>>
-CvdHandlerProxyComponent() {
-  return fruit::createComponent()
-      .addMultibinding<CvdServerHandler, CvdServerHandlerProxy>();
+std::unique_ptr<CvdServerHandler> NewCvdServerHandlerProxy(
+    CommandSequenceExecutor& executor) {
+  return std::unique_ptr<CvdServerHandler>(new CvdServerHandlerProxy(executor));
 }
 
 }  // namespace cuttlefish

@@ -30,50 +30,15 @@
 
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/result.h"
+#include "host/libs/config/config_constants.h"
 #include "host/libs/config/config_fragment.h"
+#include "host/libs/config/config_utils.h"
 
 namespace Json {
 class Value;
 }
 
 namespace cuttlefish {
-
-inline constexpr char kLogcatSerialMode[] = "serial";
-inline constexpr char kLogcatVsockMode[] = "vsock";
-
-inline constexpr char kDefaultUuidPrefix[] =
-    "699acfc4-c8c4-11e7-882b-5065f31dc1";
-inline constexpr char kCuttlefishConfigEnvVarName[] = "CUTTLEFISH_CONFIG_FILE";
-inline constexpr char kCuttlefishInstanceEnvVarName[] = "CUTTLEFISH_INSTANCE";
-inline constexpr char kVsocUserPrefix[] = "vsoc-";
-inline constexpr char kCvdNamePrefix[] = "cvd-";
-inline constexpr char kBootStartedMessage[] = "VIRTUAL_DEVICE_BOOT_STARTED";
-inline constexpr char kBootCompletedMessage[] = "VIRTUAL_DEVICE_BOOT_COMPLETED";
-inline constexpr char kBootFailedMessage[] = "VIRTUAL_DEVICE_BOOT_FAILED";
-inline constexpr char kMobileNetworkConnectedMessage[] =
-    "VIRTUAL_DEVICE_NETWORK_MOBILE_CONNECTED";
-inline constexpr char kWifiConnectedMessage[] =
-    "VIRTUAL_DEVICE_NETWORK_WIFI_CONNECTED";
-inline constexpr char kEthernetConnectedMessage[] =
-    "VIRTUAL_DEVICE_NETWORK_ETHERNET_CONNECTED";
-// TODO(b/131864854): Replace this with a string less likely to change
-inline constexpr char kAdbdStartedMessage[] =
-    "init: starting service 'adbd'...";
-inline constexpr char kFastbootdStartedMessage[] =
-    "init: starting service 'fastbootd'...";
-inline constexpr char kFastbootStartedMessage[] =
-    "Listening for fastboot command on tcp";
-inline constexpr char kScreenChangedMessage[] = "VIRTUAL_DEVICE_SCREEN_CHANGED";
-inline constexpr char kDisplayPowerModeChangedMessage[] =
-    "VIRTUAL_DEVICE_DISPLAY_POWER_MODE_CHANGED";
-inline constexpr char kInternalDirName[] = "internal";
-inline constexpr char kGrpcSocketDirName[] = "grpc_socket";
-inline constexpr char kSharedDirName[] = "shared";
-inline constexpr char kLogDirName[] = "logs";
-inline constexpr char kCrosvmVarEmptyDir[] = "/var/empty";
-inline constexpr char kKernelLoadedMessage[] = "] Linux version";
-inline constexpr char kBootloaderLoadedMessage[] = "U-Boot 20";
-inline constexpr char kApName[] = "crosvm_openwrt";
 
 enum class SecureHal {
   Unknown,
@@ -107,6 +72,7 @@ class CuttlefishConfig {
   // Saves the configuration object in a file, it can then be read in other
   // processes by passing the --config_file option.
   bool SaveToFile(const std::string& file) const;
+  bool LoadFromFile(const char* file);
 
   bool SaveFragment(const ConfigFragment&);
   bool LoadFragment(ConfigFragment&) const;
@@ -140,6 +106,15 @@ class CuttlefishConfig {
     int height;
     int dpi;
     int refresh_rate_hz;
+  };
+
+  struct TouchpadConfig {
+    int width;
+    int height;
+
+    static Json::Value Serialize(
+        const CuttlefishConfig::TouchpadConfig& config);
+    static TouchpadConfig Deserialize(const Json::Value& config_json);
   };
 
   void set_secure_hals(const std::set<std::string>& hals);
@@ -388,7 +363,7 @@ class CuttlefishConfig {
 
     std::string instance_internal_uds_dir() const;
 
-    std::string touch_socket_path(int screen_idx) const;
+    std::string touch_socket_path(int touch_dev_idx) const;
     std::string rotary_socket_path() const;
     std::string keyboard_socket_path() const;
     std::string switches_socket_path() const;
@@ -440,13 +415,22 @@ class CuttlefishConfig {
 
     std::string esp_image_path() const;
 
+    std::string chromeos_state_image() const;
+
     std::string otheros_esp_grub_config() const;
 
     std::string ap_esp_grub_config() const;
 
     std::string audio_server_path() const;
 
-    enum class BootFlow { Android, AndroidEfiLoader, Linux, Fuchsia };
+    enum class BootFlow {
+      Android,
+      AndroidEfiLoader,
+      ChromeOs,
+      ChromeOsDisk,
+      Linux,
+      Fuchsia
+    };
 
     BootFlow boot_flow() const;
 
@@ -479,6 +463,8 @@ class CuttlefishConfig {
 
     // Whether this instance should start a netsim instance
     bool start_netsim() const;
+
+    const Json::Value& mcu() const;
 
     enum class APBootFlow {
       // Not starting AP at all (for example not the 1st instance)
@@ -530,6 +516,7 @@ class CuttlefishConfig {
     bool console() const;
     std::string console_dev() const;
     bool enable_sandbox() const;
+    bool enable_virtiofs() const;
 
     // KGDB configuration for kernel debugging
     bool kgdb() const;
@@ -551,6 +538,7 @@ class CuttlefishConfig {
     int gdb_port() const;
 
     std::vector<DisplayConfig> display_configs() const;
+    std::vector<TouchpadConfig> touchpad_configs() const;
 
     std::string grpc_socket_path() const;
     int memory_mb() const;
@@ -573,6 +561,7 @@ class CuttlefishConfig {
     // Kernel and bootloader logging
     bool enable_kernel_log() const;
     bool vhost_net() const;
+    bool vhost_user_vsock() const;
 
     // The dns address of mobile network (RIL)
     std::string ril_dns() const;
@@ -601,6 +590,10 @@ class CuttlefishConfig {
     std::string gpu_angle_feature_overrides_enabled() const;
     std::string gpu_angle_feature_overrides_disabled() const;
     std::string gpu_capture_binary() const;
+    std::string gpu_gfxstream_transport() const;
+
+    std::string gpu_vhost_user_mode() const;
+
     bool enable_gpu_udmabuf() const;
     bool enable_gpu_vhost_user() const;
     bool enable_gpu_external_blob() const;
@@ -637,6 +630,11 @@ class CuttlefishConfig {
 
     // android efi loader flow
     std::string android_efi_loader() const;
+
+    // chromeos artifacts for otheros flow
+    std::string chromeos_disk() const;
+    std::string chromeos_kernel_path() const;
+    std::string chromeos_root_image() const;
 
     // linux artifacts for otheros flow
     std::string linux_kernel_path() const;
@@ -713,6 +711,7 @@ class CuttlefishConfig {
     void set_start_casimir(bool start);
     void set_start_pica(bool start);
     void set_start_netsim(bool start);
+    void set_mcu(const Json::Value &v);
     void set_ap_boot_flow(InstanceSpecific::APBootFlow flow);
     void set_crosvm_use_balloon(const bool use_balloon);
     void set_crosvm_use_rng(const bool use_rng);
@@ -731,6 +730,7 @@ class CuttlefishConfig {
     // Serial console
     void set_console(bool console);
     void set_enable_sandbox(const bool enable_sandbox);
+    void set_enable_virtiofs(const bool enable_virtiofs);
     void set_kgdb(bool kgdb);
     void set_target_arch(Arch target_arch);
     void set_cpus(int cpus);
@@ -738,6 +738,8 @@ class CuttlefishConfig {
     void set_blank_data_image_mb(int blank_data_image_mb);
     void set_gdb_port(int gdb_port);
     void set_display_configs(const std::vector<DisplayConfig>& display_configs);
+    void set_touchpad_configs(
+        const std::vector<TouchpadConfig>& touchpad_configs);
     void set_memory_mb(int memory_mb);
     void set_ddr_mem_mb(int ddr_mem_mb);
     Result<void> set_setupwizard_mode(const std::string& title);
@@ -774,6 +776,7 @@ class CuttlefishConfig {
     void set_qemu_binary_dir(const std::string& qemu_binary_dir);
 
     void set_vhost_net(bool vhost_net);
+    void set_vhost_user_vsock(bool vhost_user_vsock);
 
     // The dns address of mobile network (RIL)
     void set_ril_dns(const std::string& ril_dns);
@@ -788,6 +791,7 @@ class CuttlefishConfig {
     void set_gpu_angle_feature_overrides_enabled(const std::string& overrides);
     void set_gpu_angle_feature_overrides_disabled(const std::string& overrides);
     void set_gpu_capture_binary(const std::string&);
+    void set_gpu_gfxstream_transport(const std::string& transport);
     void set_enable_gpu_udmabuf(const bool enable_gpu_udmabuf);
     void set_enable_gpu_vhost_user(const bool enable_gpu_vhost_user);
     void set_enable_gpu_external_blob(const bool enable_gpu_external_blob);
@@ -822,6 +826,9 @@ class CuttlefishConfig {
     void set_system_target_zip(const std::string& system_target_zip);
     void set_otheros_esp_image(const std::string& otheros_esp_image);
     void set_android_efi_loader(const std::string& android_efi_loader);
+    void set_chromeos_disk(const std::string& chromeos_disk);
+    void set_chromeos_kernel_path(const std::string& linux_kernel_path);
+    void set_chromeos_root_image(const std::string& linux_root_image);
     void set_linux_kernel_path(const std::string& linux_kernel_path);
     void set_linux_initramfs_path(const std::string& linux_initramfs_path);
     void set_linux_root_image(const std::string& linux_root_image);
@@ -922,49 +929,11 @@ class CuttlefishConfig {
  private:
   std::unique_ptr<Json::Value> dictionary_;
 
-  bool LoadFromFile(const char* file);
   static CuttlefishConfig* BuildConfigImpl(const std::string& path);
 
   CuttlefishConfig(const CuttlefishConfig&) = delete;
   CuttlefishConfig& operator=(const CuttlefishConfig&) = delete;
 };
-
-// Returns the instance number as obtained from the
-// *kCuttlefishInstanceEnvVarName environment variable or the username.
-int GetInstance();
-
-// Returns default Vsock CID, which is
-// GetInstance() + 2
-int GetDefaultVsockCid();
-
-// Calculates vsock server port number
-// return base + (vsock_guest_cid - 3)
-int GetVsockServerPort(const int base,
-                       const int vsock_guest_cid);
-
-// Returns a path where the launhcer puts a link to the config file which makes
-// it easily discoverable regardless of what vm manager is in use
-std::string GetGlobalConfigFileLink();
-
-// These functions modify a given base value to make it different accross
-// different instances by appending the instance id in case of strings or adding
-// it in case of integers.
-std::string ForCurrentInstance(const char* prefix);
-int ForCurrentInstance(int base);
-
-// Returns a random serial number appeneded to a given prefix.
-std::string RandomSerialNumber(const std::string& prefix);
-
-std::string DefaultHostArtifactsPath(const std::string& file);
-std::string HostBinaryPath(const std::string& file);
-std::string HostUsrSharePath(const std::string& file);
-std::string DefaultGuestImagePath(const std::string& file);
-std::string DefaultEnvironmentPath(const char* environment_key,
-                                   const char* default_value,
-                                   const char* path);
-
-// Whether the host supports qemu
-bool HostSupportsQemuCli();
 
 // GPU modes
 extern const char* const kGpuModeAuto;
@@ -974,6 +943,11 @@ extern const char* const kGpuModeGfxstreamGuestAngle;
 extern const char* const kGpuModeGfxstreamGuestAngleHostSwiftShader;
 extern const char* const kGpuModeGuestSwiftshader;
 extern const char* const kGpuModeNone;
+
+// GPU vhost user modes
+extern const char* const kGpuVhostUserModeAuto;
+extern const char* const kGpuVhostUserModeOn;
+extern const char* const kGpuVhostUserModeOff;
 
 // HwComposer modes
 extern const char* const kHwComposerAuto;

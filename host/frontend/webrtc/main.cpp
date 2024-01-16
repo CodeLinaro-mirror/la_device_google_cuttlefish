@@ -137,7 +137,7 @@ int main(int argc, char** argv) {
   for (const auto& touch_fd_str : android::base::Split(FLAGS_touch_fds, ",")) {
     auto touch_fd = std::stoi(touch_fd_str);
     auto display_label = "display_" + std::to_string(display_counter++);
-    inputs_builder.WithTouchscreen(display_label,
+    inputs_builder.WithTouchDevice(display_label,
                                    cuttlefish::SharedFD::Dup(touch_fd));
     close(touch_fd);
   }
@@ -218,7 +218,8 @@ int main(int argc, char** argv) {
   if (instance.lights_server_port()) {
     lights_observer =
         std::make_shared<cuttlefish::webrtc_streaming::LightsObserver>(
-            instance.lights_server_port(), instance.vsock_guest_cid());
+            instance.lights_server_port(), instance.vsock_guest_cid(),
+            instance.vhost_user_vsock());
     lights_observer->Start();
   }
 
@@ -236,7 +237,8 @@ int main(int argc, char** argv) {
 
   if (instance.camera_server_port()) {
     auto camera_controller = streamer->AddCamera(instance.camera_server_port(),
-                                                 instance.vsock_guest_cid());
+                                                 instance.vsock_guest_cid(),
+                                                 instance.vhost_user_vsock());
     observer_factory->SetCameraHandler(camera_controller);
     streamer->SetHardwareSpec("camera_passthrough", true);
   }

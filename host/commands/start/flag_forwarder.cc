@@ -23,9 +23,9 @@
 #include <unordered_set>
 #include <vector>
 
-#include <gflags/gflags.h>
 #include <android-base/logging.h>
-#include <libxml/tree.h>
+#include <gflags/gflags.h>
+#include <libxml/parser.h>
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
@@ -314,7 +314,7 @@ void FlagForwarder::UpdateFlagDefaults() const {
 
 // Hash table for repeatable flags (able to have repeated flag inputs)
 static std::unordered_set<std::string> kRepeatableFlags = {
-    "custom_action_config", "custom_actions", "display"};
+    "custom_action_config", "custom_actions", "display", "touchpad"};
 
 std::vector<std::string> FlagForwarder::ArgvForSubprocess(
     const std::string& subprocess, const std::vector<std::string>& args) const {

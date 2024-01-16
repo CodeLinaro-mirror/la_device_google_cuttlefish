@@ -16,12 +16,16 @@
 
 #include "host/libs/config/known_paths.h"
 
-#include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/config/config_utils.h"
 
 namespace cuttlefish {
 
 std::string AdbConnectorBinary() {
   return HostBinaryPath("adb_connector");
+}
+
+std::string CasimirControlServerBinary() {
+  return HostBinaryPath("casimir_control_server");
 }
 
 std::string ConfigServerBinary() {
@@ -73,6 +77,10 @@ std::string ProcessRestarterBinary() {
 std::string RootCanalBinary() { return HostBinaryPath("root-canal"); }
 
 std::string CasimirBinary() { return HostBinaryPath("casimir"); }
+
+std::string ScreenRecordingServerBinary() {
+  return HostBinaryPath("screen_recording_server");
+}
 
 std::string SecureEnvBinary() { return HostBinaryPath("secure_env"); }
 

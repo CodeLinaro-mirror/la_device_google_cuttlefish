@@ -68,9 +68,9 @@ QEMU:
 
 class CvdSnapshotCommandHandler : public CvdServerHandler {
  public:
-  INJECT(CvdSnapshotCommandHandler(
-      InstanceManager& instance_manager, SubprocessWaiter& subprocess_waiter,
-      HostToolTargetManager& host_tool_target_manager))
+  CvdSnapshotCommandHandler(InstanceManager& instance_manager,
+                            SubprocessWaiter& subprocess_waiter,
+                            HostToolTargetManager& host_tool_target_manager)
       : instance_manager_{instance_manager},
         subprocess_waiter_(subprocess_waiter),
         host_tool_target_manager_(host_tool_target_manager),
@@ -192,13 +192,6 @@ class CvdSnapshotCommandHandler : public CvdServerHandler {
     return command;
   }
 
-  bool IsHelp(const cvd_common::Args& cmd_args) const {
-    if (IsHelpSubcmd(cmd_args)) {
-      return true;
-    }
-    return (cmd_args.front() == "help");
-  }
-
   Result<std::string> GetBin(const std::string& host_artifacts_path,
                              const std::string& op) const {
     auto snapshot_bin = CF_EXPECT(host_tool_target_manager_.ExecBaseName({
@@ -216,11 +209,11 @@ class CvdSnapshotCommandHandler : public CvdServerHandler {
   std::vector<std::string> cvd_snapshot_operations_;
 };
 
-fruit::Component<
-    fruit::Required<InstanceManager, SubprocessWaiter, HostToolTargetManager>>
-CvdSnapshotComponent() {
-  return fruit::createComponent()
-      .addMultibinding<CvdServerHandler, CvdSnapshotCommandHandler>();
+std::unique_ptr<CvdServerHandler> NewCvdSnapshotCommandHandler(
+    InstanceManager& instance_manager, SubprocessWaiter& subprocess_waiter,
+    HostToolTargetManager& host_tool_target_manager) {
+  return std::unique_ptr<CvdServerHandler>(new CvdSnapshotCommandHandler(
+      instance_manager, subprocess_waiter, host_tool_target_manager));
 }
 
 }  // namespace cuttlefish

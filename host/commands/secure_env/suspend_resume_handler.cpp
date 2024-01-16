@@ -15,11 +15,39 @@
 
 #include "host/commands/secure_env/suspend_resume_handler.h"
 
-#include <sstream>
+#include <android-base/logging.h>
 
 #include "host/libs/command_util/util.h"
 
 namespace cuttlefish {
+namespace {
+
+Result<void> WriteSuspendRequest(const SharedFD& socket) {
+  const SnapshotSocketMessage suspend_request = SnapshotSocketMessage::kSuspend;
+  CF_EXPECT_EQ(sizeof(suspend_request),
+               socket->Write(&suspend_request, sizeof(suspend_request)),
+               "socket write failed: " << socket->StrError());
+  return {};
+}
+
+Result<void> ReadSuspendAck(const SharedFD& socket) {
+  SnapshotSocketMessage ack_response;
+  CF_EXPECT_EQ(sizeof(ack_response),
+               socket->Read(&ack_response, sizeof(ack_response)),
+               "socket read failed: " << socket->StrError());
+  CF_EXPECT_EQ(SnapshotSocketMessage::kSuspendAck, ack_response);
+  return {};
+}
+
+Result<void> WriteResumeRequest(const SharedFD& socket) {
+  const SnapshotSocketMessage resume_request = SnapshotSocketMessage::kResume;
+  CF_EXPECT_EQ(sizeof(resume_request),
+               socket->Write(&resume_request, sizeof(resume_request)),
+               "socket write failed: " << socket->StrError());
+  return {};
+}
+
+}  // namespace
 
 SnapshotCommandHandler::~SnapshotCommandHandler() { Join(); }
 
@@ -30,8 +58,9 @@ void SnapshotCommandHandler::Join() {
 }
 
 SnapshotCommandHandler::SnapshotCommandHandler(SharedFD channel_to_run_cvd,
-                                               SnapshotRunningFlag& running)
-    : channel_to_run_cvd_(channel_to_run_cvd), shared_running_(running) {
+                                               SnapshotSockets snapshot_sockets)
+    : channel_to_run_cvd_(channel_to_run_cvd),
+      snapshot_sockets_(std::move(snapshot_sockets)) {
   handler_thread_ = std::thread([this]() {
     while (true) {
       auto result = SuspendResumeHandler();
@@ -45,41 +74,57 @@ SnapshotCommandHandler::SnapshotCommandHandler(SharedFD channel_to_run_cvd,
 
 Result<ExtendedActionType> SnapshotCommandHandler::ReadRunCvdSnapshotCmd()
     const {
+  CF_EXPECT(channel_to_run_cvd_->IsOpen(), channel_to_run_cvd_->StrError());
   auto launcher_action =
       CF_EXPECT(ReadLauncherActionFromFd(channel_to_run_cvd_),
                 "Failed to read LauncherAction from run_cvd");
   CF_EXPECT(launcher_action.action == LauncherAction::kExtended);
-  return launcher_action.type;
+  const auto action_type = launcher_action.type;
+  CF_EXPECTF(action_type == ExtendedActionType::kSuspend ||
+                 action_type == ExtendedActionType::kResume,
+             "Unsupported ExtendedActionType \"{}\"",
+             fmt::underlying(action_type));
+  return action_type;
 }
 
 Result<void> SnapshotCommandHandler::SuspendResumeHandler() {
   const auto snapshot_cmd = CF_EXPECT(ReadRunCvdSnapshotCmd());
   switch (snapshot_cmd) {
     case ExtendedActionType::kSuspend: {
-      // TODO(kwstephenkim): implement suspend handler
-      shared_running_.UnsetRunning();
+      LOG(DEBUG) << "Handling suspended...";
+      // Request all worker threads to suspend.
+      CF_EXPECT(WriteSuspendRequest(snapshot_sockets_.rust));
+      CF_EXPECT(WriteSuspendRequest(snapshot_sockets_.keymaster));
+      CF_EXPECT(WriteSuspendRequest(snapshot_sockets_.gatekeeper));
+      CF_EXPECT(WriteSuspendRequest(snapshot_sockets_.oemlock));
+      // Wait for ACKs from worker threads.
+      CF_EXPECT(ReadSuspendAck(snapshot_sockets_.rust));
+      CF_EXPECT(ReadSuspendAck(snapshot_sockets_.keymaster));
+      CF_EXPECT(ReadSuspendAck(snapshot_sockets_.gatekeeper));
+      CF_EXPECT(ReadSuspendAck(snapshot_sockets_.oemlock));
+      // Write response to run_cvd.
       auto response = LauncherResponse::kSuccess;
-      LOG(INFO) << "secure_env received the suspend command";
       const auto n_written =
           channel_to_run_cvd_->Write(&response, sizeof(response));
       CF_EXPECT_EQ(sizeof(response), n_written);
       return {};
     };
     case ExtendedActionType::kResume: {
-      // TODO(kwstephenkim): implement resume handler
-      shared_running_.SetRunning();
+      LOG(DEBUG) << "Handling resume...";
+      // Request all worker threads to resume.
+      CF_EXPECT(WriteResumeRequest(snapshot_sockets_.rust));
+      CF_EXPECT(WriteResumeRequest(snapshot_sockets_.keymaster));
+      CF_EXPECT(WriteResumeRequest(snapshot_sockets_.gatekeeper));
+      CF_EXPECT(WriteResumeRequest(snapshot_sockets_.oemlock));
+      // Write response to run_cvd.
       auto response = LauncherResponse::kSuccess;
-      LOG(INFO) << "secure_env received the resume command";
       const auto n_written =
           channel_to_run_cvd_->Write(&response, sizeof(response));
       CF_EXPECT_EQ(sizeof(response), n_written);
       return {};
     };
     default:
-      std::stringstream error_msg;
-      error_msg << "Unsupported run_cvd ExtendedActionType: "
-                << static_cast<std::uint32_t>(snapshot_cmd);
-      return CF_ERR(error_msg.str());
+      return CF_ERR("Unsupported run_cvd snapshot command.");
   }
 }
 

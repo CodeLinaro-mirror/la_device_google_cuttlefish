@@ -22,6 +22,8 @@
 #include <deque>
 #include <sstream>
 
+#include <android-base/errors.h>
+
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/environment.h"
@@ -144,15 +146,6 @@ CvdFlag<std::string> SelectorFlags::InstanceNameFlag(const std::string& name) {
   return instance_name;
 }
 
-CvdFlag<bool> SelectorFlags::DisableDefaultGroupFlag(const std::string& name,
-                                                     const bool default_val) {
-  CvdFlag<bool> disable_default_group(name, default_val);
-  std::stringstream help;
-  help << "--" << name << "=true not to create the default instance group.";
-  disable_default_group.SetHelpMessage(help.str());
-  return disable_default_group;
-}
-
 CvdFlag<bool> SelectorFlags::AcquireFileLockFlag(const std::string& name,
                                                  const bool default_val) {
   CvdFlag<bool> acquire_file_lock(name, default_val);
@@ -164,12 +157,18 @@ CvdFlag<bool> SelectorFlags::AcquireFileLockFlag(const std::string& name,
 }
 
 const SelectorFlags& SelectorFlags::Get() {
-  static SelectorFlags singleton_selector_flags;
-  return singleton_selector_flags;
+  static Result<SelectorFlags> singleton = New();
+  CHECK(singleton.ok()) << singleton.error().FormatForEnv();
+  return *singleton;
 }
 
-const SelectorFlags SelectorFlags::New() {
+Result<SelectorFlags> SelectorFlags::New() {
   SelectorFlags selector_flags;
+  CF_EXPECT(selector_flags.flags_.EnrollFlag(GroupNameFlag(kGroupName)));
+  CF_EXPECT(selector_flags.flags_.EnrollFlag(InstanceNameFlag(kInstanceName)));
+  CF_EXPECT(selector_flags.flags_.EnrollFlag(
+      AcquireFileLockFlag(kAcquireFileLock, true)));
+  CF_EXPECT(selector_flags.flags_.EnrollFlag(VerbosityFlag(kVerbosity)));
   return selector_flags;
 }
 

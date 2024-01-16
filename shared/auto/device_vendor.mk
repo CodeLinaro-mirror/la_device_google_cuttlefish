@@ -45,6 +45,9 @@ ifneq ($(LOCAL_SENSOR_FILE_OVERRIDES),true)
         frameworks/native/data/etc/android.hardware.sensor.compass.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.compass.xml
 endif
 
+PRODUCT_PRODUCT_PROPERTIES += \
+    ro.boot.uwbcountrycode=US
+
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/car_core_hardware.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/car_core_hardware.xml \
     frameworks/native/data/etc/android.hardware.broadcastradio.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.broadcastradio.xml \
@@ -94,6 +97,13 @@ PRODUCT_PACKAGES += $(LOCAL_AUDIOCONTROL_HAL_PRODUCT_PACKAGE)
 # CAN bus HAL
 PRODUCT_PACKAGES += android.hardware.automotive.can-service
 
+# MACSEC HAL
+PRODUCT_PACKAGES += android.hardware.macsec-service
+PRODUCT_PACKAGES += wpa_supplicant_macsec
+PRODUCT_COPY_FILES += \
+    $(LOCAL_PATH)/macsec/wpa_supplicant_macsec.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wpa_supplicant_macsec.conf \
+    $(LOCAL_PATH)/macsec/init.wpa_supplicant_macsec.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.wpa_supplicant_macsec.rc
+
 # Occupant Awareness HAL
 PRODUCT_PACKAGES += android.hardware.automotive.occupant_awareness@1.0-service
 include packages/services/Car/car_product/occupant_awareness/OccupantAwareness.mk
@@ -132,5 +142,8 @@ DEVICE_PACKAGE_OVERLAYS += device/google/cuttlefish/shared/auto/overlay
 
 PRODUCT_PACKAGES += CarServiceOverlayCuttleFish
 GOOGLE_CAR_SERVICE_OVERLAY += CarServiceOverlayCuttleFishGoogle
+
+PRODUCT_PACKAGES += ConnectivityOverlayCuttleFish
+GOOGLE_CAR_SERVICE_OVERLAY += ConnectivityOverlayCuttleFishGoogle
 
 TARGET_BOARD_INFO_FILE ?= device/google/cuttlefish/shared/auto/android-info.txt

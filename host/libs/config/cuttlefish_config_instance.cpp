@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "cuttlefish_config.h"
 #include "host/libs/config/cuttlefish_config.h"
 
 #include <string_view>
@@ -253,6 +254,30 @@ void CuttlefishConfig::MutableInstanceSpecific::set_android_efi_loader(
     const std::string& android_efi_loader) {
   (*Dictionary())[kAndroidEfiLoader] = android_efi_loader;
 }
+static constexpr char kChromeOsDisk[] = "chromeos_disk";
+std::string CuttlefishConfig::InstanceSpecific::chromeos_disk() const {
+  return (*Dictionary())[kChromeOsDisk].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_chromeos_disk(
+    const std::string& chromeos_disk) {
+  (*Dictionary())[kChromeOsDisk] = chromeos_disk;
+}
+static constexpr char kChromeOsKernelPath[] = "chromeos_kernel_path";
+std::string CuttlefishConfig::InstanceSpecific::chromeos_kernel_path() const {
+  return (*Dictionary())[kChromeOsKernelPath].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_chromeos_kernel_path(
+    const std::string& chromeos_kernel_path) {
+  (*Dictionary())[kChromeOsKernelPath] = chromeos_kernel_path;
+}
+static constexpr char kChromeOsRootImage[] = "chromeos_root_image";
+std::string CuttlefishConfig::InstanceSpecific::chromeos_root_image() const {
+  return (*Dictionary())[kChromeOsRootImage].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_chromeos_root_image(
+    const std::string& chromeos_root_image) {
+  (*Dictionary())[kChromeOsRootImage] = chromeos_root_image;
+}
 static constexpr char kLinuxKernelPath[] = "linux_kernel_path";
 std::string CuttlefishConfig::InstanceSpecific::linux_kernel_path() const {
   return (*Dictionary())[kLinuxKernelPath].asString();
@@ -432,7 +457,8 @@ ExternalNetworkMode CuttlefishConfig::InstanceSpecific::external_network_mode()
 }
 void CuttlefishConfig::MutableInstanceSpecific::set_external_network_mode(
     ExternalNetworkMode mode) {
-  (*Dictionary())[kExternalNetworkMode] = fmt::format("{}", mode);
+  (*Dictionary())[kExternalNetworkMode] =
+      fmt::format("{}", fmt::underlying(mode));
 }
 
 std::string CuttlefishConfig::InstanceSpecific::kernel_log_pipe_name() const {
@@ -696,6 +722,16 @@ void CuttlefishConfig::MutableInstanceSpecific::set_gpu_capture_binary(const std
   (*Dictionary())[kGpuCaptureBinary] = name;
 }
 
+static constexpr char kGpuGfxstreamTransport[] = "gpu_gfxstream_transport";
+std::string CuttlefishConfig::InstanceSpecific::gpu_gfxstream_transport()
+    const {
+  return (*Dictionary())[kGpuGfxstreamTransport].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_gpu_gfxstream_transport(
+    const std::string& transport) {
+  (*Dictionary())[kGpuGfxstreamTransport] = transport;
+}
+
 static constexpr char kRestartSubprocesses[] = "restart_subprocesses";
 bool CuttlefishConfig::InstanceSpecific::restart_subprocesses() const {
   return (*Dictionary())[kRestartSubprocesses].asBool();
@@ -931,6 +967,15 @@ bool CuttlefishConfig::InstanceSpecific::vhost_net() const {
   return (*Dictionary())[kVhostNet].asBool();
 }
 
+static constexpr char kVhostUserVsock[] = "vhost_user_vsock";
+void CuttlefishConfig::MutableInstanceSpecific::set_vhost_user_vsock(
+    bool vhost_user_vsock) {
+  (*Dictionary())[kVhostUserVsock] = vhost_user_vsock;
+}
+bool CuttlefishConfig::InstanceSpecific::vhost_user_vsock() const {
+  return (*Dictionary())[kVhostUserVsock].asBool();
+}
+
 static constexpr char kRilDns[] = "ril_dns";
 void CuttlefishConfig::MutableInstanceSpecific::set_ril_dns(const std::string& ril_dns) {
   (*Dictionary())[kRilDns] = ril_dns;
@@ -974,6 +1019,45 @@ void CuttlefishConfig::MutableInstanceSpecific::set_display_configs(
   (*Dictionary())[kDisplayConfigs] = display_configs_json;
 }
 
+static constexpr char kTouchpadConfigs[] = "touchpad_configs";
+
+Json::Value CuttlefishConfig::TouchpadConfig::Serialize(
+    const CuttlefishConfig::TouchpadConfig& config) {
+  Json::Value config_json(Json::objectValue);
+  config_json[kXRes] = config.width;
+  config_json[kYRes] = config.height;
+
+  return config_json;
+}
+
+CuttlefishConfig::TouchpadConfig CuttlefishConfig::TouchpadConfig::Deserialize(
+    const Json::Value& config_json) {
+  TouchpadConfig touchpad_config = {};
+  touchpad_config.width = config_json[kXRes].asInt();
+  touchpad_config.height = config_json[kYRes].asInt();
+
+  return touchpad_config;
+}
+
+std::vector<CuttlefishConfig::TouchpadConfig>
+CuttlefishConfig::InstanceSpecific::touchpad_configs() const {
+  std::vector<TouchpadConfig> touchpad_configs;
+  for (auto& touchpad_config_json : (*Dictionary())[kTouchpadConfigs]) {
+    auto touchpad_config = TouchpadConfig::Deserialize(touchpad_config_json);
+    touchpad_configs.emplace_back(touchpad_config);
+  }
+  return touchpad_configs;
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_touchpad_configs(
+    const std::vector<TouchpadConfig>& touchpad_configs) {
+  Json::Value touchpad_configs_json(Json::arrayValue);
+
+  for (const TouchpadConfig& touchpad_config : touchpad_configs) {
+    touchpad_configs_json.append(TouchpadConfig::Serialize(touchpad_config));
+  }
+
+  (*Dictionary())[kTouchpadConfigs] = touchpad_configs_json;
+}
 
 static constexpr char kTargetArch[] = "target_arch";
 void CuttlefishConfig::MutableInstanceSpecific::set_target_arch(
@@ -990,6 +1074,14 @@ void CuttlefishConfig::MutableInstanceSpecific::set_enable_sandbox(const bool en
 }
 bool CuttlefishConfig::InstanceSpecific::enable_sandbox() const {
   return (*Dictionary())[kEnableSandbox].asBool();
+}
+static constexpr char kEnableVirtiofs[] = "enable_virtiofs";
+void CuttlefishConfig::MutableInstanceSpecific::set_enable_virtiofs(
+    const bool enable_virtiofs) {
+  (*Dictionary())[kEnableVirtiofs] = enable_virtiofs;
+}
+bool CuttlefishConfig::InstanceSpecific::enable_virtiofs() const {
+  return (*Dictionary())[kEnableVirtiofs].asBool();
 }
 static constexpr char kConsole[] = "console";
 void CuttlefishConfig::MutableInstanceSpecific::set_console(bool console) {
@@ -1126,6 +1218,10 @@ std::string CuttlefishConfig::InstanceSpecific::ap_uboot_env_image_path() const 
   return AbsolutePath(PerInstancePath("ap_uboot_env.img"));
 }
 
+std::string CuttlefishConfig::InstanceSpecific::chromeos_state_image() const {
+  return AbsolutePath(PerInstancePath("chromeos_state.img"));
+}
+
 std::string CuttlefishConfig::InstanceSpecific::esp_image_path() const {
   return AbsolutePath(PerInstancePath("esp.img"));
 }
@@ -1151,6 +1247,11 @@ std::string CuttlefishConfig::InstanceSpecific::audio_server_path() const {
 CuttlefishConfig::InstanceSpecific::BootFlow CuttlefishConfig::InstanceSpecific::boot_flow() const {
   const bool android_efi_loader_flow_used = !android_efi_loader().empty();
 
+  const bool chromeos_disk_flow_used = !chromeos_disk().empty();
+
+  const bool chromeos_flow_used =
+      !chromeos_kernel_path().empty() || !chromeos_root_image().empty();
+
   const bool linux_flow_used = !linux_kernel_path().empty()
     || !linux_initramfs_path().empty()
     || !linux_root_image().empty();
@@ -1161,16 +1262,17 @@ CuttlefishConfig::InstanceSpecific::BootFlow CuttlefishConfig::InstanceSpecific:
 
   if (android_efi_loader_flow_used) {
     return BootFlow::AndroidEfiLoader;
-  }
-
-  if (linux_flow_used) {
+  } else if (chromeos_flow_used) {
+    return BootFlow::ChromeOs;
+  } else if (chromeos_disk_flow_used) {
+    return BootFlow::ChromeOsDisk;
+  } else if (linux_flow_used) {
     return BootFlow::Linux;
-  }
-  if (fuchsia_flow_used) {
+  } else if (fuchsia_flow_used) {
     return BootFlow::Fuchsia;
+  } else {
+    return BootFlow::Android;
   }
-
-  return BootFlow::Android;
  }
 
 std::string CuttlefishConfig::InstanceSpecific::mobile_bridge_name() const {
@@ -1487,6 +1589,14 @@ bool CuttlefishConfig::InstanceSpecific::start_netsim() const {
   return (*Dictionary())[kStartNetsim].asBool();
 }
 
+static constexpr char kMcu[] = "mcu";
+void CuttlefishConfig::MutableInstanceSpecific::set_mcu(const Json::Value& cfg) {
+  (*Dictionary())[kMcu] = cfg;
+}
+const Json::Value& CuttlefishConfig::InstanceSpecific::mcu() const {
+  return (*Dictionary())[kMcu];
+}
+
 static constexpr char kApBootFlow[] = "ap_boot_flow";
 void CuttlefishConfig::MutableInstanceSpecific::set_ap_boot_flow(APBootFlow flow) {
   (*Dictionary())[kApBootFlow] = static_cast<int>(flow);
@@ -1534,9 +1644,9 @@ bool CuttlefishConfig::InstanceSpecific::sock_vsock_proxy_wait_adbd_start()
 }
 
 std::string CuttlefishConfig::InstanceSpecific::touch_socket_path(
-    int screen_idx) const {
+    int touch_dev_idx) const {
   return PerInstanceInternalUdsPath(
-      ("touch_" + std::to_string(screen_idx) + ".sock").c_str());
+      ("touch_" + std::to_string(touch_dev_idx) + ".sock").c_str());
 }
 
 std::string CuttlefishConfig::InstanceSpecific::rotary_socket_path() const {

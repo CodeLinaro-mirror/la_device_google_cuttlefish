@@ -39,6 +39,8 @@ class InstanceDatabase {
   using ConstInstanceHandler = ConstHandler<LocalInstance>;
 
  public:
+  static constexpr const char kJsonGroups[] = "Groups";
+
   InstanceDatabase();
   bool IsEmpty() const;
 
@@ -47,6 +49,7 @@ class InstanceDatabase {
     std::string home_dir;
     std::string host_artifacts_path;
     std::string product_out_path;
+    TimeStamp start_time;
   };
   /** Adds instance group.
    *
@@ -74,9 +77,6 @@ class InstanceDatabase {
   };
   Result<void> AddInstances(const std::string& group_name,
                             const std::vector<InstanceInfo>& instances);
-
-  Result<void> SetBuildId(const std::string& group_name,
-                          const std::string& build_id);
 
   /*
    *  auto group = CF_EXPEC(FindGroups(...));
@@ -131,6 +131,8 @@ class InstanceDatabase {
   // actual Find implementations
   Result<Set<ConstRef<LocalInstanceGroup>>> FindGroupsByHome(
       const Value& home) const;
+  Result<Set<ConstRef<LocalInstanceGroup>>> FindGroupsById(
+      const Value& id) const;
   Result<Set<ConstRef<LocalInstanceGroup>>> FindGroupsByGroupName(
       const Value& group_name) const;
   Result<Set<ConstRef<LocalInstanceGroup>>> FindGroupsByInstanceName(
@@ -150,8 +152,6 @@ class InstanceDatabase {
   std::vector<std::unique_ptr<LocalInstanceGroup>> local_instance_groups_;
   Map<FieldName, ConstGroupHandler> group_handlers_;
   Map<FieldName, ConstInstanceHandler> instance_handlers_;
-
-  static constexpr const char kJsonGroups[] = "Groups";
 };
 
 }  // namespace selector

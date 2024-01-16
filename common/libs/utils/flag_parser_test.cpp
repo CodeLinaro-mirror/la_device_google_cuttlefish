@@ -25,7 +25,7 @@
 #include <android-base/logging.h>
 #include <android-base/strings.h>
 #include <gtest/gtest.h>
-#include <libxml/tree.h>
+#include <libxml/parser.h>
 
 #include "common/libs/utils/result_matchers.h"
 #include "gmock/gmock-matchers.h"
@@ -56,6 +56,21 @@ TEST(FlagParser, StringFlag) {
   ASSERT_THAT(flag.Parse({"--myflag", "d"}), IsOk());
   ASSERT_EQ(value, "d");
   ASSERT_THAT(flag.Parse({"--myflag="}), IsOk());
+  ASSERT_EQ(value, "");
+}
+
+TEST(FlagParser, NormalizedStringFlag) {
+  std::string value;
+  auto flag = GflagsCompatFlag("my_flag", value);
+  ASSERT_THAT(flag.Parse({"-my-flag=a"}), IsOk());
+  ASSERT_EQ(value, "a");
+  ASSERT_THAT(flag.Parse({"--my-flag=b"}), IsOk());
+  ASSERT_EQ(value, "b");
+  ASSERT_THAT(flag.Parse({"-my-flag", "c"}), IsOk());
+  ASSERT_EQ(value, "c");
+  ASSERT_THAT(flag.Parse({"--my-flag", "d"}), IsOk());
+  ASSERT_EQ(value, "d");
+  ASSERT_THAT(flag.Parse({"--my-flag="}), IsOk());
   ASSERT_EQ(value, "");
 }
 
