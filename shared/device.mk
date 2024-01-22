@@ -84,6 +84,9 @@ PRODUCT_PRODUCT_PROPERTIES += \
     ro.debuggable=1
 endif
 
+# Use AIDL for media.c2 HAL
+PRODUCT_VENDOR_PROPERTIES += media.c2.hal.selection=aidl
+
 # Explanation of specific properties:
 #   ro.hardware.keystore_desede=true needed for CtsKeystoreTestCases
 PRODUCT_VENDOR_PROPERTIES += \
@@ -641,9 +644,5 @@ endif # RELEASE_AIDL_USE_UNFROZEN
 PRODUCT_CHECK_VENDOR_SEAPP_VIOLATIONS := true
 
 PRODUCT_CHECK_DEV_TYPE_VIOLATIONS := true
-
-ifeq ($(RELEASE_DEPRECATE_VNDK),true)
-KEEP_VNDK ?= false
-endif
 
 TARGET_BOARD_FASTBOOT_INFO_FILE = device/google/cuttlefish/shared/fastboot-info.txt
