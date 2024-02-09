@@ -58,7 +58,7 @@ fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>,
 KernelLogMonitorComponent();
 
 Result<MonitorCommand> LogcatReceiver(
-    const CuttlefishConfig::InstanceSpecific&);
+    const CuttlefishConfig&, const CuttlefishConfig::InstanceSpecific&);
 std::string LogcatInfo(const CuttlefishConfig::InstanceSpecific&);
 
 Result<std::optional<MonitorCommand>> CasimirControlServer(
@@ -119,9 +119,9 @@ Result<MonitorCommand> SecureEnv(const CuttlefishConfig&,
 Result<MonitorCommand> TombstoneReceiver(
     const CuttlefishConfig::InstanceSpecific&);
 
-fruit::Component<fruit::Required<const CuttlefishConfig,
-                                 const CuttlefishConfig::EnvironmentSpecific,
-                                 LogTeeCreator, GrpcSocketCreator>>
+fruit::Component<fruit::Required<
+    const CuttlefishConfig, const CuttlefishConfig::EnvironmentSpecific,
+    const CuttlefishConfig::InstanceSpecific, LogTeeCreator, GrpcSocketCreator>>
 WmediumdServerComponent();
 
 Result<std::optional<MonitorCommand>> ModemSimulator(

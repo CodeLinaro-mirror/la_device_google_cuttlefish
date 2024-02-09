@@ -70,11 +70,13 @@ namespace cuttlefish {
 static constexpr int kNumThreads = 10;
 
 CvdServer::CvdServer(BuildApi& build_api, EpollPool& epoll_pool,
+                     InstanceLockFileManager& lock_manager,
                      InstanceManager& instance_manager,
                      HostToolTargetManager& host_tool_target_manager,
                      ServerLogger& server_logger)
     : build_api_(build_api),
       epoll_pool_(epoll_pool),
+      instance_lockfile_manager_(lock_manager),
       instance_manager_(instance_manager),
       host_tool_target_manager_(host_tool_target_manager),
       server_logger_(server_logger),
@@ -283,8 +285,9 @@ Result<void> CvdServer::HandleMessage(EpollEvent event) {
   if (!response.ok()) {
     cvd::Response failure_message;
     failure_message.mutable_status()->set_code(cvd::Status::INTERNAL);
+    const bool color = request->Err()->IsOpen() && request->Err()->IsATTY();
     failure_message.mutable_status()->set_message(
-        response.error().FormatForEnv());
+        response.error().FormatForEnv(color));
     CF_EXPECT(SendResponse(event.fd, failure_message));
     return {};  // Error already sent to the client, don't repeat on the server
   }
@@ -398,8 +401,8 @@ Result<cvd::Response> CvdServer::HandleRequest(RequestWithStdio orig_request,
       CF_EXPECT(Verbosity(request, request.Message().verbosity()));
   server_logger_.SetSeverity(verbosity);
 
-  RequestContext context(*this, instance_manager_, build_api_,
-                         host_tool_target_manager_, optout_);
+  RequestContext context(*this, instance_lockfile_manager_, instance_manager_,
+                         build_api_, host_tool_target_manager_, optout_);
 
   // Even if the interrupt callback outlives the request handler, it'll only
   // hold on to this struct which will be cleaned out when the request handler
@@ -470,7 +473,7 @@ Result<int> CvdServerMain(ServerMainParam&& param) {
   auto host_tool_target_manager = NewHostToolTargetManager();
   InstanceLockFileManager lock_manager;
   InstanceManager instance_manager(lock_manager, *host_tool_target_manager);
-  CvdServer server(build_api, epoll_pool, instance_manager,
+  CvdServer server(build_api, epoll_pool, lock_manager, instance_manager,
                    *host_tool_target_manager, *server_logger);
 
   std::optional<SharedFD> memory_carryover_fd =

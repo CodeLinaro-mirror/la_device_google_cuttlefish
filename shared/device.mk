@@ -84,10 +84,13 @@ PRODUCT_PRODUCT_PROPERTIES += \
     ro.debuggable=1
 endif
 
+# Use AIDL for media.c2 HAL
+PRODUCT_VENDOR_PROPERTIES += media.c2.hal.selection=aidl
+
 # Explanation of specific properties:
 #   ro.hardware.keystore_desede=true needed for CtsKeystoreTestCases
 PRODUCT_VENDOR_PROPERTIES += \
-    tombstoned.max_tombstone_count=500 \
+    tombstoned.max_tombstone_count=100 \
     ro.carrier=unknown \
     ro.com.android.dataroaming?=false \
     ro.hardware.virtual_device=1 \
@@ -176,8 +179,6 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     aidl_lazy_test_server \
     aidl_lazy_cb_test_server \
-    hidl_lazy_test_server \
-    hidl_lazy_cb_test_server
 
 # Runtime Resource Overlays
 PRODUCT_PACKAGES += com.google.aosp_cf.rros
@@ -227,7 +228,6 @@ PRODUCT_COPY_FILES += \
     frameworks/av/services/audiopolicy/config/r_submix_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/r_submix_audio_policy_configuration.xml \
     frameworks/av/services/audiopolicy/config/surround_sound_configuration_5_0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/surround_sound_configuration_5_0.xml \
     frameworks/av/services/audiopolicy/config/usb_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/usb_audio_policy_configuration.xml \
-    frameworks/native/data/etc/android.hardware.audio.low_latency.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.audio.low_latency.xml \
     frameworks/native/data/etc/android.hardware.ethernet.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.ethernet.xml \
     frameworks/native/data/etc/android.hardware.usb.accessory.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.usb.accessory.xml \
     frameworks/native/data/etc/android.hardware.usb.host.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.usb.host.xml \
@@ -238,7 +238,6 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.software.credentials.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.credentials.xml \
     frameworks/native/data/etc/android.software.ipsec_tunnels.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.ipsec_tunnels.xml \
     frameworks/native/data/etc/android.software.verified_boot.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.verified_boot.xml \
-    hardware/interfaces/audio/aidl/default/audio_effects_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects_config.xml \
 
 #
 # Device input config
@@ -276,41 +275,21 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     com.android.hardware.authsecret
 
-#
-# Audio HAL
-# Note: aidl services are loaded, however they are not fully functional yet,
-#       and are not used by the framework, only by VTS tests.
-#
 ifndef LOCAL_AUDIO_PRODUCT_PACKAGE
-LOCAL_AUDIO_PRODUCT_PACKAGE := \
+#
+# Still use HIDL Audio HAL on 'next'
+#
+ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
+LOCAL_AUDIO_PRODUCT_PACKAGE += \
+    com.android.hardware.audio
+else
+LOCAL_AUDIO_PRODUCT_PACKAGE += \
     android.hardware.audio.service \
     android.hardware.audio@7.1-impl.ranchu \
-    android.hardware.audio.effect@7.0-impl \
-    android.hardware.audio.service-aidl.example \
-    android.hardware.audio.effect.service-aidl.example \
-    libaecsw \
-    libagc1sw \
-    libagc2sw \
-    libbassboostsw \
-    libbundleaidl \
-    libdownmixaidl \
-    libdynamicsprocessingaidl \
-    libenvreverbsw \
-    libequalizersw \
-    libextensioneffect \
-    libhapticgeneratoraidl \
-    libloudnessenhanceraidl \
-    libnssw \
-    libpreprocessingaidl \
-    libpresetreverbsw \
-    libreverbaidl \
-    libspatializersw \
-    libtinyxml2 \
-    libvirtualizersw \
-    libvisualizeraidl \
-    libvolumesw
+    android.hardware.audio.effect@7.0-impl
 DEVICE_MANIFEST_FILE += \
     device/google/cuttlefish/guest/hals/audio/effects/manifest.xml
+endif
 endif
 
 ifndef LOCAL_AUDIO_PRODUCT_COPY_FILES
@@ -320,8 +299,7 @@ LOCAL_AUDIO_PRODUCT_COPY_FILES := \
     frameworks/av/services/audiopolicy/config/r_submix_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/r_submix_audio_policy_configuration.xml \
     frameworks/av/services/audiopolicy/config/audio_policy_volumes.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy_volumes.xml \
     frameworks/av/services/audiopolicy/config/default_volume_tables.xml:$(TARGET_COPY_OUT_VENDOR)/etc/default_volume_tables.xml \
-    frameworks/av/media/libeffects/data/audio_effects.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects.xml \
-    hardware/interfaces/audio/aidl/default/audio_effects_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects_config.xml
+    frameworks/av/media/libeffects/data/audio_effects.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects.xml
 endif
 
 PRODUCT_PACKAGES += $(LOCAL_AUDIO_PRODUCT_PACKAGE)
@@ -611,6 +589,11 @@ PRODUCT_VENDOR_PROPERTIES += \
 PRODUCT_VENDOR_PROPERTIES += \
     ro.surface_flinger.supports_background_blur=1
 
+# Set Game Default Frame Rate
+# See b/286084594
+PRODUCT_DEFAULT_PROPERTY_OVERRIDES += \
+    ro.surface_flinger.game_default_frame_rate_override=60
+
 # Disable GPU-intensive background blur for widget picker
 PRODUCT_SYSTEM_PROPERTIES += \
     ro.launcher.depth.widget=0
@@ -641,9 +624,5 @@ endif # RELEASE_AIDL_USE_UNFROZEN
 PRODUCT_CHECK_VENDOR_SEAPP_VIOLATIONS := true
 
 PRODUCT_CHECK_DEV_TYPE_VIOLATIONS := true
-
-ifeq ($(RELEASE_DEPRECATE_VNDK),true)
-KEEP_VNDK ?= false
-endif
 
 TARGET_BOARD_FASTBOOT_INFO_FILE = device/google/cuttlefish/shared/fastboot-info.txt

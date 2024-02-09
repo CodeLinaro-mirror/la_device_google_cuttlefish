@@ -50,6 +50,7 @@ soong_config_module_type {
 qemu_x86_64_linux_gnu_binary = [
     "x86_64_linux_gnu_libc++.so.1_binary_for_qemu",
     "x86_64_linux_gnu_libepoxy.so.0_binary_for_qemu",
+    "x86_64_linux_gnu_libgbm.so.1_binary_for_qemu",
     "x86_64_linux_gnu_libgfxstream_backend.so.0_binary_for_qemu",
     "x86_64_linux_gnu_librutabaga_gfx_ffi.so.0_binary_for_qemu",
     "x86_64_linux_gnu_libvirglrenderer.so.1_binary_for_qemu",
@@ -72,7 +73,6 @@ qemu_x86_64_linux_gnu_resource = [
 cvd_host_tools = [
     "adb",
     "adb_connector",
-    "allocd",
     "allocd_client",
     "assemble_cvd",
     "avbtool",
@@ -143,8 +143,10 @@ cvd_host_tools = [
     "screen_recording_server",
     "secure_env",
     "sefcontext_compile",
+    "cvd_send_id_disclosure",
     "cvd_send_sms",
     "cvd_update_location",
+    "cvd_update_security_algorithm",
     "cvd_import_locations",
     "simg2img",
     "socket_vsock_proxy",

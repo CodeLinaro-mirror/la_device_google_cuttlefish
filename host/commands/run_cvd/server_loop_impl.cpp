@@ -79,9 +79,12 @@ Result<void> ServerLoopImpl::LateInject(fruit::Injector<>& injector) {
 
 Result<void> ServerLoopImpl::Run() {
   // Monitor and restart host processes supporting the CVD
-  ProcessMonitor::Properties process_monitor_properties;
-  process_monitor_properties.RestartSubprocesses(
-      instance_.restart_subprocesses());
+  auto process_monitor_properties =
+      ProcessMonitor::Properties()
+          .RestartSubprocesses(instance_.restart_subprocesses())
+          .SandboxProcesses(config_.host_sandbox())
+          .StraceLogDir(instance_.PerInstanceLogPath(""))
+          .StraceCommands(config_.straced_host_executables());
 
   for (auto& command_source : command_sources_) {
     if (command_source->Enabled()) {
@@ -279,6 +282,7 @@ void ServerLoopImpl::DeleteFifos() {
       instance_.console_in_pipe_name(),
       instance_.console_out_pipe_name(),
       instance_.logcat_pipe_name(),
+      instance_.restore_pipe_name(),
       instance_.PerInstanceInternalPath("keymaster_fifo_vm.in"),
       instance_.PerInstanceInternalPath("keymaster_fifo_vm.out"),
       instance_.PerInstanceInternalPath("keymint_fifo_vm.in"),
