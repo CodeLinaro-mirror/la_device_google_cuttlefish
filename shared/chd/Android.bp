@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 The Android Open Source Project
+// Copyright (C) 2024 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,22 +17,11 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-cc_library {
-    name: "libcuttlefish_input_connector",
-    srcs: [
-        "socket_input_connector.cpp",
-    ],
-    shared_libs: [
-        "libbase",
-        "libcuttlefish_fs",
-        "libjsoncpp",
-        "liblog",
-        "sandboxed_api_sandbox2",
-    ],
-    static_libs: [
-        "libabsl_host",
-        "libcuttlefish_host_config",
-        "libcuttlefish_utils",
-    ],
-    defaults: ["cuttlefish_buildhost_only"],
+prebuilt_root_host {
+    name: "chd_debug.prop",
+    src: "chd_debug.prop",
+    filename_from_src: true,
+    dist: {
+        targets: ["chd_tools"],
+    },
 }
