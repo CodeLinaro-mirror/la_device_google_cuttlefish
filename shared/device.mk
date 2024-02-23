@@ -40,8 +40,6 @@ PRODUCT_SOONG_NAMESPACES += device/generic/goldfish # for audio, wifi and sensor
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
 
-PRODUCT_16K_DEVELOPER_OPTION := true
-
 # TODO(b/205788876) remove this condition when openwrt has an image for arm.
 ifndef PRODUCT_ENFORCE_MAC80211_HWSIM
 PRODUCT_ENFORCE_MAC80211_HWSIM := true
@@ -327,7 +325,10 @@ PRODUCT_PACKAGES += \
     android.hardware.drm@latest-service.clearkey
 endif
 
+LOCAL_ENABLE_WIDEVINE ?= true
+ifeq ($(LOCAL_ENABLE_WIDEVINE),true)
 -include vendor/widevine/libwvdrmengine/apex/device/device.mk
+endif
 
 #
 # Confirmation UI HAL
