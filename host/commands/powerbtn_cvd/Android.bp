@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2017 The Android Open Source Project
+// Copyright (C) 2024 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,35 +18,20 @@ package {
 }
 
 cc_binary {
-    name: "cvd_internal_start",
-    symlinks: ["launch_cvd"],
+    name: "powerbtn_cvd",
     srcs: [
-        "filesystem_explorer.cc",
-        "flag_forwarder.cc",
-        "main.cc",
+        "powerbtn_cvd.cc",
     ],
     shared_libs: [
         "libbase",
-        "libcuttlefish_command_util",
         "libcuttlefish_fs",
         "libcuttlefish_utils",
         "libjsoncpp",
-        "libxml2",
-        "libz",
     ],
     static_libs: [
+        "libcuttlefish_command_util",
         "libcuttlefish_host_config",
-        "libcuttlefish_vm_manager",
         "libgflags",
     ],
-    required: [
-        "assemble_cvd",
-        "run_cvd",
-    ],
-    target: {
-        darwin: {
-            enabled: true,
-        },
-    },
     defaults: ["cuttlefish_host"],
 }
