@@ -45,7 +45,6 @@ cc_library {
         "libwayland_crosvm_gpu_display_extension_server_protocols",
         "libwayland_extension_server_protocols",
         "libwayland_server",
-
     ],
     defaults: ["cuttlefish_buildhost_only"],
 }

@@ -40,8 +40,8 @@
 #include "common/libs/utils/tee_logging.h"
 #include "host/commands/cvd/fetch/fetch_cvd_parser.h"
 #include "host/libs/config/fetcher_config.h"
-#include "host/libs/web/build_api.h"
-#include "host/libs/web/build_string.h"
+#include "host/libs/web/android_build_api.h"
+#include "host/libs/web/android_build_string.h"
 #include "host/libs/web/credential_source.h"
 #include "host/libs/web/http_client/http_client.h"
 
@@ -57,6 +57,7 @@ struct BuildStrings {
   std::optional<BuildString> kernel_build;
   std::optional<BuildString> boot_build;
   std::optional<BuildString> bootloader_build;
+  std::optional<BuildString> android_efi_loader_build;
   std::optional<BuildString> otatools_build;
   std::optional<BuildString> host_package_build;
 };
@@ -79,6 +80,7 @@ struct Builds {
   std::optional<Build> kernel;
   std::optional<Build> boot;
   std::optional<Build> bootloader;
+  std::optional<Build> android_efi_loader;
   std::optional<Build> otatools;
 };
 
@@ -120,6 +122,8 @@ BuildStrings GetBuildStrings(const VectorFlags& flags, const int index) {
           flags.boot_build, index, std::nullopt),
       .bootloader_build = AccessOrDefault<std::optional<BuildString>>(
           flags.bootloader_build, index, std::nullopt),
+      .android_efi_loader_build = AccessOrDefault<std::optional<BuildString>>(
+          flags.android_efi_loader_build, index, std::nullopt),
       .otatools_build = AccessOrDefault<std::optional<BuildString>>(
           flags.otatools_build, index, std::nullopt),
   };
@@ -222,8 +226,11 @@ Result<BuildApi> GetBuildApi(const BuildApiFlags& flags) {
   std::string oauth_filepath =
       StringFromEnv("HOME", ".") + "/.acloud_oauth2.dat";
   std::unique_ptr<CredentialSource> credential_source =
-      CF_EXPECT(GetCredentialSource(*retrying_http_client,
-                                    flags.credential_source, oauth_filepath));
+      CF_EXPECT(GetCredentialSource(
+          *retrying_http_client, flags.credential_source, oauth_filepath,
+          flags.credential_flags.use_gce_metadata,
+          flags.credential_flags.credential_filepath,
+          flags.credential_flags.service_account_filepath));
 
   return BuildApi(std::move(retrying_http_client), std::move(curl),
                   std::move(credential_source), flags.api_key,
@@ -255,6 +262,9 @@ Result<Builds> GetBuilds(BuildApi& build_api,
                                        "gki_x86_64-user")),
       .bootloader = CF_EXPECT(GetBuildHelper(
           build_api, build_sources.bootloader_build, "u-boot_crosvm_x86_64")),
+      .android_efi_loader = CF_EXPECT(
+          GetBuildHelper(build_api, build_sources.android_efi_loader_build,
+                         "gbl_efi_dist_and_test")),
       .otatools = CF_EXPECT(GetBuildHelper(
           build_api, build_sources.otatools_build, kDefaultBuildTarget)),
   };
@@ -495,9 +505,30 @@ Result<void> FetchTarget(BuildApi& build_api, const Builds& builds,
         {bootloader_filepath}, target_directories.root, kOverrideEntries));
   }
 
+  if (builds.android_efi_loader) {
+    std::string android_efi_loader_target_filepath =
+        target_directories.root + "/android_efi_loader.efi";
+    std::optional<std::string> android_efi_loader_filepath =
+        GetFilepath(*builds.android_efi_loader);
+
+    std::string downloaded_android_efi_loader_filepath =
+        CF_EXPECT(build_api.DownloadFile(
+            *builds.android_efi_loader, target_directories.root,
+            android_efi_loader_filepath.value_or("gbl_x86_64.efi")));
+    CF_EXPECT(RenameFile(downloaded_android_efi_loader_filepath,
+                         android_efi_loader_target_filepath));
+
+    const auto [android_efi_loader_id, android_efi_loader_target] =
+        GetBuildIdAndTarget(*builds.android_efi_loader);
+    CF_EXPECT(config.AddFilesToConfig(
+        FileSource::ANDROID_EFI_LOADER_BUILD, android_efi_loader_id,
+        android_efi_loader_target, {android_efi_loader_target_filepath},
+        target_directories.root, kOverrideEntries));
+  }
+
   if (builds.otatools) {
     std::string otatools_filepath = CF_EXPECT(build_api.DownloadFile(
-        *builds.otatools, target_directories.root, "ota_tools.zip"));
+        *builds.otatools, target_directories.root, "otatools.zip"));
     std::vector<std::string> ota_tools_files = CF_EXPECT(
         ExtractArchiveContents(otatools_filepath, target_directories.otatools,
                                keep_downloaded_archives));

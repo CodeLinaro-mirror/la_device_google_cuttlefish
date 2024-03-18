@@ -40,8 +40,6 @@ PRODUCT_SOONG_NAMESPACES += device/generic/goldfish # for audio, wifi and sensor
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
 
-PRODUCT_16K_DEVELOPER_OPTION := true
-
 # TODO(b/205788876) remove this condition when openwrt has an image for arm.
 ifndef PRODUCT_ENFORCE_MAC80211_HWSIM
 PRODUCT_ENFORCE_MAC80211_HWSIM := true
@@ -58,7 +56,8 @@ TARGET_VULKAN_SUPPORT ?= true
 
 # Enable Virtual A/B
 $(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/android_t_baseline.mk)
-PRODUCT_VIRTUAL_AB_COMPRESSION_METHOD := gz
+PRODUCT_VIRTUAL_AB_COMPRESSION_METHOD := lz4
+PRODUCT_VIRTUAL_AB_COW_VERSION := 3
 
 PRODUCT_VENDOR_PROPERTIES += ro.virtual_ab.compression.threads=true
 PRODUCT_VENDOR_PROPERTIES += ro.virtual_ab.batch_writes=true
@@ -216,7 +215,6 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/media_profiles.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_profiles_V1_0.xml \
     device/google/cuttlefish/shared/config/media_profiles.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_profiles_vendor.xml \
     device/google/cuttlefish/shared/config/seriallogging.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/seriallogging.rc \
-    device/google/cuttlefish/shared/config/task_profiles.json:$(TARGET_COPY_OUT_VENDOR)/etc/task_profiles.json \
     device/google/cuttlefish/shared/config/ueventd.rc:$(TARGET_COPY_OUT_VENDOR)/etc/ueventd.rc \
     device/google/cuttlefish/shared/permissions/cuttlefish_excluded_hardware.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/cuttlefish_excluded_hardware.xml \
     device/google/cuttlefish/shared/permissions/privapp-permissions-cuttlefish.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/privapp-permissions-cuttlefish.xml \
@@ -281,7 +279,10 @@ ifndef LOCAL_AUDIO_PRODUCT_PACKAGE
 #
 ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
 LOCAL_AUDIO_PRODUCT_PACKAGE += \
+    android.hardware.audio.parameter_parser.example_service \
     com.android.hardware.audio
+PRODUCT_SYSTEM_EXT_PROPERTIES += \
+    ro.audio.ihaladaptervendorextension_enabled=true
 else
 LOCAL_AUDIO_PRODUCT_PACKAGE += \
     android.hardware.audio.service \
@@ -316,10 +317,18 @@ PRODUCT_PACKAGES += $(LOCAL_CONTEXTHUB_PRODUCT_PACKAGE)
 #
 # Drm HAL
 #
+ifeq ($(TARGET_USE_LAZY_CLEARKEY),true)
+PRODUCT_PACKAGES += \
+    android.hardware.drm-service-lazy.clearkey
+else
 PRODUCT_PACKAGES += \
     android.hardware.drm@latest-service.clearkey
+endif
 
+LOCAL_ENABLE_WIDEVINE ?= true
+ifeq ($(LOCAL_ENABLE_WIDEVINE),true)
 -include vendor/widevine/libwvdrmengine/apex/device/device.mk
+endif
 
 #
 # Confirmation UI HAL
@@ -617,8 +626,7 @@ PRODUCT_COPY_FILES += \
 ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
 # Thread Network AIDL HAL, simulation CLI and OT daemon controller
 PRODUCT_PACKAGES += \
-    com.android.hardware.threadnetwork \
-    ot-ctl
+    com.android.hardware.threadnetwork
 endif # RELEASE_AIDL_USE_UNFROZEN
 
 PRODUCT_CHECK_VENDOR_SEAPP_VIOLATIONS := true

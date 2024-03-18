@@ -23,11 +23,13 @@ cc_library {
         "socket_input_connector.cpp",
     ],
     shared_libs: [
-        "libcuttlefish_fs",
         "libbase",
+        "libcuttlefish_fs",
+        "libjsoncpp",
         "liblog",
     ],
     static_libs: [
+        "libcuttlefish_host_config",
         "libcuttlefish_utils",
     ],
     defaults: ["cuttlefish_buildhost_only"],

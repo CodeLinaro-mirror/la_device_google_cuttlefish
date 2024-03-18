@@ -16,6 +16,7 @@
 
 #include "host/commands/cvd/run_server.h"
 
+#include <sys/resource.h>
 #include <unistd.h>
 
 #include <memory>
@@ -39,10 +40,24 @@ bool IsServerModeExpected(const std::string& exec_file) {
   return exec_file == kServerExecPath;
 }
 
-Result<void> RunServer(const RunServerParam& params) {
+Result<void> RunServer(RunServerParam&& params) {
   CF_EXPECTF(params.internal_server_fd->IsOpen(),
              "Expected to be in server mode, but didn't get a server fd: {}",
              params.internal_server_fd->StrError());
+
+  struct rlimit old_lim;
+  // Get old limits
+  if (getrlimit(RLIMIT_NOFILE, &old_lim) == 0) {
+    LOG(INFO) << "Old limits -> soft limit= " << old_lim.rlim_cur << "\t"
+              << " hard limit= " << old_lim.rlim_max;
+  } else {
+    PLOG(FATAL) << "CVD Server getrlimit error";
+  }
+  // Set new value
+  old_lim.rlim_cur = old_lim.rlim_max;
+  // Set limits
+  CF_EXPECTF(setrlimit(RLIMIT_NOFILE, &old_lim) == 0,
+             "CVD Server setrlimit error, {}", strerror(errno));
 
   std::unique_ptr<ServerLogger> server_logger =
       std::make_unique<ServerLogger>();
@@ -71,9 +86,9 @@ Result<void> RunServer(const RunServerParam& params) {
     LOG(ERROR) << "Memory carryover file is supposed to be open but is not.";
   }
   CF_EXPECT(CvdServerMain(
-      {.internal_server_fd = params.internal_server_fd,
-       .carryover_client_fd = params.carryover_client_fd,
-       .memory_carryover_fd = params.memory_carryover_fd,
+      {.internal_server_fd = std::move(params.internal_server_fd),
+       .carryover_client_fd = std::move(params.carryover_client_fd),
+       .memory_carryover_fd = std::move(params.memory_carryover_fd),
        .acloud_translator_optout = params.acloud_translator_optout,
        .server_logger = std::move(server_logger),
        .scoped_logger = std::move(run_server_logger),
@@ -98,7 +113,7 @@ Result<ParseResult> ParseIfServer(std::vector<std::string>& all_args) {
   result.restarted_in_process = false;
   flags.emplace_back(GflagsCompatFlag(kInternalRestartedInProcess,
                                       result.restarted_in_process));
-  CF_EXPECT(ParseFlags(flags, all_args));
+  CF_EXPECT(ConsumeFlags(flags, all_args));
 
   // now the flags above consumed their lexical tokens from all_args
   // For now, the default value of acloud_translator_optout is false
@@ -108,9 +123,9 @@ Result<ParseResult> ParseIfServer(std::vector<std::string>& all_args) {
   PrintDataCollectionNotice();
   flags.emplace_back(GflagsCompatFlag("INTERNAL_acloud_translator_optout",
                                       acloud_translator_optout_value));
-  CF_EXPECT(ParseFlags({GflagsCompatFlag("INTERNAL_acloud_translator_optout",
-                                         acloud_translator_optout_value)},
-                       all_args));
+  CF_EXPECT(ConsumeFlags({GflagsCompatFlag("INTERNAL_acloud_translator_optout",
+                                           acloud_translator_optout_value)},
+                         all_args));
   if (all_args.size() != all_args_size_before) {
     result.acloud_translator_optout = acloud_translator_optout_value;
   }

@@ -30,7 +30,8 @@ $(call inherit-product, device/google/cuttlefish/shared/sensors/device_vendor.mk
 $(call inherit-product, device/google/cuttlefish/shared/device.mk)
 
 # Extend cuttlefish common sepolicy with auto-specific functionality
-BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy/vendor
+BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy \
+                       device/google/cuttlefish/shared/auto/sepolicy/vendor
 
 ################################################
 # Begin general Android Auto Embedded configurations
@@ -51,7 +52,7 @@ PRODUCT_PRODUCT_PROPERTIES += \
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/car_core_hardware.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/car_core_hardware.xml \
     frameworks/native/data/etc/android.hardware.broadcastradio.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.broadcastradio.xml \
-    frameworks/native/data/etc/android.hardware.faketouch.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.faketouch.xml \
+    frameworks/native/data/etc/android.hardware.touchscreen.multitouch.distinct.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.touchscreen.multitouch.distinct.xml \
     frameworks/native/data/etc/android.hardware.screen.landscape.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.screen.landscape.xml \
     frameworks/native/data/etc/android.software.activities_on_secondary_displays.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.activities_on_secondary_displays.xml \
 
@@ -98,11 +99,14 @@ PRODUCT_PACKAGES += $(LOCAL_AUDIOCONTROL_HAL_PRODUCT_PACKAGE)
 PRODUCT_PACKAGES += android.hardware.automotive.can-service
 
 # MACSEC HAL
+# TODO(b/323525161) remove the condition once V branch is ready
+ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
 PRODUCT_PACKAGES += android.hardware.macsec-service
 PRODUCT_PACKAGES += wpa_supplicant_macsec
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/macsec/wpa_supplicant_macsec.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wpa_supplicant_macsec.conf \
     $(LOCAL_PATH)/macsec/init.wpa_supplicant_macsec.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.wpa_supplicant_macsec.rc
+endif # RELEASE_AIDL_USE_UNFROZEN
 
 # Occupant Awareness HAL
 PRODUCT_PACKAGES += android.hardware.automotive.occupant_awareness@1.0-service

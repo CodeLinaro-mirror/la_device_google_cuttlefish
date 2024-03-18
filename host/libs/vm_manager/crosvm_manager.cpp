@@ -451,7 +451,7 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
 
   if (config.virtio_mac80211_hwsim() &&
       !environment.vhost_user_mac80211_hwsim().empty()) {
-    crosvm_cmd.Cmd().AddParameter("--vhost-user-mac80211-hwsim=",
+    crosvm_cmd.Cmd().AddParameter("--vhost-user=mac80211-hwsim,socket=",
                                   environment.vhost_user_mac80211_hwsim());
   }
 
@@ -510,7 +510,13 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   }
 
   if (instance.enable_webrtc()) {
-    auto touch_type_parameter = "--multi-touch=";
+    bool is_chromeos =
+        instance.boot_flow() ==
+            CuttlefishConfig::InstanceSpecific::BootFlow::ChromeOs ||
+        instance.boot_flow() ==
+            CuttlefishConfig::InstanceSpecific::BootFlow::ChromeOsDisk;
+    auto touch_type_parameter =
+        is_chromeos ? "--single-touch=" : "--multi-touch=";
 
     auto display_configs = instance.display_configs();
     CF_EXPECT(display_configs.size() >= 1);
@@ -518,16 +524,20 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     int touch_idx = 0;
     for (auto& display_config : display_configs) {
       crosvm_cmd.Cmd().AddParameter(
-          touch_type_parameter, instance.touch_socket_path(touch_idx++), ":",
-          display_config.width, ":", display_config.height);
+          touch_type_parameter,
+          "path=", instance.touch_socket_path(touch_idx++),
+          ",width=", display_config.width,
+          ",height=", display_config.height);
     }
     auto touchpad_configs = instance.touchpad_configs();
     for (int i = 0; i < touchpad_configs.size(); ++i) {
       auto touchpad_config = touchpad_configs[i];
       crosvm_cmd.Cmd().AddParameter(
-          touch_type_parameter, instance.touch_socket_path(touch_idx++), ":",
-          touchpad_config.width, ":", touchpad_config.height, ":",
-          kTouchpadDefaultPrefix, i);
+          touch_type_parameter,
+          "path=", instance.touch_socket_path(touch_idx++),
+          ",width=", touchpad_config.width,
+          ",height=", touchpad_config.height,
+          ",name=", kTouchpadDefaultPrefix, i);
     }
     crosvm_cmd.Cmd().AddParameter("--rotary=",
                                   instance.rotary_socket_path());
@@ -581,9 +591,10 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
 
   if (instance.vsock_guest_cid() >= 2) {
     if (instance.vhost_user_vsock()) {
-      auto param = fmt::format("/tmp/vhost{}.socket,max-queue-size=256",
-                               instance.vsock_guest_cid());
-      crosvm_cmd.Cmd().AddParameter("--vhost-user-vsock=", param);
+      auto param =
+          fmt::format("/tmp/vsock_{}_{}/vhost.socket,max-queue-size=256",
+                      instance.vsock_guest_cid(), std::to_string(getuid()));
+      crosvm_cmd.Cmd().AddParameter("--vhost-user=vsock,socket=", param);
     } else {
       crosvm_cmd.Cmd().AddParameter("--cid=", instance.vsock_guest_cid());
     }

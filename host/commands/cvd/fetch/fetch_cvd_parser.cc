@@ -29,7 +29,7 @@
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/flag_parser.h"
 #include "common/libs/utils/result.h"
-#include "host/libs/web/build_string.h"
+#include "host/libs/web/android_build_string.h"
 
 namespace cuttlefish {
 namespace {
@@ -58,8 +58,6 @@ Flag GflagsCompatFlagSeconds(const std::string& name,
 }
 
 std::vector<Flag> GetFlagsVector(FetchFlags& fetch_flags,
-                                 BuildApiFlags& build_api_flags,
-                                 VectorFlags& vector_flags,
                                  std::string& directory) {
   std::vector<Flag> flags;
   flags.emplace_back(
@@ -82,6 +80,7 @@ std::vector<Flag> GetFlagsVector(FetchFlags& fetch_flags,
       GflagsCompatFlag("host_package_build", fetch_flags.host_package_build)
           .Help("source for the host cvd tools"));
 
+  BuildApiFlags& build_api_flags = fetch_flags.build_api_flags;
   flags.emplace_back(GflagsCompatFlag("api_key", build_api_flags.api_key)
                          .Help("API key ofr the Android Build API"));
   flags.emplace_back(
@@ -99,6 +98,20 @@ std::vector<Flag> GetFlagsVector(FetchFlags& fetch_flags,
       GflagsCompatFlag("api_base_url", build_api_flags.api_base_url)
           .Help("The base url for API requests to download artifacts from"));
 
+  CredentialFlags& credential_flags = build_api_flags.credential_flags;
+  flags.emplace_back(
+      GflagsCompatFlag("use_gce_metadata", credential_flags.use_gce_metadata)
+          .Help("Enforce using GCE metadata credentials."));
+  flags.emplace_back(
+      GflagsCompatFlag("credential_filepath",
+                       credential_flags.credential_filepath)
+          .Help("Enforce reading credentials from the given filepath."));
+  flags.emplace_back(GflagsCompatFlag("service_account_filepath",
+                                      credential_flags.service_account_filepath)
+                         .Help("Enforce reading service account credentials "
+                               "from the given filepath."));
+
+  VectorFlags& vector_flags = fetch_flags.vector_flags;
   flags.emplace_back(
       GflagsCompatFlag("default_build", vector_flags.default_build)
           .Help("source for the cuttlefish build to use (vendor.img + host)"));
@@ -111,6 +124,9 @@ std::vector<Flag> GetFlagsVector(FetchFlags& fetch_flags,
   flags.emplace_back(
       GflagsCompatFlag("bootloader_build", vector_flags.bootloader_build)
           .Help("source for the bootloader target"));
+  flags.emplace_back(GflagsCompatFlag("android_efi_loader_build",
+                                      vector_flags.android_efi_loader_build)
+                         .Help("source for the uefi app target"));
   flags.emplace_back(
       GflagsCompatFlag("otatools_build", vector_flags.otatools_build)
           .Help("source for the host ota tools"));
@@ -145,9 +161,10 @@ Result<int> GetNumberOfBuilds(
   for (const auto& flag_size :
        {flags.default_build.size(), flags.system_build.size(),
         flags.kernel_build.size(), flags.boot_build.size(),
-        flags.bootloader_build.size(), flags.otatools_build.size(),
-        flags.boot_artifact.size(), flags.download_img_zip.size(),
-        flags.download_target_files_zip.size(), subdirectory_flag.size()}) {
+        flags.bootloader_build.size(), flags.android_efi_loader_build.size(),
+        flags.otatools_build.size(), flags.boot_artifact.size(),
+        flags.download_img_zip.size(), flags.download_target_files_zip.size(),
+        subdirectory_flag.size()}) {
     if (flag_size == 0) {
       // a size zero flag vector means the flag was not given
       continue;
@@ -167,14 +184,10 @@ Result<int> GetNumberOfBuilds(
 
 Result<FetchFlags> GetFlagValues(int argc, char** argv) {
   FetchFlags fetch_flags;
-  BuildApiFlags build_api_flags;
-  VectorFlags vector_flags;
   std::string directory;
-
-  std::vector<Flag> flags =
-      GetFlagsVector(fetch_flags, build_api_flags, vector_flags, directory);
+  std::vector<Flag> flags = GetFlagsVector(fetch_flags, directory);
   std::vector<std::string> args = ArgsToVec(argc - 1, argv + 1);
-  CF_EXPECT(ParseFlags(flags, args), "Could not process command line flags.");
+  CF_EXPECT(ConsumeFlags(flags, args), "Could not process command line flags.");
 
   if (!directory.empty()) {
     LOG(ERROR) << "Please use --target_directory instead of --directory";
@@ -188,10 +201,10 @@ Result<FetchFlags> GetFlagValues(int argc, char** argv) {
   }
   fetch_flags.target_directory = AbsolutePath(fetch_flags.target_directory);
 
-  if (!vector_flags.boot_artifact.empty()) {
+  if (!fetch_flags.vector_flags.boot_artifact.empty()) {
     LOG(ERROR) << "Please use the build string filepath syntax instead of "
                   "deprecated --boot_artifact";
-    for (const auto& build_string : vector_flags.boot_build) {
+    for (const auto& build_string : fetch_flags.vector_flags.boot_build) {
       if (build_string) {
         CF_EXPECT(!GetFilepath(*build_string),
                   "Cannot use both the --boot_artifact flag and set the "
@@ -201,8 +214,20 @@ Result<FetchFlags> GetFlagValues(int argc, char** argv) {
     }
   }
 
-  fetch_flags.build_api_flags = build_api_flags;
-  fetch_flags.vector_flags = vector_flags;
+  if (!fetch_flags.build_api_flags.credential_source.empty()) {
+    LOG(ERROR) << "Please use the new, specific credential flags instead of "
+                  "the deprecated --credential_source";
+  }
+  CredentialFlags& credential_flags =
+      fetch_flags.build_api_flags.credential_flags;
+  const int number_of_set_credential_flags =
+      !fetch_flags.build_api_flags.credential_source.empty() +
+      credential_flags.use_gce_metadata +
+      !credential_flags.credential_filepath.empty() +
+      !credential_flags.service_account_filepath.empty();
+  CF_EXPECT_LE(number_of_set_credential_flags, 1,
+               "At most a single credential flag may be set.");
+
   fetch_flags.number_of_builds = CF_EXPECT(GetNumberOfBuilds(
       fetch_flags.vector_flags, fetch_flags.target_subdirectory));
   return {fetch_flags};

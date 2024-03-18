@@ -51,13 +51,13 @@ static Result<unsigned> ParseNaturalNumber(const std::string& token) {
 }
 
 Result<StartSelectorParser> StartSelectorParser::ConductSelectFlagsParser(
-    const uid_t uid, const cvd_common::Args& selector_args,
+    const cvd_common::Args& selector_args,
     const cvd_common::Args& cmd_args, const cvd_common::Envs& envs) {
-  const std::string system_wide_home = CF_EXPECT(SystemWideUserHome(uid));
+  const std::string system_wide_home = CF_EXPECT(SystemWideUserHome());
   cvd_common::Args selector_args_copied{selector_args};
   StartSelectorParser parser(
       system_wide_home, selector_args_copied, cmd_args, envs,
-      CF_EXPECT(SelectorCommonParser::Parse(uid, selector_args_copied, envs)));
+      CF_EXPECT(SelectorCommonParser::Parse(selector_args_copied, envs)));
   CF_EXPECT(parser.ParseOptions(), "selector option flag parsing failed.");
   return {std::move(parser)};
 }
@@ -222,7 +222,7 @@ StartSelectorParser::HandleInstanceIds(
     unsigned base = CF_EXPECT(ParseNaturalNumber(*base_instance_num));
     calculator.BaseInstanceNum(static_cast<std::int32_t>(base));
   }
-  auto instance_ids = std::move(CF_EXPECT(calculator.CalculateFromFlags()));
+  auto instance_ids = CF_EXPECT(calculator.CalculateFromFlags());
   CF_EXPECT(!instance_ids.empty(),
             "CalculateFromFlags() must be called when --num_instances or "
                 << "--base_instance_num is given, and must not return an "
@@ -338,7 +338,7 @@ Result<void> StartSelectorParser::ParseOptions() {
       .cuttlefish_instance_env = TryFromCuttlefishInstance(envs_)};
   auto parsed_ids = CF_EXPECT(HandleInstanceIds(instance_nums_param));
   requested_num_instances_ = parsed_ids.GetNumOfInstances();
-  instance_ids_ = std::move(parsed_ids.GetInstanceIds());
+  instance_ids_ = parsed_ids.GetInstanceIds();
 
   return {};
 }

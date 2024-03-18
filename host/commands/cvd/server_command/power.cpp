@@ -56,6 +56,10 @@ class CvdDevicePowerCommandHandler : public CvdServerHandler {
         [this](const std::string& android_host_out) -> Result<std::string> {
       return CF_EXPECT(PowerwashBin(android_host_out));
     };
+    cvd_power_operations_["powerbtn"] =
+        [this](const std::string& android_host_out) -> Result<std::string> {
+      return CF_EXPECT(PowerbtnBin(android_host_out));
+    };
   }
 
   Result<bool> CanHandle(const RequestWithStdio& request) const {
@@ -68,7 +72,6 @@ class CvdDevicePowerCommandHandler : public CvdServerHandler {
     CF_EXPECT(!interrupted_, "Interrupted");
     CF_EXPECT(CanHandle(request));
     CF_EXPECT(VerifyPrecondition(request));
-    const uid_t uid = request.Credentials()->uid;
     cvd_common::Envs envs =
         cvd_common::ConvertToEnvs(request.Message().command_request().env());
 
@@ -78,8 +81,8 @@ class CvdDevicePowerCommandHandler : public CvdServerHandler {
     // may modify subcmd_args by consuming in parsing
     Command command =
         is_help
-            ? CF_EXPECT(HelpCommand(request, uid, op, subcmd_args, envs))
-            : CF_EXPECT(NonHelpCommand(request, uid, op, subcmd_args, envs));
+            ? CF_EXPECT(HelpCommand(request, op, subcmd_args, envs))
+            : CF_EXPECT(NonHelpCommand(request, op, subcmd_args, envs));
     CF_EXPECT(subprocess_waiter_.Setup(command.Start()));
     interrupt_lock.unlock();
 
@@ -121,7 +124,15 @@ class CvdDevicePowerCommandHandler : public CvdServerHandler {
     return powerwash_bin;
   }
 
-  Result<Command> HelpCommand(const RequestWithStdio& request, const uid_t uid,
+  Result<std::string> PowerbtnBin(const std::string& android_host_out) const {
+    auto powerbtn_bin = CF_EXPECT(host_tool_target_manager_.ExecBaseName({
+        .artifacts_path = android_host_out,
+        .op = "powerbtn",
+    }));
+    return powerbtn_bin;
+  }
+
+  Result<Command> HelpCommand(const RequestWithStdio& request,
                               const std::string& op,
                               const cvd_common::Args& subcmd_args,
                               cvd_common::Envs envs) {
@@ -131,7 +142,7 @@ class CvdDevicePowerCommandHandler : public CvdServerHandler {
         ConcatToString(envs.at(kAndroidHostOut), "/bin/", bin_base);
     std::string home = Contains(envs, "HOME")
                            ? envs.at("HOME")
-                           : CF_EXPECT(SystemWideUserHome(uid));
+                           : CF_EXPECT(SystemWideUserHome());
     envs["HOME"] = home;
     envs[kAndroidSoongHostOut] = envs.at(kAndroidHostOut);
     ConstructCommandParam construct_cmd_param{
@@ -149,7 +160,7 @@ class CvdDevicePowerCommandHandler : public CvdServerHandler {
   }
 
   Result<Command> NonHelpCommand(const RequestWithStdio& request,
-                                 const uid_t uid, const std::string& op,
+                                 const std::string& op,
                                  cvd_common::Args& subcmd_args,
                                  cvd_common::Envs envs) {
     // test if there is --instance_num flag
@@ -165,7 +176,7 @@ class CvdDevicePowerCommandHandler : public CvdServerHandler {
     const auto selector_args = cvd_common::ConvertToArgs(selector_opts.args());
 
     auto instance = CF_EXPECT(instance_manager_.SelectInstance(
-        selector_args, extra_queries, envs, uid));
+        selector_args, extra_queries, envs));
     const auto& instance_group = instance.ParentGroup();
     const auto& home = instance_group.HomeDir();
 
@@ -208,11 +219,12 @@ class CvdDevicePowerCommandHandler : public CvdServerHandler {
     if (cmd_args.empty()) {
       return false;
     }
-    // cvd restart/powerwash --help, --helpxml, etc or simply cvd restart
+    // cvd restart/powerwash/powerbtn --help, --helpxml, etc or simply cvd
+    // restart
     if (CF_EXPECT(IsHelpSubcmd(cmd_args))) {
       return true;
     }
-    // cvd restart/powerwash help <subcommand> format
+    // cvd restart/powerwash/powerbtn help <subcommand> format
     return (cmd_args.front() == "help");
   }
 

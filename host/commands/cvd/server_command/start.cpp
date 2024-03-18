@@ -57,7 +57,7 @@ std::optional<std::string> GetConfigPath(cvd_common::Args& args) {
   std::string config_file;
   std::vector<Flag> config_flags = {
       GflagsCompatFlag("config_file", config_file)};
-  auto result = ParseFlags(config_flags, args);
+  auto result = ConsumeFlags(config_flags, args);
   if (!result.ok() || initial_size == args.size()) {
     return std::nullopt;
   }
@@ -120,7 +120,7 @@ class CvdStartCommandHandler : public CvdServerHandler {
 
  private:
   Result<void> UpdateInstanceDatabase(
-      const uid_t uid, const selector::GroupCreationInfo& group_creation_info);
+      const selector::GroupCreationInfo& group_creation_info);
   Result<void> FireCommand(Command&& command, const bool wait);
 
   Result<Command> ConstructCvdNonHelpCommand(
@@ -164,8 +164,7 @@ class CvdStartCommandHandler : public CvdServerHandler {
    * response.
    */
   Result<cvd::Response> PostStartExecutionActions(
-      selector::GroupCreationInfo& group_creation_info, const uid_t uid,
-      const bool is_daemonized);
+      selector::GroupCreationInfo& group_creation_info);
   Result<void> AcloudCompatActions(
       const selector::GroupCreationInfo& group_creation_info,
       const RequestWithStdio& request);
@@ -339,7 +338,7 @@ CvdStartCommandHandler::UpdateInstanceArgsAndEnvs(
       GflagsCompatFlag("num_instances", old_num_instances),
       GflagsCompatFlag("base_instance_num", old_base_instance_num)};
   // discard old ones
-  CF_EXPECT(ParseFlags(instance_id_flags, new_args));
+  CF_EXPECT(ConsumeFlags(instance_id_flags, new_args));
 
   auto check_flag = [artifacts_path, start_bin,
                      this](const std::string& flag_name) -> Result<void> {
@@ -505,9 +504,7 @@ Result<std::string> CvdStartCommandHandler::FindStartBin(
   return start_bin;
 }
 
-Result<bool> IsDaemonModeFlag(const cvd_common::Args& args) {
-  bool flag_set = false;
-  bool is_daemon = true;
+static Result<void> ConsumeDaemonModeFlag(cvd_common::Args& args) {
   Flag flag =
       Flag()
           .Alias({FlagAliasMode::kFlagPrefix, "-daemon="})
@@ -516,29 +513,38 @@ Result<bool> IsDaemonModeFlag(const cvd_common::Args& args) {
           .Alias({FlagAliasMode::kFlagExact, "--daemon"})
           .Alias({FlagAliasMode::kFlagExact, "-nodaemon"})
           .Alias({FlagAliasMode::kFlagExact, "--nodaemon"})
-          .Setter([&is_daemon,
-                   &flag_set](const FlagMatch& match) -> Result<void> {
-            flag_set = true;
+          .Setter([](const FlagMatch& match) -> Result<void> {
+            static constexpr char kPossibleCmds[] =
+                "\"cvd start\" or \"launch_cvd\"";
             if (match.key == match.value) {
-              is_daemon = match.key.find("no") == std::string::npos;
+              CF_EXPECTF(match.key.find("no") == std::string::npos,
+                         "--nodaemon is not supported by {}", kPossibleCmds);
               return {};
             }
             CF_EXPECTF(match.value.find(",") == std::string::npos,
-                       "{} had a comma", match.value);
-            static constexpr std::string_view kFalseStrings[] = {"n", "no",
-                                                                 "false"};
-            for (const auto& falseString : kFalseStrings) {
-              if (android::base::EqualsIgnoreCase(falseString, match.value)) {
-                is_daemon = false;
+                       "{} had a comma that is not allowed", match.value);
+            static constexpr std::string_view kValidFalseStrings[] = {"n", "no",
+                                                                      "false"};
+            static constexpr std::string_view kValidTrueStrings[] = {"y", "yes",
+                                                                     "true"};
+            for (const auto& true_string : kValidTrueStrings) {
+              if (android::base::EqualsIgnoreCase(true_string, match.value)) {
+                return {};
               }
             }
-            // Allow `cvd_internal_start` to produce its own error for other
-            // invalid strings.
-            return {};
+            for (const auto& false_string : kValidFalseStrings) {
+              CF_EXPECTF(
+                  !android::base::EqualsIgnoreCase(false_string, match.value),
+                  "\"{}{} was given and is not supported by {}", match.key,
+                  match.value, kPossibleCmds);
+            }
+            return CF_ERRF(
+                "Invalid --daemon option: {}{}. {} supports only "
+                "\"--daemon=true\"",
+                match.key, match.value, kPossibleCmds);
           });
-  auto args_copy = args;
-  CF_EXPECT(ParseFlags({flag}, args_copy));
-  return flag_set && is_daemon;
+  CF_EXPECT(ConsumeFlags({flag}, args));
+  return {};
 }
 
 // For backward compatibility, we add extra symlink in system wide home
@@ -605,7 +611,6 @@ Result<cvd::Response> CvdStartCommandHandler::Handle(
     return response;
   }
 
-  const uid_t uid = request.Credentials()->uid;
   cvd_common::Envs envs =
       cvd_common::ConvertToEnvs(request.Message().command_request().env());
   if (Contains(envs, "HOME")) {
@@ -630,7 +635,7 @@ Result<cvd::Response> CvdStartCommandHandler::Handle(
                 "The HOME directory should not start with ~");
       envs["HOME"] = CF_EXPECT(
           EmulateAbsolutePath({.current_working_dir = client_pwd,
-                               .home_dir = CF_EXPECT(SystemWideUserHome(uid)),
+                               .home_dir = CF_EXPECT(SystemWideUserHome()),
                                .path_to_convert = given_home_dir,
                                .follow_symlink = false}));
     }
@@ -643,13 +648,14 @@ Result<cvd::Response> CvdStartCommandHandler::Handle(
   CF_EXPECT(Contains(supported_commands_, subcmd),
             "subcmd should be start but is " << subcmd);
   const bool is_help = CF_EXPECT(IsHelpSubcmd(subcmd_args));
-  const bool is_daemon = CF_EXPECT(IsDaemonModeFlag(subcmd_args));
+  CF_EXPECT(ConsumeDaemonModeFlag(subcmd_args));
+  subcmd_args.push_back("--daemon=true");
 
   std::optional<selector::GroupCreationInfo> group_creation_info;
   if (!is_help) {
     group_creation_info = CF_EXPECT(
         GetGroupCreationInfo(bin, subcmd, subcmd_args, envs, request));
-    CF_EXPECT(UpdateInstanceDatabase(uid, *group_creation_info));
+    CF_EXPECT(UpdateInstanceDatabase(*group_creation_info));
     response = CF_EXPECT(
         FillOutNewInstanceInfo(std::move(response), *group_creation_info));
   }
@@ -682,12 +688,6 @@ Result<cvd::Response> CvdStartCommandHandler::Handle(
     return ResponseFromSiginfo(infop);
   }
 
-  // For backward compatibility, we add extra symlink in system wide home
-  // when HOME is NOT overridden and selector flags are NOT given.
-  if (group_creation_info->is_default_group) {
-    CF_EXPECT(CreateSymlinks(*group_creation_info));
-  }
-
   // make acquire interrupt_lock inside.
   auto acloud_compat_action_result =
       AcloudCompatActions(*group_creation_info, request);
@@ -697,7 +697,7 @@ Result<cvd::Response> CvdStartCommandHandler::Handle(
     LOG(ERROR) << "AcloudCompatActions() failed"
                << " but continue as they are minor errors.";
   }
-  return PostStartExecutionActions(*group_creation_info, uid, is_daemon);
+  return PostStartExecutionActions(*group_creation_info);
 }
 
 static constexpr char kCollectorFailure[] = R"(
@@ -733,36 +733,36 @@ static Result<cvd::Response> CvdResetGroup(
 }
 
 Result<cvd::Response> CvdStartCommandHandler::PostStartExecutionActions(
-    selector::GroupCreationInfo& group_creation_info, const uid_t uid,
-    const bool is_daemonized) {
+    selector::GroupCreationInfo& group_creation_info) {
   auto infop = CF_EXPECT(subprocess_waiter_.Wait());
   if (infop.si_code != CLD_EXITED || infop.si_status != EXIT_SUCCESS) {
-    if (is_daemonized) {
-      // run_cvd processes may be still running in background
-      // the order of the following operations should be kept
-      auto reset_response = CF_EXPECT(CvdResetGroup(group_creation_info));
-      instance_manager_.RemoveInstanceGroup(uid, group_creation_info.home);
-      if (reset_response.status().code() != cvd::Status::OK) {
-        return reset_response;
-      }
-    } else {
-      // run_cvd processes are not running
-      instance_manager_.RemoveInstanceGroup(uid, group_creation_info.home);
+    // run_cvd processes may be still running in background
+    // the order of the following operations should be kept
+    auto reset_response = CF_EXPECT(CvdResetGroup(group_creation_info));
+    instance_manager_.RemoveInstanceGroup(group_creation_info.home);
+    if (reset_response.status().code() != cvd::Status::OK) {
+      return reset_response;
     }
   }
   auto final_response = ResponseFromSiginfo(infop);
+
+  // For backward compatibility, we add extra symlink in system wide home
+  // when HOME is NOT overridden and selector flags are NOT given.
+  if (group_creation_info.is_default_group) {
+    CF_EXPECT(CreateSymlinks(group_creation_info));
+  }
+
   if (!final_response.has_status() ||
       final_response.status().code() != cvd::Status::OK) {
     return final_response;
   }
-  if (is_daemonized) {
-    // If not daemonized, reaching here means the instance group terminated.
-    // Thus, it's enough to release the file lock in the destructor.
-    // If daemonized, reaching here means the group started successfully
-    // As the destructor will release the file lock, the instance lock
-    // files must be marked as used
-    MarkLockfilesInUse(group_creation_info);
-  }
+  // If not daemonized, reaching here means the instance group terminated.
+  // Thus, it's enough to release the file lock in the destructor.
+  // If daemonized, reaching here means the group started successfully
+  // As the destructor will release the file lock, the instance lock
+  // files must be marked as used
+  MarkLockfilesInUse(group_creation_info);
+
   // group_creation_info is nullopt only if is_help is false
   return FillOutNewInstanceInfo(std::move(final_response), group_creation_info);
 }
@@ -799,8 +799,8 @@ Result<cvd::Response> CvdStartCommandHandler::FillOutNewInstanceInfo(
 }
 
 Result<void> CvdStartCommandHandler::UpdateInstanceDatabase(
-    const uid_t uid, const selector::GroupCreationInfo& group_creation_info) {
-  CF_EXPECT(instance_manager_.SetInstanceGroup(uid, group_creation_info),
+    const selector::GroupCreationInfo& group_creation_info) {
+  CF_EXPECT(instance_manager_.SetInstanceGroup(group_creation_info),
             group_creation_info.home
                 << " is already taken so can't create new instance.");
   return {};

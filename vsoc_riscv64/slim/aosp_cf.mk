@@ -38,6 +38,7 @@ PRODUCT_PACKAGES += FakeSystemApp
 # All components inherited here go to vendor image
 #
 LOCAL_PREFER_VENDOR_APEX := true
+LOCAL_ENABLE_WIDEVINE := false
 $(call inherit-product, device/google/cuttlefish/shared/slim/device_vendor.mk)
 
 PRODUCT_ENFORCE_MAC80211_HWSIM := false
@@ -56,12 +57,6 @@ PRODUCT_COPY_FILES += \
 # not supported on this architecture.
 PRODUCT_SYSTEM_PROPERTIES += \
     config.disable_renderscript=1 \
-
-# TODO(b/271573990): This property can be removed when ART support for JIT on
-# this architecture is available. This is an override as the original property
-# is defined in runtime_libart.mk.
-PRODUCT_PROPERTY_OVERRIDES += \
-    dalvik.vm.usejit=false
 
 PRODUCT_NAME := aosp_cf_riscv64_slim
 PRODUCT_DEVICE := vsoc_riscv64

@@ -45,7 +45,7 @@
 #include "host/commands/test_gce_driver/gce_api.h"
 #include "host/commands/test_gce_driver/key_pair.h"
 #include "host/commands/test_gce_driver/scoped_instance.h"
-#include "host/libs/web/build_api.h"
+#include "host/libs/web/android_build_api.h"
 #include "host/libs/web/credential_source.h"
 #include "host/libs/web/http_client/http_client.h"
 
@@ -378,7 +378,7 @@ Result<void> TestGceDriverMain(int argc, char** argv) {
 
   std::vector<std::string> args =
       ArgsToVec(argc - 1, argv + 1);  // Skip argv[0]
-  CF_EXPECT(ParseFlags(flags, args), "Could not process command line flags.");
+  CF_EXPECT(ConsumeFlags(flags, args), "Could not process command line flags.");
 
   auto service_json =
       CF_EXPECT(ReadJsonFromFile(service_account_json_private_key_path));

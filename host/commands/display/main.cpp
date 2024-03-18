@@ -32,21 +32,8 @@
 namespace cuttlefish {
 namespace {
 
-static const std::string kUsage =
-    R"(Cuttlefish Virtual Device (CVD) Display CLI.
-
-usage: cvd display <command> <args>
-
-Commands:
-    help                Print this message.
-    help <command>      Print help for a command.
-    add                 Adds a new display to a given device.
-    list                Prints the currently connected displays.
-    remove              Removes a display from a given device.
-)";
-
 static const std::string kAddUsage =
-    R"(Cuttlefish Virtual Device (CVD) Display CLI.
+    R"(
 
 Adds and connects a display to the given virtual device.
 
@@ -58,7 +45,7 @@ usage: cvd display add --width=720 --height=1280
 )";
 
 static const std::string kListUsage =
-    R"(Cuttlefish Virtual Device (CVD) Display CLI.
+    R"(
 
 Lists all of the displays currently connected to a given virtual device.
 
@@ -66,7 +53,7 @@ usage: cvd display list
 )";
 
 static const std::string kRemoveUsage =
-    R"(Cuttlefish Virtual Device (CVD) Display CLI.
+    R"(
 
 Disconnects and removes displays from the given virtual device.
 
@@ -78,7 +65,6 @@ usage: cvd display remove \\
 static const std::unordered_map<std::string, std::string> kSubCommandUsages = {
     {"add", kAddUsage},
     {"list", kListUsage},
-    {"help", kUsage},
     {"remove", kRemoveUsage},
 };
 
@@ -119,16 +105,12 @@ Result<int> RunCrosvmDisplayCommand(int instance_num,
 
 Result<int> GetInstanceNum(std::vector<std::string>& args) {
   int instance_num = 1;
-  CF_EXPECT(ParseFlags({GflagsCompatFlag("instance_num", instance_num)}, args));
+  CF_EXPECT(
+      ConsumeFlags({GflagsCompatFlag("instance_num", instance_num)}, args));
   return instance_num;
 }
 
 Result<int> DoHelp(std::vector<std::string>& args) {
-  if (args.empty()) {
-    std::cout << kUsage << std::endl;
-    return 0;
-  }
-
   const std::string& subcommand_str = args[0];
   auto subcommand_usage = kSubCommandUsages.find(subcommand_str);
   if (subcommand_usage == kSubCommandUsages.end()) {
@@ -193,7 +175,7 @@ Result<int> DoRemove(std::vector<std::string>& args) {
             return {};
           }),
   };
-  auto parse_res = ParseFlags(remove_displays_flags, args);
+  auto parse_res = ConsumeFlags(remove_displays_flags, args);
   if (!parse_res.ok()) {
     std::cerr << parse_res.error().FormatForEnv() << std::endl;
     std::cerr << "Failed to parse flags. Usage:" << std::endl;

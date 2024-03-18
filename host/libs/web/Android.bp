@@ -20,8 +20,8 @@ package {
 cc_library {
     name: "libcuttlefish_web",
     srcs: [
-        "build_api.cc",
-        "build_string.cc",
+        "android_build_api.cpp",
+        "android_build_string.cpp",
         "credential_source.cc",
         "http_client/http_client.cc",
         "http_client/http_client_util.cc",
@@ -42,14 +42,6 @@ cc_library {
                 "libssl",
                 "libz",
                 "libjsoncpp",
-            ],
-        },
-        host_linux: {
-            shared_libs: ["sandboxed_api_sandbox2"],
-            static_libs: [
-                "libabsl_host",
-                "libcap",
-                "libprotobuf-cpp-full",
             ],
         },
         android: {
@@ -90,14 +82,5 @@ cc_test_host {
        "libssl",
        "libz",
     ],
-    target: {
-        host_linux: {
-            shared_libs: ["sandboxed_api_sandbox2"],
-            static_libs: [
-                "libabsl_host",
-                "libprotobuf-cpp-full",
-            ],
-        },
-    },
     defaults: ["cuttlefish_host"],
 }
