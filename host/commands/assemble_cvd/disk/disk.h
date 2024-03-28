@@ -33,32 +33,22 @@ fruit::Component<fruit::Required<const CuttlefishConfig,
                  KernelRamdiskRepacker>
 KernelRamdiskRepackerComponent();
 
-class GeneratePersistentBootconfig : public SetupFeature {};
+Result<void> GeneratePersistentBootconfig(
+    const CuttlefishConfig&, const CuttlefishConfig::InstanceSpecific&);
 
-fruit::Component<fruit::Required<const CuttlefishConfig,
-                                 const CuttlefishConfig::InstanceSpecific>,
-                 GeneratePersistentBootconfig>
-GeneratePersistentBootconfigComponent();
+Result<void> Gem5ImageUnpacker(const CuttlefishConfig&, KernelRamdiskRepacker&);
 
-fruit::Component<fruit::Required<const CuttlefishConfig, KernelRamdiskRepacker>>
-Gem5ImageUnpackerComponent();
+Result<void> GeneratePersistentVbmeta(
+    const CuttlefishConfig::InstanceSpecific&,
+    AutoSetup<InitBootloaderEnvPartition>::Type&,
+    AutoSetup<GeneratePersistentBootconfig>::Type&);
 
-class GeneratePersistentVbmeta : public SetupFeature {};
-
-fruit::Component<
-    fruit::Required<const CuttlefishConfig::InstanceSpecific,
-                    InitBootloaderEnvPartition, GeneratePersistentBootconfig>,
-    GeneratePersistentVbmeta>
-GeneratePersistentVbmetaComponent();
-
-class InitializeFactoryResetProtected : public SetupFeature {};
-
-fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>,
-                 InitializeFactoryResetProtected>
-InitializeFactoryResetProtectedComponent();
+Result<void> InitializeFactoryResetProtected(
+    const CuttlefishConfig::InstanceSpecific&);
 
 Result<void> InitializeInstanceCompositeDisk(
     const CuttlefishConfig&, const CuttlefishConfig::InstanceSpecific&,
-    InitializeFactoryResetProtected&, GeneratePersistentVbmeta&);
+    AutoSetup<InitializeFactoryResetProtected>::Type&,
+    AutoSetup<GeneratePersistentVbmeta>::Type&);
 
 }  // namespace cuttlefish
