@@ -312,7 +312,7 @@ PRODUCT_PACKAGES += $(LOCAL_CONTEXTHUB_PRODUCT_PACKAGE)
 #
 ifeq ($(TARGET_USE_LAZY_CLEARKEY),true)
 PRODUCT_PACKAGES += \
-    android.hardware.drm-service-lazy.clearkey
+    com.android.hardware.drm.clearkey.lazy
 else
 PRODUCT_PACKAGES += \
     android.hardware.drm@latest-service.clearkey
@@ -610,9 +610,10 @@ PRODUCT_PACKAGES += \
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/pci.ids:$(TARGET_COPY_OUT_VENDOR)/pci.ids
 
-# Thread Network AIDL HAL, simulation CLI and OT daemon controller
+# Thread Network AIDL HAL and Demo App
 PRODUCT_PACKAGES += \
-    com.android.hardware.threadnetwork
+    com.android.hardware.threadnetwork \
+    ThreadNetworkDemoApp
 
 PRODUCT_CHECK_VENDOR_SEAPP_VIOLATIONS := true
 
