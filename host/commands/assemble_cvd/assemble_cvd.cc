@@ -253,10 +253,7 @@ Result<std::set<std::string>> PreservingOnResume(
   return preserving;
 }
 
-Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
-    FetcherConfig fetcher_config, const std::vector<GuestConfig>& guest_configs,
-    fruit::Injector<>& injector) {
-  std::string runtime_dir_parent = AbsolutePath(FLAGS_instance_dir);
+Result<SharedFD> SetLogger(std::string runtime_dir_parent) {
   while (runtime_dir_parent[runtime_dir_parent.size() - 1] == '/') {
     runtime_dir_parent =
         runtime_dir_parent.substr(0, FLAGS_instance_dir.rfind('/'));
@@ -274,7 +271,12 @@ Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
         {LogFileSeverity(), log, MetadataLevel::FULL},
     }));
   }
+  return log;
+}
 
+Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
+    FetcherConfig fetcher_config, const std::vector<GuestConfig>& guest_configs,
+    fruit::Injector<>& injector, SharedFD log) {
   {
     // The config object is created here, but only exists in memory until the
     // SaveConfig line below. Don't launch cuttlefish subprocesses between these
@@ -341,6 +343,12 @@ Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
                                     default_group));
     CF_EXPECT(EnsureDirectoryExists(config.environments_uds_dir(), default_mode,
                                     default_group));
+    if (!snapshot_path.empty()) {
+      SharedFD temp = SharedFD::Creat(config.AssemblyPath("restore"), 0660);
+      if (!temp->IsOpen()) {
+        return CF_ERR("Failed to create restore file: " << temp->StrError());
+      }
+    }
 
     auto environment =
         const_cast<const CuttlefishConfig&>(config).ForDefaultEnvironment();
@@ -482,6 +490,8 @@ Result<int> AssembleCvdMain(int argc, char** argv) {
   setenv("ANDROID_LOG_TAGS", "*:v", /* overwrite */ 0);
   ::android::base::InitLogging(argv, android::base::StderrLogger);
 
+  auto log = CF_EXPECT(SetLogger(AbsolutePath(FLAGS_instance_dir)));
+
   int tty = isatty(0);
   int error_num = errno;
   CF_EXPECT(tty == 0,
@@ -557,7 +567,7 @@ Result<int> AssembleCvdMain(int argc, char** argv) {
 
   auto config =
       CF_EXPECT(InitFilesystemAndCreateConfig(std::move(fetcher_config),
-                                              guest_configs, injector),
+                                              guest_configs, injector, log),
                 "Failed to create config");
 
   std::cout << GetConfigFilePath(*config) << "\n";

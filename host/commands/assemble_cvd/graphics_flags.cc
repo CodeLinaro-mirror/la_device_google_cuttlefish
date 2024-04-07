@@ -71,8 +71,9 @@ Result<RenderingMode> GetRenderingMode(const std::string& mode) {
 
 struct AngleFeatures {
   // Prefer linear filtering for YUV AHBs to pass
-  // android.media.decoder.cts.DecodeAccuracyTest.
-  bool prefer_linear_filtering_for_yuv = true;
+  // android.media.decoder.cts.DecodeAccuracyTest on older branches.
+  // Generally not needed after b/315387961.
+  bool prefer_linear_filtering_for_yuv = false;
 
   // Map unspecified color spaces to PASS_THROUGH to pass
   // android.media.codec.cts.DecodeEditEncodeTest and
@@ -240,12 +241,6 @@ Result<std::string> SelectGpuMode(
   }
 
   if (gpu_mode_arg == kGpuModeAuto) {
-    if (vm_manager == vm_manager::QemuManager::name() &&
-        !IsHostCompatible(guest_config.target_arch)) {
-      LOG(INFO) << "Enabling --gpu_mode=drm_virgl.";
-      return kGpuModeDrmVirgl;
-    }
-
     if (ShouldEnableAcceleratedRendering(graphics_availability)) {
       if (HostArch() == Arch::Arm64) {
         LOG(INFO) << "GPU auto mode: detected prerequisites for accelerated "
@@ -260,9 +255,10 @@ Result<std::string> SelectGpuMode(
 
       LOG(INFO) << "GPU auto mode: detected prerequisites for accelerated "
                 << "rendering support.";
-      if (vm_manager == vm_manager::QemuManager::name()) {
-        LOG(INFO) << "Enabling --gpu_mode=drm_virgl.";
-        return kGpuModeDrmVirgl;
+
+      if (vm_manager == vm_manager::QemuManager::name() && !UseQemu8()) {
+        LOG(INFO) << "Not using QEMU8: selecting guest swiftshader";
+        return kGpuModeGuestSwiftshader;
       } else if (!guest_config.gfxstream_supported) {
         LOG(INFO) << "GPU auto mode: guest does not support gfxstream, "
                      "enabling --gpu_mode=guest_swiftshader";
@@ -288,6 +284,11 @@ Result<std::string> SelectGpuMode(
                     "rendering were not detected so the device may not "
                     "function correctly. Please consider switching to "
                     "--gpu_mode=auto or --gpu_mode=guest_swiftshader.";
+    }
+
+    if (vm_manager == vm_manager::QemuManager::name() && !UseQemu8()) {
+      LOG(INFO) << "Not using QEMU8: selecting guest swiftshader";
+      return kGpuModeGuestSwiftshader;
     }
   }
 
