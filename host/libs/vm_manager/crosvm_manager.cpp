@@ -343,11 +343,18 @@ Result<void> ConfigureGpu(const CuttlefishConfig& config, Command* crosvm_cmd) {
   const std::string gpu_udmabuf_string =
       instance.enable_gpu_udmabuf() ? ",udmabuf=true" : "";
 
+  const std::string gpu_renderer_features = instance.gpu_renderer_features();
+  const std::string gpu_renderer_features_param =
+      !gpu_renderer_features.empty()
+          ? ",renderer-features=\"" + gpu_renderer_features + "\""
+          : "";
+
   const std::string gpu_common_string =
       fmt::format(",pci-address=00:{:0>2x}.0", VmManager::kGpuPciSlotNum) +
       gpu_udmabuf_string + gpu_pci_bar_size;
   const std::string gpu_common_3d_string =
-      gpu_common_string + ",egl=true,surfaceless=true,glx=false" + gles_string;
+      gpu_common_string + ",egl=true,surfaceless=true,glx=false" + gles_string +
+      gpu_renderer_features_param;
 
   if (gpu_mode == kGpuModeGuestSwiftshader) {
     crosvm_cmd->AddParameter("--gpu=backend=2D", gpu_common_string);
@@ -516,7 +523,7 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
         instance.boot_flow() ==
             CuttlefishConfig::InstanceSpecific::BootFlow::ChromeOsDisk;
     auto touch_type_parameter =
-        is_chromeos ? "--single-touch=" : "--multi-touch=";
+        is_chromeos ? "single-touch" : "multi-touch";
 
     auto display_configs = instance.display_configs();
     CF_EXPECT(display_configs.size() >= 1);
@@ -524,27 +531,27 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     int touch_idx = 0;
     for (auto& display_config : display_configs) {
       crosvm_cmd.Cmd().AddParameter(
-          touch_type_parameter,
-          "path=", instance.touch_socket_path(touch_idx++),
+          "--input=", touch_type_parameter, "[path=",
+          instance.touch_socket_path(touch_idx++),
           ",width=", display_config.width,
-          ",height=", display_config.height);
+          ",height=", display_config.height, "]");
     }
     auto touchpad_configs = instance.touchpad_configs();
     for (int i = 0; i < touchpad_configs.size(); ++i) {
       auto touchpad_config = touchpad_configs[i];
       crosvm_cmd.Cmd().AddParameter(
-          touch_type_parameter,
-          "path=", instance.touch_socket_path(touch_idx++),
+          "--input=", touch_type_parameter, "[path=",
+          instance.touch_socket_path(touch_idx++),
           ",width=", touchpad_config.width,
           ",height=", touchpad_config.height,
-          ",name=", kTouchpadDefaultPrefix, i);
+          ",name=", kTouchpadDefaultPrefix, i, "]");
     }
-    crosvm_cmd.Cmd().AddParameter("--rotary=",
-                                  instance.rotary_socket_path());
-    crosvm_cmd.Cmd().AddParameter("--keyboard=",
-                                  instance.keyboard_socket_path());
-    crosvm_cmd.Cmd().AddParameter("--switches=",
-                                  instance.switches_socket_path());
+    crosvm_cmd.Cmd().AddParameter("--input=rotary[path=",
+                                  instance.rotary_socket_path(), "]");
+    crosvm_cmd.Cmd().AddParameter("--input=keyboard[path=",
+                                  instance.keyboard_socket_path(), "]");
+    crosvm_cmd.Cmd().AddParameter("--input=switches[path=",
+                                  instance.switches_socket_path(), "]");
   }
 
   SharedFD wifi_tap;
