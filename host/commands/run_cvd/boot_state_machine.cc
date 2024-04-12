@@ -31,6 +31,7 @@
 #include "host/commands/kernel_log_monitor/utils.h"
 #include "host/commands/run_cvd/validate.h"
 #include "host/libs/command_util/runner/defs.h"
+#include "host/libs/command_util/util.h"
 #include "host/libs/config/feature.h"
 
 DEFINE_int32(reboot_notification_fd, CF_DEFAULTS_REBOOT_NOTIFICATION_FD,
@@ -39,25 +40,30 @@ DEFINE_int32(reboot_notification_fd, CF_DEFAULTS_REBOOT_NOTIFICATION_FD,
 namespace cuttlefish {
 namespace {
 
-// Forks and returns the write end of a pipe to the child process. The parent
-// process waits for boot events to come through the pipe and exits accordingly.
-SharedFD DaemonizeLauncher(const CuttlefishConfig& config) {
+// Forks run_cvd into a daemonized child process. The current process continues
+// only until the child has signalled that the boot is finished.
+//
+// How the child signals when the boot is finished depends on whether we are
+// restoring from a snapshot.
+//
+//   * When booting normally, `DaemonizeLauncher` returns the write end of a
+//     pipe. The child is expected to write a `RunnerExitCodes` into the pipe
+//     when the boot finishes.
+//   * When restoring from a snapshot, `DaemonizeLauncher` returns an invalid
+//     `SharedFD`. The child is expected to write an arbitrary byte to the
+//     instance's "restore_pipe" and then the child assumes the restore was
+//     successful.
+//
+// We should consider unifying these two types of pipes.
+Result<SharedFD> DaemonizeLauncher(const CuttlefishConfig& config) {
   auto instance = config.ForDefaultInstance();
-  auto restore_pipe_name = instance.restore_pipe_name();
   SharedFD read_end, write_end, restore_pipe_read;
   if (IsRestoring(config)) {
-    if (Result<SharedFD> restore_pipe = SharedFD::Fifo(restore_pipe_name, 0600);
-        !restore_pipe.ok()) {
-      LOG(ERROR) << "Unable to create restore fifo"
-                 << restore_pipe.error().FormatForEnv();
-      return {};
-    } else {
-      restore_pipe_read = restore_pipe.value();
-    }
-  }
-  if (!SharedFD::Pipe(&read_end, &write_end)) {
-    LOG(ERROR) << "Unable to create pipe";
-    return {};  // a closed FD
+    restore_pipe_read =
+        CF_EXPECT(SharedFD::Fifo(instance.restore_pipe_name(), 0600),
+                  "Unable to create restore fifo");
+  } else {
+    CF_EXPECT(SharedFD::Pipe(&read_end, &write_end), "Unable to create pipe");
   }
   auto pid = fork();
   if (pid) {
@@ -81,6 +87,7 @@ SharedFD DaemonizeLauncher(const CuttlefishConfig& config) {
         std::exit(RunnerExitCodes::kDaemonizationError);
       }
       exit_code = RunnerExitCodes::kSuccess;
+      LOG(INFO) << "Virtual device restored successfully";
       std::exit(exit_code);
     }
     auto bytes_read = read_end->Read(&exit_code, sizeof(exit_code));
@@ -92,6 +99,9 @@ SharedFD DaemonizeLauncher(const CuttlefishConfig& config) {
       LOG(INFO) << "Virtual device booted successfully";
     } else if (exit_code == RunnerExitCodes::kVirtualDeviceBootFailed) {
       LOG(ERROR) << "Virtual device failed to boot";
+      if (!instance.fail_fast()) {
+        LOG(ERROR) << "Device has been left running for debug";
+      }
     } else {
       LOG(ERROR) << "Unexpected exit code: " << exit_code;
     }
@@ -135,8 +145,12 @@ SharedFD DaemonizeLauncher(const CuttlefishConfig& config) {
       std::exit(RunnerExitCodes::kDaemonizationError);
     }
 
-    read_end->Close();
-    return write_end;
+    if (IsRestoring(config)) {
+      return {};
+    } else {
+      read_end->Close();
+      return write_end;
+    }
   }
 }
 
@@ -152,9 +166,7 @@ Result<SharedFD> ProcessLeader(
    * achieve the same goal of making the current process the leader of a
    * process group, and are therefore grouped together. */
   if (instance.run_as_daemon()) {
-    auto foreground_launcher_pipe = DaemonizeLauncher(config);
-    CF_EXPECT(foreground_launcher_pipe->IsOpen());
-    return foreground_launcher_pipe;
+    return CF_EXPECT(DaemonizeLauncher(config), "DaemonizeLauncher failed");
   }
   // Make sure the launcher runs in its own process group even when running
   // in the foreground
@@ -170,10 +182,13 @@ Result<SharedFD> ProcessLeader(
 // launcher process
 class CvdBootStateMachine : public SetupFeature, public KernelLogPipeConsumer {
  public:
-  INJECT(CvdBootStateMachine(AutoSetup<ProcessLeader>::Type& process_leader,
-                             KernelLogPipeProvider& kernel_log_pipe_provider))
+  INJECT(
+      CvdBootStateMachine(AutoSetup<ProcessLeader>::Type& process_leader,
+                          KernelLogPipeProvider& kernel_log_pipe_provider,
+                          const CuttlefishConfig::InstanceSpecific& instance))
       : process_leader_(process_leader),
         kernel_log_pipe_provider_(kernel_log_pipe_provider),
+        instance_(instance),
         state_(kBootStarted) {}
 
   ~CvdBootStateMachine() {
@@ -249,6 +264,17 @@ class CvdBootStateMachine : public SetupFeature, public KernelLogPipeConsumer {
       }
       auto sent_code = OnBootEvtReceived(boot_events_pipe);
       if (sent_code) {
+        if (!BootCompleted()) {
+          if (!instance_.fail_fast()) {
+            LOG(ERROR) << "Device running, likely in a bad state";
+            break;
+          }
+          auto monitor_res = GetLauncherMonitorFromInstance(instance_, 5);
+          CHECK(monitor_res.ok()) << monitor_res.error().FormatForEnv();
+          auto fail_res = RunLauncherAction(*monitor_res, LauncherAction::kFail,
+                                            std::optional<int>());
+          CHECK(fail_res.ok()) << fail_res.error().FormatForEnv();
+        }
         break;
       }
     }
@@ -301,6 +327,7 @@ class CvdBootStateMachine : public SetupFeature, public KernelLogPipeConsumer {
 
   AutoSetup<ProcessLeader>::Type& process_leader_;
   KernelLogPipeProvider& kernel_log_pipe_provider_;
+  const CuttlefishConfig::InstanceSpecific& instance_;
 
   std::thread boot_event_handler_;
   SharedFD fg_launcher_pipe_;

@@ -58,6 +58,7 @@ TARGET_VULKAN_SUPPORT ?= true
 $(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/vabc_features.mk)
 PRODUCT_VIRTUAL_AB_COMPRESSION_METHOD := lz4
 PRODUCT_VIRTUAL_AB_COW_VERSION := 3
+PRODUCT_VIRTUAL_AB_COMPRESSION_FACTOR := 65536
 
 PRODUCT_VENDOR_PROPERTIES += ro.virtual_ab.compression.threads=true
 PRODUCT_VENDOR_PROPERTIES += ro.virtual_ab.batch_writes=true
@@ -193,13 +194,8 @@ PRODUCT_PACKAGES += CFSatelliteService
 #
 # Common manifest for all targets
 #
-ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
 PRODUCT_SHIPPING_API_LEVEL := 35
 LOCAL_DEVICE_FCM_MANIFEST_FILE ?= device/google/cuttlefish/shared/config/manifest.xml
-else
-PRODUCT_SHIPPING_API_LEVEL := 34
-LOCAL_DEVICE_FCM_MANIFEST_FILE ?= device/google/cuttlefish/shared/config/previous_manifest.xml
-endif
 DEVICE_MANIFEST_FILE += $(LOCAL_DEVICE_FCM_MANIFEST_FILE)
 
 #
@@ -395,12 +391,9 @@ endif
 #
 # KeyMint HAL
 #
-ifeq ($(LOCAL_KEYMINT_PRODUCT_PACKAGE),)
-    LOCAL_KEYMINT_PRODUCT_PACKAGE := com.google.cf.keymint.rust
-endif
-
 PRODUCT_PACKAGES += \
-    $(LOCAL_KEYMINT_PRODUCT_PACKAGE) \
+	com.android.hardware.keymint.rust_cf_remote \
+	com.android.hardware.keymint.rust_nonsecure \
 
 # Indicate that KeyMint includes support for the ATTEST_KEY key purpose.
 PRODUCT_COPY_FILES += \

@@ -191,6 +191,11 @@ Result<std::unordered_map<std::string, std::string>> BootconfigArgsFromConfig(
     bootconfig_args["androidboot.ramdisk_hotswapped"] = "1";
   }
 
+  bootconfig_args["androidboot.vendor.apex.com.android.hardware.keymint"] =
+      config.secure_hals().count(SecureHal::GuestKeymintInsecure)
+          ? "com.android.hardware.keymint.rust_nonsecure"
+          : "com.android.hardware.keymint.rust_cf_remote";
+
   std::vector<std::string> args = instance.extra_bootconfig_args();
 
   LOG(DEBUG) << "Parsing extra_bootconfig_args of size:" << args.size()
