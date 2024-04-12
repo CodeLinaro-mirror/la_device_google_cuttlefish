@@ -127,15 +127,23 @@ void CuttlefishConfig::set_ap_vm_manager(const std::string& name) {
 
 static SecureHal StringToSecureHal(std::string mode) {
   std::transform(mode.begin(), mode.end(), mode.begin(), ::tolower);
-  if (mode == "keymint") {
-    return SecureHal::Keymint;
-  } else if (mode == "gatekeeper") {
-    return SecureHal::Gatekeeper;
-  } else if (mode == "oemlock") {
-    return SecureHal::Oemlock;
-  } else {
-    return SecureHal::Unknown;
-  }
+  std::unordered_map<std::string, SecureHal> mapping = {
+      {"keymint", SecureHal::HostKeymintSecure},
+      {"host_secure_keymint", SecureHal::HostKeymintSecure},
+      {"host_keymint_secure", SecureHal::HostKeymintSecure},
+      {"guest_insecure_keymint", SecureHal::GuestKeymintInsecure},
+      {"guest_keymint_insecure", SecureHal::GuestKeymintInsecure},
+      {"gatekeeper", SecureHal::HostGatekeeperSecure},
+      {"host_gatekeeper_secure", SecureHal::HostGatekeeperSecure},
+      {"host_secure_gatekeeper", SecureHal::HostGatekeeperSecure},
+      {"host_gatekeeper_insecure", SecureHal::HostGatekeeperInsecure},
+      {"host_insecure_gatekeeper", SecureHal::HostGatekeeperInsecure},
+      {"oemlock", SecureHal::HostOemlockSecure},
+      {"host_oemlock_secure", SecureHal::HostOemlockSecure},
+      {"host_secure_oemlock", SecureHal::HostOemlockSecure},
+  };
+  auto it = mapping.find(mode);
+  return it == mapping.end() ? SecureHal::Unknown : it->second;
 }
 
 static constexpr char kSecureHals[] = "secure_hals";
@@ -348,14 +356,6 @@ void CuttlefishConfig::set_casimir_rf_port(int port) {
 }
 int CuttlefishConfig::casimir_rf_port() const {
   return (*dictionary_)[kCasimirRfPort].asInt();
-}
-
-static constexpr char kEnableWifi[] = "enable_wifi";
-void CuttlefishConfig::set_enable_wifi(bool enable_wifi) {
-  (*dictionary_)[kEnableWifi] = enable_wifi;
-}
-bool CuttlefishConfig::enable_wifi() const {
-  return (*dictionary_)[kEnableWifi].asBool();
 }
 
 static constexpr char kNetsimRadios[] = "netsim_radios";

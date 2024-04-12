@@ -42,6 +42,7 @@
 #define CF_DEFAULTS_DAEMON false
 #define CF_DEFAULTS_VM_MANAGER CF_DEFAULTS_DYNAMIC_STRING
 #define CF_DEFAULTS_VSOCK_GUEST_CID cuttlefish::GetDefaultVsockCid()
+#define CF_DEFAULTS_VSOCK_GUEST_GROUP ""
 #define CF_DEFAULTS_VHOST_USER_VSOCK cuttlefish::kVhostUserVsockModeAuto
 #define CF_DEFAULTS_ENABLE_MINIMAL_MODE false
 #define CF_DEFAULTS_RESTART_SUBPROCESSES false
@@ -233,3 +234,6 @@
 
 // Whether to use sandbox2 to lock down host processes where policies exist
 #define CF_DEFAULTS_HOST_SANDBOX false
+
+// Whether to exit when heuristics predict the boot will not complete
+#define CF_DEFAULTS_FAIL_FAST true

@@ -731,6 +731,15 @@ void CuttlefishConfig::MutableInstanceSpecific::set_gpu_gfxstream_transport(
   (*Dictionary())[kGpuGfxstreamTransport] = transport;
 }
 
+static constexpr char kGpuRendererFeatures[] = "gpu_renderer_features";
+std::string CuttlefishConfig::InstanceSpecific::gpu_renderer_features() const {
+  return (*Dictionary())[kGpuRendererFeatures].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_gpu_renderer_features(
+    const std::string& transport) {
+  (*Dictionary())[kGpuRendererFeatures] = transport;
+}
+
 static constexpr char kRestartSubprocesses[] = "restart_subprocesses";
 bool CuttlefishConfig::InstanceSpecific::restart_subprocesses() const {
   return (*Dictionary())[kRestartSubprocesses].asBool();
@@ -874,6 +883,14 @@ void CuttlefishConfig::MutableInstanceSpecific::set_boot_slot(const std::string&
 }
 std::string CuttlefishConfig::InstanceSpecific::boot_slot() const {
   return (*Dictionary())[kBootSlot].asString();
+}
+
+static constexpr char kFailFast[] = "fail_fast";
+void CuttlefishConfig::MutableInstanceSpecific::set_fail_fast(bool fail_fast) {
+  (*Dictionary())[kFailFast] = fail_fast;
+}
+bool CuttlefishConfig::InstanceSpecific::fail_fast() const {
+  return (*Dictionary())[kFailFast].asBool();
 }
 
 static constexpr char kEnableWebRTC[] = "enable_webrtc";
@@ -1427,6 +1444,15 @@ int CuttlefishConfig::InstanceSpecific::vsock_guest_cid() const {
 void CuttlefishConfig::MutableInstanceSpecific::set_vsock_guest_cid(
     int vsock_guest_cid) {
   (*Dictionary())[kVsockGuestCid] = vsock_guest_cid;
+}
+
+static constexpr char kVsockGuestGroup[] = "vsock_guest_group";
+std::string CuttlefishConfig::InstanceSpecific::vsock_guest_group() const {
+  return (*Dictionary())[kVsockGuestGroup].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_vsock_guest_group(
+    const std::string& vsock_guest_group) {
+  (*Dictionary())[kVsockGuestGroup] = vsock_guest_group;
 }
 
 static constexpr char kUuid[] = "uuid";
