@@ -21,6 +21,7 @@
 #include <vector>
 
 #include <android-base/logging.h>
+#include <android-base/no_destructor.h>
 #include <android-base/strings.h>
 
 #include "common/libs/utils/flag_parser.h"
@@ -32,19 +33,17 @@
 namespace cuttlefish {
 namespace {
 
-static const std::string kAddUsage =
+static const char kAddUsage[] =
     R"(
 
 Adds and connects a display to the given virtual device.
 
-usage: cvd display add --width=720 --height=1280
-
-       cvd display add \\
+usage: cvd display add \\
         --display=width=1280,height=800 \\
         --display=width=1920,height=1080,refresh_rate_hz=60
 )";
 
-static const std::string kListUsage =
+static const char kListUsage[] =
     R"(
 
 Lists all of the displays currently connected to a given virtual device.
@@ -52,7 +51,7 @@ Lists all of the displays currently connected to a given virtual device.
 usage: cvd display list
 )";
 
-static const std::string kRemoveUsage =
+static const char kRemoveUsage[] =
     R"(
 
 Disconnects and removes displays from the given virtual device.
@@ -61,12 +60,6 @@ usage: cvd display remove \\
         --display=<display id> \\
         --display=<display id> ...
 )";
-
-static const std::unordered_map<std::string, std::string> kSubCommandUsages = {
-    {"add", kAddUsage},
-    {"list", kListUsage},
-    {"remove", kRemoveUsage},
-};
 
 Result<int> RunCrosvmDisplayCommand(int instance_num,
                                     const std::vector<std::string>& args) {
@@ -111,9 +104,17 @@ Result<int> GetInstanceNum(std::vector<std::string>& args) {
 }
 
 Result<int> DoHelp(std::vector<std::string>& args) {
+  static const android::base::NoDestructor<
+      std::unordered_map<std::string, std::string>>
+      kSubCommandUsages({
+          {"add", kAddUsage},
+          {"list", kListUsage},
+          {"remove", kRemoveUsage},
+      });
+
   const std::string& subcommand_str = args[0];
-  auto subcommand_usage = kSubCommandUsages.find(subcommand_str);
-  if (subcommand_usage == kSubCommandUsages.end()) {
+  auto subcommand_usage = kSubCommandUsages->find(subcommand_str);
+  if (subcommand_usage == kSubCommandUsages->end()) {
     std::cerr << "Unknown subcommand '" << subcommand_str
               << "'. See `cvd display help`" << std::endl;
     return 1;
