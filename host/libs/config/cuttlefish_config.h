@@ -42,9 +42,14 @@ namespace cuttlefish {
 
 enum class SecureHal {
   Unknown,
-  Keymint,
-  Gatekeeper,
-  Oemlock,
+  GuestGatekeeperInsecure,
+  GuestKeymintInsecure,
+  HostKeymintInsecure,
+  HostKeymintSecure,
+  HostGatekeeperInsecure,
+  HostGatekeeperSecure,
+  HostOemlockInsecure,
+  HostOemlockSecure,
 };
 
 enum class ExternalNetworkMode {
@@ -156,9 +161,6 @@ class CuttlefishConfig {
   int casimir_nci_port() const;
   void set_casimir_rf_port(int port);
   int casimir_rf_port() const;
-
-  void set_enable_wifi(const bool enable_wifi);
-  bool enable_wifi() const;
 
   // Flags for the set of radios that are connected to netsim
   enum NetsimRadio {
@@ -341,6 +343,7 @@ class CuttlefishConfig {
     uint32_t session_id() const;
     bool use_allocd() const;
     int vsock_guest_cid() const;
+    std::string vsock_guest_group() const;
     std::string uuid() const;
     std::string instance_name() const;
     std::string environment_name() const;
@@ -570,6 +573,7 @@ class CuttlefishConfig {
     bool protected_vm() const;
     bool mte() const;
     std::string boot_slot() const;
+    bool fail_fast() const;
 
     // Kernel and bootloader logging
     bool enable_kernel_log() const;
@@ -604,6 +608,7 @@ class CuttlefishConfig {
     std::string gpu_angle_feature_overrides_disabled() const;
     std::string gpu_capture_binary() const;
     std::string gpu_gfxstream_transport() const;
+    std::string gpu_renderer_features() const;
 
     std::string gpu_vhost_user_mode() const;
 
@@ -711,6 +716,7 @@ class CuttlefishConfig {
     void set_session_id(uint32_t session_id);
     void set_use_allocd(bool use_allocd);
     void set_vsock_guest_cid(int vsock_guest_cid);
+    void set_vsock_guest_group(const std::string& vsock_guest_group);
     void set_uuid(const std::string& uuid);
     void set_environment_name(const std::string& env_name);
     // modem simulator related
@@ -773,6 +779,7 @@ class CuttlefishConfig {
     void set_mte(bool mte);
     void set_boot_slot(const std::string& boot_slot);
     void set_grpc_socket_path(const std::string& sockets);
+    void set_fail_fast(bool fail_fast);
 
     // Kernel and bootloader logging
     void set_enable_kernel_log(bool enable_kernel_log);
@@ -808,6 +815,7 @@ class CuttlefishConfig {
     void set_gpu_angle_feature_overrides_disabled(const std::string& overrides);
     void set_gpu_capture_binary(const std::string&);
     void set_gpu_gfxstream_transport(const std::string& transport);
+    void set_gpu_renderer_features(const std::string& features);
     void set_enable_gpu_udmabuf(const bool enable_gpu_udmabuf);
     void set_enable_gpu_vhost_user(const bool enable_gpu_vhost_user);
     void set_enable_gpu_external_blob(const bool enable_gpu_external_blob);

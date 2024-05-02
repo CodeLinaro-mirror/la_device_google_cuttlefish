@@ -155,6 +155,7 @@ android_system_image {
         "bugreport",
         "bugreportz",
         "bzip2",
+        "cacerts",
         "cameraserver",
         "CarroisGothicSC-Regular.ttf",
         "cgroups.json",
@@ -858,7 +859,6 @@ android_system_image {
                 "bpfRingbufProg.o",
                 "Browser2",
                 "BuiltInPrintService",
-                "cacerts",
                 "Calendar",
                 "CalendarProvider",
                 "CallLogBackup",
@@ -907,6 +907,10 @@ android_system_image {
                 "com.android.hardware.wifi",
                 "com.android.i18n",
                 "com.android.ipsec",
+                "com.android.hardware.gatekeeper.cf_remote",
+                "com.android.hardware.gatekeeper.nonsecure",
+                "com.android.hardware.keymint.rust_cf_remote",
+                "com.android.hardware.keymint.rust_nonsecure",
                 "com.android.location.provider",
                 "com.android.media.remotedisplay.xml",
                 "com.android.media.remotedisplay",
@@ -926,13 +930,11 @@ android_system_image {
                 "com.android.virt",
                 "com.google.cf.bt",
                 "com.google.cf.confirmationui",
-                "com.google.cf.gatekeeper",
                 "com.google.cf.health.storage",
                 "com.google.cf.health",
                 "com.google.cf.identity",
                 "com.google.cf.input.config",
                 "com.google.cf.ir",
-                "com.google.cf.keymint.rust",
                 "com.google.cf.light",
                 "com.google.cf.nfc",
                 "com.google.cf.oemlock",
@@ -977,6 +979,7 @@ android_system_image {
                 "LatinIME",
                 "Launcher3QuickStep",
                 "LiveWallpapersPicker",
+                "llndk.libraries.txt",
                 "LocalTransport",
                 "ManagedProvisioning",
                 "MediaProviderLegacy",
@@ -1073,9 +1076,6 @@ android_system_image {
     linker_config_src: "linker.config.json",
     arch: {
         x86: {
-            deps: [
-                "libclcore_x86.bc",
-            ],
             multilib: {
                 common: {
                     deps: [
@@ -1086,7 +1086,6 @@ android_system_image {
         },
         x86_64: {
             deps: [
-                "libclcore_x86.bc",
                 "libgfxstream_backend",
             ],
             multilib: {
@@ -1097,6 +1096,18 @@ android_system_image {
                 },
             },
         },
+    },
+    fsverity: {
+        inputs: [
+            "etc/boot-image.prof",
+            "etc/dirty-image-objects",
+            "etc/preloaded-classes",
+            "etc/classpaths/*.pb",
+            "framework/*",
+            "framework/*/*", // framework/{arch}
+            "framework/oat/*/*", // framework/oat/{arch}
+        ],
+        libs: [":framework-res{.export-package.apk}"],
     },
 }
 

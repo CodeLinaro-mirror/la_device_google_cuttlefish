@@ -670,7 +670,7 @@ static fruit::Component<> DiskChangesComponent(
       .install(AutoSetup<VbmetaEnforceMinimumSize>::Component)
       .install(AutoSetup<BootloaderPresentCheck>::Component)
       .install(AutoSetup<Gem5ImageUnpacker>::Component)
-      .install(InitializeMiscImageComponent)
+      .install(AutoSetup<InitializeMiscImage>::Component)
       // Create esp if necessary
       .install(InitializeEspImageComponent)
       .install(SuperImageRebuilderComponent);
@@ -692,7 +692,7 @@ static fruit::Component<> DiskChangesPerInstanceComponent(
       .install(AutoSetup<GeneratePersistentBootconfig>::Component)
       .install(AutoSetup<GeneratePersistentVbmeta>::Component)
       .install(AutoSetup<InitializeInstanceCompositeDisk>::Component)
-      .install(InitializeDataImageComponent);
+      .install(AutoSetup<InitializeDataImage>::Component);
 }
 
 Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const FetcherConfig& fetcher_config) {

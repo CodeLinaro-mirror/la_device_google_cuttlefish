@@ -25,11 +25,7 @@
 
 namespace cuttlefish {
 
-class InitializeDataImage : public SetupFeature {};
-
-fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>,
-                 InitializeDataImage>
-InitializeDataImageComponent();
+Result<void> InitializeDataImage(const CuttlefishConfig::InstanceSpecific&);
 
 class InitializeEspImage : public SetupFeature {};
 
@@ -41,10 +37,6 @@ InitializeEspImageComponent();
 Result<void> CreateBlankImage(const std::string& image, int num_mb,
                               const std::string& image_fmt);
 
-class InitializeMiscImage : public SetupFeature {};
-
-fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>,
-                 InitializeMiscImage>
-InitializeMiscImageComponent();
+Result<void> InitializeMiscImage(const CuttlefishConfig::InstanceSpecific&);
 
 } // namespace cuttlefish

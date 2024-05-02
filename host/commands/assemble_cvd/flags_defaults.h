@@ -42,6 +42,7 @@
 #define CF_DEFAULTS_DAEMON false
 #define CF_DEFAULTS_VM_MANAGER CF_DEFAULTS_DYNAMIC_STRING
 #define CF_DEFAULTS_VSOCK_GUEST_CID cuttlefish::GetDefaultVsockCid()
+#define CF_DEFAULTS_VSOCK_GUEST_GROUP ""
 #define CF_DEFAULTS_VHOST_USER_VSOCK cuttlefish::kVhostUserVsockModeAuto
 #define CF_DEFAULTS_ENABLE_MINIMAL_MODE false
 #define CF_DEFAULTS_RESTART_SUBPROCESSES false
@@ -139,6 +140,7 @@
 #define CF_DEFAULTS_GPU_VHOST_USER_MODE cuttlefish::kGpuVhostUserModeAuto
 #define CF_DEFAULTS_RECORD_SCREEN false
 #define CF_DEFAULTS_GPU_CAPTURE_BINARY CF_DEFAULTS_DYNAMIC_STRING
+#define CF_DEFAULTS_GPU_RENDERER_FEATURES ""
 #define CF_DEFAULTS_ENABLE_GPU_UDMABUF false
 #define CF_DEFAULTS_ENABLE_GPU_VHOST_USER false
 #define CF_DEFAULTS_DISPLAY0 CF_DEFAULTS_DYNAMIC_STRING
@@ -157,7 +159,7 @@
 // Default network handler
 #define CF_DEFAULTS_NETSIM false
 #define CF_DEFAULTS_NETSIM_BT true
-#define CF_DEFAULTS_NETSIM_UWB false
+#define CF_DEFAULTS_NETSIM_UWB true
 
 // Netsim default parameters
 #define CF_DEFAULTS_NETSIM_ARGS ""
@@ -233,3 +235,6 @@
 
 // Whether to use sandbox2 to lock down host processes where policies exist
 #define CF_DEFAULTS_HOST_SANDBOX false
+
+// Whether to exit when heuristics predict the boot will not complete
+#define CF_DEFAULTS_FAIL_FAST true

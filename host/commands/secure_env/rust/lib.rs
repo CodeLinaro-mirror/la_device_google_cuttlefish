@@ -26,12 +26,13 @@ use kmr_ta::device::{
     BootloaderDone, CsrSigningAlgorithm, Implementation, TrustedPresenceUnsupported,
 };
 use kmr_ta::{HardwareInfo, KeyMintTa, RpcInfo, RpcInfoV3};
-use kmr_ta_nonsecure::{attest, rpc, soft};
+use kmr_ta_nonsecure::{rpc, soft};
 use kmr_wire::keymint::SecurityLevel;
 use kmr_wire::rpc::MINIMUM_SUPPORTED_KEYS_IN_CSR;
 use log::{error, info, trace};
 use std::ffi::CString;
 use std::io::{Read, Write};
+use std::os::fd::AsFd;
 use std::os::fd::AsRawFd;
 use std::os::unix::ffi::OsStrExt;
 
@@ -116,7 +117,6 @@ pub unsafe fn ta_main(
         sha256: Box::new(BoringSha256),
     };
 
-    let sign_info = attest::CertSignInfo::new();
     let keys: Box<dyn kmr_ta::device::RetrieveKeyMaterial> =
         if security_level == SecurityLevel::TrustedEnvironment {
             Box::new(tpm::Keys::new(trm))
@@ -131,7 +131,12 @@ pub unsafe fn ta_main(
         };
     let dev = Implementation {
         keys,
-        sign_info: Box::new(sign_info),
+        // Cuttlefish has `remote_provisioning.tee.rkp_only=1` so don't support batch signing
+        // of keys.  This can be reinstated with:
+        // ```
+        // sign_info: Some(kmr_ta_nonsecure::attest::CertSignInfo::new()),
+        // ```
+        sign_info: None,
         // HAL populates attestation IDs from properties.
         attest_ids: None,
         sdd_mgr,
@@ -153,8 +158,8 @@ pub unsafe fn ta_main(
         // processing only `infile` until it is empty so that there is no pending state when we
         // suspend the loop.
         let mut fd_set = nix::sys::select::FdSet::new();
-        fd_set.insert(&infile);
-        fd_set.insert(&snapshot_socket);
+        fd_set.insert(infile.as_fd());
+        fd_set.insert(snapshot_socket.as_fd());
         if let Err(e) = nix::sys::select::select(
             None,
             /*readfds=*/ Some(&mut fd_set),
@@ -166,7 +171,7 @@ pub unsafe fn ta_main(
             return;
         }
 
-        if fd_set.contains(&infile) {
+        if fd_set.contains(infile.as_fd()) {
             // Read a request message from the pipe, as a 4-byte BE length followed by the message.
             let mut req_len_data = [0u8; 4];
             if let Err(e) = infile.read_exact(&mut req_len_data) {
@@ -217,7 +222,7 @@ pub unsafe fn ta_main(
             continue;
         }
 
-        if fd_set.contains(&snapshot_socket) {
+        if fd_set.contains(snapshot_socket.as_fd()) {
             // Read suspend request.
             let mut suspend_request = 0u8;
             if let Err(e) = snapshot_socket.read_exact(std::slice::from_mut(&mut suspend_request)) {
