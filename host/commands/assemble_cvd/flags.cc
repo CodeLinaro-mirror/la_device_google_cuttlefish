@@ -134,7 +134,7 @@ DEFINE_vec(use_random_serial, fmt::format("{}", CF_DEFAULTS_USE_RANDOM_SERIAL),
 DEFINE_vec(vm_manager, CF_DEFAULTS_VM_MANAGER,
               "What virtual machine manager to use, one of {qemu_cli, crosvm}");
 DEFINE_vec(gpu_mode, CF_DEFAULTS_GPU_MODE,
-           "What gpu configuration to use, one of {auto, drm_virgl, "
+           "What gpu configuration to use, one of {auto, custom, drm_virgl, "
            "gfxstream, gfxstream_guest_angle, "
            "gfxstream_guest_angle_host_swiftshader, guest_swiftshader}");
 DEFINE_vec(gpu_vhost_user_mode,
@@ -154,6 +154,22 @@ DEFINE_vec(
     "Renderer specific features to enable. For Gfxstream, this should "
     "be a semicolon separated list of \"<feature name>:[enabled|disabled]\""
     "pairs.");
+
+DEFINE_vec(gpu_context_types, CF_DEFAULTS_GPU_CONTEXT_TYPES,
+           "A colon separated list of virtio-gpu context types.  Only valid "
+           "with --gpu_mode=custom."
+           " For example \"--gpu_context_types=cross_domain:gfxstream\"");
+
+DEFINE_vec(
+    guest_vulkan_driver, CF_DEFAULTS_GUEST_VULKAN_DRIVER,
+    "Vulkan driver to use with Cuttlefish.  Android VMs require specifying "
+    "this at boot time.  Only valid with --gpu_mode=custom. "
+    "For example \"--guest_vulkan_driver=ranchu\"");
+
+DEFINE_vec(
+    frames_socket_path, CF_DEFAULTS_FRAME_SOCKET_PATH,
+    "Frame socket path to use when launching a VM "
+    "For example, \"--frames_socket_path=${XDG_RUNTIME_DIR}/wayland-0\"");
 
 DEFINE_vec(use_allocd, CF_DEFAULTS_USE_ALLOCD?"true":"false",
             "Acquire static resources from the resource allocator daemon.");
@@ -435,6 +451,9 @@ DEFINE_vec(mte, fmt::format("{}", CF_DEFAULTS_MTE), "Enable MTE");
 DEFINE_vec(enable_audio, fmt::format("{}", CF_DEFAULTS_ENABLE_AUDIO),
            "Whether to play or capture audio");
 
+DEFINE_vec(enable_usb, fmt::format("{}", CF_DEFAULTS_ENABLE_USB),
+           "Whether to allow USB passthrough on the device");
+
 DEFINE_vec(camera_server_port, std::to_string(CF_DEFAULTS_CAMERA_SERVER_PORT),
               "camera vsock port");
 
@@ -524,7 +543,7 @@ Result<std::string> GetAndroidInfoConfig(
   CF_EXPECT(FileExists(android_info_file_path));
 
   std::string android_info_contents = ReadFile(android_info_file_path);
-  auto android_info_map = ParseMiscInfo(android_info_contents);
+  auto android_info_map = CF_EXPECT(ParseMiscInfo(android_info_contents));
   CF_EXPECT(android_info_map.find(key) != android_info_map.end());
   return android_info_map[key];
 }
@@ -885,6 +904,14 @@ Result<void> CheckSnapshotCompatible(
       "--enable_virtiofs=false");
 
   /*
+   * TODO(khei@): delete this block once usb is supported
+   */
+  CF_EXPECTF(gflags::GetCommandLineFlagInfoOrDie("enable_usb").current_value ==
+                 "false",
+             "--enable_usb should be false for snapshot, consider \"{}\"",
+             "--enable_usb=false");
+
+  /*
    * TODO(kwstephenkim@): delete this block once 3D gpu mode snapshots are
    * supported
    */
@@ -1076,6 +1103,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       modem_simulator_sim_type));
   std::vector<bool> console_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(console));
   std::vector<bool> enable_audio_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(enable_audio));
+  std::vector<bool> enable_usb_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(enable_usb));
   std::vector<bool> start_gnss_proxy_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(
       start_gnss_proxy));
   std::vector<bool> enable_bootanimation_vec =
@@ -1124,6 +1152,12 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       CF_EXPECT(GET_FLAG_STR_VALUE(gpu_vhost_user_mode));
   std::vector<std::string> gpu_renderer_features_vec =
       CF_EXPECT(GET_FLAG_STR_VALUE(gpu_renderer_features));
+  std::vector<std::string> gpu_context_types_vec =
+      CF_EXPECT(GET_FLAG_STR_VALUE(gpu_context_types));
+  std::vector<std::string> guest_vulkan_driver_vec =
+      CF_EXPECT(GET_FLAG_STR_VALUE(guest_vulkan_driver));
+  std::vector<std::string> frames_socket_path_vec =
+      CF_EXPECT(GET_FLAG_STR_VALUE(frames_socket_path));
 
   std::vector<std::string> gpu_capture_binary_vec =
       CF_EXPECT(GET_FLAG_STR_VALUE(gpu_capture_binary));
@@ -1301,6 +1335,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       guest_configs[instance_index].hctr2_supported ? "hctr2" : "cts");
     instance.set_use_allocd(use_allocd_vec[instance_index]);
     instance.set_enable_audio(enable_audio_vec[instance_index]);
+    instance.set_enable_usb(enable_usb_vec[instance_index]);
     instance.set_enable_gnss_grpc_proxy(start_gnss_proxy_vec[instance_index]);
     instance.set_enable_bootanimation(enable_bootanimation_vec[instance_index]);
 
@@ -1513,8 +1548,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     const std::string gpu_mode = CF_EXPECT(ConfigureGpuSettings(
         gpu_mode_vec[instance_index], gpu_vhost_user_mode_vec[instance_index],
         gpu_renderer_features_vec[instance_index],
-        vm_manager_vec[instance_index], guest_configs[instance_index],
-        instance));
+        gpu_context_types_vec[instance_index], vm_manager_vec[instance_index],
+        guest_configs[instance_index], instance));
     calculated_gpu_mode_vec[instance_index] = gpu_mode_vec[instance_index];
 
     instance.set_restart_subprocesses(restart_subprocesses_vec[instance_index]);
@@ -1549,6 +1584,16 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     }
 
     instance.set_enable_gpu_udmabuf(enable_gpu_udmabuf_vec[instance_index]);
+
+    instance.set_gpu_context_types(gpu_context_types_vec[instance_index]);
+    instance.set_guest_vulkan_driver(guest_vulkan_driver_vec[instance_index]);
+
+    if (!frames_socket_path_vec[instance_index].empty()) {
+      instance.set_frames_socket_path(frames_socket_path_vec[instance_index]);
+    } else {
+      instance.set_frames_socket_path(
+          const_instance.PerInstanceInternalUdsPath("frames.sock"));
+    }
 
     // 1. Keep original code order SetCommandLineOptionWithMode("enable_sandbox")
     // then set_enable_sandbox later.
@@ -1775,7 +1820,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
           .ForEnvironment(environment_name);
   CF_EXPECT(CheckSnapshotCompatible(
                 FLAGS_snapshot_compatible &&
-                    (tmp_config_obj.vm_manager() == CrosvmManager::name()),
+                    (tmp_config_obj.vm_manager() == CrosvmManager::name()) &&
+                    instance_nums.size() == 1,
                 calculated_gpu_mode_vec),
             "The set of flags is incompatible with snapshot");
 
