@@ -376,7 +376,6 @@ class CuttlefishConfig {
     std::string rotary_socket_path() const;
     std::string keyboard_socket_path() const;
     std::string switches_socket_path() const;
-    std::string frames_socket_path() const;
 
     std::string access_kregistry_path() const;
 
@@ -509,6 +508,7 @@ class CuttlefishConfig {
 
     std::string persistent_bootconfig_path() const;
 
+    // used for the persistent_composite_disk vbmeta
     std::string vbmeta_path() const;
 
     std::string ap_vbmeta_path() const;
@@ -559,6 +559,7 @@ class CuttlefishConfig {
     bool enable_audio() const;
     bool enable_gnss_grpc_proxy() const;
     bool enable_bootanimation() const;
+    bool enable_usb() const;
     std::vector<std::string> extra_bootconfig_args() const;
     bool record_screen() const;
     std::string gem5_debug_file() const;
@@ -601,6 +602,9 @@ class CuttlefishConfig {
     std::string gpu_capture_binary() const;
     std::string gpu_gfxstream_transport() const;
     std::string gpu_renderer_features() const;
+    std::string gpu_context_types() const;
+    std::string guest_vulkan_driver() const;
+    std::string frames_socket_path() const;
 
     std::string gpu_vhost_user_mode() const;
 
@@ -627,6 +631,7 @@ class CuttlefishConfig {
     std::string vendor_boot_image() const;
     std::string new_vendor_boot_image() const;
     std::string vbmeta_image() const;
+    std::string new_vbmeta_image() const;
     std::string vbmeta_system_image() const;
     std::string vbmeta_vendor_dlkm_image() const;
     std::string new_vbmeta_vendor_dlkm_image() const;
@@ -761,6 +766,7 @@ class CuttlefishConfig {
     void set_pause_in_bootloader(bool pause_in_bootloader);
     void set_run_as_daemon(bool run_as_daemon);
     void set_enable_audio(bool enable);
+    void set_enable_usb(bool enable);
     void set_enable_gnss_grpc_proxy(const bool enable_gnss_grpc_proxy);
     void set_enable_bootanimation(const bool enable_bootanimation);
     void set_extra_bootconfig_args(const std::string& extra_bootconfig_args);
@@ -807,6 +813,10 @@ class CuttlefishConfig {
     void set_gpu_capture_binary(const std::string&);
     void set_gpu_gfxstream_transport(const std::string& transport);
     void set_gpu_renderer_features(const std::string& features);
+    void set_gpu_context_types(const std::string& context_types);
+    void set_guest_vulkan_driver(const std::string& driver);
+    void set_frames_socket_path(const std::string& driver);
+
     void set_enable_gpu_udmabuf(const bool enable_gpu_udmabuf);
     void set_enable_gpu_vhost_user(const bool enable_gpu_vhost_user);
     void set_enable_gpu_external_blob(const bool enable_gpu_external_blob);
@@ -828,6 +838,7 @@ class CuttlefishConfig {
     void set_vendor_boot_image(const std::string& vendor_boot_image);
     void set_new_vendor_boot_image(const std::string& new_vendor_boot_image);
     void set_vbmeta_image(const std::string& vbmeta_image);
+    void set_new_vbmeta_image(const std::string& new_vbmeta_image);
     void set_vbmeta_system_image(const std::string& vbmeta_system_image);
     void set_vbmeta_vendor_dlkm_image(
         const std::string& vbmeta_vendor_dlkm_image);
@@ -969,6 +980,7 @@ extern const char* const kVhostUserVsockModeFalse;
 
 // GPU modes
 extern const char* const kGpuModeAuto;
+extern const char* const kGpuModeCustom;
 extern const char* const kGpuModeDrmVirgl;
 extern const char* const kGpuModeGfxstream;
 extern const char* const kGpuModeGfxstreamGuestAngle;
