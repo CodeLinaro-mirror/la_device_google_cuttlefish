@@ -192,6 +192,14 @@ void CuttlefishConfig::MutableInstanceSpecific::set_vbmeta_image(
     const std::string& vbmeta_image) {
   (*Dictionary())[kVbmetaImage] = vbmeta_image;
 }
+static constexpr char kNewVbmetaImage[] = "new_vbmeta_image";
+std::string CuttlefishConfig::InstanceSpecific::new_vbmeta_image() const {
+  return (*Dictionary())[kNewVbmetaImage].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_new_vbmeta_image(
+    const std::string& new_vbmeta_image) {
+  (*Dictionary())[kNewVbmetaImage] = new_vbmeta_image;
+}
 static constexpr char kVbmetaSystemImage[] = "vbmeta_system_image";
 std::string CuttlefishConfig::InstanceSpecific::vbmeta_system_image() const {
   return (*Dictionary())[kVbmetaSystemImage].asString();
@@ -740,6 +748,24 @@ void CuttlefishConfig::MutableInstanceSpecific::set_gpu_renderer_features(
   (*Dictionary())[kGpuRendererFeatures] = transport;
 }
 
+static constexpr char kGpuContextTypes[] = "gpu_context_types";
+std::string CuttlefishConfig::InstanceSpecific::gpu_context_types() const {
+  return (*Dictionary())[kGpuContextTypes].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_gpu_context_types(
+    const std::string& context_types) {
+  (*Dictionary())[kGpuContextTypes] = context_types;
+}
+
+static constexpr char kVulkanDriver[] = "guest_vulkan_driver";
+std::string CuttlefishConfig::InstanceSpecific::guest_vulkan_driver() const {
+  return (*Dictionary())[kVulkanDriver].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_guest_vulkan_driver(
+    const std::string& driver) {
+  (*Dictionary())[kVulkanDriver] = driver;
+}
+
 static constexpr char kRestartSubprocesses[] = "restart_subprocesses";
 bool CuttlefishConfig::InstanceSpecific::restart_subprocesses() const {
   return (*Dictionary())[kRestartSubprocesses].asBool();
@@ -814,6 +840,14 @@ bool CuttlefishConfig::InstanceSpecific::enable_bootanimation() const {
 void CuttlefishConfig::MutableInstanceSpecific::set_enable_bootanimation(
     bool enable_bootanimation) {
   (*Dictionary())[kEnableBootAnimation] = enable_bootanimation;
+}
+
+static constexpr char kEnableUsb[] = "enable_usb";
+void CuttlefishConfig::MutableInstanceSpecific::set_enable_usb(bool enable) {
+  (*Dictionary())[kEnableUsb] = enable;
+}
+bool CuttlefishConfig::InstanceSpecific::enable_usb() const {
+  return (*Dictionary())[kEnableUsb].asBool();
 }
 
 static constexpr char kExtraBootconfigArgsInstanced[] = "extra_bootconfig_args";
@@ -1247,7 +1281,7 @@ std::string CuttlefishConfig::InstanceSpecific::ap_composite_disk_path()
 }
 
 std::string CuttlefishConfig::InstanceSpecific::vbmeta_path() const {
-  return AbsolutePath(PerInstancePath("vbmeta.img"));
+  return AbsolutePath(PerInstancePath("persistent_vbmeta.img"));
 }
 
 std::string CuttlefishConfig::InstanceSpecific::ap_vbmeta_path() const {
@@ -1713,8 +1747,14 @@ std::string CuttlefishConfig::InstanceSpecific::switches_socket_path() const {
   return PerInstanceInternalUdsPath("switches.sock");
 }
 
+static constexpr char kFrameSockPath[] = "frame_sock_path";
+void CuttlefishConfig::MutableInstanceSpecific::set_frames_socket_path(
+    const std::string& frame_socket_path) {
+  (*Dictionary())[kFrameSockPath] = frame_socket_path;
+}
+
 std::string CuttlefishConfig::InstanceSpecific::frames_socket_path() const {
-  return PerInstanceInternalUdsPath("frames.sock");
+  return (*Dictionary())[kFrameSockPath].asString();
 }
 
 static constexpr char kWifiMacPrefix[] = "wifi_mac_prefix";
