@@ -80,6 +80,8 @@ class VmManager {
   // the persistent disk
   static const int kDefaultNumBootDevices = 2;
 
+  static constexpr const int kNetPciDeviceNum = 1;
+
   // LINT.IfChange(virtio_gpu_pci_address)
   static constexpr const int kGpuPciSlotNum = 2;
   // LINT.ThenChange(../../../shared/sepolicy/vendor/genfs_contexts:virtio_gpu_pci_address)
@@ -101,6 +103,14 @@ class VmManager {
   virtual Result<std::vector<MonitorCommand>> StartCommands(
       const CuttlefishConfig& config,
       std::vector<VmmDependencyCommand*>& dependencyCommands) = 0;
+
+  // Block until the restore work is finished and the guest is running. Only
+  // called if a snapshot is being restored.
+  //
+  // Must be thread safe.
+  virtual Result<void> WaitForRestoreComplete() const {
+    return CF_ERR("not implemented");
+  }
 };
 
 fruit::Component<fruit::Required<const CuttlefishConfig,
@@ -108,7 +118,7 @@ fruit::Component<fruit::Required<const CuttlefishConfig,
                  VmManager>
 VmManagerComponent();
 
-std::unique_ptr<VmManager> GetVmManager(const std::string&, Arch arch);
+std::unique_ptr<VmManager> GetVmManager(VmmMode vmm, Arch arch);
 
 Result<std::unordered_map<std::string, std::string>>
 ConfigureMultipleBootDevices(const std::string& pci_path, int pci_offset,

@@ -297,7 +297,6 @@ void ServerLoopImpl::DeleteFifos() {
       instance_.console_in_pipe_name(),
       instance_.console_out_pipe_name(),
       instance_.logcat_pipe_name(),
-      instance_.restore_pipe_name(),
       instance_.PerInstanceInternalPath("keymaster_fifo_vm.in"),
       instance_.PerInstanceInternalPath("keymaster_fifo_vm.out"),
       instance_.PerInstanceInternalPath("keymint_fifo_vm.in"),
@@ -415,7 +414,7 @@ void ServerLoopImpl::RestartRunCvd(int notification_fd) {
 }
 
 Result<std::string> ServerLoopImpl::VmControlSocket() const {
-  CF_EXPECT_EQ(config_.vm_manager(), "crosvm",
+  CF_EXPECT_EQ(config_.vm_manager(), VmmMode::kCrosvm,
                "Other VMs but crosvm is not yet supported.");
   return instance_.CrosvmSocketPath();
 }
