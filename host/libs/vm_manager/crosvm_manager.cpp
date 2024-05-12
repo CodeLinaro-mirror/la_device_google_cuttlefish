@@ -582,10 +582,16 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   // having to pass arguments to crosvm via a wrapper script.
 #ifdef __linux__
   if (!gpu_capture_enabled) {
-    // The ordering of tap devices is important. Make sure any change here
-    // is reflected in ethprime u-boot variable
-    crosvm_cmd.AddTap(instance.mobile_tap_name(), instance.mobile_mac());
-    crosvm_cmd.AddTap(instance.ethernet_tap_name(), instance.ethernet_mac());
+    // The PCI ordering of tap devices is important. Make sure any change here
+    // is reflected in ethprime u-boot variable.
+    // TODO(b/218364216, b/322862402): Crosvm occupies 32 PCI devices first and only then uses PCI
+    // functions which may break order. The final solution is going to be a PCI allocation strategy
+    // that will guarantee the ordering. For now, hardcode PCI network devices to unoccupied
+    // functions.
+    const pci::Address mobile_pci = pci::Address(0, VmManager::kNetPciDeviceNum, 1);
+    const pci::Address ethernet_pci = pci::Address(0, VmManager::kNetPciDeviceNum, 2);
+    crosvm_cmd.AddTap(instance.mobile_tap_name(), instance.mobile_mac(), mobile_pci);
+    crosvm_cmd.AddTap(instance.ethernet_tap_name(), instance.ethernet_mac(), ethernet_pci);
 
     if (!config.virtio_mac80211_hwsim() && environment.enable_wifi()) {
       wifi_tap = crosvm_cmd.AddTap(instance.wifi_tap_name());
@@ -878,6 +884,33 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   }
 
   return commands;
+}
+
+Result<void> CrosvmManager::WaitForRestoreComplete() const {
+  auto instance = CF_EXPECT(CuttlefishConfig::Get())->ForDefaultInstance();
+
+  // Wait for the control socket to exist. It is created early in crosvm's
+  // startup sequence, but the process may not even have been exec'd by CF at
+  // this point.
+  while (!FileExists(instance.CrosvmSocketPath())) {
+    usleep(50000);  // 50 ms, arbitrarily chosen
+  }
+
+  // Ask crosvm to resume the VM. crosvm promises to not complete this command
+  // until the vCPUs are started (even if it was never suspended to begin
+  // with).
+  auto infop = CF_EXPECT(Execute(
+      std::vector<std::string>{
+          instance.crosvm_binary(),
+          "resume",
+          instance.CrosvmSocketPath(),
+          "--full",
+      },
+      SubprocessOptions(), WEXITED));
+  CF_EXPECT_EQ(infop.si_code, CLD_EXITED);
+  CF_EXPECTF(infop.si_status == 0, "crosvm resume returns non zero code {}",
+             infop.si_status);
+  return {};
 }
 
 }  // namespace vm_manager

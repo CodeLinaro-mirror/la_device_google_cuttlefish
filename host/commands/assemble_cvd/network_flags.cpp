@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 The Android Open Source Project
+ * Copyright (C) 2024 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,17 +14,14 @@
  * limitations under the License.
  */
 
-#include <arpa/inet.h>
-#include <android-base/logging.h>
-#include <ifaddrs.h>
-#include <stdio.h>
-#include <string.h>
-#include <sys/types.h>
+#include "host/commands/assemble_cvd/network_flags.h"
 
-#include "device_config.h"
+#include <arpa/inet.h>
+#include <ifaddrs.h>
+
+#include <android-base/logging.h>
 
 namespace cuttlefish {
-
 namespace {
 
 uint8_t number_of_ones(unsigned long val) {
@@ -128,64 +125,36 @@ class NetConfig {
   }
 };
 
-bool InitializeNetworkConfiguration(const CuttlefishConfig& cuttlefish_config,
-                                    DeviceConfig* device_config) {
-  auto instance = cuttlefish_config.ForDefaultInstance();
+}  // namespace
+
+Result<void> ConfigureNetworkSettings(
+    const std::string& ril_dns_arg,
+    const CuttlefishConfig::InstanceSpecific& const_instance,
+    CuttlefishConfig::MutableInstanceSpecific& instance) {
   NetConfig netconfig;
   // Check the mobile bridge first; this was the traditional way we configured
   // the mobile interface. If that fails, it probably means we are using a
   // newer version of cuttlefish-common, and we can use the tap device
   // directly instead.
-  if (!netconfig.ObtainConfig(instance.mobile_bridge_name(),
-                              instance.ril_dns())) {
-    if (!netconfig.ObtainConfig(instance.mobile_tap_name(),
-                                instance.ril_dns())) {
-      LOG(ERROR) << "Unable to obtain the network configuration";
-      return false;
+  if (!netconfig.ObtainConfig(const_instance.mobile_bridge_name(),
+                              ril_dns_arg)) {
+    if (!netconfig.ObtainConfig(const_instance.mobile_tap_name(),
+                                ril_dns_arg)) {
+      LOG(ERROR) << "Unable to get the network config. Assuming defaults.";
+      instance.set_ril_dns("8.8.8.8");
+      instance.set_ril_gateway("10.0.2.2");
+      instance.set_ril_ipaddr("10.0.2.15");
+      instance.set_ril_prefixlen(24);
     }
   }
 
-  DeviceConfig::RILConfig* ril_config = device_config->mutable_ril_config();
-  ril_config->set_ipaddr(netconfig.ril_ipaddr);
-  ril_config->set_gateway(netconfig.ril_gateway);
-  ril_config->set_dns(netconfig.ril_dns);
-  ril_config->set_broadcast(netconfig.ril_broadcast);
-  ril_config->set_prefixlen(netconfig.ril_prefixlen);
+  instance.set_ril_broadcast(netconfig.ril_broadcast);
+  instance.set_ril_dns(netconfig.ril_dns);
+  instance.set_ril_gateway(netconfig.ril_gateway);
+  instance.set_ril_ipaddr(netconfig.ril_ipaddr);
+  instance.set_ril_prefixlen(netconfig.ril_prefixlen);
 
-  return true;
-}
-
-void InitializeScreenConfiguration(const CuttlefishConfig& cuttlefish_config,
-                                   DeviceConfig* device_config) {
-  auto instance = cuttlefish_config.ForDefaultInstance();
-  for (const auto& cuttlefish_display_config : instance.display_configs()) {
-    DeviceConfig::DisplayConfig* device_display_config =
-      device_config->add_display_config();
-
-    device_display_config->set_width(cuttlefish_display_config.width);
-    device_display_config->set_height(cuttlefish_display_config.height);
-    device_display_config->set_dpi(cuttlefish_display_config.dpi);
-    device_display_config->set_refresh_rate_hz(
-        cuttlefish_display_config.refresh_rate_hz);
-  }
-}
-
-}  // namespace
-
-std::unique_ptr<DeviceConfigHelper> DeviceConfigHelper::Get() {
-  auto cuttlefish_config = CuttlefishConfig::Get();
-  if (!cuttlefish_config) {
-    return nullptr;
-  }
-
-  DeviceConfig device_config;
-  if (!InitializeNetworkConfiguration(*cuttlefish_config, &device_config)) {
-    return nullptr;
-  }
-  InitializeScreenConfiguration(*cuttlefish_config, &device_config);
-
-  return std::unique_ptr<DeviceConfigHelper>(
-    new DeviceConfigHelper(device_config));
+  return {};
 }
 
 }  // namespace cuttlefish
