@@ -111,15 +111,9 @@ Result<std::unordered_map<std::string, std::string>> BootconfigArgsFromConfig(
         std::to_string(instance.tombstone_receiver_port());
   }
 
-  const auto enable_confui =
-      (config.vm_manager() == QemuManager::name() ? 0 : 1);
+  const auto enable_confui = (config.vm_manager() == VmmMode::kQemu ? 0 : 1);
   bootconfig_args["androidboot.enable_confirmationui"] =
       std::to_string(enable_confui);
-
-  if (instance.config_server_port()) {
-    bootconfig_args["androidboot.cuttlefish_config_server_port"] =
-        std::to_string(instance.config_server_port());
-  }
 
   if (instance.audiocontrol_server_port()) {
     bootconfig_args["androidboot.vendor.audiocontrol.server.cid"] =
@@ -178,7 +172,7 @@ Result<std::unordered_map<std::string, std::string>> BootconfigArgsFromConfig(
   if (instance.target_arch() == Arch::X86 ||
       instance.target_arch() == Arch::X86_64) {
     bootconfig_args["androidboot.hypervisor.version"] =
-        "cf-" + config.vm_manager();
+        "cf-" + ToString(config.vm_manager());
     bootconfig_args["androidboot.hypervisor.vm.supported"] = "1";
   } else {
     bootconfig_args["androidboot.hypervisor.vm.supported"] = "0";

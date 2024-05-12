@@ -43,9 +43,9 @@ ServerLoopImpl::InitializeVmToControlSockPath(
     const CuttlefishConfig::InstanceSpecific& instance) {
   return std::unordered_map<std::string, std::string>{
       // TODO(kwstephenkim): add the following two lines to support QEMU
-      // {QemuManager::name(),
+      // {ToString(VmmMode::kQemu),
       // instance.PerInstanceInternalUdsPath("qemu_monitor.sock")},
-      {vm_manager::CrosvmManager::name(), instance.CrosvmSocketPath()},
+      {ToString(VmmMode::kCrosvm), instance.CrosvmSocketPath()},
       {cuttlefish::kApName, instance.OpenwrtCrosvmSocketPath()},
   };
 }
@@ -105,15 +105,16 @@ Result<void> ServerLoopImpl::SuspendGuest() {
     CF_EXPECT(SuspendCrosvm(openwrt_sock),
               "failed to suspend openwrt crosvm instance.");
   }
-  const auto vm_name = config_.vm_manager();
-  if (vm_name == vm_manager::CrosvmManager::name()) {
-    const auto& vm_sock = GetSocketPath(vm_name, vm_name_to_control_sock_);
+  const auto main_vmm = config_.vm_manager();
+  if (main_vmm == VmmMode::kCrosvm) {
+    const auto& vm_sock =
+        GetSocketPath(ToString(main_vmm), vm_name_to_control_sock_);
     if (vm_sock == "") {
-      return CF_ERR("The vm_manager " + vm_name + " is not supported yet");
+      return CF_ERR("The vm_manager " << main_vmm << " is not supported yet");
     }
     return SuspendCrosvm(vm_sock);
   } else {
-    return CF_ERR("The vm_manager " + vm_name + " is not supported yet");
+    return CF_ERR("The vm_manager " << main_vmm << " is not supported yet");
   }
 }
 
@@ -130,21 +131,36 @@ Result<void> ServerLoopImpl::ResumeGuest() {
     CF_EXPECT(ResumeCrosvm(openwrt_sock),
               "failed to resume openwrt crosvm instance.");
   }
-  const auto vm_name = config_.vm_manager();
-  if (vm_name == vm_manager::CrosvmManager::name()) {
-    const auto& vm_sock = GetSocketPath(vm_name, vm_name_to_control_sock_);
+  const auto main_vmm = config_.vm_manager();
+  if (main_vmm == VmmMode::kCrosvm) {
+    const auto& vm_sock =
+        GetSocketPath(ToString(main_vmm), vm_name_to_control_sock_);
     if (vm_sock == "") {
-      return CF_ERR("The vm_manager " + vm_name + " is not supported yet");
+      return CF_ERR("The vm_manager " << main_vmm << " is not supported yet");
     }
     return ResumeCrosvm(vm_sock);
   } else {
-    return CF_ERR("The vm_manager " + vm_name + " is not supported yet");
+    return CF_ERR("The vm_manager " << main_vmm << " is not supported yet");
   }
 }
 
 Result<void> ServerLoopImpl::HandleSuspend(ProcessMonitor& process_monitor) {
   // right order: guest -> host
   LOG(DEBUG) << "Suspending the guest..";
+  const auto adb_bin_path = SubtoolPath("adb");
+  CF_EXPECT(Execute({adb_bin_path, "-s", instance_.adb_ip_and_port(), "shell",
+                     "cmd", "bluetooth_manager", "disable"},
+                    SubprocessOptions(), WEXITED));
+  CF_EXPECT(Execute({adb_bin_path, "-s", instance_.adb_ip_and_port(), "shell",
+                     "cmd", "bluetooth_manager", "wait-for-state:STATE_OFF"},
+                    SubprocessOptions(), WEXITED));
+  CF_EXPECT(Execute({adb_bin_path, "-s", instance_.adb_ip_and_port(), "shell",
+                     "svc", "wifi", "disable"},
+                    SubprocessOptions(), WEXITED));
+  CF_EXPECT(Execute({adb_bin_path, "-s", instance_.adb_ip_and_port(), "shell",
+                     "cmd", "uwb", "disable-uwb"},
+                    SubprocessOptions(), WEXITED));
+  // right order: guest -> host
   CF_EXPECT(SuspendGuest());
   LOG(DEBUG) << "The guest is suspended.";
   CF_EXPECT(process_monitor.SuspendMonitoredProcesses(),
@@ -160,6 +176,17 @@ Result<void> ServerLoopImpl::HandleResume(ProcessMonitor& process_monitor) {
   LOG(DEBUG) << "The host processes are resumed.";
   LOG(DEBUG) << "Resuming the guest..";
   CF_EXPECT(ResumeGuest());
+  // Resume services after guest has resumed.
+  const auto adb_bin_path = SubtoolPath("adb");
+  CF_EXPECT(Execute({adb_bin_path, "-s", instance_.adb_ip_and_port(), "shell",
+                     "cmd", "bluetooth_manager", "enable"},
+                    SubprocessOptions(), WEXITED));
+  CF_EXPECT(Execute({adb_bin_path, "-s", instance_.adb_ip_and_port(), "shell",
+                     "svc", "wifi", "enable"},
+                    SubprocessOptions(), WEXITED));
+  CF_EXPECT(Execute({adb_bin_path, "-s", instance_.adb_ip_and_port(), "shell",
+                     "cmd", "uwb", "enable-uwb"},
+                    SubprocessOptions(), WEXITED));
   LOG(DEBUG) << "The guest resumed.";
   return {};
 }
@@ -215,7 +242,7 @@ Result<void> ServerLoopImpl::TakeCrosvmGuestSnapshot(
 /*
  * Parse json file at json_path, and take guest snapshot
  */
-Result<void> ServerLoopImpl::TakeGuestSnapshot(const std::string& vm_manager,
+Result<void> ServerLoopImpl::TakeGuestSnapshot(VmmMode vm_manager,
                                                const std::string& json_path) {
   // common code across vm_manager
   CF_EXPECTF(FileExists(json_path), "{} must exist but does not.", json_path);
@@ -226,7 +253,7 @@ Result<void> ServerLoopImpl::TakeGuestSnapshot(const std::string& vm_manager,
                std::string("Failed to read from ") + json_path);
   Json::Value meta_json = CF_EXPECTF(
       ParseJson(json_contents), "Failed to parse json: \n{}", json_contents);
-  CF_EXPECTF(vm_manager == "crosvm",
+  CF_EXPECTF(vm_manager == VmmMode::kCrosvm,
              "{}, which is not crosvm, is not yet supported.", vm_manager);
   CF_EXPECT(TakeCrosvmGuestSnapshot(meta_json),
             "TakeCrosvmGuestSnapshot() failed.");

@@ -52,6 +52,17 @@ enum class SecureHal {
   HostOemlockSecure,
 };
 
+enum class VmmMode {
+  kUnknown,
+  kCrosvm,
+  kGem5,
+  kQemu,
+};
+
+std::ostream& operator<<(std::ostream&, VmmMode);
+std::string ToString(VmmMode mode);
+Result<VmmMode> ParseVmm(std::string_view);
+
 enum class ExternalNetworkMode {
   kUnknown,
   kTap,
@@ -100,8 +111,8 @@ class CuttlefishConfig {
   std::string environments_uds_dir() const;
   std::string EnvironmentsUdsPath(const std::string&) const;
 
-  std::string vm_manager() const;
-  void set_vm_manager(const std::string& name);
+  VmmMode vm_manager() const;
+  void set_vm_manager(VmmMode vmm);
 
   std::string ap_vm_manager() const;
   void set_ap_vm_manager(const std::string& name);
@@ -398,7 +409,6 @@ class CuttlefishConfig {
     std::string gnss_out_pipe_name() const;
 
     std::string logcat_pipe_name() const;
-    std::string restore_pipe_name() const;
     std::string restore_adbd_pipe_name() const;
 
     std::string launcher_log_path() const;
@@ -573,8 +583,12 @@ class CuttlefishConfig {
     bool vhost_net() const;
     bool vhost_user_vsock() const;
 
-    // The dns address of mobile network (RIL)
+    // Mobile network info (RIL)
     std::string ril_dns() const;
+    std::string ril_ipaddr() const;
+    std::string ril_gateway() const;
+    std::string ril_broadcast() const;
+    uint8_t ril_prefixlen() const;
 
     bool enable_webrtc() const;
     std::string webrtc_assets_dir() const;
@@ -798,8 +812,12 @@ class CuttlefishConfig {
     void set_vhost_net(bool vhost_net);
     void set_vhost_user_vsock(bool vhost_user_vsock);
 
-    // The dns address of mobile network (RIL)
+    // Mobile network (RIL)
     void set_ril_dns(const std::string& ril_dns);
+    void set_ril_ipaddr(const std::string& ril_ipaddr);
+    void set_ril_gateway(const std::string& ril_gateway);
+    void set_ril_broadcast(const std::string& ril_broadcast);
+    void set_ril_prefixlen(uint8_t ril_prefixlen);
 
     // Configuration flags for a minimal device
     void set_enable_minimal_mode(bool enable_minimal_mode);
@@ -1003,4 +1021,6 @@ extern const char* const kHwComposerNone;
 #if FMT_VERSION >= 90000
 template <>
 struct fmt::formatter<cuttlefish::ExternalNetworkMode> : ostream_formatter {};
+template <>
+struct fmt::formatter<cuttlefish::VmmMode> : ostream_formatter {};
 #endif

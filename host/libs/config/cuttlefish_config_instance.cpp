@@ -62,6 +62,37 @@ Result<ExternalNetworkMode> ParseExternalNetworkMode(std::string_view str) {
   }
 }
 
+std::string ToString(VmmMode mode) {
+  std::stringstream ss;
+  ss << mode;
+  return ss.str();
+}
+
+std::ostream& operator<<(std::ostream& out, VmmMode vmm) {
+  switch (vmm) {
+    case VmmMode::kUnknown:
+      return out << "unknown";
+    case VmmMode::kCrosvm:
+      return out << "crosvm";
+    case VmmMode::kGem5:
+      return out << "gem5";
+    case VmmMode::kQemu:
+      return out << "qemu_cli";
+  }
+}
+
+Result<VmmMode> ParseVmm(std::string_view str) {
+  if (android::base::EqualsIgnoreCase(str, "crosvm")) {
+    return VmmMode::kCrosvm;
+  } else if (android::base::EqualsIgnoreCase(str, "gem5")) {
+    return VmmMode::kGem5;
+  } else if (android::base::EqualsIgnoreCase(str, "qemu_cli")) {
+    return VmmMode::kQemu;
+  } else {
+    return CF_ERRF("\"{}\" is not a valid Vmm.", str);
+  }
+}
+
 static constexpr char kInstanceDir[] = "instance_dir";
 CuttlefishConfig::MutableInstanceSpecific::MutableInstanceSpecific(
     CuttlefishConfig* config, const std::string& id)
@@ -1054,6 +1085,42 @@ std::string CuttlefishConfig::InstanceSpecific::ril_dns() const {
   return (*Dictionary())[kRilDns].asString();
 }
 
+static constexpr char kRilIpaddr[] = "ril_ipaddr";
+void CuttlefishConfig::MutableInstanceSpecific::set_ril_ipaddr(
+    const std::string& ril_ipaddr) {
+  (*Dictionary())[kRilIpaddr] = ril_ipaddr;
+}
+std::string CuttlefishConfig::InstanceSpecific::ril_ipaddr() const {
+  return (*Dictionary())[kRilIpaddr].asString();
+}
+
+static constexpr char kRilGateway[] = "ril_gateway";
+void CuttlefishConfig::MutableInstanceSpecific::set_ril_gateway(
+    const std::string& ril_gateway) {
+  (*Dictionary())[kRilGateway] = ril_gateway;
+}
+std::string CuttlefishConfig::InstanceSpecific::ril_gateway() const {
+  return (*Dictionary())[kRilGateway].asString();
+}
+
+static constexpr char kRilBroadcast[] = "ril_broadcast";
+void CuttlefishConfig::MutableInstanceSpecific::set_ril_broadcast(
+    const std::string& ril_broadcast) {
+  (*Dictionary())[kRilBroadcast] = ril_broadcast;
+}
+std::string CuttlefishConfig::InstanceSpecific::ril_broadcast() const {
+  return (*Dictionary())[kRilBroadcast].asString();
+}
+
+static constexpr char kRilPrefixlen[] = "ril_prefixlen";
+void CuttlefishConfig::MutableInstanceSpecific::set_ril_prefixlen(
+    uint8_t ril_prefixlen) {
+  (*Dictionary())[kRilPrefixlen] = static_cast<Json::UInt>(ril_prefixlen);
+}
+uint8_t CuttlefishConfig::InstanceSpecific::ril_prefixlen() const {
+  return static_cast<uint8_t>((*Dictionary())[kRilPrefixlen].asUInt());
+}
+
 static constexpr char kDisplayConfigs[] = "display_configs";
 static constexpr char kXRes[] = "x_res";
 static constexpr char kYRes[] = "y_res";
@@ -1163,8 +1230,7 @@ bool CuttlefishConfig::InstanceSpecific::console() const {
 std::string CuttlefishConfig::InstanceSpecific::console_dev() const {
   auto can_use_virtio_console = !kgdb() && !use_bootloader();
   std::string console_dev;
-  if (can_use_virtio_console ||
-      config_->vm_manager() == vm_manager::Gem5Manager::name()) {
+  if (can_use_virtio_console || config_->vm_manager() == VmmMode::kGem5) {
     // If kgdb and the bootloader are disabled, the Android serial console
     // spawns on a virtio-console port. If the bootloader is enabled, virtio
     // console can't be used since uboot doesn't support it.
@@ -1174,7 +1240,7 @@ std::string CuttlefishConfig::InstanceSpecific::console_dev() const {
     // architectures emulate ns16550a/uart8250 instead.
     Arch target = target_arch();
     if ((target == Arch::Arm64 || target == Arch::Arm) &&
-        config_->vm_manager() != vm_manager::CrosvmManager::name()) {
+        config_->vm_manager() != VmmMode::kCrosvm) {
       console_dev = "ttyAMA0";
     } else {
       console_dev = "ttyS0";
@@ -1185,10 +1251,6 @@ std::string CuttlefishConfig::InstanceSpecific::console_dev() const {
 
 std::string CuttlefishConfig::InstanceSpecific::logcat_pipe_name() const {
   return AbsolutePath(PerInstanceInternalPath("logcat-pipe"));
-}
-
-std::string CuttlefishConfig::InstanceSpecific::restore_pipe_name() const {
-  return AbsolutePath(PerInstanceInternalPath("restore-pipe"));
 }
 
 std::string CuttlefishConfig::InstanceSpecific::restore_adbd_pipe_name() const {
