@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 The Android Open Source Project
+ * Copyright (C) 2024 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,24 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#pragma once
 
-#include "device_config.h"
-
-#include <sstream>
-#include <type_traits>
-
-#include <android-base/logging.h>
-
-#include "common/libs/fs/shared_fd_stream.h"
+#include "common/libs/utils/result.h"
+#include "host/libs/config/cuttlefish_config.h"
 
 namespace cuttlefish {
 
-bool DeviceConfigHelper::SendDeviceConfig(SharedFD fd) {
-  SharedFDOstream stream(fd);
-  return device_config_.SerializeToOstream(&stream);
-}
-
-DeviceConfigHelper::DeviceConfigHelper(const DeviceConfig& device_config)
-  : device_config_(device_config) {}
+Result<void> ConfigureNetworkSettings(
+    const std::string& ril_dns_arg,
+    const CuttlefishConfig::InstanceSpecific& const_instance,
+    CuttlefishConfig::MutableInstanceSpecific& instance);
 
 }  // namespace cuttlefish

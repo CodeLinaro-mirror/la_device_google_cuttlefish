@@ -28,7 +28,7 @@
 #include "host/libs/config/cuttlefish_config.h"
 
 // we can start multiple modems simultaneously; each modem
-// will listent to one server fd for incoming sms/phone call
+// will listen to one server fd for incoming sms/phone call
 // there should be at least 1 valid fd
 DEFINE_string(server_fds, "", "A comma separated list of file descriptors");
 DEFINE_int32(sim_type, 1, "Sim type: 1 for normal, 2 for CtsCarrierApiTestCases");
@@ -92,7 +92,7 @@ int ModemSimulatorMain(int argc, char** argv) {
   }
 
   auto nvram_config = NvramConfig::Get();
-  auto nvram_config_file = nvram_config->ConfigFileLocation();
+  const auto nvram_config_file = nvram_config->ConfigFileLocation();
 
   // Start channel monitor, wait for RIL to connect
   int32_t modem_id = 0;

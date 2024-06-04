@@ -57,7 +57,7 @@ class KernelRamdiskRepackerImpl : public KernelRamdiskRepacker {
                                    const std::string& output_image,
                                    const std::string& vbmeta_image) {
     // TODO(b/149866755) For now, we assume that vendor_dlkm is ext4. Add
-    // logic to handle EROFS once the feature stablizes.
+    // logic to handle EROFS once the feature stabilizes.
     const auto tmp_output_image = output_image + ".tmp";
     if (!BuildDlkmImage(build_dir, false, partition_name, tmp_output_image)) {
       LOG(ERROR) << "Failed to build `" << partition_name << "` image from "
@@ -136,7 +136,8 @@ class KernelRamdiskRepackerImpl : public KernelRamdiskRepacker {
     // large to be repacked. Skip repack of boot.img on Gem5, as we need to be
     // able to extract the ramdisk.img in a later stage and so this step must
     // not fail (..and the repacked kernel wouldn't be used anyway).
-    if (instance_.kernel_path().size() && config_.vm_manager() != Gem5Manager::name()) {
+    if (instance_.kernel_path().size() &&
+        config_.vm_manager() != VmmMode::kGem5) {
       CF_EXPECT(RepackBootImage(avb_, instance_.kernel_path(), instance_.boot_image(),
                                 instance_.new_boot_image(), instance_.instance_dir()),
                 "Failed to regenerate the boot image with the new kernel");

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 The Android Open Source Project
+ * Copyright (C) 2024 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,17 +13,29 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 #pragma once
 
-#include "device/google/cuttlefish/common/libs/device_config/device_config.pb.h"
+#include <fmt/core.h>
 
 namespace cuttlefish {
+namespace pci {
 
-// Minimal version to share with Goldfish which doesn't include additional
-// Cuttlefish headers.
-//
-// TODO(natsu): switch ranchu hwcomposer to drm for display discovery.
-DeviceConfig GetDeviceConfig();
+class Address {
+ public:
+  Address(unsigned int bus, unsigned int device, unsigned int function);
 
+  unsigned int Bus() const { return bus_; };
+  unsigned int Device() const { return device_; }
+  unsigned int Function() const { return function_; }
+  std::string Id() const {
+    return fmt::format("{:02x}:{:02x}.{:01x}", bus_, device_, function_);
+  }
+
+ private:
+  unsigned int bus_;
+  unsigned int device_;
+  unsigned int function_;
+};
+
+}  // namespace pci
 }  // namespace cuttlefish

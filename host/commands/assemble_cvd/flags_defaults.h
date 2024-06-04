@@ -90,7 +90,7 @@
 #define CF_DEFAULTS_USE_RANDOM_SERIAL false
 #define CF_DEFAULTS_SERIAL_NUMBER \
   cuttlefish::ForCurrentInstance("CUTTLEFISHCVD")
-#define CF_DEFAULTS_SECURE_HALS "keymint,gatekeeper,oemlock"
+#define CF_DEFAULTS_SECURE_HALS CF_DEFAULTS_DYNAMIC_STRING
 #define CF_DEFAULTS_PROTECTED_VM false
 #define CF_DEFAULTS_MTE false
 
@@ -220,7 +220,7 @@
 #define CF_DEFAULTS_UDP_PORT_RANGE "15550:15599"
 
 // Adb default parameters
-// TODO : Replaceconstants with these flags, they're currently defined throug
+// TODO : Replaceconstants with these flags, they're currently defined through
 // GflagsCompatFlag
 #define CF_DEFAULTS_RUN_ADB_CONNECTOR true
 #define CF_DEFAULTS_ADB_MODE "vsock_half_tunnel"

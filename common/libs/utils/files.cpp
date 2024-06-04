@@ -130,8 +130,12 @@ Result<void> EnsureDirectoryExists(const std::string& directory_path,
                                                      << strerror(errno));
   }
 
+  CF_EXPECTF(chmod(directory_path.c_str(), mode) == 0,
+             "Failed to set permission on {}: {}", directory_path,
+             strerror(errno));
+
   if (group_name != "") {
-    ChangeGroup(directory_path, group_name);
+    CF_EXPECT(ChangeGroup(directory_path, group_name));
   }
 
   return {};
@@ -694,20 +698,17 @@ Result<void> WaitForUnixSocketListeningWithoutConnect(const std::string& path,
       return CF_ERR("Failed to run `lsof`, stderr: " << lsof_err);
     }
 
-    LOG(DEBUG) << "lsof stdout:" << lsof_out;
+    LOG(DEBUG) << "lsof stdout:|" << lsof_out << "|";
+    LOG(DEBUG) << "lsof stderr:|" << lsof_err << "|";
 
     std::smatch socket_state_match;
-    if (!std::regex_search(lsof_out, socket_state_match, socket_state_regex)) {
-      return CF_ERR("Failed to find state in `lsof` stdout: " << lsof_out);
-    }
-    if (socket_state_match.size() != 2) {
-      return CF_ERR(
-          "Unexpected number of matches in `lsof` stdout: " << lsof_out);
-    }
-
-    const std::string& socket_state = socket_state_match[1];
-    if (socket_state == "LISTEN") {
-      return {};
+    if (std::regex_search(lsof_out, socket_state_match, socket_state_regex)) {
+      if (socket_state_match.size() == 2) {
+        const std::string& socket_state = socket_state_match[1];
+        if (socket_state == "LISTEN") {
+          return {};
+        }
+      }
     }
 
     sched_yield();
