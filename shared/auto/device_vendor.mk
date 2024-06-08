@@ -24,7 +24,6 @@ $(call inherit-product, device/google/cuttlefish/shared/bluetooth/device_vendor.
 $(call inherit-product, device/google/cuttlefish/shared/gnss/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/graphics/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/secure_element/device_vendor.mk)
-$(call inherit-product, device/google/cuttlefish/shared/swiftshader/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/telephony/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/sensors/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/device.mk)
@@ -69,6 +68,11 @@ LOCAL_AUDIO_PRODUCT_COPY_FILES := \
 LOCAL_AUDIO_PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/auto/audio_effects_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects_config.xml
 endif
+
+# Install automotive specific battery health HAL
+PRODUCT_PACKAGES += \
+    android.hardware.health-service.automotive \
+    android.hardware.health-service.automotive_recovery \
 
 # Include display settings for an auto device.
 PRODUCT_COPY_FILES += \
