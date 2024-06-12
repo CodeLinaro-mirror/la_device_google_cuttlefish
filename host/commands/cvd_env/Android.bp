@@ -32,7 +32,6 @@ cc_binary_host {
     static_libs: [
         "grpc_cli_libs",
         "libabsl_host",
-        "libc++fs",
         "libcuttlefish_control_env",
         "libcuttlefish_host_config",
         "libgflags",
@@ -40,7 +39,6 @@ cc_binary_host {
     cflags: [
         "-Wno-unused-parameter",
     ],
-    cpp_std: "c++17",
     defaults: ["cuttlefish_host"],
     target: {
         darwin: {
