@@ -213,6 +213,8 @@ PRODUCT_SHIPPING_API_LEVEL := 35
 LOCAL_DEVICE_FCM_MANIFEST_FILE ?= device/google/cuttlefish/shared/config/manifest.xml
 DEVICE_MANIFEST_FILE += $(LOCAL_DEVICE_FCM_MANIFEST_FILE)
 
+PRODUCT_CHECK_PREBUILT_MAX_PAGE_SIZE := true
+
 #
 # General files
 #
@@ -510,6 +512,7 @@ PRODUCT_PACKAGES += com.google.cf.wifi
 # where X is the name of the APEX file to use.
 PRODUCT_PACKAGES += com.google.cf.wifi.no-passpoint
 
+PRODUCT_PACKAGES += com.google.cf.wpa_supplicant
 $(call add_soong_config_namespace, wpa_supplicant)
 $(call add_soong_config_var_value, wpa_supplicant, platform_version, $(PLATFORM_VERSION))
 $(call add_soong_config_var_value, wpa_supplicant, nl80211_driver, CONFIG_DRIVER_NL80211_QCA)

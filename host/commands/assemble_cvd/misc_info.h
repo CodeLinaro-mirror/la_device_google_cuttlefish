@@ -16,20 +16,37 @@
 #pragma once
 
 #include <map>
+#include <set>
 #include <string>
-#include <vector>
 
 #include "common/libs/utils/result.h"
+#include "host/libs/avb/avb.h"
 
 namespace cuttlefish {
 
+// TODO(chadreynolds): rename MiscInfo to more generic KeyValueFile since this
+// logic is processing multiple filetypes now
 using MiscInfo = std::map<std::string, std::string>;
 
-Result<MiscInfo> ParseMiscInfo(const std::string& file_contents);
-std::string WriteMiscInfo(const MiscInfo& info);
+struct VbmetaArgs {
+  std::string algorithm;
+  std::string key_path;
+  std::vector<ChainPartition> chained_partitions;
+  std::vector<std::string> included_partitions;
+  std::vector<std::string> extra_arguments;
+};
 
-std::vector<std::string> SuperPartitionComponents(const MiscInfo&);
-bool SetSuperPartitionComponents(const std::vector<std::string>& components,
-                                 MiscInfo* misc_info);
+Result<MiscInfo> ParseMiscInfo(const std::string& file_contents);
+Result<void> WriteMiscInfo(const MiscInfo& misc_info,
+                           const std::string& output_path);
+Result<MiscInfo> GetCombinedDynamicPartitions(
+    const MiscInfo& vendor_info, const MiscInfo& system_info,
+    const std::set<std::string>& extracted_images);
+Result<MiscInfo> MergeMiscInfos(
+    const MiscInfo& vendor_info, const MiscInfo& system_info,
+    const MiscInfo& combined_dp_info,
+    const std::vector<std::string>& system_partitions);
+Result<VbmetaArgs> GetVbmetaArgs(const MiscInfo& misc_info,
+                                 const std::string& image_path);
 
 } // namespace cuttlefish
