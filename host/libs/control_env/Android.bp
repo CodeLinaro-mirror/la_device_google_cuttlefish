@@ -32,13 +32,11 @@ cc_library {
     static_libs: [
         "grpc_cli_libs",
         "libabsl_host",
-        "libc++fs",
         "libgflags",
     ],
     cflags: [
         "-Wno-unused-parameter",
     ],
-    cpp_std: "c++17",
     defaults: ["cuttlefish_buildhost_only"],
     target: {
         darwin: {
