@@ -45,6 +45,7 @@ RAMDISK_KERNEL_MODULES := \
     virtio_snd.ko \
     system_heap.ko \
     virtio_mmio.ko \
+    virtio_video.ko \
 
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES := \
     $(patsubst %,$(KERNEL_MODULES_PATH)/%,$(RAMDISK_KERNEL_MODULES))
