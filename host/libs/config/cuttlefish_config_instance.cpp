@@ -797,6 +797,16 @@ void CuttlefishConfig::MutableInstanceSpecific::set_guest_vulkan_driver(
   (*Dictionary())[kVulkanDriver] = driver;
 }
 
+static constexpr char kGuestUsesBgraFramebuffers[] =
+    "guest_uses_bgra_framebuffers";
+bool CuttlefishConfig::InstanceSpecific::guest_uses_bgra_framebuffers() const {
+  return (*Dictionary())[kGuestUsesBgraFramebuffers].asBool();
+}
+void CuttlefishConfig::MutableInstanceSpecific::
+    set_guest_uses_bgra_framebuffers(bool uses_bgra) {
+  (*Dictionary())[kGuestUsesBgraFramebuffers] = uses_bgra;
+}
+
 static constexpr char kRestartSubprocesses[] = "restart_subprocesses";
 bool CuttlefishConfig::InstanceSpecific::restart_subprocesses() const {
   return (*Dictionary())[kRestartSubprocesses].asBool();
@@ -1838,6 +1848,15 @@ int CuttlefishConfig::InstanceSpecific::wifi_mac_prefix() const {
 void CuttlefishConfig::MutableInstanceSpecific::set_wifi_mac_prefix(
     int wifi_mac_prefix) {
   (*Dictionary())[kWifiMacPrefix] = wifi_mac_prefix;
+}
+
+static constexpr char kStartVhalProxyServer[] = "start_vhal_proxy_server";
+void CuttlefishConfig::MutableInstanceSpecific::set_start_vhal_proxy_server(
+    bool start_vhal_proxy_server) {
+  (*Dictionary())[kStartVhalProxyServer] = start_vhal_proxy_server;
+}
+bool CuttlefishConfig::InstanceSpecific::start_vhal_proxy_server() const {
+  return (*Dictionary())[kStartVhalProxyServer].asBool();
 }
 
 std::string CuttlefishConfig::InstanceSpecific::factory_reset_protected_path() const {
