@@ -18,7 +18,18 @@
 # Common BoardConfig for all supported architectures.
 #
 
+# Some targets still require 32 bit, and 6.6 kernels don't support
+# 32 bit devices (Wear, Go, Auto)
+ifeq (true,$(CLOCKWORK_EMULATOR_PRODUCT))
 TARGET_KERNEL_USE ?= 6.1
+else ifneq (,$(findstring x86_phone,$(PRODUCT_NAME)))
+TARGET_KERNEL_USE ?= 6.1
+else ifneq (,$(findstring x86_tv,$(PRODUCT_NAME)))
+TARGET_KERNEL_USE ?= 6.1
+else
+TARGET_KERNEL_USE ?= 6.6
+endif
+
 TARGET_KERNEL_ARCH ?= $(TARGET_ARCH)
 SYSTEM_DLKM_SRC ?= kernel/prebuilts/$(TARGET_KERNEL_USE)/$(TARGET_KERNEL_ARCH)
 TARGET_KERNEL_PATH ?= $(SYSTEM_DLKM_SRC)/kernel-$(TARGET_KERNEL_USE)
@@ -259,12 +270,12 @@ USE_OPENGL_RENDERER := true
 
 # Wifi.
 BOARD_WLAN_DEVICE           := emulator
-BOARD_HOSTAPD_PRIVATE_LIB   := lib_driver_cmd_simulated_cf
+BOARD_HOSTAPD_PRIVATE_LIB   := lib_driver_cmd_simulated_cf_bp
 WIFI_HIDL_FEATURE_DUAL_INTERFACE := true
 WIFI_HAL_INTERFACE_COMBINATIONS := {{{STA}, 1}, {{AP}, 1}, {{P2P}, 1}}
 BOARD_HOSTAPD_DRIVER        := NL80211
 BOARD_WPA_SUPPLICANT_DRIVER := NL80211
-BOARD_WPA_SUPPLICANT_PRIVATE_LIB := lib_driver_cmd_simulated_cf
+BOARD_WPA_SUPPLICANT_PRIVATE_LIB := lib_driver_cmd_simulated_cf_bp
 WPA_SUPPLICANT_VERSION      := VER_0_8_X
 WIFI_DRIVER_FW_PATH_PARAM   := "/dev/null"
 WIFI_DRIVER_FW_PATH_STA     := "/dev/null"

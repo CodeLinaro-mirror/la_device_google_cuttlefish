@@ -144,20 +144,29 @@ Result<void> ServerLoopImpl::ResumeGuest() {
   }
 }
 
+static Result<void> RunAdbShellCommand(
+    const CuttlefishConfig::InstanceSpecific& ins,
+    const std::vector<std::string>& command_args) {
+  Command adb_command(SubtoolPath("adb"));
+  // Avoid the adb server being started in the runtime directory and looking
+  // like a process that is still using the directory.
+  adb_command.SetWorkingDirectory("/");
+  adb_command.AddParameter("-s").AddParameter(ins.adb_ip_and_port());
+  adb_command.AddParameter("wait-for-device");
+
+  adb_command.AddParameter("shell");
+  for (const auto& argument : command_args) {
+    adb_command.AddParameter(argument);
+  }
+  CF_EXPECT_EQ(adb_command.Start().Wait(), 0);
+  return {};
+}
+
 Result<void> ServerLoopImpl::HandleSuspend(ProcessMonitor& process_monitor) {
   // right order: guest -> host
   LOG(DEBUG) << "Suspending the guest..";
-  const auto adb_bin_path = SubtoolPath("adb");
-  CF_EXPECT(Execute({adb_bin_path, "-s", instance_.adb_ip_and_port(), "shell",
-                     "cmd", "bluetooth_manager", "disable"},
-                    SubprocessOptions(), WEXITED));
-  CF_EXPECT(Execute({adb_bin_path, "-s", instance_.adb_ip_and_port(), "shell",
-                     "cmd", "bluetooth_manager", "wait-for-state:STATE_OFF"},
-                    SubprocessOptions(), WEXITED));
-  CF_EXPECT(Execute({adb_bin_path, "-s", instance_.adb_ip_and_port(), "shell",
-                     "cmd", "uwb", "disable-uwb"},
-                    SubprocessOptions(), WEXITED));
-  // right order: guest -> host
+  CF_EXPECT(
+      RunAdbShellCommand(instance_, {"/vendor/bin/snapshot_hook_pre_suspend"}));
   CF_EXPECT(SuspendGuest());
   LOG(DEBUG) << "The guest is suspended.";
   CF_EXPECT(process_monitor.SuspendMonitoredProcesses(),
@@ -173,14 +182,8 @@ Result<void> ServerLoopImpl::HandleResume(ProcessMonitor& process_monitor) {
   LOG(DEBUG) << "The host processes are resumed.";
   LOG(DEBUG) << "Resuming the guest..";
   CF_EXPECT(ResumeGuest());
-  // Resume services after guest has resumed.
-  const auto adb_bin_path = SubtoolPath("adb");
-  CF_EXPECT(Execute({adb_bin_path, "-s", instance_.adb_ip_and_port(), "shell",
-                     "cmd", "bluetooth_manager", "enable"},
-                    SubprocessOptions(), WEXITED));
-  CF_EXPECT(Execute({adb_bin_path, "-s", instance_.adb_ip_and_port(), "shell",
-                     "cmd", "uwb", "enable-uwb"},
-                    SubprocessOptions(), WEXITED));
+  CF_EXPECT(
+      RunAdbShellCommand(instance_, {"/vendor/bin/snapshot_hook_post_resume"}));
   LOG(DEBUG) << "The guest resumed.";
   return {};
 }

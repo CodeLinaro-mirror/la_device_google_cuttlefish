@@ -16,6 +16,7 @@
 
 #include "host/libs/vm_manager/crosvm_manager.h"
 
+#include <poll.h>
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -73,6 +74,8 @@ CrosvmManager::ConfigureGraphics(
         {"androidboot.hardware.gralloc", "minigbm"},
         {"androidboot.hardware.hwcomposer", instance.hwcomposer()},
         {"androidboot.hardware.hwcomposer.display_finder_mode", "drm"},
+        {"androidboot.hardware.hwcomposer.display_framebuffer_format",
+         instance.guest_uses_bgra_framebuffers() ? "bgra" : "rgba"},
         {"androidboot.hardware.egl", "angle"},
         {"androidboot.hardware.vulkan", "pastel"},
         {"androidboot.opengles.version", "196609"},  // OpenGL ES 3.1
@@ -84,6 +87,8 @@ CrosvmManager::ConfigureGraphics(
         {"androidboot.hardware.hwcomposer", "ranchu"},
         {"androidboot.hardware.hwcomposer.mode", "client"},
         {"androidboot.hardware.hwcomposer.display_finder_mode", "drm"},
+        {"androidboot.hardware.hwcomposer.display_framebuffer_format",
+         instance.guest_uses_bgra_framebuffers() ? "bgra" : "rgba"},
         {"androidboot.hardware.egl", "mesa"},
         // No "hardware" Vulkan support, yet
         {"androidboot.opengles.version", "196608"},  // OpenGL ES 3.0
@@ -109,6 +114,8 @@ CrosvmManager::ConfigureGraphics(
         {"androidboot.hardware.gralloc", "minigbm"},
         {"androidboot.hardware.hwcomposer", instance.hwcomposer()},
         {"androidboot.hardware.hwcomposer.display_finder_mode", "drm"},
+        {"androidboot.hardware.hwcomposer.display_framebuffer_format",
+         instance.guest_uses_bgra_framebuffers() ? "bgra" : "rgba"},
         {"androidboot.hardware.egl", gles_impl},
         {"androidboot.hardware.vulkan", "ranchu"},
         {"androidboot.hardware.gltransport", gfxstream_transport},
@@ -120,6 +127,8 @@ CrosvmManager::ConfigureGraphics(
         {"androidboot.hardware.gralloc", "minigbm"},
         {"androidboot.hardware.hwcomposer", instance.hwcomposer()},
         {"androidboot.hardware.hwcomposer.display_finder_mode", "drm"},
+        {"androidboot.hardware.hwcomposer.display_framebuffer_format",
+         instance.guest_uses_bgra_framebuffers() ? "bgra" : "rgba"},
         {"androidboot.hardware.egl", "angle"},
         {"androidboot.hardware.vulkan", instance.guest_vulkan_driver()},
         {"androidboot.hardware.gltransport", "virtio-gpu-asg"},
@@ -816,6 +825,10 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
         ":shared:type=fs");
   }
 
+  if (instance.target_arch() == Arch::X86_64) {
+    crosvm_cmd.Cmd().AddParameter("--pflash=", instance.pflash_path());
+  }
+
   // This needs to be the last parameter
   crosvm_cmd.Cmd().AddParameter("--bios=", instance.bootloader());
 
@@ -890,14 +903,21 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   return commands;
 }
 
-Result<void> CrosvmManager::WaitForRestoreComplete() const {
+Result<bool> CrosvmManager::WaitForRestoreComplete(SharedFD stop_fd) const {
   auto instance = CF_EXPECT(CuttlefishConfig::Get())->ForDefaultInstance();
 
   // Wait for the control socket to exist. It is created early in crosvm's
   // startup sequence, but the process may not even have been exec'd by CF at
   // this point.
   while (!FileExists(instance.CrosvmSocketPath())) {
-    usleep(50000);  // 50 ms, arbitrarily chosen
+    std::vector<PollSharedFd> poll = {{.fd = stop_fd, .events = POLLIN}};
+    const int result = SharedFD::Poll(poll, 50 /* ms */);
+    // Check for errors.
+    CF_EXPECT(result >= 0, "failed to wait on stop_fd: " << strerror(errno));
+    // Check if pipe became readable or closed.
+    if (result > 0) {
+      return false;
+    }
   }
 
   // Ask crosvm to resume the VM. crosvm promises to not complete this command
@@ -914,7 +934,7 @@ Result<void> CrosvmManager::WaitForRestoreComplete() const {
   CF_EXPECT_EQ(infop.si_code, CLD_EXITED);
   CF_EXPECTF(infop.si_status == 0, "crosvm resume returns non zero code {}",
              infop.si_status);
-  return {};
+  return true;
 }
 
 }  // namespace vm_manager

@@ -111,6 +111,11 @@ Result<std::unordered_map<std::string, std::string>> BootconfigArgsFromConfig(
         std::to_string(instance.tombstone_receiver_port());
   }
 
+  if (instance.openthread_node_id()) {
+    bootconfig_args["androidboot.openthread_node_id"] =
+        std::to_string(instance.openthread_node_id());
+  }
+
   const auto enable_confui = (config.vm_manager() == VmmMode::kQemu ? 0 : 1);
   bootconfig_args["androidboot.enable_confirmationui"] =
       std::to_string(enable_confui);
@@ -195,6 +200,11 @@ Result<std::unordered_map<std::string, std::string>> BootconfigArgsFromConfig(
       config.secure_hals().count(SecureHal::GuestGatekeeperInsecure)
           ? "com.android.hardware.gatekeeper.nonsecure"
           : "com.android.hardware.gatekeeper.cf_remote";
+
+  if (config.vhal_proxy_server_port()) {
+    bootconfig_args["androidboot.vhal_proxy_server_port"] =
+        std::to_string(config.vhal_proxy_server_port());
+  }
 
   std::vector<std::string> args = instance.extra_bootconfig_args();
 

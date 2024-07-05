@@ -157,6 +157,8 @@ PRODUCT_PACKAGES += \
     tombstone_producer \
     suspend_blocker \
     metrics_helper \
+    snapshot_hook_post_resume \
+    snapshot_hook_pre_suspend
 
 $(call soong_config_append,cvd,launch_configs,cvd_config_auto.json cvd_config_auto_portrait.json cvd_config_auto_md.json cvd_config_foldable.json cvd_config_go.json cvd_config_phone.json cvd_config_slim.json cvd_config_tablet.json cvd_config_tv.json cvd_config_wear.json)
 $(call soong_config_append,cvd,grub_config,grub.cfg)
@@ -213,6 +215,8 @@ PRODUCT_SHIPPING_API_LEVEL := 35
 LOCAL_DEVICE_FCM_MANIFEST_FILE ?= device/google/cuttlefish/shared/config/manifest.xml
 DEVICE_MANIFEST_FILE += $(LOCAL_DEVICE_FCM_MANIFEST_FILE)
 
+PRODUCT_CHECK_PREBUILT_MAX_PAGE_SIZE := true
+
 #
 # General files
 #
@@ -253,7 +257,6 @@ PRODUCT_COPY_FILES += \
 # Install .kcm/.kl/.idc files via input.config apex
 #
 PRODUCT_PACKAGES += com.google.cf.input.config
-PRODUCT_VENDOR_PROPERTIES += input_device.config_file.apex=com.google.cf.input.config
 
 PRODUCT_PACKAGES += \
     fstab.cf.f2fs.hctr2 \
@@ -511,6 +514,7 @@ PRODUCT_PACKAGES += com.google.cf.wifi
 # where X is the name of the APEX file to use.
 PRODUCT_PACKAGES += com.google.cf.wifi.no-passpoint
 
+PRODUCT_PACKAGES += com.google.cf.wpa_supplicant
 $(call add_soong_config_namespace, wpa_supplicant)
 $(call add_soong_config_var_value, wpa_supplicant, platform_version, $(PLATFORM_VERSION))
 $(call add_soong_config_var_value, wpa_supplicant, nl80211_driver, CONFIG_DRIVER_NL80211_QCA)
@@ -526,31 +530,12 @@ PRODUCT_VENDOR_PROPERTIES += ro.vendor.wifi_impl=mac8011_hwsim_virtio
 
 $(call soong_config_append,cvdhost,enforce_mac80211_hwsim,true)
 endif
-else
-
-PRODUCT_PACKAGES += \
-    rename_netiface \
-    wpa_supplicant
-PRODUCT_COPY_FILES += \
-    device/google/cuttlefish/shared/config/wpa_supplicant.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/wpa_supplicant.rc
-
 # VirtWifi interface configuration
 ifeq ($(DEVICE_VIRTWIFI_PORT),)
     DEVICE_VIRTWIFI_PORT := eth2
 endif
 PRODUCT_VENDOR_PROPERTIES += ro.vendor.virtwifi.port=${DEVICE_VIRTWIFI_PORT}
 
-# WLAN driver configuration files
-ifndef LOCAL_WPA_SUPPLICANT_OVERLAY
-LOCAL_WPA_SUPPLICANT_OVERLAY := $(LOCAL_PATH)/config/wpa_supplicant_overlay.conf
-endif
-ifndef LOCAL_P2P_SUPPLICANT
-LOCAL_P2P_SUPPLICANT := $(LOCAL_PATH)/config/p2p_supplicant.conf
-endif
-PRODUCT_COPY_FILES += \
-    external/wpa_supplicant_8/wpa_supplicant/wpa_supplicant_template.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wifi/wpa_supplicant.conf \
-    $(LOCAL_WPA_SUPPLICANT_OVERLAY):$(TARGET_COPY_OUT_VENDOR)/etc/wifi/wpa_supplicant_overlay.conf \
-    $(LOCAL_P2P_SUPPLICANT):$(TARGET_COPY_OUT_VENDOR)/etc/wifi/p2p_supplicant.conf
 
 ifeq ($(PRODUCT_ENFORCE_MAC80211_HWSIM),true)
 PRODUCT_PACKAGES += \
