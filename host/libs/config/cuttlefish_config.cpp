@@ -580,18 +580,12 @@ std::string CuttlefishConfig::AssemblyPath(
   return AbsolutePath(assembly_dir() + "/" + file_name);
 }
 
+static constexpr char kInstancesUdsDir[] = "instances_uds_dir";
+void CuttlefishConfig::set_instances_uds_dir(const std::string& dir) {
+  (*dictionary_)[kInstancesUdsDir] = dir;
+}
 std::string CuttlefishConfig::instances_uds_dir() const {
-  // Try to use /tmp/cf_avd_{uid}/ for UDS directory.
-  // If it fails, use HOME directory(legacy) instead.
-
-  auto defaultPath = AbsolutePath("/tmp/cf_avd_" + std::to_string(getuid()));
-
-  if (!DirectoryExists(defaultPath) ||
-      CanAccess(defaultPath, R_OK | W_OK | X_OK)) {
-    return defaultPath;
-  }
-
-  return instances_dir();
+  return (*dictionary_)[kInstancesUdsDir].asString();
 }
 
 std::string CuttlefishConfig::InstancesUdsPath(

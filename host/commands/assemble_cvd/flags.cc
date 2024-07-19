@@ -767,6 +767,15 @@ Result<std::vector<std::string>> GetFlagStrValueForInstances(
   return value_vec;
 }
 
+std::optional<std::string> InstancesUdsDir() {
+  auto instances_uds_dir = "/tmp/cf_avd_" + std::to_string(getuid());
+  if (DirectoryExists(instances_uds_dir) &&
+      !CanAccess(instances_uds_dir, R_OK | W_OK | X_OK)) {
+    return std::nullopt;
+  }
+  return instances_uds_dir;
+}
+
 } // namespace
 
 Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
@@ -780,6 +789,9 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   }
 
   tmp_config_obj.set_root_dir(root_dir);
+
+  tmp_config_obj.set_instances_uds_dir(
+      InstancesUdsDir().value_or(tmp_config_obj.instances_dir()));
 
   // TODO(weihsu), b/250988697:
   // FLAGS_vm_manager used too early, have to handle this vectorized string early
