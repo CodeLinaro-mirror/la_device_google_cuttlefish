@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2017 The Android Open Source Project
+// Copyright (C) 2024 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,36 +17,26 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-cc_library {
-    name: "libcuttlefish_vm_manager",
+cc_binary {
+    name: "cuttlefish_v4l2_streamer",
     srcs: [
-        "crosvm_builder.cpp",
-        "crosvm_manager.cpp",
-        "gem5_manager.cpp",
-        "host_configuration.cpp",
-        "pci.cpp",
-        "qemu_manager.cpp",
-        "vhost_user_block.cpp",
-        "vm_manager.cpp",
-    ],
-    header_libs: [
-        "vulkan_headers",
+        "main.cpp",
+        "v4l2_helpers.cpp",
+        "yuv2rgb.cpp",
+        "vsock_frame_source.cpp",
     ],
     shared_libs: [
         "libbase",
-        "libcuttlefish_command_util",
-        "libcuttlefish_fs",
-        "libcuttlefish_utils",
-        "libfruit",
+        "libbinder_ndk",
+        "liblog",
+        "libutils",
+        "libvsock_utils",
         "libjsoncpp",
+        "libcuttlefish_fs",
     ],
     static_libs: [
-        "libcuttlefish_host_config",
+        "libgflags",
+        "libcuttlefish_utils",
     ],
-    defaults: ["cuttlefish_host"],
-    target: {
-        darwin: {
-            enabled: true,
-        },
-    },
+    defaults: ["cuttlefish_guest_only"],
 }

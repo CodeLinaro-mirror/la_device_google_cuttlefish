@@ -13,29 +13,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#pragma once
 
-#include "host/commands/process_sandboxer/policies.h"
+#include <string>
+#include <string_view>
 
-#include <sys/prctl.h>
-
-#include "sandboxed_api/sandbox2/policybuilder.h"
-#include "sandboxed_api/sandbox2/util/bpf_helper.h"
-#include "sandboxed_api/util/path.h"
-
-using sapi::file::JoinPath;
+#include "common/libs/utils/subprocess.h"
+#include "host/libs/config/cuttlefish_config.h"
 
 namespace cuttlefish {
+namespace vm_manager {
 
-sandbox2::PolicyBuilder LogcatReceiverPolicy(const HostInfo& host) {
-  auto exe = JoinPath(host.artifacts_path, "bin", "logcat_receiver");
-  return BaselinePolicy(host, exe)
-      .AddDirectory(host.log_dir, /* is_ro= */ false)
-      .AddFile(host.cuttlefish_config_path)
-      .AllowHandleSignals()
-      .AllowOpen()
-      .AllowRead()
-      .AllowSafeFcntl()
-      .AllowWrite();
-}
+struct VhostUserDeviceCommands {
+  Command device_cmd;
+  Command device_logs_cmd;
+  std::string socket_path;
+};
 
+Result<VhostUserDeviceCommands> VhostUserBlockDevice(
+    const CuttlefishConfig& config, int num, std::string_view disk_path);
+
+}  // namespace vm_manager
 }  // namespace cuttlefish

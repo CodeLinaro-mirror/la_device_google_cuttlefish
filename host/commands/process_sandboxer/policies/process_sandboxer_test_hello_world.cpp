@@ -16,26 +16,18 @@
 
 #include "host/commands/process_sandboxer/policies.h"
 
-#include <sys/prctl.h>
-
 #include "sandboxed_api/sandbox2/policybuilder.h"
-#include "sandboxed_api/sandbox2/util/bpf_helper.h"
 #include "sandboxed_api/util/path.h"
 
 using sapi::file::JoinPath;
 
 namespace cuttlefish {
 
-sandbox2::PolicyBuilder LogcatReceiverPolicy(const HostInfo& host) {
-  auto exe = JoinPath(host.artifacts_path, "bin", "logcat_receiver");
-  return BaselinePolicy(host, exe)
-      .AddDirectory(host.log_dir, /* is_ro= */ false)
-      .AddFile(host.cuttlefish_config_path)
-      .AllowHandleSignals()
-      .AllowOpen()
-      .AllowRead()
-      .AllowSafeFcntl()
-      .AllowWrite();
+sandbox2::PolicyBuilder HelloWorldPolicy(const HostInfo& host) {
+  auto exe =
+      JoinPath(host.artifacts_path, "testcases", "process_sandboxer_test",
+               "x86_64", "process_sandboxer_test_hello_world");
+  return BaselinePolicy(host, exe);
 }
 
 }  // namespace cuttlefish

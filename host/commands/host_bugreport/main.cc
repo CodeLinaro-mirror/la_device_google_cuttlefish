@@ -48,6 +48,25 @@ void SaveFile(ZipWriter& writer, const std::string& zip_path,
   }
 }
 
+Result<void> AddNetsimdLogs(ZipWriter& writer) {
+  // The temp directory name depends on whether the `USER` environment variable
+  // is defined.
+  // https://source.corp.google.com/h/googleplex-android/platform/superproject/main/+/main:tools/netsim/rust/common/src/system/mod.rs;l=37-57;drc=360ddb57df49472a40275b125bb56af2a65395c7
+  std::string user = StringFromEnv("USER", "");
+  std::string dir = user.empty() ? "/tmp/android/netsimd"
+                                 : fmt::format("/tmp/android-{}/netsimd", user);
+  if (!DirectoryExists(dir)) {
+    LOG(INFO) << "netsimd logs directory: `" << dir << "` does not exist.";
+    return {};
+  }
+  auto names =
+      CF_EXPECTF(DirectoryContents(dir), "Cannot read from {} directory.", dir);
+  for (const auto& name : names) {
+    SaveFile(writer, "netsimd/" + name, dir + "/" + name);
+  }
+  return {};
+}
+
 Result<void> CvdHostBugreportMain(int argc, char** argv) {
   ::android::base::InitLogging(argv, android::base::StderrLogger);
   google::ParseCommandLineFlags(&argc, &argv, true);
@@ -73,29 +92,33 @@ Result<void> CvdHostBugreportMain(int argc, char** argv) {
     };
     save("cuttlefish_config.json");
     save("disk_config.txt");
-    save("kernel.log");
-    save("launcher.log");
-    save("logcat");
-    save("metrics.log");
+    if (DirectoryExists(instance.PerInstancePath("logs"))) {
+      auto logs = CF_EXPECT(DirectoryContents(instance.PerInstancePath("logs")),
+                            "Cannot read from logs directory.");
+      for (const auto& log : logs) {
+        save("logs/" + log);
+      }
+    } else {
+      save("kernel.log");
+      save("launcher.log");
+      save("logcat");
+      save("metrics.log");
+    }
     auto tombstones =
         CF_EXPECT(DirectoryContents(instance.PerInstancePath("tombstones")),
                   "Cannot read from tombstones directory.");
     for (const auto& tombstone : tombstones) {
-      if (tombstone == "." || tombstone == "..") {
-        continue;
-      }
       save("tombstones/" + tombstone);
     }
     auto recordings =
         CF_EXPECT(DirectoryContents(instance.PerInstancePath("recording")),
                   "Cannot read from recording directory.");
     for (const auto& recording : recordings) {
-      if (recording == "." || recording == "..") {
-        continue;
-      }
       save("recording/" + recording);
     }
   }
+
+  CF_EXPECT(AddNetsimdLogs(writer));
 
   writer.Finish();
 
