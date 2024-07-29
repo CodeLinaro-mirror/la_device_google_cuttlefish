@@ -318,6 +318,7 @@ android_system_image {
         "android.hardware.radio.config@1.0", // generic_system
         "android.hardware.radio.deprecated@1.0", // generic_system
         "android.hardware.secure_element@1.0", // generic_system
+        "android.software.credentials.prebuilt.xml", // generic_system
         "android.software.webview.prebuilt.xml", // media_system
         "android.software.window_magnification.prebuilt.xml", // handheld_system
         "android.system.suspend-service",
@@ -557,7 +558,6 @@ android_system_image {
                 "android.test.runner", // base_system
                 "aosp_cf_x86_64_system-build.prop",
                 "aosp_mainline_modules", // ok
-                "AvatarPicker", // generic_system (RELEASE_AVATAR_PICKER_APP)
                 "BackupRestoreConfirmation", // base_system
                 "BasicDreams", // handheld_system
                 "BlockedNumberProvider", // handheld_system
@@ -661,6 +661,11 @@ android_system_image {
             }) + select(soong_config_variable("ANDROID", "release_package_profiling_module"), {
                 "true": [
                     "com.android.profiling", // base_system (RELEASE_PACKAGE_PROFILING_MODULE)
+                ],
+                default: [],
+            }) + select(release_flag("RELEASE_AVATAR_PICKER_APP"), {
+                true: [
+                    "AvatarPicker", // generic_system (RELEASE_AVATAR_PICKER_APP)
                 ],
                 default: [],
             }),
