@@ -13,23 +13,29 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#pragma once
 
-#include "host/commands/process_sandboxer/policies.h"
+#include <set>
+#include <string>
 
-#include "sandboxed_api/sandbox2/policybuilder.h"
-#include "sandboxed_api/util/path.h"
-
-using sapi::file::JoinPath;
+#include "common/libs/utils/result.h"
 
 namespace cuttlefish {
-namespace process_sandboxer {
 
-sandbox2::PolicyBuilder HelloWorldPolicy(const HostInfo& host) {
-  auto exe =
-      JoinPath(host.artifacts_path, "testcases", "process_sandboxer_test",
-               "x86_64", "process_sandboxer_test_hello_world");
-  return BaselinePolicy(host, exe);
-}
+enum class SecureHal {
+  kGuestGatekeeperInsecure,
+  kGuestKeymintInsecure,
+  kHostKeymintInsecure,
+  kHostKeymintSecure,
+  kHostGatekeeperInsecure,
+  kHostGatekeeperSecure,
+  kHostOemlockInsecure,
+  kHostOemlockSecure,
+};
 
-}  // namespace process_sandboxer
+Result<SecureHal> ParseSecureHal(std::string);
+Result<std::set<SecureHal>> ParseSecureHals(const std::string&);
+std::string ToString(SecureHal);
+Result<void> ValidateSecureHals(const std::set<SecureHal>&);
+
 }  // namespace cuttlefish
