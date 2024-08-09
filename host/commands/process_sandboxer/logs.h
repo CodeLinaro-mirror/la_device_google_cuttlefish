@@ -13,23 +13,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#ifndef ANDROID_DEVICE_GOOGLE_CUTTLEFISH_HOST_COMMANDS_PROCESS_SANDBOXER_LOGS_H
+#define ANDROID_DEVICE_GOOGLE_CUTTLEFISH_HOST_COMMANDS_PROCESS_SANDBOXER_LOGS_H
 
-#include "host/commands/process_sandboxer/policies.h"
+#include <memory>
+#include <string>
+#include <vector>
 
-#include "sandboxed_api/sandbox2/policybuilder.h"
-#include "sandboxed_api/util/path.h"
-
-using sapi::file::JoinPath;
+#include <absl/log/log_sink.h>
+#include <absl/status/status.h>
+#include <absl/status/statusor.h>
 
 namespace cuttlefish {
 namespace process_sandboxer {
 
-sandbox2::PolicyBuilder HelloWorldPolicy(const HostInfo& host) {
-  auto exe =
-      JoinPath(host.artifacts_path, "testcases", "process_sandboxer_test",
-               "x86_64", "process_sandboxer_test_hello_world");
-  return BaselinePolicy(host, exe);
-}
+absl::Status LogToFiles(const std::vector<std::string>& paths);
 
 }  // namespace process_sandboxer
 }  // namespace cuttlefish
+
+#endif

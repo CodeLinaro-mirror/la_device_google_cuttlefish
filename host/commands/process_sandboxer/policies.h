@@ -22,17 +22,20 @@
 #include "sandboxed_api/sandbox2/policybuilder.h"
 
 namespace cuttlefish {
+namespace process_sandboxer {
 
 struct HostInfo {
   std::string artifacts_path;
   std::string cuttlefish_config_path;
   std::string log_dir;
+  std::string runtime_dir;
 };
 
 sandbox2::PolicyBuilder BaselinePolicy(const HostInfo&, std::string_view exe);
 
 sandbox2::PolicyBuilder KernelLogMonitorPolicy(const HostInfo&);
 sandbox2::PolicyBuilder LogcatReceiverPolicy(const HostInfo&);
+sandbox2::PolicyBuilder SecureEnvPolicy(const HostInfo&);
 
 // Testing policies
 sandbox2::PolicyBuilder HelloWorldPolicy(const HostInfo&);
@@ -40,6 +43,7 @@ sandbox2::PolicyBuilder HelloWorldPolicy(const HostInfo&);
 std::unique_ptr<sandbox2::Policy> PolicyForExecutable(
     const HostInfo& host_info, std::string_view executable_path);
 
+}  // namespace process_sandboxer
 }  // namespace cuttlefish
 
 #endif

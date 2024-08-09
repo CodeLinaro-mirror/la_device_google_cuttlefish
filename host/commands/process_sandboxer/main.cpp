@@ -25,16 +25,16 @@
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/log/check.h"
+#include "absl/log/globals.h"
 #include "absl/log/initialize.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/numbers.h"
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-parameter"
-#include "sandboxed_api/sandbox2/executor.h"
-#include "sandboxed_api/sandbox2/sandbox2.h"
-#pragma clang diagnostic pop
 #include "sandboxed_api/util/path.h"
 
+#include "host/commands/process_sandboxer/logs.h"
 #include "host/commands/process_sandboxer/policies.h"
+#include "host/commands/process_sandboxer/sandbox_manager.h"
 
 inline constexpr char kCuttlefishConfigEnvVarName[] = "CUTTLEFISH_CONFIG_FILE";
 
@@ -42,54 +42,104 @@ ABSL_FLAG(std::string, host_artifacts_path, "", "Host exes and libs");
 ABSL_FLAG(std::string, log_dir, "", "Where to write log files");
 ABSL_FLAG(std::vector<std::string>, inherited_fds, std::vector<std::string>(),
           "File descriptors to keep in the sandbox");
+ABSL_FLAG(std::string, runtime_dir, "",
+          "Working directory of host executables");
+ABSL_FLAG(std::vector<std::string>, log_files, std::vector<std::string>(),
+          "File paths outside the sandbox to write logs to");
+ABSL_FLAG(bool, verbose_stderr, false, "Write debug messages to stderr");
 
+using absl::GetFlag;
+using absl::OkStatus;
+using absl::Status;
+using absl::StatusCode;
 using sapi::file::CleanPath;
 using sapi::file::JoinPath;
 
 namespace cuttlefish {
+namespace process_sandboxer {
+namespace {
 
-static std::optional<std::string_view> FromEnv(const std::string& name) {
+std::optional<std::string_view> FromEnv(const std::string& name) {
   auto value = getenv(name.c_str());
   return value == NULL ? std::optional<std::string_view>() : value;
 }
 
-int ProcessSandboxerMain(int argc, char** argv) {
-  absl::InitializeLog();
+Status ProcessSandboxerMain(int argc, char** argv) {
   auto args = absl::ParseCommandLine(argc, argv);
+  /* When building in AOSP, the flags in absl/log/flags.cc are missing. This
+   * uses the absl/log/globals.h interface to log ERROR severity to stderr, and
+   * write all LOG and VLOG(1) messages to log sinks pointing to log files. */
+  absl::InitializeLog();
+  if (GetFlag(FLAGS_verbose_stderr)) {
+    absl::SetStderrThreshold(absl::LogSeverity::kError);
+  } else {
+    absl::SetStderrThreshold(absl::LogSeverity::kInfo);
+  }
+  absl::EnableLogPrefix(true);
+  absl::SetGlobalVLogLevel(1);
 
-  HostInfo host;
-  host.artifacts_path = CleanPath(absl::GetFlag(FLAGS_host_artifacts_path));
-  host.cuttlefish_config_path =
-      CleanPath(FromEnv(kCuttlefishConfigEnvVarName).value_or(""));
-  host.log_dir = CleanPath(absl::GetFlag(FLAGS_log_dir));
-  setenv("LD_LIBRARY_PATH", JoinPath(host.artifacts_path, "lib64").c_str(), 1);
-
-  CHECK_GE(args.size(), 1);
-  auto exe = CleanPath(args[1]);
-  std::vector<std::string> exe_argv(++args.begin(), args.end());
-  auto executor = std::make_unique<sandbox2::Executor>(exe, exe_argv);
-
-  // https://cs.android.com/android/platform/superproject/main/+/main:external/sandboxed-api/sandboxed_api/sandbox2/limits.h;l=116;drc=d451478e26c0352ecd6912461e867a1ae64b17f5
-  // Default is 120 seconds
-  executor->limits()->set_walltime_limit(absl::InfiniteDuration());
-  // Default is 1024 seconds
-  executor->limits()->set_rlimit_cpu(RLIM64_INFINITY);
-
-  for (const auto& inherited_fd : absl::GetFlag(FLAGS_inherited_fds)) {
-    int fd;
-    CHECK(absl::SimpleAtoi(inherited_fd, &fd));
-    executor->ipc()->MapFd(fd, fd);  // Will close `fd` in this process
+  auto logs_status = LogToFiles(GetFlag(FLAGS_log_files));
+  if (!logs_status.ok()) {
+    return logs_status;
   }
 
-  sandbox2::Sandbox2 sb(std::move(executor), PolicyForExecutable(host, exe));
+  VLOG(1) << "Entering ProcessSandboxerMain";
 
-  auto res = sb.Run();
-  CHECK_EQ(res.final_status(), sandbox2::Result::OK) << res.ToString();
-  return 0;
+  HostInfo host;
+  host.artifacts_path = CleanPath(GetFlag(FLAGS_host_artifacts_path));
+  host.cuttlefish_config_path =
+      CleanPath(FromEnv(kCuttlefishConfigEnvVarName).value_or(""));
+  host.log_dir = CleanPath(GetFlag(FLAGS_log_dir));
+  host.runtime_dir = CleanPath(GetFlag(FLAGS_runtime_dir));
+  setenv("LD_LIBRARY_PATH", JoinPath(host.artifacts_path, "lib64").c_str(), 1);
+
+  if (args.size() < 2) {
+    return Status(StatusCode::kInvalidArgument, "Need argv in positional args");
+  }
+  auto exe = CleanPath(args[1]);
+  std::vector<std::string> exe_argv(++args.begin(), args.end());
+
+  auto sandbox_manager_res = SandboxManager::Create(std::move(host));
+  if (!sandbox_manager_res.ok()) {
+    return sandbox_manager_res.status();
+  }
+  auto sandbox_mgr = std::move(*sandbox_manager_res);
+
+  std::map<int, int> fds;
+  for (const auto& inherited_fd : GetFlag(FLAGS_inherited_fds)) {
+    int fd;
+    if (!absl::SimpleAtoi(inherited_fd, &fd)) {
+      return Status(StatusCode::kInvalidArgument, "non-int inherited_fd");
+    }
+    fds[fd] = fd;  // RunProcess will close these
+  }
+
+  auto status = sandbox_mgr->RunProcess(std::move(exe_argv), std::move(fds));
+  if (!status.ok()) {
+    return status;
+  }
+
+  while (sandbox_mgr->Running()) {
+    auto iter = sandbox_mgr->Iterate();
+    if (!iter.ok()) {
+      LOG(ERROR) << "Error in SandboxManager::Iterate: " << iter.ToString();
+    }
+  }
+  return OkStatus();
 }
 
+}  // namespace
+}  // namespace process_sandboxer
 }  // namespace cuttlefish
 
+using cuttlefish::process_sandboxer::ProcessSandboxerMain;
+
 int main(int argc, char** argv) {
-  return cuttlefish::ProcessSandboxerMain(argc, argv);
+  auto status = ProcessSandboxerMain(argc, argv);
+  if (status.ok()) {
+    VLOG(1) << "process_sandboxer exiting normally";
+    return 0;
+  }
+  LOG(ERROR) << status.ToString();
+  return status.raw_code();
 }

@@ -60,6 +60,7 @@
 #include "host/libs/config/esp.h"
 #include "host/libs/config/host_tools_version.h"
 #include "host/libs/config/instance_nums.h"
+#include "host/libs/config/secure_hals.h"
 #include "host/libs/config/touchpad.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
 #include "host/libs/vm_manager/gem5_manager.h"
@@ -678,8 +679,14 @@ Result<std::vector<GuestConfig>> ReadGuestConfig() {
       instance_android_info_txt =
           system_image_dir[instance_index] + "/android-info.txt";
     }
+
     auto res = GetAndroidInfoConfig(instance_android_info_txt, "gfxstream");
     guest_config.gfxstream_supported =
+        res.ok() && res.value() == "supported";
+
+    res = GetAndroidInfoConfig(instance_android_info_txt,
+                               "gfxstream_gl_program_binary_link_status");
+    guest_config.gfxstream_gl_program_binary_link_status_supported =
         res.ok() && res.value() == "supported";
 
     auto res_bgra_support = GetAndroidInfoConfig(instance_android_info_txt,
@@ -1010,20 +1017,9 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     SetCommandLineOptionWithMode("secure_hals", kDefaultSecure,
                                  google::FlagSettingMode::SET_FLAGS_DEFAULT);
   }
-  auto secure_hals_strs =
-      android::base::Tokenize(FLAGS_secure_hals, ",:;|/\\+");
-  tmp_config_obj.set_secure_hals(
-      std::set<std::string>(secure_hals_strs.begin(), secure_hals_strs.end()));
-  auto secure_hals = tmp_config_obj.secure_hals();
-  CF_EXPECT(!secure_hals.count(SecureHal::HostKeymintSecure) ||
-                !secure_hals.count(SecureHal::HostKeymintInsecure),
-            "Choose at most one host keymint implementation");
-  CF_EXPECT(!secure_hals.count(SecureHal::HostGatekeeperSecure) ||
-                !secure_hals.count(SecureHal::HostGatekeeperInsecure),
-            "Choose at most one host gatekeeper implementation");
-  CF_EXPECT(!secure_hals.count(SecureHal::HostOemlockSecure) ||
-                !secure_hals.count(SecureHal::HostOemlockInsecure),
-            "Choose at most one host oemlock implementation");
+  auto secure_hals = CF_EXPECT(ParseSecureHals(FLAGS_secure_hals));
+  CF_EXPECT(ValidateSecureHals(secure_hals));
+  tmp_config_obj.set_secure_hals(secure_hals);
 
   tmp_config_obj.set_extra_kernel_cmdline(FLAGS_extra_kernel_cmdline);
 

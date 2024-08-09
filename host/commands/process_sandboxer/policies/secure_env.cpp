@@ -16,10 +16,9 @@
 
 #include "host/commands/process_sandboxer/policies.h"
 
-#include <sys/prctl.h>
+#include <syscall.h>
 
 #include "sandboxed_api/sandbox2/policybuilder.h"
-#include "sandboxed_api/sandbox2/util/bpf_helper.h"
 #include "sandboxed_api/util/path.h"
 
 using sapi::file::JoinPath;
@@ -27,16 +26,30 @@ using sapi::file::JoinPath;
 namespace cuttlefish {
 namespace process_sandboxer {
 
-sandbox2::PolicyBuilder LogcatReceiverPolicy(const HostInfo& host) {
-  auto exe = JoinPath(host.artifacts_path, "bin", "logcat_receiver");
+sandbox2::PolicyBuilder SecureEnvPolicy(const HostInfo& host) {
+  auto exe = JoinPath(host.artifacts_path, "bin", "secure_env");
   return BaselinePolicy(host, exe)
-      .AddDirectory(host.log_dir, /* is_ro= */ false)
+      // ms-tpm-20-ref creates a NVChip file in the runtime directory
+      .AddDirectory(host.runtime_dir, /* is_ro= */ false)
       .AddFile(host.cuttlefish_config_path)
-      .AllowHandleSignals()
-      .AllowOpen()
-      .AllowRead()
+      .AddFile(exe)  // to exec itself
+      .AllowDup()
+      .AllowFork()    // Something is using clone, not sure what
+      .AllowGetIDs()  // For getuid
       .AllowSafeFcntl()
-      .AllowWrite();
+      .AllowSelect()
+      .AllowSyscall(__NR_accept)
+      .AllowSyscall(__NR_execve)  // to exec itself
+      // Something is using arguments not allowed by AllowGetRandom()
+      .AllowSyscall(__NR_getrandom)
+      .AllowSyscall(__NR_madvise)
+      // statx not covered by AllowStat()
+      .AllowSyscall(__NR_statx)
+      .AllowSyscall(__NR_socketpair)
+      .AllowSyscall(__NR_tgkill)
+      .AllowUnlink()  // keymint_secure_deletion_data
+      .AllowTCGETS()
+      .AllowTime();
 }
 
 }  // namespace process_sandboxer
