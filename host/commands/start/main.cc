@@ -39,18 +39,7 @@
 #include "host/libs/config/fetcher_config.h"
 #include "host/libs/config/host_tools_version.h"
 #include "host/libs/config/instance_nums.h"
-/**
- * If stdin is a tty, that means a user is invoking launch_cvd on the command
- * line and wants automatic file detection for assemble_cvd.
- *
- * If stdin is not a tty, that means launch_cvd is being passed a list of files
- * and that list should be forwarded to assemble_cvd.
- *
- * Controllable with a flag for extraordinary scenarios such as running from a
- * daemon which closes its own stdin.
- */
-DEFINE_bool(run_file_discovery, CF_DEFAULTS_RUN_FILE_DISCOVERY,
-            "Whether to run file discovery or get input files from stdin.");
+
 DEFINE_int32(num_instances, CF_DEFAULTS_NUM_INSTANCES,
              "Number of Android guests to launch");
 DEFINE_string(report_anonymous_usage_stats,
@@ -397,10 +386,7 @@ int CvdInternalStartMain(int argc, char** argv) {
   SharedFD::Pipe(&assembler_stdout_capture, &assembler_stdout);
 
   SharedFD launcher_report, assembler_stdin;
-  bool should_generate_report = FLAGS_run_file_discovery;
-  if (should_generate_report) {
-    SharedFD::Pipe(&assembler_stdin, &launcher_report);
-  }
+  SharedFD::Pipe(&assembler_stdin, &launcher_report);
 
   auto instance_nums = InstanceNumsCalculator().FromGlobalGflags().Calculate();
   if (!instance_nums.ok()) {
@@ -446,9 +432,7 @@ int CvdInternalStartMain(int argc, char** argv) {
       StartAssembler(std::move(assembler_stdin), std::move(assembler_stdout),
                      forwarder.ArgvForSubprocess(kAssemblerBin, args));
 
-  if (should_generate_report) {
-    WriteFiles(AvailableFilesReport(), std::move(launcher_report));
-  }
+  WriteFiles(AvailableFilesReport(), std::move(launcher_report));
 
   std::string assembler_output;
   if (ReadAll(assembler_stdout_capture, &assembler_output) < 0) {
@@ -465,22 +449,27 @@ int CvdInternalStartMain(int argc, char** argv) {
     LOG(DEBUG) << "assemble_cvd exited successfully.";
   }
 
+  std::string conf_path;
+  for (const auto& line : android::base::Tokenize(assembler_output, "\n")) {
+    if (android::base::EndsWith(line, "cuttlefish_config.json")) {
+      conf_path = line;
+    }
+  }
+  CHECK(!conf_path.empty()) << "could not find config";
+  auto config = CuttlefishConfig::GetFromFile(conf_path);
+  CHECK(config) << "Could not load config object";
+  setenv(kCuttlefishConfigEnvVarName, conf_path.c_str(), /* overwrite */ true);
+
   std::vector<Subprocess> runners;
   for (const auto& instance_num : *instance_nums) {
-    SharedFD runner_stdin_in, runner_stdin_out;
-    SharedFD::Pipe(&runner_stdin_out, &runner_stdin_in);
+    SharedFD runner_stdin = SharedFD::Open("/dev/null", O_RDONLY);
     std::string instance_num_str = std::to_string(instance_num);
     setenv(kCuttlefishInstanceEnvVarName, instance_num_str.c_str(),
            /* overwrite */ 1);
 
-    auto run_proc = StartRunner(std::move(runner_stdin_out),
+    auto run_proc = StartRunner(std::move(runner_stdin),
                                 forwarder.ArgvForSubprocess(kRunnerBin));
     runners.push_back(std::move(run_proc));
-    if (WriteAll(runner_stdin_in, assembler_output) < 0) {
-      int error_num = errno;
-      LOG(ERROR) << "Could not write to run_cvd: " << strerror(error_num);
-      return -1;
-    }
   }
 
   bool run_cvd_failure = false;
