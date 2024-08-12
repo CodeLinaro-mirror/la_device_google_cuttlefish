@@ -19,6 +19,8 @@
 #include <signal.h>
 #include <sys/eventfd.h>
 #include <sys/signalfd.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <unistd.h>
 
 #include <memory>
@@ -39,7 +41,7 @@
 
 #include "host/commands/process_sandboxer/policies.h"
 
-using absl::ErrnoToStatusCode;
+using absl::ErrnoToStatus;
 using absl::OkStatus;
 using absl::Status;
 using absl::StatusCode;
@@ -48,6 +50,7 @@ using sandbox2::Executor;
 using sandbox2::Policy;
 using sandbox2::Sandbox2;
 using sapi::file::CleanPath;
+using sapi::file::JoinPath;
 
 namespace cuttlefish {
 namespace process_sandboxer {
@@ -85,6 +88,30 @@ class SandboxManager::ManagedProcess {
   std::unique_ptr<Sandbox2> sandbox_;
 };
 
+class SandboxManager::SocketClient {
+ public:
+  SocketClient(int client_fd) : client_fd_(client_fd) {}
+  SocketClient(SocketClient&) = delete;
+  ~SocketClient() {
+    if (close(client_fd_) < 0) {
+      PLOG(ERROR) << "`close` failed";
+    }
+  }
+
+  int ClientFd() const { return client_fd_; }
+
+  absl::Status HandleMessage() {
+    char buf;
+    if (read(client_fd_, &buf, sizeof(buf)) < 0) {
+      return ErrnoToStatus(errno, "`read` failed");
+    }
+    return Status(StatusCode::kUnimplemented, "TODO(schuffelen)");
+  }
+
+ private:
+  int client_fd_;
+};
+
 StatusOr<std::unique_ptr<SandboxManager>> SandboxManager::Create(
     HostInfo host_info) {
   std::unique_ptr<SandboxManager> manager(new SandboxManager());
@@ -92,38 +119,65 @@ StatusOr<std::unique_ptr<SandboxManager>> SandboxManager::Create(
   manager->runtime_dir_ =
       absl::StrFormat("/tmp/sandbox_manager.%u.XXXXXX", getpid());
   if (mkdtemp(manager->runtime_dir_.data()) == nullptr) {
-    return Status(ErrnoToStatusCode(errno), "mkdtemp failed");
+    return ErrnoToStatus(errno, "mkdtemp failed");
   }
   VLOG(1) << "Created temporary directory '" << manager->runtime_dir_ << "'";
 
   sigset_t mask;
   if (sigfillset(&mask) < 0) {
-    return Status(ErrnoToStatusCode(errno), "sigfillset failed");
+    return ErrnoToStatus(errno, "sigfillset failed");
   }
   // TODO(schuffelen): Explore interaction between catching SIGCHLD and sandbox2
   if (sigdelset(&mask, SIGCHLD) < 0) {
-    return Status(ErrnoToStatusCode(errno), "sigdelset failed");
+    return ErrnoToStatus(errno, "sigdelset failed");
   }
   if (sigprocmask(SIG_SETMASK, &mask, NULL) < 0) {
-    return Status(ErrnoToStatusCode(errno), "sigprocmask failed");
+    return ErrnoToStatus(errno, "sigprocmask failed");
   }
   VLOG(1) << "Blocked signals";
 
   manager->signal_fd_ = signalfd(-1, &mask, SFD_CLOEXEC | SFD_NONBLOCK);
   if (manager->signal_fd_ < 0) {
-    return Status(ErrnoToStatusCode(errno), "signalfd failed");
+    return ErrnoToStatus(errno, "signalfd failed");
   }
   VLOG(1) << "Created signalfd";
+
+  manager->server_socket_fd_ =
+      socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0);
+  if (manager->server_socket_fd_ < 0) {
+    return ErrnoToStatus(errno, "`socket` failed");
+  }
+  sockaddr_un socket_name = {
+      .sun_family = AF_UNIX,
+  };
+  std::snprintf(socket_name.sun_path, sizeof(socket_name.sun_path), "%s",
+                manager->ServerSocketOutsidePath().c_str());
+  auto sockname_ptr = reinterpret_cast<sockaddr*>(&socket_name);
+  if (bind(manager->server_socket_fd_, sockname_ptr, sizeof(socket_name)) < 0) {
+    return ErrnoToStatus(errno, "`bind` failed");
+  }
+  if (listen(manager->server_socket_fd_, 10) < 0) {
+    return ErrnoToStatus(errno, "`listen` failed");
+  }
+
   return manager;
 }
 
 SandboxManager::~SandboxManager() {
   VLOG(1) << "Sandbox shutting down";
-  if (!runtime_dir_.empty() && rmdir(runtime_dir_.c_str()) < 0) {
-    LOG(ERROR) << "Failed to remove '" << runtime_dir_ << "'";
+  if (!runtime_dir_.empty()) {
+    if (unlink(ServerSocketOutsidePath().c_str()) < 0) {
+      PLOG(ERROR) << "`unlink` failed";
+    }
+    if (rmdir(runtime_dir_.c_str()) < 0) {
+      PLOG(ERROR) << "Failed to remove '" << runtime_dir_ << "'";
+    }
   }
   if (signal_fd_ >= 0 && close(signal_fd_) < 0) {
-    LOG(ERROR) << "Failed to close signal fd '" << signal_fd_ << "'";
+    PLOG(ERROR) << "Failed to close signal fd '" << signal_fd_ << "'";
+  }
+  if (server_socket_fd_ >= 0 && close(server_socket_fd_) < 0) {
+    PLOG(ERROR) << "Failed to close socket fd '" << server_socket_fd_ << "'";
   }
 }
 
@@ -140,7 +194,7 @@ Status SandboxManager::RunProcess(const std::vector<std::string>& argv,
 
   int event_fd = eventfd(0, EFD_CLOEXEC);
   if (event_fd < 0) {
-    return Status(ErrnoToStatusCode(errno), "`eventfd` failed");
+    return ErrnoToStatus(errno, "`eventfd` failed");
   }
 
   if (VLOG_IS_ON(1)) {
@@ -205,20 +259,29 @@ Status SandboxManager::RunProcess(const std::vector<std::string>& argv,
 bool SandboxManager::Running() const { return running_; }
 
 Status SandboxManager::Iterate() {
-  std::vector<pollfd> poll_fds;
-  poll_fds.emplace_back(pollfd{
-      .fd = signal_fd_,
-      .events = POLLIN,
-  });
+  std::vector<pollfd> poll_fds = {pollfd{
+                                      .fd = signal_fd_,
+                                      .events = POLLIN,
+                                  },
+                                  pollfd{
+                                      .fd = server_socket_fd_,
+                                      .events = POLLIN,
+                                  }};
   for (const auto& managed : sandboxes_) {
     poll_fds.emplace_back(pollfd{
         .fd = managed->EventFd(),
         .events = POLLIN,
     });
   }
+  for (const auto& client : clients_) {
+    poll_fds.emplace_back(pollfd{
+        .fd = client->ClientFd(),
+        .events = POLLIN,
+    });
+  }
 
   if (poll(poll_fds.data(), poll_fds.size(), /* timeout = */ 0) < 0) {
-    return Status(ErrnoToStatusCode(errno), "`poll` failed");
+    return ErrnoToStatus(errno, "`poll` failed");
   }
 
   for (const auto& poll_fd : poll_fds) {
@@ -229,6 +292,26 @@ Status SandboxManager::Iterate() {
       auto status = HandleSignal();
       if (!status.ok()) {
         return status;
+      }
+      continue;
+    }
+    if (poll_fd.fd == server_socket_fd_) {
+      int client = accept4(server_socket_fd_, nullptr, nullptr, SOCK_CLOEXEC);
+      if (client < 0) {
+        return ErrnoToStatus(errno, "`accept` failed");
+      }
+      clients_.emplace_back(new SocketClient(client));
+      continue;
+    }
+    for (auto it = clients_.begin(); it != clients_.end();) {
+      if (poll_fd.fd != (*it)->ClientFd()) {
+        it++;
+        continue;
+      }
+      if (poll_fd.revents & POLLERR || poll_fd.revents & POLLHUP ||
+          poll_fd.revents & POLLNVAL) {
+        it = clients_.erase(it);
+        continue;
       }
     }
     for (auto it = sandboxes_.begin(); it != sandboxes_.end();) {
@@ -243,7 +326,7 @@ Status SandboxManager::HandleSignal() {
   signalfd_siginfo info;
   auto read_res = read(signal_fd_, &info, sizeof(info));
   if (read_res < 0) {
-    return Status(ErrnoToStatusCode(errno), "`read(signal_fd_, ...)` failed");
+    return ErrnoToStatus(errno, "`read(signal_fd_, ...)` failed");
   } else if (read_res == 0) {
     return Status(StatusCode::kInternal, "read(signal_fd_, ...) returned EOF");
   } else if (read_res != (ssize_t)sizeof(info)) {
@@ -261,6 +344,10 @@ Status SandboxManager::HandleSignal() {
     default:
       return Status(StatusCode::kInternal, "Received unexpected signal");
   }
+}
+
+std::string SandboxManager::ServerSocketOutsidePath() const {
+  return JoinPath(runtime_dir_, "/", "server.sock");
 }
 
 }  // namespace process_sandboxer
