@@ -43,9 +43,7 @@ void AppendMapWithReplacement(T* destination, const T& source) {
   }
 }
 
-// TODO(schuffelen): Move more of this into host/libs/vm_manager, as a
-// substitute for the vm_manager comparisons.
-Result<std::unordered_map<std::string, std::string>> VmManagerBootconfig(
+Result<std::unordered_map<std::string, std::string>> ConsoleBootconfig(
     const CuttlefishConfig::InstanceSpecific& instance) {
   std::unordered_map<std::string, std::string> bootconfig_args;
   if (instance.console()) {
@@ -76,7 +74,7 @@ Result<std::unordered_map<std::string, std::string>> BootconfigArgsFromConfig(
   std::unordered_map<std::string, std::string> bootconfig_args;
 
   AppendMapWithReplacement(&bootconfig_args,
-                           CF_EXPECT(VmManagerBootconfig(instance)));
+                           CF_EXPECT(ConsoleBootconfig(instance)));
 
   auto vmm =
       vm_manager::GetVmManager(config.vm_manager(), instance.target_arch());
@@ -190,14 +188,15 @@ Result<std::unordered_map<std::string, std::string>> BootconfigArgsFromConfig(
     bootconfig_args["androidboot.ramdisk_hotswapped"] = "1";
   }
 
+  const auto& secure_hals = CF_EXPECT(config.secure_hals());
   bootconfig_args["androidboot.vendor.apex.com.android.hardware.keymint"] =
-      config.secure_hals().count(SecureHal::GuestKeymintInsecure)
+      secure_hals.count(SecureHal::kGuestKeymintInsecure)
           ? "com.android.hardware.keymint.rust_nonsecure"
           : "com.android.hardware.keymint.rust_cf_remote";
 
   // Preemptive for when we set up the HAL to be runtime selectable
   bootconfig_args["androidboot.vendor.apex.com.android.hardware.gatekeeper"] =
-      config.secure_hals().count(SecureHal::GuestGatekeeperInsecure)
+      secure_hals.count(SecureHal::kGuestGatekeeperInsecure)
           ? "com.android.hardware.gatekeeper.nonsecure"
           : "com.android.hardware.gatekeeper.cf_remote";
 

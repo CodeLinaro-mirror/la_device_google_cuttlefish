@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 The Android Open Source Project
+ * Copyright (C) 2024 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,6 +13,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#pragma once
+#ifndef ANDROID_DEVICE_GOOGLE_CUTTLEFISH_HOST_COMMANDS_PROCESS_SANDBOXER_LOGS_H
+#define ANDROID_DEVICE_GOOGLE_CUTTLEFISH_HOST_COMMANDS_PROCESS_SANDBOXER_LOGS_H
 
-#define PRODUCT_SHIPPING_API_LEVEL 35
+#include <memory>
+#include <string>
+#include <vector>
+
+#include <absl/log/log_sink.h>
+#include <absl/status/status.h>
+#include <absl/status/statusor.h>
+
+namespace cuttlefish {
+namespace process_sandboxer {
+
+absl::Status LogToFiles(const std::vector<std::string>& paths);
+
+}  // namespace process_sandboxer
+}  // namespace cuttlefish
+
+#endif

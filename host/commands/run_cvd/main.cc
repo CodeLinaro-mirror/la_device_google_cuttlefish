@@ -184,24 +184,6 @@ Result<void> StdinValid() {
   return {};
 }
 
-Result<const CuttlefishConfig*> FindConfigFromStdin() {
-  std::string input_files_str;
-  {
-    auto input_fd = SharedFD::Dup(0);
-    auto bytes_read = ReadAll(input_fd, &input_files_str);
-    CF_EXPECT(bytes_read >= 0, "Failed to read input files. Error was \""
-                                   << input_fd->StrError() << "\"");
-  }
-  std::vector<std::string> input_files =
-      android::base::Split(input_files_str, "\n");
-  for (const auto& file : input_files) {
-    if (file.find("cuttlefish_config.json") != std::string::npos) {
-      setenv(kCuttlefishConfigEnvVarName, file.c_str(), /* overwrite */ false);
-    }
-  }
-  return CF_EXPECT(CuttlefishConfig::Get());  // Null check
-}
-
 void ConfigureLogs(const CuttlefishConfig& config,
                    const CuttlefishConfig::InstanceSpecific& instance) {
   auto log_path = instance.launcher_log_path();
@@ -222,18 +204,6 @@ void ConfigureLogs(const CuttlefishConfig& config,
   ::android::base::SetLogger(LogToStderrAndFiles({log_path}, prefix));
 }
 
-Result<void> ChdirIntoRuntimeDir(
-    const CuttlefishConfig::InstanceSpecific& instance) {
-  // Change working directory to the instance directory as early as possible to
-  // ensure all host processes have the same working dir. This helps stop_cvd
-  // find the running processes when it can't establish a communication with the
-  // launcher.
-  CF_EXPECT(chdir(instance.instance_dir().c_str()) == 0,
-            "Unable to change dir into instance directory \""
-                << instance.instance_dir() << "\": " << strerror(errno));
-  return {};
-}
-
 }  // namespace
 
 Result<void> RunCvdMain(int argc, char** argv) {
@@ -242,11 +212,10 @@ Result<void> RunCvdMain(int argc, char** argv) {
   google::ParseCommandLineFlags(&argc, &argv, false);
 
   CF_EXPECT(StdinValid(), "Invalid stdin");
-  auto config = CF_EXPECT(FindConfigFromStdin());
+  auto config = CF_EXPECT(CuttlefishConfig::Get());
   auto environment = config->ForDefaultEnvironment();
   auto instance = config->ForDefaultInstance();
   ConfigureLogs(*config, instance);
-  CF_EXPECT(ChdirIntoRuntimeDir(instance));
 
   fruit::Injector<> injector(runCvdComponent, config, &environment, &instance);
 
