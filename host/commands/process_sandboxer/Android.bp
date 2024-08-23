@@ -26,19 +26,38 @@ cc_binary_host {
     srcs: [
         "logs.cpp",
         "main.cpp",
+        "pidfd.cpp",
         "policies.cpp",
         "policies/baseline.cpp",
         "policies/kernel_log_monitor.cpp",
         "policies/logcat_receiver.cpp",
         "policies/process_sandboxer_test_hello_world.cpp",
         "policies/secure_env.cpp",
+        "poll_callback.cpp",
         "sandbox_manager.cpp",
+        "unique_fd.cpp",
     ],
     shared_libs: ["sandboxed_api_sandbox2"],
     static_libs: [
         "libabsl_host",
         "libcap",
+        "libprocess_sandboxer_proxy_common",
     ],
+    target: {
+        darwin: {
+            enabled: false,
+        },
+        windows: {
+            enabled: false,
+        },
+    },
+}
+
+cc_library_static {
+    name: "libprocess_sandboxer_proxy_common",
+    defaults: ["cuttlefish_buildhost_only"],
+    srcs: ["proxy_common.cpp"],
+    static_libs: ["libabsl_host"],
     target: {
         darwin: {
             enabled: false,
@@ -69,5 +88,25 @@ cc_test_host {
     // TODO(schuffelen): See if this is possible to enable on CI
     test_options: {
         unit_test: false,
+    },
+}
+
+cc_binary_host {
+    name: "sandboxer_proxy",
+    defaults: ["cuttlefish_buildhost_only"],
+    srcs: [
+        "sandboxer_proxy.cpp",
+    ],
+    static_libs: [
+        "libabsl_host",
+        "libprocess_sandboxer_proxy_common",
+    ],
+    target: {
+        darwin: {
+            enabled: false,
+        },
+        windows: {
+            enabled: false,
+        },
     },
 }
