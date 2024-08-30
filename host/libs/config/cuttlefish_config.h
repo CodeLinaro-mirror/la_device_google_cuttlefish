@@ -91,12 +91,15 @@ class CuttlefishConfig {
   std::string assembly_dir() const;
   std::string AssemblyPath(const std::string&) const;
 
+  void set_instances_uds_dir(const std::string&);
   std::string instances_uds_dir() const;
   std::string InstancesUdsPath(const std::string&) const;
 
+  void set_environments_dir(const std::string&);
   std::string environments_dir() const;
   std::string EnvironmentsPath(const std::string&) const;
 
+  void set_environments_uds_dir(const std::string&);
   std::string environments_uds_dir() const;
   std::string EnvironmentsUdsPath(const std::string&) const;
 
@@ -543,6 +546,8 @@ class CuttlefishConfig {
 
     int cpus() const;
 
+    std::string vcpu_config_path() const;
+
     std::string data_policy() const;
 
     int blank_data_image_mb() const;
@@ -765,6 +770,7 @@ class CuttlefishConfig {
     void set_kgdb(bool kgdb);
     void set_target_arch(Arch target_arch);
     void set_cpus(int cpus);
+    void set_vcpu_config_path(const std::string& vcpu_config_path);
     void set_data_policy(const std::string& data_policy);
     void set_blank_data_image_mb(int blank_data_image_mb);
     void set_gdb_port(int gdb_port);
