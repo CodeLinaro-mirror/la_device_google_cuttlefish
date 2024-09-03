@@ -19,49 +19,44 @@
 #include <android-base/logging.h>
 
 #include "common/libs/fs/shared_buf.h"
+#include "common/libs/utils/json.h"
+#include "common/libs/utils/result.h"
 
-namespace monitor {
+namespace cuttlefish::monitor {
 
-std::optional<ReadEventResult> ReadEvent(cuttlefish::SharedFD fd) {
+Result<std::optional<ReadEventResult>> ReadEvent(SharedFD fd) {
   size_t length;
-  ssize_t bytes_read = cuttlefish::ReadExactBinary(fd, &length);
-  if (bytes_read <= 0) {
-    LOG(ERROR) << "Failed to read event buffer size: " << fd->StrError();
+  ssize_t bytes_read = ReadExactBinary(fd, &length);
+
+  CF_EXPECTF(bytes_read >= 0, "Failed reading length: '{}'", fd->StrError());
+  if (bytes_read == 0) {
     return std::nullopt;
   }
+
   std::string buf(length, ' ');
-  bytes_read = cuttlefish::ReadExact(fd, &buf);
-  if (bytes_read <= 0) {
-    LOG(ERROR) << "Failed to read event buffer: " << fd->StrError();
+  bytes_read = ReadExact(fd, &buf);
+  CF_EXPECTF(bytes_read >= 0, "Failed reading event: '{}'", fd->StrError());
+  if (bytes_read == 0) {
     return std::nullopt;
   }
 
-  Json::CharReaderBuilder builder;
-  std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
-  std::string errorMessage;
-  Json::Value message;
-  if (!reader->parse(&*buf.begin(), &*buf.end(), &message, &errorMessage)) {
-    LOG(ERROR) << "Unable to parse event JSON: " << errorMessage;
-    return std::nullopt;
-  }
+  Json::Value message = CF_EXPECT(ParseJson(buf));
 
-  ReadEventResult result = {
-    static_cast<monitor::Event>(message["event"].asInt()),
-    message["metadata"]
-  };
+  ReadEventResult result = {static_cast<Event>(message["event"].asInt()),
+                            message["metadata"]};
   return result;
 }
 
-bool WriteEvent(cuttlefish::SharedFD fd, const Json::Value& event_message) {
+bool WriteEvent(SharedFD fd, const Json::Value& event_message) {
   Json::StreamWriterBuilder factory;
   std::string message_string = Json::writeString(factory, event_message);
   size_t length = message_string.length();
-  ssize_t retval = cuttlefish::WriteAllBinary(fd, &length);
+  ssize_t retval = WriteAllBinary(fd, &length);
   if (retval <= 0) {
     LOG(ERROR) << "Failed to write event buffer size: " << fd->StrError();
     return false;
   }
-  retval = cuttlefish::WriteAll(fd, message_string);
+  retval = WriteAll(fd, message_string);
   if (retval <= 0) {
     LOG(ERROR) << "Failed to write event buffer: " << fd->StrError();
     return false;
@@ -69,4 +64,4 @@ bool WriteEvent(cuttlefish::SharedFD fd, const Json::Value& event_message) {
   return true;
 }
 
-}  // namespace monitor
+}  // namespace cuttlefish::monitor

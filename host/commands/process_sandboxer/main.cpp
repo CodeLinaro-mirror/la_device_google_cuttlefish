@@ -16,6 +16,7 @@
 
 #include <fcntl.h>
 #include <stdlib.h>
+#include <sys/prctl.h>
 
 #include <memory>
 #include <optional>
@@ -36,6 +37,7 @@
 #include <sandboxed_api/util/path.h>
 
 #include "host/commands/process_sandboxer/logs.h"
+#include "host/commands/process_sandboxer/pidfd.h"
 #include "host/commands/process_sandboxer/policies.h"
 #include "host/commands/process_sandboxer/sandbox_manager.h"
 #include "host/commands/process_sandboxer/unique_fd.h"
@@ -45,8 +47,6 @@ inline constexpr char kCuttlefishConfigEnvVarName[] = "CUTTLEFISH_CONFIG_FILE";
 ABSL_FLAG(std::string, host_artifacts_path, "", "Host exes and libs");
 ABSL_FLAG(std::string, environments_dir, "", "Cross-instance environment dir");
 ABSL_FLAG(std::string, environments_uds_dir, "", "Environment unix sockets");
-ABSL_FLAG(std::vector<std::string>, inherited_fds, std::vector<std::string>(),
-          "File descriptors to keep in the sandbox");
 ABSL_FLAG(std::string, instance_uds_dir, "", "Instance unix domain sockets");
 ABSL_FLAG(std::string, log_dir, "", "Where to write log files");
 ABSL_FLAG(std::vector<std::string>, log_files, std::vector<std::string>(),
@@ -87,6 +87,10 @@ absl::Status ProcessSandboxerMain(int argc, char** argv) {
 
   VLOG(1) << "Entering ProcessSandboxerMain";
 
+  if (prctl(PR_SET_CHILD_SUBREAPER, 1) < 0) {
+    return absl::ErrnoToStatus(errno, "prctl(PR_SET_CHILD_SUBREAPER failed");
+  }
+
   HostInfo host{
       .artifacts_path = CleanPath(absl::GetFlag(FLAGS_host_artifacts_path)),
       .cuttlefish_config_path =
@@ -116,33 +120,8 @@ absl::Status ProcessSandboxerMain(int argc, char** argv) {
   }
   std::unique_ptr<SandboxManager> manager = std::move(*sandbox_manager_res);
 
-  bool forwards_stdio[3] = {false, false, false};
   std::vector<std::pair<UniqueFd, int>> fds;
-  for (const std::string& inherited_fd : absl::GetFlag(FLAGS_inherited_fds)) {
-    int fd;
-    if (!absl::SimpleAtoi(inherited_fd, &fd)) {
-      std::string error = absl::StrCat("inherited_fd not int: ", inherited_fd);
-      return absl::InvalidArgumentError(error);
-    } else if (fd < 0) {
-      std::string error = absl::StrCat("negative inherited_fd: ", inherited_fd);
-      return absl::InvalidArgumentError(error);
-    }
-    if (fd <= 2) {
-      forwards_stdio[fd] = true;
-      auto duped = fcntl(fd, F_DUPFD_CLOEXEC, 0);
-      if (duped < 0) {
-        std::string error = absl::StrCat("Failed to `dup`:", inherited_fd);
-        return absl::ErrnoToStatus(errno, error);
-      }
-      fds.emplace_back(UniqueFd(duped), fd);
-    } else {
-      fds.emplace_back(UniqueFd(fd), fd);
-    }
-  }
   for (int i = 0; i <= 2; i++) {
-    if (forwards_stdio[i]) {
-      continue;
-    }
     auto duped = fcntl(i, F_DUPFD_CLOEXEC, 0);
     if (duped < 0) {
       static constexpr char kErr[] = "Failed to `dup` stdio file descriptor";
@@ -163,7 +142,13 @@ absl::Status ProcessSandboxerMain(int argc, char** argv) {
       LOG(ERROR) << "Error in SandboxManager::Iterate: " << iter.ToString();
     }
   }
-  return absl::OkStatus();
+
+  absl::StatusOr<std::unique_ptr<PidFd>> self_pidfd = PidFd::Create(getpid());
+  if (!self_pidfd.ok()) {
+    return self_pidfd.status();
+  }
+
+  return (*self_pidfd)->HaltChildHierarchy();
 }
 
 }  // namespace
