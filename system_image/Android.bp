@@ -330,7 +330,6 @@ android_system_image {
         "android.system.suspend-service",
         "android_vintf_compatibility_matrix_device",
         "android_vintf_manifest",
-        "aosp_cf_x86_64_system-init.environ.rc",
         "apexd",
         "appops",
         "approved-ogki-builds.xml", // base_system
@@ -392,13 +391,13 @@ android_system_image {
         "incident-helper-cmd",
         "incident_helper",
         "incidentd",
-        "init_first_stage", // for boot partition
-        // "init.environ.rc", // TODO: move to soong
+        "init.environ.rc-soong",
         "init.usb.configfs.rc",
         "init.usb.rc",
         "init.zygote32.rc",
         "init.zygote64.rc",
         "init.zygote64_32.rc",
+        "init_first_stage", // for boot partition
         "initial-package-stopped-states.xml",
         "input",
         "installd",
@@ -624,6 +623,7 @@ android_system_image {
                 "android.test.base", // from runtime_libart
                 "android.test.mock", // base_system
                 "android.test.runner", // base_system
+                "aosp_cf_x86_64_system-build.prop",
                 "aosp_mainline_modules", // ok
                 "build_flag_system", // base_system
                 "charger_res_images", // generic_system
@@ -655,7 +655,6 @@ android_system_image {
                 "selinux_policy_system_soong", // ok
                 "services", // base_system
                 "shell_and_utilities_system", // ok
-                "system-build.prop",
                 "system_compatibility_matrix.xml", //base_system
                 "telephony-common", // libs from TeleService
                 "voip-common", // base_system
@@ -821,10 +820,9 @@ prebuilt_etc {
     no_full_install: true,
 }
 
-prebuilt_root {
-    name: "aosp_cf_x86_64_system-init.environ.rc",
-    src: "init.environ.rc",
-    filename: "init.environ.rc",
-    install_in_root: true,
+build_prop {
+    name: "aosp_cf_x86_64_system-build.prop",
+    stem: "build.prop",
+    product_config: ":product_config",
     no_full_install: true,
 }
