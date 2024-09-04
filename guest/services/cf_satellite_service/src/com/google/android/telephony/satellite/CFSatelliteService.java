@@ -17,6 +17,7 @@
 package com.google.android.telephony.satellite;
 
 import android.annotation.NonNull;
+import android.annotation.Nullable;
 import android.content.Intent;
 import android.os.Binder;
 import android.os.IBinder;
@@ -25,18 +26,19 @@ import android.telephony.IIntegerConsumer;
 import android.telephony.satellite.stub.ISatelliteCapabilitiesConsumer;
 import android.telephony.satellite.stub.ISatelliteListener;
 import android.telephony.satellite.stub.NTRadioTechnology;
+import android.telephony.satellite.stub.PointingInfo;
 import android.telephony.satellite.stub.SatelliteCapabilities;
 import android.telephony.satellite.stub.SatelliteDatagram;
+import android.telephony.satellite.stub.SatelliteResult;
 import android.telephony.satellite.stub.SatelliteImplBase;
 import android.telephony.satellite.stub.SatelliteModemState;
-import android.telephony.satellite.stub.SatelliteResult;
 import android.telephony.satellite.stub.SatelliteService;
-import android.telephony.satellite.stub.SatelliteModemEnableRequestAttributes;
 import android.telephony.satellite.stub.SystemSelectionSpecifier;
 
 import com.android.internal.util.FunctionalUtils;
 import com.android.telephony.Rlog;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -59,6 +61,7 @@ public class CFSatelliteService extends SatelliteImplBase {
 
     private boolean mIsCommunicationAllowedInLocation;
     private boolean mIsEnabled;
+    private boolean mIsProvisioned;
     private boolean mIsSupported;
     private int mModemState;
     private boolean mIsEmergnecy;
@@ -73,6 +76,7 @@ public class CFSatelliteService extends SatelliteImplBase {
         super(executor);
         mIsCommunicationAllowedInLocation = true;
         mIsEnabled = false;
+        mIsProvisioned = false;
         mIsSupported = true;
         mModemState = SatelliteModemState.SATELLITE_MODEM_STATE_OFF;
         mIsEmergnecy = false;
@@ -128,15 +132,15 @@ public class CFSatelliteService extends SatelliteImplBase {
     }
 
     @Override
-    public void requestSatelliteEnabled(SatelliteModemEnableRequestAttributes enableAttributes,
-            @NonNull IIntegerConsumer errorCallback) {
+    public void requestSatelliteEnabled(boolean enableSatellite, boolean enableDemoMode,
+        boolean isEmergency, @NonNull IIntegerConsumer errorCallback) {
         logd("requestSatelliteEnabled");
-        if (enableAttributes.isEnabled) {
+        if (enableSatellite) {
             enableSatellite(errorCallback);
         } else {
             disableSatellite(errorCallback);
         }
-        mIsEmergnecy = enableAttributes.isEmergencyMode;
+        mIsEmergnecy = isEmergency;
     }
 
     private void enableSatellite(@NonNull IIntegerConsumer errorCallback) {
@@ -189,6 +193,29 @@ public class CFSatelliteService extends SatelliteImplBase {
     public void stopSendingSatellitePointingInfo(@NonNull IIntegerConsumer errorCallback) {
         logd("stopSendingSatellitePointingInfo");
         runWithExecutor(() -> errorCallback.accept(SatelliteResult.SATELLITE_RESULT_SUCCESS));
+    }
+
+    @Override
+    public void provisionSatelliteService(@NonNull String token, @NonNull byte[] provisionData,
+            @NonNull IIntegerConsumer errorCallback) {
+        logd("provisionSatelliteService");
+        runWithExecutor(() -> errorCallback.accept(SatelliteResult.SATELLITE_RESULT_SUCCESS));
+        updateSatelliteProvisionState(true);
+    }
+
+    @Override
+    public void deprovisionSatelliteService(@NonNull String token,
+            @NonNull IIntegerConsumer errorCallback) {
+        logd("deprovisionSatelliteService");
+        runWithExecutor(() -> errorCallback.accept(SatelliteResult.SATELLITE_RESULT_SUCCESS));
+        updateSatelliteProvisionState(false);
+    }
+
+    @Override
+    public void requestIsSatelliteProvisioned(@NonNull IIntegerConsumer errorCallback,
+            @NonNull IBooleanConsumer callback) {
+        logd("requestIsSatelliteProvisioned");
+        runWithExecutor(() -> callback.accept(mIsProvisioned));
     }
 
     @Override
@@ -247,6 +274,11 @@ public class CFSatelliteService extends SatelliteImplBase {
                 SatelliteResult.SATELLITE_RESULT_REQUEST_NOT_SUPPORTED));
             return false;
         }
+        if (!mIsProvisioned) {
+            runWithExecutor(() -> errorCallback.accept(
+                SatelliteResult.SATELLITE_RESULT_SERVICE_NOT_PROVISIONED));
+            return false;
+        }
         if (!mIsEnabled) {
             runWithExecutor(() -> errorCallback.accept(
                 SatelliteResult.SATELLITE_RESULT_INVALID_MODEM_STATE));
@@ -267,6 +299,21 @@ public class CFSatelliteService extends SatelliteImplBase {
         mListeners.forEach(listener -> runWithExecutor(() ->
                 listener.onSatelliteModemStateChanged(modemState)));
         mModemState = modemState;
+    }
+
+    /**
+     * Update the satellite provision state and notify listeners if it changed.
+     *
+     * @param isProvisioned {@code true} if the satellite is currently provisioned and
+     *                      {@code false} if it is not.
+     */
+    private void updateSatelliteProvisionState(boolean isProvisioned) {
+        if (isProvisioned == mIsProvisioned) {
+            return;
+        }
+        mIsProvisioned = isProvisioned;
+        mListeners.forEach(listener -> runWithExecutor(() ->
+                listener.onSatelliteProvisionStateChanged(mIsProvisioned)));
     }
 
     /**
