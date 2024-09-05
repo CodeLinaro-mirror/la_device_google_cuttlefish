@@ -16,20 +16,18 @@
 
 #include "host/commands/process_sandboxer/policies.h"
 
+#include "sandboxed_api/sandbox2/allow_all_syscalls.h"
 #include "sandboxed_api/sandbox2/policybuilder.h"
-#include "sandboxed_api/util/path.h"
 
-using sapi::file::JoinPath;
+namespace cuttlefish::process_sandboxer {
 
-namespace cuttlefish {
-namespace process_sandboxer {
-
-sandbox2::PolicyBuilder HelloWorldPolicy(const HostInfo& host) {
-  auto exe =
-      JoinPath(host.artifacts_path, "testcases", "process_sandboxer_test",
-               "x86_64", "process_sandboxer_test_hello_world");
-  return BaselinePolicy(host, exe);
+sandbox2::PolicyBuilder ModemSimulatorPolicy(const HostInfo& host) {
+  // TODO: b/318601112 - Add system call policy. This only applies namespaces.
+  return BaselinePolicy(host, host.HostToolExe("modem_simulator"))
+      .AddDirectory(host.log_dir, /* is_ro= */ false)
+      .AddFile(host.cuttlefish_config_path)
+      .AddDirectory(host.artifacts_path + "/etc/modem_simulator")
+      .DefaultAction(sandbox2::AllowAllSyscalls());
 }
 
-}  // namespace process_sandboxer
-}  // namespace cuttlefish
+}  // namespace cuttlefish::process_sandboxer

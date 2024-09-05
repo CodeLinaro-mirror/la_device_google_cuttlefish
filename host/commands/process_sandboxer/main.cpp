@@ -14,7 +14,9 @@
  * limitations under the License.
  */
 
+#include <fcntl.h>
 #include <stdlib.h>
+#include <sys/prctl.h>
 
 #include <memory>
 #include <optional>
@@ -35,6 +37,7 @@
 #include <sandboxed_api/util/path.h>
 
 #include "host/commands/process_sandboxer/logs.h"
+#include "host/commands/process_sandboxer/pidfd.h"
 #include "host/commands/process_sandboxer/policies.h"
 #include "host/commands/process_sandboxer/sandbox_manager.h"
 #include "host/commands/process_sandboxer/unique_fd.h"
@@ -42,13 +45,14 @@
 inline constexpr char kCuttlefishConfigEnvVarName[] = "CUTTLEFISH_CONFIG_FILE";
 
 ABSL_FLAG(std::string, host_artifacts_path, "", "Host exes and libs");
+ABSL_FLAG(std::string, environments_dir, "", "Cross-instance environment dir");
+ABSL_FLAG(std::string, environments_uds_dir, "", "Environment unix sockets");
+ABSL_FLAG(std::string, instance_uds_dir, "", "Instance unix domain sockets");
 ABSL_FLAG(std::string, log_dir, "", "Where to write log files");
-ABSL_FLAG(std::vector<std::string>, inherited_fds, std::vector<std::string>(),
-          "File descriptors to keep in the sandbox");
-ABSL_FLAG(std::string, runtime_dir, "",
-          "Working directory of host executables");
 ABSL_FLAG(std::vector<std::string>, log_files, std::vector<std::string>(),
           "File paths outside the sandbox to write logs to");
+ABSL_FLAG(std::string, runtime_dir, "",
+          "Working directory of host executables");
 ABSL_FLAG(bool, verbose_stderr, false, "Write debug messages to stderr");
 
 namespace cuttlefish::process_sandboxer {
@@ -83,12 +87,24 @@ absl::Status ProcessSandboxerMain(int argc, char** argv) {
 
   VLOG(1) << "Entering ProcessSandboxerMain";
 
-  HostInfo host;
-  host.artifacts_path = CleanPath(absl::GetFlag(FLAGS_host_artifacts_path));
-  host.cuttlefish_config_path =
-      CleanPath(FromEnv(kCuttlefishConfigEnvVarName).value_or(""));
-  host.log_dir = CleanPath(absl::GetFlag(FLAGS_log_dir));
-  host.runtime_dir = CleanPath(absl::GetFlag(FLAGS_runtime_dir));
+  if (prctl(PR_SET_CHILD_SUBREAPER, 1) < 0) {
+    return absl::ErrnoToStatus(errno, "prctl(PR_SET_CHILD_SUBREAPER failed");
+  }
+
+  HostInfo host{
+      .artifacts_path = CleanPath(absl::GetFlag(FLAGS_host_artifacts_path)),
+      .cuttlefish_config_path =
+          CleanPath(FromEnv(kCuttlefishConfigEnvVarName).value_or("")),
+      .environments_dir = CleanPath(absl::GetFlag(FLAGS_environments_dir)),
+      .environments_uds_dir =
+          CleanPath(absl::GetFlag(FLAGS_environments_uds_dir)),
+      .instance_uds_dir = CleanPath(absl::GetFlag(FLAGS_instance_uds_dir)),
+      .log_dir = CleanPath(absl::GetFlag(FLAGS_log_dir)),
+      .runtime_dir = CleanPath(absl::GetFlag(FLAGS_runtime_dir)),
+  };
+
+  VLOG(1) << host;
+
   setenv("LD_LIBRARY_PATH", JoinPath(host.artifacts_path, "lib64").c_str(), 1);
 
   if (args.size() < 2) {
@@ -105,18 +121,19 @@ absl::Status ProcessSandboxerMain(int argc, char** argv) {
   std::unique_ptr<SandboxManager> manager = std::move(*sandbox_manager_res);
 
   std::vector<std::pair<UniqueFd, int>> fds;
-  for (const std::string& inherited_fd : absl::GetFlag(FLAGS_inherited_fds)) {
-    int fd;
-    if (!absl::SimpleAtoi(inherited_fd, &fd)) {
-      std::string error = absl::StrCat("inherited_fd not int: ", inherited_fd);
-      return absl::InvalidArgumentError(error);
+  for (int i = 0; i <= 2; i++) {
+    auto duped = fcntl(i, F_DUPFD_CLOEXEC, 0);
+    if (duped < 0) {
+      static constexpr char kErr[] = "Failed to `dup` stdio file descriptor";
+      return absl::ErrnoToStatus(errno, kErr);
     }
-    fds.emplace_back(UniqueFd(fd), fd);
+    fds.emplace_back(UniqueFd(duped), i);
   }
 
-  absl::Status run = manager->RunProcess(std::move(exe_argv), std::move(fds));
-  if (!run.ok()) {
-    return run;
+  absl::Status status =
+      manager->RunProcess(std::nullopt, std::move(exe_argv), std::move(fds));
+  if (!status.ok()) {
+    return status;
   }
 
   while (manager->Running()) {
@@ -125,7 +142,13 @@ absl::Status ProcessSandboxerMain(int argc, char** argv) {
       LOG(ERROR) << "Error in SandboxManager::Iterate: " << iter.ToString();
     }
   }
-  return absl::OkStatus();
+
+  absl::StatusOr<std::unique_ptr<PidFd>> self_pidfd = PidFd::Create(getpid());
+  if (!self_pidfd.ok()) {
+    return self_pidfd.status();
+  }
+
+  return (*self_pidfd)->HaltChildHierarchy();
 }
 
 }  // namespace

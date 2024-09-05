@@ -16,23 +16,19 @@
 
 #include "host/commands/process_sandboxer/policies.h"
 
-#include <sys/prctl.h>
-
+#include "sandboxed_api/sandbox2/allow_all_syscalls.h"
+#include "sandboxed_api/sandbox2/allow_unrestricted_networking.h"
 #include "sandboxed_api/sandbox2/policybuilder.h"
 
-namespace cuttlefish {
-namespace process_sandboxer {
+namespace cuttlefish::process_sandboxer {
 
-sandbox2::PolicyBuilder LogcatReceiverPolicy(const HostInfo& host) {
-  return BaselinePolicy(host, host.HostToolExe("logcat_receiver"))
+sandbox2::PolicyBuilder TcpConnectorPolicy(const HostInfo& host) {
+  // TODO: b/318586626 - Add system call policy. This only applies namespaces.
+  return BaselinePolicy(host, host.HostToolExe("tcp_connector"))
       .AddDirectory(host.log_dir, /* is_ro= */ false)
       .AddFile(host.cuttlefish_config_path)
-      .AllowHandleSignals()
-      .AllowOpen()
-      .AllowRead()
-      .AllowSafeFcntl()
-      .AllowWrite();
+      .Allow(sandbox2::UnrestrictedNetworking())
+      .DefaultAction(sandbox2::AllowAllSyscalls());
 }
 
-}  // namespace process_sandboxer
-}  // namespace cuttlefish
+}  // namespace cuttlefish::process_sandboxer

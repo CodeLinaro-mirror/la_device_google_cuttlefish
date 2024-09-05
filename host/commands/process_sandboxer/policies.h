@@ -16,6 +16,7 @@
 #ifndef ANDROID_DEVICE_GOOGLE_CUTTLEFISH_HOST_COMMANDS_SANDBOX_PROCESS_POLICIES_H
 #define ANDROID_DEVICE_GOOGLE_CUTTLEFISH_HOST_COMMANDS_SANDBOX_PROCESS_POLICIES_H
 
+#include <ostream>
 #include <string>
 #include <string_view>
 
@@ -25,23 +26,34 @@ namespace cuttlefish {
 namespace process_sandboxer {
 
 struct HostInfo {
+  std::string HostToolExe(std::string_view exe) const;
+
   std::string artifacts_path;
   std::string cuttlefish_config_path;
+  std::string environments_dir;
+  std::string environments_uds_dir;
+  std::string instance_uds_dir;
   std::string log_dir;
   std::string runtime_dir;
 };
+
+std::ostream& operator<<(std::ostream&, const HostInfo&);
 
 sandbox2::PolicyBuilder BaselinePolicy(const HostInfo&, std::string_view exe);
 
 sandbox2::PolicyBuilder KernelLogMonitorPolicy(const HostInfo&);
 sandbox2::PolicyBuilder LogcatReceiverPolicy(const HostInfo&);
+sandbox2::PolicyBuilder ModemSimulatorPolicy(const HostInfo&);
+sandbox2::PolicyBuilder ProcessRestarterPolicy(const HostInfo&);
+sandbox2::PolicyBuilder RunCvdPolicy(const HostInfo&);
 sandbox2::PolicyBuilder SecureEnvPolicy(const HostInfo&);
-
-// Testing policies
-sandbox2::PolicyBuilder HelloWorldPolicy(const HostInfo&);
+sandbox2::PolicyBuilder SocketVsockProxyPolicy(const HostInfo&);
+sandbox2::PolicyBuilder TcpConnectorPolicy(const HostInfo&);
+sandbox2::PolicyBuilder WebRtcPolicy(const HostInfo&);
 
 std::unique_ptr<sandbox2::Policy> PolicyForExecutable(
-    const HostInfo& host_info, std::string_view executable_path);
+    const HostInfo& host_info, std::string_view server_socket_outside_path,
+    std::string_view executable_path);
 
 }  // namespace process_sandboxer
 }  // namespace cuttlefish
