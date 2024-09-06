@@ -28,12 +28,15 @@
 #include <android-base/strings.h>
 #include <fmt/format.h>
 
+#include "common/libs/fs/shared_buf.h"
+#include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/contains.h"
+#include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/commands/assemble_cvd/boot_image_utils.h"
 #include "host/commands/assemble_cvd/kernel_module_parser.h"
-#include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/config/config_utils.h"
 #include "host/libs/config/known_paths.h"
 
 namespace cuttlefish {
@@ -263,63 +266,58 @@ std::set<std::string> ComputeTransitiveClosure(
 
 // Generate a file_context.bin file which can be used by selinux tools to assign
 // selinux labels to files
-bool GenerateFileContexts(const char* output_path,
-                          const std::string& mount_point,
-                          std::string_view file_label) {
-  const auto file_contexts_txt = std::string(output_path) + ".txt";
-  android::base::unique_fd fd(open(file_contexts_txt.c_str(),
-                                   O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC,
-                                   0644));
-  if (!fd.ok()) {
-    PLOG(ERROR) << "Failed to open " << output_path;
-    return false;
-  }
+Result<void> GenerateFileContexts(const std::string& output_path,
+                                  std::string_view mount_point,
+                                  std::string_view file_label) {
+  const std::string file_contexts_txt = output_path + ".txt";
+  SharedFD fd = SharedFD::Open(file_contexts_txt,
+                               O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+  CF_EXPECTF(fd->IsOpen(), "Can't open '{}': {}", output_path, fd->StrError());
 
-  if (!android::base::WriteStringToFd(
-          fmt::format("{}(/.*)?         u:object_r:{}:s0\n", mount_point,
-                      file_label),
-          fd)) {
-    return false;
-  }
-  Command cmd(HostBinaryPath("sefcontext_compile"));
-  cmd.AddParameter("-o");
-  cmd.AddParameter(output_path);
-  cmd.AddParameter(file_contexts_txt);
-  const auto exit_code = cmd.Start().Wait();
-  return exit_code == 0;
+  std::string line = fmt::format("{}(/.*)?         u:object_r:{}:s0\n",
+                                 mount_point, file_label);
+  CF_EXPECT_EQ(WriteAll(fd, line), line.size(), fd->StrError());
+
+  int exit_code = Execute({
+      HostBinaryPath("sefcontext_compile"),
+      "-o",
+      output_path,
+      file_contexts_txt,
+  });
+
+  CF_EXPECT_EQ(exit_code, 0);
+
+  return {};
 }
 
-bool AddVbmetaFooter(const std::string& output_image,
-                     const std::string& partition_name) {
+Result<void> AddVbmetaFooter(const std::string& output_image,
+                             const std::string& partition_name) {
   // TODO(b/335742241): update to use Avb
-  auto avbtool_path = AvbToolBinary();
-  Command avb_cmd(avbtool_path);
-  // Add host binary path to PATH, so that avbtool can locate host util
-  // binaries such as 'fec'
-  auto PATH =
-      StringFromEnv("PATH", "") + ":" + cpp_dirname(avb_cmd.Executable());
-  // Must unset an existing environment variable in order to modify it
-  avb_cmd.UnsetFromEnvironment("PATH");
-  avb_cmd.AddEnvironmentVariable("PATH", PATH);
+  std::string avbtool_path = AvbToolBinary();
+  // Add host binary path to PATH, so that avbtool can locate host util binaries
+  // such as 'fec'
+  std::string env_path =
+      StringFromEnv("PATH", "") + ":" + cpp_dirname(avbtool_path);
+  Command avb_cmd =
+      Command(AvbToolBinary())
+          // Must unset an existing environment variable in order to modify it
+          .UnsetFromEnvironment("PATH")
+          .AddEnvironmentVariable("PATH", env_path)
+          .AddParameter("add_hashtree_footer")
+          // Arbitrary salt to keep output consistent
+          .AddParameter("--salt")
+          .AddParameter("62BBAAA0", "E4BD99E783AC")
+          .AddParameter("--hash_algorithm")
+          .AddParameter("sha256")
+          .AddParameter("--image")
+          .AddParameter(output_image)
+          .AddParameter("--partition_name")
+          .AddParameter(partition_name);
 
-  avb_cmd.AddParameter("add_hashtree_footer");
-  // Arbitrary salt to keep output consistent
-  avb_cmd.AddParameter("--salt");
-  avb_cmd.AddParameter("62BBAAA0", "E4BD99E783AC");
-  avb_cmd.AddParameter("--hash_algorithm");
-  avb_cmd.AddParameter("sha256");
-  avb_cmd.AddParameter("--image");
-  avb_cmd.AddParameter(output_image);
-  avb_cmd.AddParameter("--partition_name");
-  avb_cmd.AddParameter(partition_name);
+  CF_EXPECT_EQ(avb_cmd.Start().Wait(), 0,
+               "Failed to add avb footer to image " << output_image);
 
-  auto exit_code = avb_cmd.Start().Wait();
-  if (exit_code != 0) {
-    LOG(ERROR) << "Failed to add avb footer to image " << output_image;
-    return false;
-  }
-
-  return true;
+  return {};
 }
 
 }  // namespace
@@ -386,32 +384,31 @@ Result<void> BuildDlkmImage(const std::string& src_dir, const bool is_erofs,
   return {};
 }
 
-bool RepackSuperWithPartition(const std::string& superimg_path,
-                              const std::string& image_path,
-                              const std::string& partition_name) {
-  Command lpadd(HostBinaryPath("lpadd"));
-  lpadd.AddParameter("--replace");
-  lpadd.AddParameter(superimg_path);
-  lpadd.AddParameter(partition_name + "_a");
-  lpadd.AddParameter("google_vendor_dynamic_partitions_a");
-  lpadd.AddParameter(image_path);
-  const auto exit_code = lpadd.Start().Wait();
-  return exit_code == 0;
+Result<void> RepackSuperWithPartition(const std::string& superimg_path,
+                                      const std::string& image_path,
+                                      const std::string& partition_name) {
+  int exit_code = Execute({
+      HostBinaryPath("lpadd"),
+      "--replace",
+      superimg_path,
+      partition_name + "_a",
+      "google_vendor_dynamic_partitions_a",
+      image_path,
+  });
+  CF_EXPECT_EQ(exit_code, 0);
+
+  return {};
 }
 
-bool BuildVbmetaImage(const std::string& image_path,
-                      const std::string& vbmeta_path) {
-  CHECK(!image_path.empty());
-  CHECK(FileExists(image_path));
+Result<void> BuildVbmetaImage(const std::string& image_path,
+                              const std::string& vbmeta_path) {
+  CF_EXPECT(!image_path.empty());
+  CF_EXPECTF(FileExists(image_path), "'{}' does not exist", image_path);
 
   std::unique_ptr<Avb> avbtool = GetDefaultAvb();
-  Result<void> result = avbtool->MakeVbMetaImage(vbmeta_path, {}, {image_path},
-                                                 {"--padding_size", "4096"});
-  if (!result.ok()) {
-    LOG(ERROR) << result.error().Trace();
-    return false;
-  }
-  return true;
+  CF_EXPECT(avbtool->MakeVbMetaImage(vbmeta_path, {}, {image_path},
+                                     {"--padding_size", "4096"}));
+  return {};
 }
 
 std::vector<std::string> Dedup(std::vector<std::string>&& vec) {

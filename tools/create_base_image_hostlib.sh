@@ -33,14 +33,14 @@ DEFINE_string dest_project "$(gcloud config get-value project)" \
   "Project to use for the new image" "p"
 DEFINE_string launch_instance "" \
   "Name of the instance to launch with the new image" "l"
-DEFINE_string source_image_family "debian-11" \
+DEFINE_string source_image_family "debian-12" \
   "Image familty to use as the base" "s"
 DEFINE_string source_image_project debian-cloud \
   "Project holding the base image" "m"
 DEFINE_string repository_url \
   "https://github.com/google/android-cuttlefish.git" \
   "URL to the repository with host changes" "u"
-DEFINE_string repository_branch main \
+DEFINE_string repository_branch v0.9.30 \
   "Branch to check out" "b"
 
 
