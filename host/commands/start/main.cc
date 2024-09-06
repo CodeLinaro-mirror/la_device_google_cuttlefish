@@ -13,10 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifdef __linux__
-#include <sys/prctl.h>
-#endif
-
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -24,6 +20,7 @@
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
+#include <android-base/no_destructor.h>
 #include <android-base/parseint.h>
 #include <gflags/gflags.h>
 
@@ -35,6 +32,8 @@
 #include "host/commands/assemble_cvd/flags_defaults.h"
 #include "host/commands/start/filesystem_explorer.h"
 #include "host/commands/start/flag_forwarder.h"
+#include "host/commands/start/override_bool_arg.h"
+#include "host/commands/start/validate_metrics_confirmation.h"
 #include "host/libs/config/config_utils.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/fetcher_config.h"
@@ -63,8 +62,6 @@ DEFINE_string(file_verbosity, CF_DEFAULTS_FILE_VERBOSITY,
 DEFINE_bool(use_overlay, CF_DEFAULTS_USE_OVERLAY,
             "Capture disk writes an overlay. This is a "
             "prerequisite for powerwash_cvd or multiple instances.");
-DEFINE_bool(share_sched_core, CF_DEFAULTS_SHARE_SCHED_CORE,
-            "Enable sharing cores between Cuttlefish processes.");
 DEFINE_bool(track_host_tools_crc, CF_DEFAULTS_TRACK_HOST_TOOLS_CRC,
             "Track changes to host executables");
 DEFINE_bool(enable_host_sandbox, CF_DEFAULTS_HOST_SANDBOX,
@@ -73,30 +70,7 @@ DEFINE_bool(enable_host_sandbox, CF_DEFAULTS_HOST_SANDBOX,
 namespace cuttlefish {
 namespace {
 
-#ifdef __linux__
-void ShareSchedCore() {
-  // Address ~32% performance penalty introduced with CONFIG_SCHED_CORE=y.
-  // Allowing co-scheduling reduces the performance penalty to ~16% on
-  // n2-standard-4 instances at best.
-#ifndef PR_SCHED_CORE
-#define PR_SCHED_CORE 62
-#endif
-#ifndef PR_SCHED_CORE_CREATE
-#define PR_SCHED_CORE_CREATE 1
-#endif
-#ifndef PR_SCHED_CORE_SCOPE_PROCESS_GROUP
-#define PR_SCHED_CORE_SCOPE_PROCESS_GROUP 2
-#endif
-  int sched = prctl(PR_SCHED_CORE, PR_SCHED_CORE_CREATE, getpid(),
-                    PR_SCHED_CORE_SCOPE_PROCESS_GROUP, 0);
-  if (sched != 0) {
-    PLOG(VERBOSE) << "Failed to apply co-scheduling policy. If the kernel has"
-                  << " CONFIG_SCHED_CORE=y, may be performance penalties.";
-  } else {
-    LOG(VERBOSE) << "Applied PR_SCHED_CORE co-scheduling policy";
-  }
-}
-#endif
+using android::base::NoDestructor;
 
 std::string SubtoolPath(const std::string& subtool_base) {
   auto my_own_dir = android::base::GetExecutableDirectory();
@@ -116,7 +90,41 @@ std::string SandboxerPath() { return SubtoolPath("process_sandboxer"); }
 int InvokeAssembler(const std::string& assembler_stdin,
                     std::string& assembler_stdout,
                     const std::vector<std::string>& argv) {
-  Command assemble_cmd(AssemblerPath());
+  Command assemble_cmd(FLAGS_enable_host_sandbox ? SandboxerPath()
+                                                 : AssemblerPath());
+  if (FLAGS_enable_host_sandbox) {
+    // sandbox2 always has uid 1000
+    std::string environments_uds_dir = "/tmp/cf_env_1000";
+    std::string instance_uds_dir = "/tmp/cf_avd_1000/cvd-1";
+
+    std::string root_dir = StringFromEnv("HOME", "");
+    CHECK(!root_dir.empty()) << "No `HOME` env var";
+    root_dir += "/cuttlefish";
+    std::string assembly_dir = root_dir + "/assembly";
+    std::string environments_dir = root_dir + "/environments";
+    std::string runtime_dir = root_dir + "/instances/cvd-1";
+    std::string logs_dir = runtime_dir + "/logs";
+
+    std::vector<std::string> make_dirs = {environments_uds_dir,
+                                          instance_uds_dir, assembly_dir,
+                                          runtime_dir, logs_dir};
+
+    for (const std::string& dir : make_dirs) {
+      auto res = EnsureDirectoryExists(dir);
+      CHECK(res.ok()) << res.error().FormatForEnv();
+    }
+
+    assemble_cmd.AddParameter("--assembly_dir=", assembly_dir)
+        .AddParameter("--environments_dir=", environments_dir)
+        .AddParameter("--environments_uds_dir=", environments_uds_dir)
+        .AddParameter("--instance_uds_dir=", instance_uds_dir)
+        .AddParameter("--runtime_dir=", runtime_dir)
+        .AddParameter("--host_artifacts_path=", DefaultHostArtifactsPath(""))
+        .AddParameter("--guest_image_path=", DefaultGuestImagePath(""))
+        .AddParameter("--log_dir=", logs_dir);
+
+    assemble_cmd.AddParameter("--").AddParameter(AssemblerPath());
+  }
   for (const auto& arg : argv) {
     assemble_cmd.AddParameter(arg);
   }
@@ -129,12 +137,14 @@ Subprocess StartRunner(SharedFD runner_stdin, const CuttlefishConfig& config,
                        const std::vector<std::string>& argv) {
   Command run_cmd(FLAGS_enable_host_sandbox ? SandboxerPath() : RunnerPath());
   if (FLAGS_enable_host_sandbox) {
-    run_cmd.AddParameter("--environments_dir=", config.environments_dir())
+    run_cmd.AddParameter("--assembly_dir=", config.assembly_dir())
+        .AddParameter("--environments_dir=", config.environments_dir())
         .AddParameter("--environments_uds_dir=", config.environments_uds_dir())
         .AddParameter("--instance_uds_dir=", instance.instance_uds_dir())
         .AddParameter("--log_dir=", instance.PerInstanceLogPath(""))
         .AddParameter("--runtime_dir=", instance.instance_dir())
-        .AddParameter("--host_artifacts_path=", DefaultHostArtifactsPath(""));
+        .AddParameter("--host_artifacts_path=", DefaultHostArtifactsPath(""))
+        .AddParameter("--guest_image_path=", DefaultGuestImagePath(""));
     std::string log_files = instance.PerInstanceLogPath("sandbox.log");
     if (!instance.run_as_daemon()) {
       log_files += "," + instance.PerInstanceLogPath("launcher.log");
@@ -160,70 +170,6 @@ std::string WriteFiles(FetcherConfig fetcher_config) {
   return output_streambuf.str();
 }
 
-std::string ValidateMetricsConfirmation(std::string use_metrics) {
-  if (use_metrics == "") {
-    if (CuttlefishConfig::ConfigExists()) {
-      auto config = CuttlefishConfig::Get();
-      if (config) {
-        if (config->enable_metrics() == CuttlefishConfig::Answer::kYes) {
-          use_metrics = "y";
-        } else if (config->enable_metrics() == CuttlefishConfig::Answer::kNo) {
-          use_metrics = "n";
-        }
-      }
-    }
-  }
-
-  std::cout << "===================================================================\n";
-  std::cout << "NOTICE:\n\n";
-  std::cout << "By using this Android Virtual Device, you agree to\n";
-  std::cout << "Google Terms of Service (https://policies.google.com/terms).\n";
-  std::cout << "The Google Privacy Policy (https://policies.google.com/privacy)\n";
-  std::cout << "describes how Google handles information generated as you use\n";
-  std::cout << "Google Services.";
-  char ch = !use_metrics.empty() ? tolower(use_metrics.at(0)) : -1;
-  if (ch != 'n') {
-    if (use_metrics.empty()) {
-      std::cout << "\n===================================================================\n";
-      std::cout << "Automatically send diagnostic information to Google, such as crash\n";
-      std::cout << "reports and usage data from this Android Virtual Device. You can\n";
-      std::cout << "adjust this permission at any time by running\n";
-      std::cout << "\"launch_cvd -report_anonymous_usage_stats=n\". (Y/n)?:";
-    } else {
-      std::cout << " You can adjust the permission for sending\n";
-      std::cout << "diagnostic information to Google, such as crash reports and usage\n";
-      std::cout << "data from this Android Virtual Device, at any time by running\n";
-      std::cout << "\"launch_cvd -report_anonymous_usage_stats=n\"\n";
-      std::cout << "===================================================================\n\n";
-    }
-  } else {
-    std::cout << "\n===================================================================\n\n";
-  }
-  for (;;) {
-    switch (ch) {
-      case 0:
-      case '\r':
-      case '\n':
-      case 'y':
-        return "y";
-      case 'n':
-        return "n";
-      default:
-        std::cout << "Must accept/reject anonymous usage statistics reporting (Y/n): ";
-        FALLTHROUGH_INTENDED;
-      case -1:
-        std::cin.get(ch);
-        // if there's no tty the EOF flag is set, in which case default to 'n'
-        if (std::cin.eof()) {
-          ch = 'n';
-          std::cout << "n\n";  // for consistency with user input
-        }
-        ch = tolower(ch);
-    }
-  }
-  return "";
-}
-
 bool HostToolsUpdated() {
   if (CuttlefishConfig::ConfigExists()) {
     auto config = CuttlefishConfig::Get();
@@ -240,103 +186,40 @@ bool HostToolsUpdated() {
 // Used to find bool flag and convert "flag"/"noflag" to "--flag=value"
 // This is the solution for vectorize bool flags in gFlags
 
-std::unordered_set<std::string> kBoolFlags = {
-    "guest_enforce_security",
-    "use_random_serial",
-    "use_allocd",
-    "use_sdcard",
-    "pause_in_bootloader",
-    "daemon",
-    "enable_minimal_mode",
-    "enable_modem_simulator",
-    "console",
-    "enable_sandbox",
-    "enable_virtiofs",
-    "enable_usb",
-    "restart_subprocesses",
-    "enable_gpu_udmabuf",
-    "enable_gpu_vhost_user",
-    "enable_audio",
-    "start_gnss_proxy",
-    "enable_bootanimation",
-    "record_screen",
-    "protected_vm",
-    "enable_kernel_log",
-    "kgdb",
-    "start_webrtc",
-    "smt",
-    "vhost_net",
-    "vhost_user_vsock",
-    "chromeos_boot",
-    "enable_host_sandbox",
-    "fail_fast",
-    "vhost_user_block",
-};
-
-struct BooleanFlag {
-  bool is_bool_flag;
-  bool bool_flag_value;
-  std::string name;
-};
-BooleanFlag IsBoolArg(const std::string& argument) {
-  // Validate format
-  // we only deal with special bool case: -flag, --flag, -noflag, --noflag
-  // and convert to -flag=true, --flag=true, -flag=false, --flag=false
-  // others not in this format just return false
-  std::string_view name = argument;
-  if (!android::base::ConsumePrefix(&name, "-")) {
-    return {false, false, ""};
-  }
-  android::base::ConsumePrefix(&name, "-");
-  std::size_t found = name.find('=');
-  if (found != std::string::npos) {
-    // found "=", --flag=value case, it doesn't need convert
-    return {false, false, ""};
-  }
-
-  // Validate it is part of the set
-  std::string result_name(name);
-  std::string_view new_name = result_name;
-  if (result_name.length() == 0) {
-    return {false, false, ""};
-  }
-  if (kBoolFlags.find(result_name) != kBoolFlags.end()) {
-    // matched -flag, --flag
-    return {true, true, result_name};
-  } else if (android::base::ConsumePrefix(&new_name, "no")) {
-    // 2nd chance to check -noflag, --noflag
-    result_name = new_name;
-    if (kBoolFlags.find(result_name) != kBoolFlags.end()) {
-      // matched -noflag, --noflag
-      return {true, false, result_name};
-    }
-  }
-  // return status
-  return {false, false, ""};
-}
-
-std::string FormatBoolString(const std::string& name_str, bool value) {
-  std::string new_flag = "--" + name_str;
-  if (value) {
-    new_flag += "=true";
-  } else {
-    new_flag += "=false";
-  }
-  return new_flag;
-}
-
-bool OverrideBoolArg(std::vector<std::string>& args) {
-  bool overridden = false;
-  for (int index = 0; index < args.size(); index++) {
-    const std::string curr_arg = args[index];
-    BooleanFlag value = IsBoolArg(curr_arg);
-    if (value.is_bool_flag) {
-      // Override the value
-      args[index] = FormatBoolString(value.name, value.bool_flag_value);
-      overridden = true;
-    }
-  }
-  return overridden;
+const std::unordered_set<std::string>& BoolFlags() {
+  static const NoDestructor<std::unordered_set<std::string>> bool_flags({
+      "chromeos_boot",
+      "console",
+      "daemon",
+      "enable_audio",
+      "enable_bootanimation",
+      "enable_gpu_udmabuf",
+      "enable_gpu_vhost_user",
+      "enable_host_sandbox",
+      "enable_kernel_log",
+      "enable_minimal_mode",
+      "enable_modem_simulator",
+      "enable_sandbox",
+      "enable_usb",
+      "enable_virtiofs",
+      "fail_fast",
+      "guest_enforce_security",
+      "kgdb",
+      "pause_in_bootloader",
+      "protected_vm",
+      "record_screen",
+      "restart_subprocesses",
+      "smt",
+      "start_gnss_proxy",
+      "start_webrtc",
+      "use_allocd",
+      "use_random_serial",
+      "use_sdcard",
+      "vhost_net",
+      "vhost_user_block",
+      "vhost_user_vsock",
+  });
+  return *bool_flags;
 }
 
 int CvdInternalStartMain(int argc, char** argv) {
@@ -364,21 +247,12 @@ int CvdInternalStartMain(int argc, char** argv) {
 
   // Used to find bool flag and convert "flag"/"noflag" to "--flag=value"
   // This is the solution for vectorize bool flags in gFlags
-  if (OverrideBoolArg(args)) {
-    for (int i = 1; i < argc; i++) {
-      argv[i] = &args[i-1][0]; // args[] start from 0
-    }
+  args = OverrideBoolArg(std::move(args), BoolFlags());
+  for (int i = 1; i < argc; i++) {
+    argv[i] = args[i - 1].data();  // args[] start from 0
   }
 
   gflags::ParseCommandLineNonHelpFlags(&argc, &argv, false);
-
-  if (FLAGS_share_sched_core) {
-#ifdef __linux__
-    ShareSchedCore();
-#else
-    LOG(ERROR) << "--shared_sched_core is unsupported on this platform";
-#endif
-  }
 
   forwarder.UpdateFlagDefaults();
 
@@ -399,6 +273,12 @@ int CvdInternalStartMain(int argc, char** argv) {
   if (!instance_nums.ok()) {
     LOG(ERROR) << instance_nums.error().FormatForEnv();
     abort();
+  }
+
+  // TODO(schuffelen): Lift instance id assumptions in sandboxing
+  if (FLAGS_enable_host_sandbox) {
+    CHECK_EQ(instance_nums->size(), 1) << "At most one host-sandboxed device";
+    CHECK_EQ((*instance_nums)[0], 1) << "Host-sandboxed device needs id=1";
   }
 
   if (CuttlefishConfig::ConfigExists()) {
