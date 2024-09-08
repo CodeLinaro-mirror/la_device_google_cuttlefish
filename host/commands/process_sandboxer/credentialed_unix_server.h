@@ -13,21 +13,31 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#ifndef ANDROID_DEVICE_GOOGLE_CUTTLEFISH_HOST_COMMANDS_PROCESS_SANDBOXER_CREDENTIALED_UNIX_SERVER_H
+#define ANDROID_DEVICE_GOOGLE_CUTTLEFISH_HOST_COMMANDS_PROCESS_SANDBOXER_CREDENTIALED_UNIX_SERVER_H
 
-#include "host/commands/process_sandboxer/policies.h"
+#include <string>
 
-#include <sandboxed_api/sandbox2/allow_all_syscalls.h>
-#include <sandboxed_api/sandbox2/policybuilder.h>
+#include <absl/status/statusor.h>
+
+#include "host/commands/process_sandboxer/unique_fd.h"
 
 namespace cuttlefish::process_sandboxer {
 
-sandbox2::PolicyBuilder ModemSimulatorPolicy(const HostInfo& host) {
-  // TODO: b/318601112 - Add system call policy. This only applies namespaces.
-  return BaselinePolicy(host, host.HostToolExe("modem_simulator"))
-      .AddDirectory(host.log_dir, /* is_ro= */ false)
-      .AddFile(host.cuttlefish_config_path)
-      .AddDirectory(host.host_artifacts_path + "/etc/modem_simulator")
-      .DefaultAction(sandbox2::AllowAllSyscalls());
-}
+class CredentialedUnixServer {
+ public:
+  static absl::StatusOr<CredentialedUnixServer> Open(const std::string& path);
+
+  absl::StatusOr<UniqueFd> AcceptClient();
+
+  int Fd() const;
+
+ private:
+  CredentialedUnixServer(UniqueFd);
+
+  UniqueFd fd_;
+};
 
 }  // namespace cuttlefish::process_sandboxer
+
+#endif

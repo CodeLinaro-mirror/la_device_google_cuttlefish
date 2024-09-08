@@ -13,21 +13,31 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#ifndef ANDROID_DEVICE_GOOGLE_CUTTLEFISH_HOST_COMMANDS_PROCESS_SANDBOXER_SIGNAL_FD_H
+#define ANDROID_DEVICE_GOOGLE_CUTTLEFISH_HOST_COMMANDS_PROCESS_SANDBOXER_SIGNAL_FD_H
 
-#include "host/commands/process_sandboxer/policies.h"
+#include <sys/signalfd.h>
 
-#include <sandboxed_api/sandbox2/allow_all_syscalls.h>
-#include <sandboxed_api/sandbox2/policybuilder.h>
+#include <absl/status/statusor.h>
+
+#include "host/commands/process_sandboxer/unique_fd.h"
 
 namespace cuttlefish::process_sandboxer {
 
-sandbox2::PolicyBuilder ModemSimulatorPolicy(const HostInfo& host) {
-  // TODO: b/318601112 - Add system call policy. This only applies namespaces.
-  return BaselinePolicy(host, host.HostToolExe("modem_simulator"))
-      .AddDirectory(host.log_dir, /* is_ro= */ false)
-      .AddFile(host.cuttlefish_config_path)
-      .AddDirectory(host.host_artifacts_path + "/etc/modem_simulator")
-      .DefaultAction(sandbox2::AllowAllSyscalls());
-}
+class SignalFd {
+ public:
+  static absl::StatusOr<SignalFd> AllExceptSigChld();
+
+  absl::StatusOr<signalfd_siginfo> ReadSignal();
+
+  int Fd() const;
+
+ private:
+  SignalFd(UniqueFd);
+
+  UniqueFd fd_;
+};
 
 }  // namespace cuttlefish::process_sandboxer
+
+#endif
