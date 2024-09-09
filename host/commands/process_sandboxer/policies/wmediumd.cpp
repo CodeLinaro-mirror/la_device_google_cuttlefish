@@ -17,7 +17,6 @@
 #include "host/commands/process_sandboxer/policies.h"
 
 #include <sandboxed_api/sandbox2/allow_all_syscalls.h>
-#include <sandboxed_api/sandbox2/allow_unrestricted_networking.h>
 #include <sandboxed_api/sandbox2/policybuilder.h>
 #include <sandboxed_api/util/path.h>
 
@@ -25,17 +24,16 @@ namespace cuttlefish::process_sandboxer {
 
 using sapi::file::JoinPath;
 
-sandbox2::PolicyBuilder WebRtcPolicy(const HostInfo& host) {
-  // TODO: b/318609110 - Add system call policy. This only applies namespaces.
-  return BaselinePolicy(host, host.HostToolExe("webRTC"))
-      .AddDirectory(host.log_dir, /* is_ro= */ false)
-      .AddDirectory(host.host_artifacts_path + "/usr/share/webrtc/assets")
+sandbox2::PolicyBuilder WmediumdPolicy(const HostInfo& host) {
+  // TODO: b/318610207 - Add system call policy. This only applies namespaces.
+  return BaselinePolicy(host, host.HostToolExe("wmediumd"))
+      .AddDirectory(host.environments_uds_dir, /* is_ro= */ false)
       .AddDirectory(host.instance_uds_dir, /* is_ro= */ false)
-      .AddDirectory(JoinPath(host.runtime_dir, "recording"), /* is_ro= */ false)
+      .AddDirectory(host.log_dir, /* is_ro= */ false)
+      .AddFile("/dev/urandom")  // For gRPC
+      .AddFile(JoinPath(host.environments_dir, "env-1", "wmediumd.cfg"),
+               /* is_ro= */ false)
       .AddFile(host.cuttlefish_config_path)
-      .AddFile("/dev/urandom")
-      .AddFile("/run/cuttlefish/operator")
-      .Allow(sandbox2::UnrestrictedNetworking())
       .DefaultAction(sandbox2::AllowAllSyscalls());
 }
 
