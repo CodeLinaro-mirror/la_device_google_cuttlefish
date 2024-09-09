@@ -106,19 +106,36 @@ if [ ! -f /mnt/image/etc/resolv.conf ]; then
 fi
 sudo chroot /mnt/image /usr/bin/apt update
 sudo chroot /mnt/image /usr/bin/apt install -y "${tmp_debs[@]}"
+
+# Install JDK.
+#
+# JDK it's not required to launch a CF device. It's required to run
+# some of Tradefed tests that are run from the CF host side like
+# some CF gfx tests, adb tests, etc.
+sudo chroot /mnt/image /usr/bin/wget -P /usr/java https://download.java.net/java/GA/jdk21.0.2/f2283984656d49d69e91c558476027ac/13/GPL/openjdk-21.0.2_linux-x64_bin.tar.gz
+# https://download.java.net/java/GA/jdk21.0.2/f2283984656d49d69e91c558476027ac/13/GPL/openjdk-21.0.2_linux-x64_bin.tar.gz.sha256
+export JDK21_SHA256SUM=a2def047a73941e01a73739f92755f86b895811afb1f91243db214cff5bdac3f
+if ! echo "$JDK21_SHA256SUM /usr/java/openjdk-21.0.2_linux-x64_bin.tar.gz" | sudo chroot /mnt/image /usr/bin/sha256sum -c ; then
+  echo "** ERROR: KEY MISMATCH **"; popd >/dev/null; exit 1;
+fi
+sudo chroot /mnt/image /usr/bin/tar xvzf /usr/java/openjdk-21.0.2_linux-x64_bin.tar.gz -C /usr/java
+sudo chroot /mnt/image /usr/bin/rm /usr/java/openjdk-21.0.2_linux-x64_bin.tar.gz
+echo 'JAVA_HOME=/usr/java/jdk-21.0.2' | sudo chroot /mnt/image /usr/bin/tee -a /etc/environment >/dev/null
+echo 'JAVA_HOME=/usr/java/jdk-21.0.2' | sudo chroot /mnt/image /usr/bin/tee -a /etc/profile >/dev/null
+echo 'PATH=$JAVA_HOME/bin:$PATH' | sudo chroot /mnt/image /usr/bin/tee -a /etc/profile >/dev/null
+
 # install tools dependencies
-sudo chroot /mnt/image /usr/bin/apt install -y openjdk-17-jre
 sudo chroot /mnt/image /usr/bin/apt install -y unzip bzip2 lzop
 sudo chroot /mnt/image /usr/bin/apt install -y aapt
 sudo chroot /mnt/image /usr/bin/apt install -y screen # needed by tradefed
 
 sudo chroot /mnt/image /usr/bin/find /home -ls
-sudo chroot /mnt/image /usr/bin/apt install -t bullseye-backports -y linux-image-cloud-amd64
+sudo chroot /mnt/image /usr/bin/apt install -t bookworm-security -y linux-image-cloud-amd64
 
 # update QEMU version to most recent backport
-sudo chroot /mnt/image /usr/bin/apt install -y --only-upgrade qemu-system-x86 -t bullseye-backports
-sudo chroot /mnt/image /usr/bin/apt install -y --only-upgrade qemu-system-arm -t bullseye-backports
-sudo chroot /mnt/image /usr/bin/apt install -y --only-upgrade qemu-system-misc -t bullseye-backports
+sudo chroot /mnt/image /usr/bin/apt install -y --only-upgrade qemu-system-x86 -t bookworm
+sudo chroot /mnt/image /usr/bin/apt install -y --only-upgrade qemu-system-arm -t bookworm
+sudo chroot /mnt/image /usr/bin/apt install -y --only-upgrade qemu-system-misc -t bookworm
 
 # Install GPU driver dependencies
 sudo cp install_nvidia.sh /mnt/image/
@@ -126,11 +143,11 @@ sudo chroot /mnt/image /usr/bin/bash install_nvidia.sh
 sudo rm /mnt/image/install_nvidia.sh
 
 # Vulkan loader
-sudo chroot /mnt/image /usr/bin/apt install -y libvulkan1 -t bullseye-backports
+sudo chroot /mnt/image /usr/bin/apt install -y libvulkan1 -t bookworm
 
 # Wayland-server needed to have Nvidia driver fail gracefully when attempting to
 # use the EGL API on GCE instances without a GPU.
-sudo chroot /mnt/image /usr/bin/apt install -y libwayland-server0 -t bullseye-backports
+sudo chroot /mnt/image /usr/bin/apt install -y libwayland-server0 -t bookworm
 
 # Clean up the builder's version of resolv.conf
 sudo rm /mnt/image/etc/resolv.conf

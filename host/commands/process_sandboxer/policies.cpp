@@ -17,44 +17,81 @@
 #include "host/commands/process_sandboxer/policies.h"
 
 #include <memory>
+#include <ostream>
+#include <string_view>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "sandboxed_api/sandbox2/policybuilder.h"
 #include "sandboxed_api/util/path.h"
 
+#include "host/commands/process_sandboxer/proxy_common.h"
+
 using sapi::file::JoinPath;
 
-namespace cuttlefish {
-namespace process_sandboxer {
+namespace cuttlefish::process_sandboxer {
+
+std::string HostInfo::HostToolExe(std::string_view exe) const {
+  return JoinPath(host_artifacts_path, "bin", exe);
+}
+
+std::ostream& operator<<(std::ostream& out, const HostInfo& host) {
+  out << "HostInfo {\n";
+  out << "\tassembly_dir: \"" << host.assembly_dir << "\"\n";
+  out << "\tcuttlefish_config_path: \"" << host.cuttlefish_config_path
+      << "\"\n";
+  out << "\tenvironments_dir: \"" << host.environments_dir << "\"\n";
+  out << "\tenvironments_uds_dir: " << host.environments_uds_dir << "\"\n";
+  out << "\tguest_image_path: " << host.guest_image_path << "\t\n";
+  out << "\thost_artifacts_path: \"" << host.host_artifacts_path << "\"\n";
+  out << "\tinstance_uds_dir: " << host.instance_uds_dir << "\"\n";
+  out << "\tlog_dir: " << host.log_dir << "\"\n";
+  out << "\truntime_dir: " << host.runtime_dir << "\"\n";
+  return out << "}";
+}
 
 std::unique_ptr<sandbox2::Policy> PolicyForExecutable(
-    const HostInfo& host, std::string_view executable) {
+    const HostInfo& host, std::string_view server_socket_outside_path,
+    std::string_view executable) {
   using Builder = sandbox2::PolicyBuilder(const HostInfo&);
   absl::flat_hash_map<std::string, Builder*> builders;
 
-  builders[JoinPath(host.artifacts_path, "bin", "kernel_log_monitor")] =
-      KernelLogMonitorPolicy;
-  builders[JoinPath(host.artifacts_path, "bin", "logcat_receiver")] =
-      LogcatReceiverPolicy;
-  builders[JoinPath(host.artifacts_path, "bin", "secure_env")] =
-      SecureEnvPolicy;
+  builders[host.HostToolExe("adb_connector")] = AdbConnectorPolicy;
+  builders[host.HostToolExe("assemble_cvd")] = AssembleCvdPolicy;
+  builders[host.HostToolExe("echo_server")] = EchoServerPolicy;
+  builders[host.HostToolExe("gnss_grpc_proxy")] = GnssGrpcProxyPolicy;
+  builders[host.HostToolExe("kernel_log_monitor")] = KernelLogMonitorPolicy;
+  builders[host.HostToolExe("log_tee")] = LogTeePolicy;
+  builders[host.HostToolExe("logcat_receiver")] = LogcatReceiverPolicy;
+  builders[host.HostToolExe("modem_simulator")] = ModemSimulatorPolicy;
+  builders[host.HostToolExe("process_restarter")] = ProcessRestarterPolicy;
+  builders[host.HostToolExe("run_cvd")] = RunCvdPolicy;
+  builders[host.HostToolExe("screen_recording_server")] =
+      ScreenRecordingServerPolicy;
+  builders[host.HostToolExe("secure_env")] = SecureEnvPolicy;
+  builders[host.HostToolExe("socket_vsock_proxy")] = SocketVsockProxyPolicy;
+  builders[host.HostToolExe("tcp_connector")] = TcpConnectorPolicy;
+  builders[host.HostToolExe("tombstone_receiver")] = TombstoneReceiverPolicy;
+  builders[host.HostToolExe("webRTC")] = WebRtcPolicy;
+  builders[host.HostToolExe("wmediumd")] = WmediumdPolicy;
 
-  // TODO(schuffelen): Don't include test policies in the production impl
-  builders[JoinPath(host.artifacts_path, "testcases", "process_sandboxer_test",
-                    "x86_64", "process_sandboxer_test_hello_world")] =
-      HelloWorldPolicy;
+  std::set<std::string> no_policy_set = NoPolicy(host);
+  for (const auto& [exe, policy_builder] : builders) {
+    if (no_policy_set.count(exe)) {
+      LOG(FATAL) << "Overlap in policy map and no-policy set: '" << exe << "'";
+    }
+  }
 
   if (auto it = builders.find(executable); it != builders.end()) {
-    return (it->second)(host).BuildOrDie();
+    // TODO(schuffelen): Only share this with executables known to launch others
+    return (it->second)(host)
+        .AddFileAt(server_socket_outside_path, kManagerSocketPath, false)
+        .BuildOrDie();
+  } else if (no_policy_set.count(std::string(executable))) {
+    return nullptr;
   } else {
-    for (const auto& [target, unused] : builders) {
-      LOG(ERROR) << "Available policy: '" << target << "'";
-    }
-    LOG(FATAL) << "No policy defined for '" << executable << "'";
-    return sandbox2::PolicyBuilder().BuildOrDie();
+    LOG(FATAL) << "Unknown executable '" << executable << "'";
   }
 }
 
-}  // namespace process_sandboxer
-}  // namespace cuttlefish
+}  // namespace cuttlefish::process_sandboxer

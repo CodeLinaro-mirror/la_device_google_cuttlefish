@@ -659,7 +659,6 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
                                   instance.switches_socket_path(), "]");
   }
 
-  SharedFD wifi_tap;
   // GPU capture can only support named files and not file descriptors due to
   // having to pass arguments to crosvm via a wrapper script.
 #ifdef __linux__
@@ -676,7 +675,7 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     crosvm_cmd.AddTap(instance.ethernet_tap_name(), instance.ethernet_mac(), ethernet_pci);
 
     if (!config.virtio_mac80211_hwsim() && environment.enable_wifi()) {
-      wifi_tap = crosvm_cmd.AddTap(instance.wifi_tap_name());
+      crosvm_cmd.AddTap(instance.wifi_tap_name());
     }
   }
 #endif
@@ -892,10 +891,12 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   if (instance.enable_virtiofs()) {
     CF_EXPECT(instance.enable_sandbox(),
               "virtiofs is currently not supported without sandboxing");
-    // Set up directory shared with virtiofs
+    // Set up directory shared with virtiofs, setting security_ctx option to
+    // false prevents host error when unable to write data in the
+    // /proc/thread-self/attr/fscreate file.
     crosvm_cmd.Cmd().AddParameter(
         "--shared-dir=", instance.PerInstancePath(kSharedDirName),
-        ":shared:type=fs");
+        ":shared:type=fs:security_ctx=false");
   }
 
   if (instance.target_arch() == Arch::X86_64) {

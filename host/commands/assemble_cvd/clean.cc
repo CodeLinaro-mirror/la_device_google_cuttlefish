@@ -26,6 +26,7 @@
 #include <android-base/strings.h>
 
 #include "common/libs/utils/files.h"
+#include "common/libs/utils/in_sandbox.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/commands/assemble_cvd/flags.h"
@@ -71,9 +72,11 @@ Result<void> CleanPriorFiles(const std::string& path,
                   << "\"");
   }
   if (rmdir(path.c_str()) < 0) {
-    if (!(errno == EEXIST || errno == ENOTEMPTY)) {
-      // If EEXIST or ENOTEMPTY, probably because a file was preserved
-      return CF_ERRNO("Could not rmdir \"" << path << "\"");
+    if (!(errno == EEXIST || errno == ENOTEMPTY || errno == EROFS ||
+          errno == EBUSY)) {
+      // If EEXIST or ENOTEMPTY, probably because a file was preserved. EROFS
+      // or EBUSY likely means a bind mount for host-sandboxing mode.
+      return CF_ERRF("Could not rmdir '{}': '{}'", path, strerror(errno));
     }
   }
   return {};
@@ -97,7 +100,8 @@ Result<void> CleanPriorFiles(const std::vector<std::string>& paths,
   LOG(DEBUG) << fmt::format("Prior dirs: {}", fmt::join(prior_dirs, ", "));
   LOG(DEBUG) << fmt::format("Prior files: {}", fmt::join(prior_files, ", "));
 
-  if (prior_dirs.size() > 0 || prior_files.size() > 0) {
+  // TODO(schuffelen): Fix logic for host-sandboxing mode.
+  if (!InSandbox() && (prior_dirs.size() > 0 || prior_files.size() > 0)) {
     Command lsof("lsof");
     lsof.AddParameter("-t");
     for (const auto& prior_dir : prior_dirs) {

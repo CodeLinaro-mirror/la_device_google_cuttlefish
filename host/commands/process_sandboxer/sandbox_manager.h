@@ -18,18 +18,22 @@
 
 #include <list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include <absl/status/status.h>
 #include <absl/status/statusor.h>
+#include <absl/types/span.h>
+#include <sandboxed_api/sandbox2/policy.h>
 
+#include "host/commands/process_sandboxer/credentialed_unix_server.h"
 #include "host/commands/process_sandboxer/policies.h"
+#include "host/commands/process_sandboxer/signal_fd.h"
 #include "host/commands/process_sandboxer/unique_fd.h"
 
-namespace cuttlefish {
-namespace process_sandboxer {
+namespace cuttlefish::process_sandboxer {
 
 class SandboxManager {
  public:
@@ -42,23 +46,43 @@ class SandboxManager {
   /** Start a process with the given `argv` and file descriptors in `fds`.
    *
    * For (key, value) pairs in `fds`, `key` on the outside is mapped to `value`
-   * in the sandbox, and `key` is `close`d on the outside.
-   */
-  absl::Status RunProcess(const std::vector<std::string>& argv,
-                          std::vector<std::pair<UniqueFd, int>> fds);
+   * in the sandbox, and `key` is `close`d on the outside. */
+  absl::Status RunProcess(std::optional<int> client_fd,
+                          absl::Span<const std::string> argv,
+                          std::vector<std::pair<UniqueFd, int>> fds,
+                          absl::Span<const std::string> env);
 
   /** Block until an event happens, and process all open events. */
   absl::Status Iterate();
   bool Running() const;
 
  private:
-  class ManagedProcess;
+  class ManagedProcess {
+   public:
+    virtual ~ManagedProcess() = default;
+    virtual std::optional<int> ClientFd() const = 0;
+    virtual int PollFd() const = 0;
+    virtual absl::StatusOr<uintptr_t> ExitCode() = 0;
+  };
+  class ProcessNoSandbox;
+  class SandboxedProcess;
   class SocketClient;
 
   using ClientIter = std::list<std::unique_ptr<SocketClient>>::iterator;
   using SboxIter = std::list<std::unique_ptr<ManagedProcess>>::iterator;
 
-  SandboxManager() = default;
+  SandboxManager(HostInfo, std::string runtime_dir, SignalFd,
+                 CredentialedUnixServer);
+
+  absl::Status RunSandboxedProcess(std::optional<int> client_fd,
+                                   absl::Span<const std::string> argv,
+                                   std::vector<std::pair<UniqueFd, int>> fds,
+                                   absl::Span<const std::string> env,
+                                   std::unique_ptr<sandbox2::Policy> policy);
+  absl::Status RunProcessNoSandbox(std::optional<int> client_fd,
+                                   absl::Span<const std::string> argv,
+                                   std::vector<std::pair<UniqueFd, int>> fds,
+                                   absl::Span<const std::string> env);
 
   // Callbacks for the Iterate() `poll` loop.
   absl::Status ClientMessage(ClientIter it, short revents);
@@ -66,18 +90,15 @@ class SandboxManager {
   absl::Status ProcessExit(SboxIter it, short revents);
   absl::Status Signalled(short revents);
 
-  std::string ServerSocketOutsidePath() const;
-
   HostInfo host_info_;
   bool running_ = true;
   std::string runtime_dir_;
-  std::list<std::unique_ptr<ManagedProcess>> sandboxes_;
+  std::list<std::unique_ptr<ManagedProcess>> subprocesses_;
   std::list<std::unique_ptr<SocketClient>> clients_;
-  UniqueFd signal_fd_;
-  UniqueFd server_fd_;
+  SignalFd signals_;
+  CredentialedUnixServer server_;
 };
 
-}  // namespace process_sandboxer
-}  // namespace cuttlefish
+}  // namespace cuttlefish::process_sandboxer
 
 #endif

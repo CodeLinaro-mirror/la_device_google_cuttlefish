@@ -18,11 +18,11 @@
 
 #include <sys/types.h>
 
-#include <memory>
 #include <utility>
 #include <vector>
 
 #include <absl/status/statusor.h>
+#include <absl/types/span.h>
 
 #include "host/commands/process_sandboxer/unique_fd.h"
 
@@ -31,8 +31,21 @@ namespace process_sandboxer {
 
 class PidFd {
  public:
-  static absl::StatusOr<std::unique_ptr<PidFd>> Create(pid_t pid);
-  PidFd(PidFd&) = delete;
+  /** Returns a managed pidfd tracking a previously started process with `pid`.
+   *
+   * Only reliably refers to the process `pid` if the caller can guarantee it
+   * was not reaped while this is executing, otherwise it may refer to an
+   * unknown process. */
+  static absl::StatusOr<PidFd> FromRunningProcess(pid_t pid);
+
+  /** Launches a subprocess and returns a pidfd tracking the newly launched
+   * process. */
+  static absl::StatusOr<PidFd> LaunchSubprocess(
+      absl::Span<const std::string> argv,
+      std::vector<std::pair<UniqueFd, int>> fds,
+      absl::Span<const std::string> env);
+
+  int Get() const;
 
   /** Copies file descriptors from the target process, mapping them into the
    * current process.
@@ -41,9 +54,18 @@ class PidFd {
    * file descriptors in the current process.
    */
   absl::StatusOr<std::vector<std::pair<UniqueFd, int>>> AllFds();
+  absl::StatusOr<std::vector<std::string>> Argv();
+  absl::StatusOr<std::vector<std::string>> Env();
+
+  /** Halt the process and all its descendants. */
+  absl::Status HaltHierarchy();
+  /** Halt all descendants of the process. Only safe to use if the caller
+   * guarantees the process doesn't spawn or reap any children while running. */
+  absl::Status HaltChildHierarchy();
 
  private:
   PidFd(UniqueFd, pid_t);
+  absl::Status SendSignal(int signal);
 
   UniqueFd fd_;
   pid_t pid_;

@@ -28,12 +28,15 @@
 #include <android-base/strings.h>
 #include <fmt/format.h>
 
+#include "common/libs/fs/shared_buf.h"
+#include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/contains.h"
+#include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/commands/assemble_cvd/boot_image_utils.h"
 #include "host/commands/assemble_cvd/kernel_module_parser.h"
-#include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/config/config_utils.h"
 #include "host/libs/config/known_paths.h"
 
 namespace cuttlefish {
@@ -263,61 +266,58 @@ std::set<std::string> ComputeTransitiveClosure(
 
 // Generate a file_context.bin file which can be used by selinux tools to assign
 // selinux labels to files
-bool GenerateFileContexts(const char* output_path,
-                          const std::string& mount_point,
-                          std::string_view file_label) {
-  const auto file_contexts_txt = std::string(output_path) + ".txt";
-  android::base::unique_fd fd(open(file_contexts_txt.c_str(),
-                                   O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC,
-                                   0644));
-  if (!fd.ok()) {
-    PLOG(ERROR) << "Failed to open " << output_path;
-    return false;
-  }
+Result<void> GenerateFileContexts(const std::string& output_path,
+                                  std::string_view mount_point,
+                                  std::string_view file_label) {
+  const std::string file_contexts_txt = output_path + ".txt";
+  SharedFD fd = SharedFD::Open(file_contexts_txt,
+                               O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+  CF_EXPECTF(fd->IsOpen(), "Can't open '{}': {}", output_path, fd->StrError());
 
-  if (!android::base::WriteStringToFd(
-          fmt::format("{}(/.*)?         u:object_r:{}:s0\n", mount_point,
-                      file_label),
-          fd)) {
-    return false;
-  }
-  Command cmd(HostBinaryPath("sefcontext_compile"));
-  cmd.AddParameter("-o");
-  cmd.AddParameter(output_path);
-  cmd.AddParameter(file_contexts_txt);
-  const auto exit_code = cmd.Start().Wait();
-  return exit_code == 0;
+  std::string line = fmt::format("{}(/.*)?         u:object_r:{}:s0\n",
+                                 mount_point, file_label);
+  CF_EXPECT_EQ(WriteAll(fd, line), line.size(), fd->StrError());
+
+  int exit_code = Execute({
+      HostBinaryPath("sefcontext_compile"),
+      "-o",
+      output_path,
+      file_contexts_txt,
+  });
+
+  CF_EXPECT_EQ(exit_code, 0);
+
+  return {};
 }
 
-bool AddVbmetaFooter(const std::string& output_image,
-                     const std::string& partition_name) {
+Result<void> AddVbmetaFooter(const std::string& output_image,
+                             const std::string& partition_name) {
   // TODO(b/335742241): update to use Avb
-  auto avbtool_path = AvbToolBinary();
-  Command avb_cmd(avbtool_path);
-  // Add host binary path to PATH, so that avbtool can locate host util
-  // binaries such as 'fec'
-  auto PATH =
-      StringFromEnv("PATH", "") + ":" + cpp_dirname(avb_cmd.Executable());
-  // Must unset an existing environment variable in order to modify it
-  avb_cmd.UnsetFromEnvironment("PATH");
-  avb_cmd.AddEnvironmentVariable("PATH", PATH);
+  std::string avbtool_path = AvbToolBinary();
+  // Add host binary path to PATH, so that avbtool can locate host util binaries
+  // such as 'fec'
+  std::string env_path =
+      StringFromEnv("PATH", "") + ":" + cpp_dirname(avbtool_path);
+  Command avb_cmd =
+      Command(AvbToolBinary())
+          // Must unset an existing environment variable in order to modify it
+          .UnsetFromEnvironment("PATH")
+          .AddEnvironmentVariable("PATH", env_path)
+          .AddParameter("add_hashtree_footer")
+          // Arbitrary salt to keep output consistent
+          .AddParameter("--salt")
+          .AddParameter("62BBAAA0", "E4BD99E783AC")
+          .AddParameter("--hash_algorithm")
+          .AddParameter("sha256")
+          .AddParameter("--image")
+          .AddParameter(output_image)
+          .AddParameter("--partition_name")
+          .AddParameter(partition_name);
 
-  avb_cmd.AddParameter("add_hashtree_footer");
-  // Arbitrary salt to keep output consistent
-  avb_cmd.AddParameter("--salt");
-  avb_cmd.AddParameter("62BBAAA0", "E4BD99E783AC");
-  avb_cmd.AddParameter("--image");
-  avb_cmd.AddParameter(output_image);
-  avb_cmd.AddParameter("--partition_name");
-  avb_cmd.AddParameter(partition_name);
+  CF_EXPECT_EQ(avb_cmd.Start().Wait(), 0,
+               "Failed to add avb footer to image " << output_image);
 
-  auto exit_code = avb_cmd.Start().Wait();
-  if (exit_code != 0) {
-    LOG(ERROR) << "Failed to add avb footer to image " << output_image;
-    return false;
-  }
-
-  return true;
+  return {};
 }
 
 }  // namespace
@@ -331,30 +331,23 @@ bool AddVbmetaFooter(const std::string& output_image,
 // file_contexts previously generated
 // 5. call avbtool to add hashtree footer, so that init/bootloader can verify
 // AVB chain
-bool BuildDlkmImage(const std::string& src_dir, const bool is_erofs,
-                    const std::string& partition_name,
-                    const std::string& output_image) {
-  if (is_erofs) {
-    LOG(ERROR)
-        << "Building DLKM image in EROFS format is currently not supported!";
-    return false;
-  }
-  const auto mount_point = "/" + partition_name;
-  const auto fs_config = output_image + ".fs_config";
-  if (!WriteFsConfig(fs_config.c_str(), src_dir, mount_point)) {
-    return false;
-  }
-  const auto file_contexts_bin = output_image + ".file_contexts";
+Result<void> BuildDlkmImage(const std::string& src_dir, const bool is_erofs,
+                            const std::string& partition_name,
+                            const std::string& output_image) {
+  CF_EXPECT(!is_erofs,
+            "Building DLKM image in EROFS format is currently not supported!");
+
+  const std::string mount_point = "/" + partition_name;
+  const std::string fs_config = output_image + ".fs_config";
+  CF_EXPECT(WriteFsConfig(fs_config.c_str(), src_dir, mount_point));
+
+  const std::string file_contexts_bin = output_image + ".file_contexts";
   if (partition_name == "system_dlkm") {
-    if (!GenerateFileContexts(file_contexts_bin.c_str(), mount_point,
-                              "system_dlkm_file")) {
-      return false;
-    }
+    CF_EXPECT(GenerateFileContexts(file_contexts_bin.c_str(), mount_point,
+                                   "system_dlkm_file"));
   } else {
-    if (!GenerateFileContexts(file_contexts_bin.c_str(), mount_point,
-                              "vendor_file")) {
-      return false;
-    }
+    CF_EXPECT(GenerateFileContexts(file_contexts_bin.c_str(), mount_point,
+                                   "vendor_file"));
   }
 
   // We are using directory size as an estimate of final image size. To avoid
@@ -362,62 +355,60 @@ bool BuildDlkmImage(const std::string& src_dir, const bool is_erofs,
   const auto fs_size = RoundUp(GetDiskUsage(src_dir) + 16 * 1024 * 1024, 4096);
   LOG(INFO) << mount_point << " src dir " << src_dir << " has size "
             << fs_size / 1024 << " KB";
-  const auto mkfs = HostBinaryPath("mkuserimg_mke2fs");
-  Command mkfs_cmd(mkfs);
-  // Arbitrary UUID/seed, just to keep output consistent between runs
-  mkfs_cmd.AddParameter("--mke2fs_uuid");
-  mkfs_cmd.AddParameter("cb09b942-ed4e-46a1-81dd-7d535bf6c4b1");
-  mkfs_cmd.AddParameter("--mke2fs_hash_seed");
-  mkfs_cmd.AddParameter("765d8aba-d93f-465a-9fcf-14bb794eb7f4");
-  // Arbitrary date, just to keep output consistent
-  mkfs_cmd.AddParameter("-T");
-  mkfs_cmd.AddParameter("900979200000");
 
-  // selinux permission to keep selinux happy
-  mkfs_cmd.AddParameter("--fs_config");
-  mkfs_cmd.AddParameter(fs_config);
+  Command mkfs_cmd =
+      Command(HostBinaryPath("mkuserimg_mke2fs"))
+          // Arbitrary UUID/seed, just to keep output consistent between runs
+          .AddParameter("--mke2fs_uuid")
+          .AddParameter("cb09b942-ed4e-46a1-81dd-7d535bf6c4b1")
+          .AddParameter("--mke2fs_hash_seed")
+          .AddParameter("765d8aba-d93f-465a-9fcf-14bb794eb7f4")
+          // Arbitrary date, just to keep output consistent
+          .AddParameter("-T")
+          .AddParameter(900979200000)
+          // selinux permission to keep selinux happy
+          .AddParameter("--fs_config")
+          .AddParameter(fs_config)
 
-  mkfs_cmd.AddParameter(src_dir);
-  mkfs_cmd.AddParameter(output_image);
-  mkfs_cmd.AddParameter("ext4");
-  mkfs_cmd.AddParameter(mount_point);
-  mkfs_cmd.AddParameter(std::to_string(fs_size));
-  mkfs_cmd.AddParameter(file_contexts_bin);
+          .AddParameter(src_dir)
+          .AddParameter(output_image)
+          .AddParameter("ext4")
+          .AddParameter(mount_point)
+          .AddParameter(fs_size)
+          .AddParameter(file_contexts_bin);
 
-  int exit_code = mkfs_cmd.Start().Wait();
-  if (exit_code != 0) {
-    LOG(ERROR) << "Failed to build vendor_dlkm ext4 image";
-    return false;
-  }
-  return AddVbmetaFooter(output_image, partition_name);
+  CF_EXPECT_EQ(mkfs_cmd.Start().Wait(), 0,
+               "Failed to build vendor_dlkm ext4 image");
+  CF_EXPECT(AddVbmetaFooter(output_image, partition_name));
+
+  return {};
 }
 
-bool RepackSuperWithPartition(const std::string& superimg_path,
-                              const std::string& image_path,
-                              const std::string& partition_name) {
-  Command lpadd(HostBinaryPath("lpadd"));
-  lpadd.AddParameter("--replace");
-  lpadd.AddParameter(superimg_path);
-  lpadd.AddParameter(partition_name + "_a");
-  lpadd.AddParameter("google_vendor_dynamic_partitions_a");
-  lpadd.AddParameter(image_path);
-  const auto exit_code = lpadd.Start().Wait();
-  return exit_code == 0;
+Result<void> RepackSuperWithPartition(const std::string& superimg_path,
+                                      const std::string& image_path,
+                                      const std::string& partition_name) {
+  int exit_code = Execute({
+      HostBinaryPath("lpadd"),
+      "--replace",
+      superimg_path,
+      partition_name + "_a",
+      "google_vendor_dynamic_partitions_a",
+      image_path,
+  });
+  CF_EXPECT_EQ(exit_code, 0);
+
+  return {};
 }
 
-bool BuildVbmetaImage(const std::string& image_path,
-                      const std::string& vbmeta_path) {
-  CHECK(!image_path.empty());
-  CHECK(FileExists(image_path));
+Result<void> BuildVbmetaImage(const std::string& image_path,
+                              const std::string& vbmeta_path) {
+  CF_EXPECT(!image_path.empty());
+  CF_EXPECTF(FileExists(image_path), "'{}' does not exist", image_path);
 
   std::unique_ptr<Avb> avbtool = GetDefaultAvb();
-  Result<void> result = avbtool->MakeVbMetaImage(vbmeta_path, {}, {image_path},
-                                                 {"--padding_size", "4096"});
-  if (!result.ok()) {
-    LOG(ERROR) << result.error().Trace();
-    return false;
-  }
-  return true;
+  CF_EXPECT(avbtool->MakeVbMetaImage(vbmeta_path, {}, {image_path},
+                                     {"--padding_size", "4096"}));
+  return {};
 }
 
 std::vector<std::string> Dedup(std::vector<std::string>&& vec) {

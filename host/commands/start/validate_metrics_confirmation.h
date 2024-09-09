@@ -1,4 +1,5 @@
-// Copyright (C) 2024 The Android Open Source Project
+//
+// Copyright (C) 2020 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,15 +12,12 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#pragma once
 
-package {
-    default_applicable_licenses: ["Android-Apache-2.0"],
-}
+#include <string>
 
-// Executables intended to validate process_sandboxer itself
+namespace cuttlefish {
 
-cc_binary_host {
-    name: "process_sandboxer_test_hello_world",
-    defaults: ["cuttlefish_buildhost_only"],
-    srcs: ["process_sandboxer_test_hello_world.cpp"],
+std::string ValidateMetricsConfirmation(std::string use_metrics);
+
 }

@@ -181,28 +181,37 @@ static Result<void> ListenEventsAndProxy(int events_fd,
           "Could not read restore pipe: " << restore_pipe_read->StrError());
     }
     LOG(INFO) << "restoring proxy on CUTTLEFISH_HOST - success";
-    proxy = std::move(CF_EXPECT(StartProxyAsync(server, client)));
+    proxy = CF_EXPECT(StartProxyAsync(server, client));
   }
 #endif
 
   LOG(DEBUG) << "Start reading events to start/stop proxying";
   while (events->IsOpen()) {
-    std::optional<monitor::ReadEventResult> received_event = monitor::ReadEvent(events);
+    Result<std::optional<monitor::ReadEventResult>> received_event =
+        monitor::ReadEvent(events);
 
+    // TODO(schuffelen): Investigate if any errors here are recoverable, and
+    // remove the distinction between EOF and other errors if none are
+    // recoverable.
     if (!received_event) {
-      LOG(ERROR) << "Failed to read a complete kernel log event";
+      LOG(ERROR) << "Failed reading kernel log event: "
+                 << received_event.error().FormatForEnv();
       continue;
     }
+    if (!(*received_event)) {
+      LOG(DEBUG) << "Kernel log message channel closed";
+      break;
+    }
 
-    if (start != -1 && received_event->event == start) {
+    if (start != -1 && (*received_event)->event == start) {
       if (!proxy) {
         LOG(INFO) << "Start event (" << start << ") received. Starting proxy";
-        proxy = std::move(CF_EXPECT(StartProxyAsync(server, client)));
+        proxy = CF_EXPECT(StartProxyAsync(server, client));
       }
       continue;
     }
 
-    if (stop != -1 && received_event->event == stop) {
+    if (stop != -1 && (*received_event)->event == stop) {
       LOG(INFO) << "Stop event (" << start << ") received. Stopping proxy";
       proxy.reset();
       continue;
