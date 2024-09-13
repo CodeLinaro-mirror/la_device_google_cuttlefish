@@ -26,7 +26,6 @@ namespace cuttlefish::process_sandboxer {
 std::set<std::string> NoPolicy(const HostInfo& host) {
   return {
       "/bin/bash",      // TODO: b/359316164
-      "/bin/mv",        // TODO: b/359314840
       "/usr/bin/lsof",  // TODO: b/359314623
                         // TODO: b/359309808
       "/usr/lib/cuttlefish-common/bin/capability_query.py",
@@ -37,7 +36,6 @@ std::set<std::string> NoPolicy(const HostInfo& host) {
       host.HostToolExe("crosvm"),
       host.HostToolExe("extract-ikconfig"),        // TODO: b/359309462
       host.HostToolExe("metrics"),                 // TODO: b/318594189
-      host.HostToolExe("mkenvimage_slim"),         // TODO: b/318610408
       host.HostToolExe("netsimd"),                 // TODO: b/318603863
       host.HostToolExe("newfs_msdos"),             // TODO: b/318611835
       host.HostToolExe("openwrt_control_server"),  // TODO: b/318605411
