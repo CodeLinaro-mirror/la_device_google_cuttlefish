@@ -65,11 +65,17 @@ std::unique_ptr<sandbox2::Policy> PolicyForExecutable(
   builders[host.HostToolExe("logcat_receiver")] = LogcatReceiverPolicy;
   builders[host.HostToolExe("mkenvimage_slim")] = MkEnvImgSlimPolicy;
   builders[host.HostToolExe("modem_simulator")] = ModemSimulatorPolicy;
+  builders[host.HostToolExe("netsimd")] = NetsimdPolicy;
+  builders[host.HostToolExe("newfs_msdos")] = NewFsMsDosPolicy;
+  builders[host.HostToolExe("openwrt_control_server")] =
+      OpenWrtControlServerPolicy;
+  builders[host.HostToolExe("operator_proxy")] = OperatorProxyPolicy;
   builders[host.HostToolExe("process_restarter")] = ProcessRestarterPolicy;
   builders[host.HostToolExe("run_cvd")] = RunCvdPolicy;
   builders[host.HostToolExe("screen_recording_server")] =
       ScreenRecordingServerPolicy;
   builders[host.HostToolExe("secure_env")] = SecureEnvPolicy;
+  builders[host.HostToolExe("simg2img")] = Simg2ImgPolicy;
   builders[host.HostToolExe("socket_vsock_proxy")] = SocketVsockProxyPolicy;
   builders[host.HostToolExe("tcp_connector")] = TcpConnectorPolicy;
   builders[host.HostToolExe("tombstone_receiver")] = TombstoneReceiverPolicy;
