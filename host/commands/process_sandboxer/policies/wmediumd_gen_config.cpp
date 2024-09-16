@@ -18,16 +18,17 @@
 
 #include <sandboxed_api/sandbox2/allow_all_syscalls.h>
 #include <sandboxed_api/sandbox2/policybuilder.h>
+#include <sandboxed_api/util/path.h>
 
 namespace cuttlefish::process_sandboxer {
 
-sandbox2::PolicyBuilder ModemSimulatorPolicy(const HostInfo& host) {
-  // TODO: b/318601112 - Add system call policy. This only applies namespaces.
-  return BaselinePolicy(host, host.HostToolExe("modem_simulator"))
-      .AddDirectory(host.host_artifacts_path + "/etc/modem_simulator")
-      .AddDirectory(host.log_dir, /* is_ro= */ false)
-      .AddDirectory(host.runtime_dir, /* is_ro= */ false)  // modem_nvram.json
-      .AddFile(host.cuttlefish_config_path)
+using sapi::file::JoinPath;
+
+sandbox2::PolicyBuilder WmediumdGenConfigPolicy(const HostInfo& host) {
+  // TODO: b/359313561 - Add system call policy. This only applies namespaces.
+  return BaselinePolicy(host, host.HostToolExe("wmediumd_gen_config"))
+      .AddDirectory(JoinPath(host.environments_dir, "env-1"),
+                    /* is_ro= */ false)
       .DefaultAction(sandbox2::AllowAllSyscalls());
 }
 
