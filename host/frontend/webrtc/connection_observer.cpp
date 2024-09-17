@@ -69,13 +69,30 @@ class ConnectionObserverImpl : public webrtc_streaming::ConnectionObserver {
         lights_observer_(lights_observer) {}
   virtual ~ConnectionObserverImpl() {
     auto display_handler = weak_display_handler_.lock();
+    if (display_handler) {
+      display_handler->RemoveDisplayClient();
+    }
     if (kernel_log_subscription_id_ != -1) {
       kernel_log_events_handler_->Unsubscribe(kernel_log_subscription_id_);
     }
   }
 
   void OnConnected() override {
+    auto display_handler = weak_display_handler_.lock();
+    if (display_handler) {
+      display_handler->AddDisplayClient();
+    }
     SendLastFrameAsync(/*all displays*/ std::nullopt);
+  }
+
+  Result<void> OnMouseMoveEvent(int x, int y) override {
+    CF_EXPECT(input_events_sink_->SendMouseMoveEvent(x, y));
+    return {};
+  }
+
+  Result<void> OnMouseButtonEvent(int button, bool down) override {
+    CF_EXPECT(input_events_sink_->SendMouseButtonEvent(button, down));
+    return {};
   }
 
   Result<void> OnTouchEvent(const std::string &device_label, int x, int y,

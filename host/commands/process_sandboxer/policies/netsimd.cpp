@@ -16,35 +16,24 @@
 
 #include "host/commands/process_sandboxer/policies.h"
 
-#include <sys/socket.h>
-#include <syscall.h>
-
+#include <sandboxed_api/sandbox2/allow_all_syscalls.h>
 #include <sandboxed_api/sandbox2/allow_unrestricted_networking.h>
 #include <sandboxed_api/sandbox2/policybuilder.h>
-#include <sandboxed_api/sandbox2/util/bpf_helper.h>
+#include <sandboxed_api/util/path.h>
 
 namespace cuttlefish::process_sandboxer {
 
-sandbox2::PolicyBuilder SocketVsockProxyPolicy(const HostInfo& host) {
-  return BaselinePolicy(host, host.HostToolExe("socket_vsock_proxy"))
-      .AddDirectory(host.log_dir, /* is_ro= */ false)
-      .AddFile(host.cuttlefish_config_path)
-      .AddPolicyOnSyscall(__NR_socket,
-                          {ARG_32(0), JEQ32(AF_INET, ALLOW),
-                           JEQ32(AF_INET6, ALLOW), JEQ32(AF_VSOCK, ALLOW)})
+using sapi::file::JoinPath;
+
+sandbox2::PolicyBuilder NetsimdPolicy(const HostInfo& host) {
+  // TODO: b/318603863 - Add system call policy. This only applies namespaces.
+  return BaselinePolicy(host, host.HostToolExe("netsimd"))
+      .AddDirectory(JoinPath(host.host_artifacts_path, "bin", "netsim-ui"))
+      .AddDirectory("/tmp", /* is_ro= */ false)  // to create new directories
+      .AddDirectory(JoinPath(host.runtime_dir, "internal"), /* is_ro= */ false)
+      .AddFile("/dev/urandom")  // For gRPC
       .Allow(sandbox2::UnrestrictedNetworking())
-      .AllowEventFd()
-      .AllowFork()  // `clone` for multithreading
-      .AllowHandleSignals()
-      .AllowSafeFcntl()
-      .AllowSyscall(__NR_bind)
-      .AllowSyscall(__NR_connect)
-      .AllowSyscall(__NR_listen)
-      .AllowSyscall(__NR_madvise)
-      .AllowSyscall(__NR_setsockopt)
-      .AllowSyscall(__NR_shutdown)
-      .AllowSyscalls({__NR_accept, __NR_accept4})
-      .AllowTCGETS();
+      .DefaultAction(sandbox2::AllowAllSyscalls());
 }
 
 }  // namespace cuttlefish::process_sandboxer
