@@ -322,14 +322,6 @@ Result<VhostUserDeviceCommands> BuildVhostUserGpu(
   // Connect device to main crosvm:
   gpu_device_cmd.Cmd().AddParameter("--socket=", gpu_device_socket_path);
 
-  main_crosvm_cmd->AddPrerequisite([gpu_device_socket_path]() -> Result<void> {
-#ifdef __linux__
-    return WaitForUnixSocketListeningWithoutConnect(gpu_device_socket_path,
-                                                    /*timeoutSec=*/30);
-#else
-    return CF_ERR("Unhandled check if vhost user gpu ready.");
-#endif
-  });
   main_crosvm_cmd->AddParameter(
       "--vhost-user=gpu,pci-address=", gpu_pci_address,
       ",socket=", gpu_device_socket_path);
@@ -492,6 +484,8 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
 
   crosvm_cmd.Cmd().AddParameter("--core-scheduling=false");
 
+  crosvm_cmd.Cmd().AddParameter("--vhost-user-connect-timeout-ms=", 30 * 1000);
+
   if (instance.vhost_net()) {
     crosvm_cmd.Cmd().AddParameter("--vhost-net");
   }
@@ -651,6 +645,8 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
           ",height=", touchpad_config.height,
           ",name=", kTouchpadDefaultPrefix, i, "]");
     }
+    crosvm_cmd.Cmd().AddParameter(
+        "--input=mouse[path=", instance.mouse_socket_path(), "]");
     crosvm_cmd.Cmd().AddParameter("--input=rotary[path=",
                                   instance.rotary_socket_path(), "]");
     crosvm_cmd.Cmd().AddParameter("--input=keyboard[path=",
@@ -920,7 +916,7 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
 
   if (gpu_capture_enabled) {
     const std::string gpu_capture_basename =
-        cpp_basename(instance.gpu_capture_binary());
+        android::base::Basename(instance.gpu_capture_binary());
 
     auto gpu_capture_logs_path =
         instance.PerInstanceInternalPath("gpu_capture.fifo");
