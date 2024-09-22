@@ -72,6 +72,10 @@ android_symlinks = [
         target: "/storage/self/primary",
         name: "sdcard",
     },
+    {
+        target: "/product/etc/security/adb_keys",
+        name: "adb_keys",
+    },
 ]
 
 phony {
@@ -328,6 +332,7 @@ android_system_image {
         "android.software.webview.prebuilt.xml", // media_system
         "android.software.window_magnification.prebuilt.xml", // handheld_system
         "android.system.suspend-service",
+        "android_vintf_compatibility_matrix_device",
         "android_vintf_manifest",
         "apexd",
         "appops",
@@ -641,7 +646,6 @@ android_system_image {
                 "framework-graphics", // base_system
                 "framework-location", // base_system
                 "framework-minus-apex-install-dependencies", // base_system
-                "framework_compatibility_matrix.device.xml",
                 "hwservicemanager_compat_symlink_module", // base_system
                 "hyph-data",
                 "ims-common", // base_system
@@ -757,6 +761,7 @@ android_system_image {
                 "libmedia_jni", // base_system
                 "libmediandk", // base_system
                 "libminui", // generic_system
+                "libmonkey_jni", // base_system
                 "libmtp", // base_system
                 "libnetd_client", // base_system
                 "libnetlink", // base_system
@@ -802,6 +807,14 @@ android_system_image {
             }),
         },
     },
+}
+
+prebuilt_etc {
+    name: "android_vintf_compatibility_matrix_device",
+    src: "compatibility_matrix.device.xml",
+    filename: "compatibility_matrix.device.xml",
+    relative_install_path: "vintf",
+    no_full_install: true,
 }
 
 prebuilt_etc {
