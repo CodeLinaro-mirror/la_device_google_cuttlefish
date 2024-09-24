@@ -218,7 +218,6 @@ cvd_host_webrtc_assets = [
     "webrtc_index.html",
     "webrtc_index.js",
     "webrtc_location.js",
-    "webrtc_mouse.js",
     "webrtc_rootcanal.js",
     "webrtc_server.crt",
     "webrtc_server.key",
@@ -364,6 +363,12 @@ automotive_proxy_config = [
     "automotive_proxy_config",
 ]
 
+automotive_vhal_prop_configs = [
+    "Host_Prebuilt_VehicleHalDefaultProperties_JSON",
+    "Host_Prebuilt_VehicleHalTestProperties_JSON",
+    "Host_Prebuilt_VehicleHalVendorClusterTestProperties_JSON",
+]
+
 cvd_host_avb_testkey = [
     "cvd_avb_pubkey_rsa2048",
     "cvd_avb_pubkey_rsa4096",
@@ -441,7 +446,8 @@ cvd_host_package_customization {
                 cvd_host_swiftshader_files +
                 cvd_openwrt_images +
                 cvd_host_netsim_gui_assets +
-                automotive_proxy_config,
+                automotive_proxy_config +
+                automotive_vhal_prop_configs,
         },
     },
 
