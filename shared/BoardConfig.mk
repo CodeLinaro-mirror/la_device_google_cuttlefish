@@ -63,12 +63,6 @@ RAMDISK_KERNEL_MODULES ?= \
     virtio-rng.ko \
     vmw_vsock_virtio_transport.ko \
 
-ifeq ($(TARGET_KERNEL_ARCH),arm64)
-BOARD_KERNEL_PATH_16K := kernel/prebuilts/mainline/$(TARGET_KERNEL_ARCH)/16k/kernel-mainline
-BOARD_KERNEL_MODULES_16K += $(wildcard kernel/prebuilts/mainline/$(TARGET_KERNEL_ARCH)/16k/*.ko)
-BOARD_KERNEL_MODULES_16K += $(wildcard kernel/prebuilts/common-modules/virtual-device/mainline/$(TARGET_KERNEL_ARCH)/16k/*.ko)
-endif
-
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES := \
     $(patsubst %,$(KERNEL_MODULES_PATH)/%,$(RAMDISK_KERNEL_MODULES))
 
@@ -96,10 +90,17 @@ BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/cfg8021
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/mac80211.ko)
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/mac80211_hwsim.ko)
 BOARD_DO_NOT_STRIP_VENDOR_RAMDISK_MODULES := true
-ALL_KERNEL_MODULES := $(wildcard $(KERNEL_MODULES_PATH)/*.ko)
 BOARD_VENDOR_KERNEL_MODULES := \
     $(filter-out $(BOARD_VENDOR_RAMDISK_KERNEL_MODULES),\
                  $(wildcard $(KERNEL_MODULES_PATH)/*.ko))
+
+ifeq ($(TARGET_KERNEL_ARCH),arm64)
+ifeq (true,$(PRODUCT_16K_DEVELOPER_OPTION))
+BOARD_KERNEL_PATH_16K := kernel/prebuilts/mainline/$(TARGET_KERNEL_ARCH)/16k/kernel-mainline
+BOARD_KERNEL_MODULES_16K += $(wildcard kernel/prebuilts/mainline/$(TARGET_KERNEL_ARCH)/16k/*.ko)
+BOARD_KERNEL_MODULES_16K += $(wildcard kernel/prebuilts/common-modules/virtual-device/mainline/$(TARGET_KERNEL_ARCH)/16k/*.ko)
+endif
+endif
 
 # TODO(b/170639028): Back up TARGET_NO_BOOTLOADER
 __TARGET_NO_BOOTLOADER := $(TARGET_NO_BOOTLOADER)
