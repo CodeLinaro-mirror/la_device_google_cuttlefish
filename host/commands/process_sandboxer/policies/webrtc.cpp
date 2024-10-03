@@ -17,6 +17,7 @@
 #include "host/commands/process_sandboxer/policies.h"
 
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
@@ -25,6 +26,7 @@
 
 #include <sandboxed_api/sandbox2/allow_unrestricted_networking.h>
 #include <sandboxed_api/sandbox2/policybuilder.h>
+#include <sandboxed_api/sandbox2/trace_all_syscalls.h>
 #include <sandboxed_api/sandbox2/util/bpf_helper.h>
 
 #include "host/commands/process_sandboxer/filesystem.h"
@@ -82,20 +84,20 @@ sandbox2::PolicyBuilder WebRtcPolicy(const HostInfo& host) {
                 JNE32(IPPROTO_TCP, JUMP(&labels, cf_webrtc_setsockopt_end)),
                 // IPPROTO_TCP
                 ARG_32(2),  // optname
-                JEQ32(SO_DEBUG, ALLOW),
+                JEQ32(TCP_NODELAY, ALLOW),
                 JUMP(&labels, cf_webrtc_setsockopt_end),
                 // SOL_IP
                 LABEL(&labels, cf_webrtc_setsockopt_ip),
                 ARG_32(2),  // optname
-                JEQ32(SO_NO_CHECK, ALLOW),
-                JEQ32(SO_DEBUG, ALLOW),
-                JEQ32(SO_SNDBUF, ALLOW),
-                JEQ32(SO_RCVBUF, ALLOW),
+                JEQ32(IP_RECVERR, ALLOW),
+                JEQ32(IP_TOS, ALLOW),
+                JEQ32(IP_RETOPTS, ALLOW),
+                JEQ32(IP_PKTINFO, ALLOW),
                 JUMP(&labels, cf_webrtc_setsockopt_end),
                 // SOL_IPV6
                 LABEL(&labels, cf_webrtc_setsockopt_ipv6),
                 ARG_32(2),  // optname
-                JEQ32(67 /* sometimes SO_SNDTIMEO? */, ALLOW),
+                JEQ32(IPV6_TCLASS, ALLOW),
                 JUMP(&labels, cf_webrtc_setsockopt_end),
                 // SOL_SOCKET
                 LABEL(&labels, cf_webrtc_setsockopt_sol),
@@ -128,6 +130,7 @@ sandbox2::PolicyBuilder WebRtcPolicy(const HostInfo& host) {
       .AllowSyscall(__NR_clone)  // Multithreading
       .AllowSyscall(__NR_connect)
       .AllowSyscall(__NR_ftruncate)
+      .AllowSyscall(__NR_getpeername)
       .AllowSyscall(__NR_getsockname)
       .AllowSyscall(__NR_listen)
       .AllowSyscall(__NR_memfd_create)
@@ -144,7 +147,8 @@ sandbox2::PolicyBuilder WebRtcPolicy(const HostInfo& host) {
       .AllowSyscall(__NR_sendto)
       .AllowSyscall(__NR_shutdown)
       .AllowSyscall(__NR_socketpair)
-      .AllowTCGETS();
+      .AllowTCGETS()
+      .DefaultAction(sandbox2::TraceAllSyscalls());
 }
 
 }  // namespace cuttlefish::process_sandboxer

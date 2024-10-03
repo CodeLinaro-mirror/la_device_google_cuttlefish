@@ -57,6 +57,7 @@ sandbox2::PolicyBuilder GnssGrpcProxyPolicy(const HostInfo&);
 sandbox2::PolicyBuilder KernelLogMonitorPolicy(const HostInfo&);
 sandbox2::PolicyBuilder LogTeePolicy(const HostInfo&);
 sandbox2::PolicyBuilder LogcatReceiverPolicy(const HostInfo&);
+sandbox2::PolicyBuilder MetricsPolicy(const HostInfo& host);
 sandbox2::PolicyBuilder MkEnvImgSlimPolicy(const HostInfo& host);
 sandbox2::PolicyBuilder ModemSimulatorPolicy(const HostInfo&);
 sandbox2::PolicyBuilder NetsimdPolicy(const HostInfo&);
@@ -72,6 +73,7 @@ sandbox2::PolicyBuilder SocketVsockProxyPolicy(const HostInfo&);
 sandbox2::PolicyBuilder TcpConnectorPolicy(const HostInfo&);
 sandbox2::PolicyBuilder TombstoneReceiverPolicy(const HostInfo&);
 sandbox2::PolicyBuilder WebRtcPolicy(const HostInfo&);
+sandbox2::PolicyBuilder WebRtcOperatorPolicy(const HostInfo&);
 sandbox2::PolicyBuilder WmediumdPolicy(const HostInfo&);
 sandbox2::PolicyBuilder WmediumdGenConfigPolicy(const HostInfo&);
 
