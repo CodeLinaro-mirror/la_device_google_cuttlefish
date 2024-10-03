@@ -80,6 +80,7 @@ std::unique_ptr<sandbox2::Policy> PolicyForExecutable(
 
   builders[host.HostToolExe("adb_connector")] = AdbConnectorPolicy;
   builders[host.HostToolExe("assemble_cvd")] = AssembleCvdPolicy;
+  builders[host.HostToolExe("avbtool")] = AvbToolPolicy;
   builders[host.HostToolExe("casimir")] = CasimirPolicy;
   builders[host.HostToolExe("casimir_control_server")] =
       CasimirControlServerPolicy;
@@ -108,6 +109,7 @@ std::unique_ptr<sandbox2::Policy> PolicyForExecutable(
   builders[host.HostToolExe("socket_vsock_proxy")] = SocketVsockProxyPolicy;
   builders[host.HostToolExe("tcp_connector")] = TcpConnectorPolicy;
   builders[host.HostToolExe("tombstone_receiver")] = TombstoneReceiverPolicy;
+  builders[host.HostToolExe("vhost_device_vsock")] = VhostDeviceVsockPolicy;
   builders[host.HostToolExe("webRTC")] = WebRtcPolicy;
   builders[host.HostToolExe("webrtc_operator")] = WebRtcOperatorPolicy;
   builders[host.HostToolExe("wmediumd")] = WmediumdPolicy;
