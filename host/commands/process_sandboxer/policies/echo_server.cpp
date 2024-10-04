@@ -21,7 +21,6 @@
 #include <syscall.h>
 
 #include <sandboxed_api/sandbox2/policybuilder.h>
-#include <sandboxed_api/sandbox2/trace_all_syscalls.h>
 #include <sandboxed_api/sandbox2/util/bpf_helper.h>
 
 namespace cuttlefish::process_sandboxer {
@@ -51,6 +50,7 @@ sandbox2::PolicyBuilder EchoServerPolicy(const HostInfo& host) {
       .AllowSyscall(__NR_sendmsg)
       .AllowSyscall(__NR_sched_getparam)
       .AllowSyscall(__NR_sched_getscheduler)
+      .AllowSyscall(__NR_sched_yield)
       .AllowSyscall(__NR_shutdown);
 }
 

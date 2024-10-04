@@ -24,16 +24,9 @@
 #include <absl/log/log.h>
 #include <absl/status/status.h>
 #include <sandboxed_api/sandbox2/policybuilder.h>
-#include <sandboxed_api/util/fileops.h>
-#include <sandboxed_api/util/path.h>
 
+#include "host/commands/process_sandboxer/filesystem.h"
 #include "host/commands/process_sandboxer/proxy_common.h"
-
-// TODO: schuffelen - copy or rewrite these utilities, they're not normally
-// public from sandbox2
-
-using sapi::file::JoinPath;
-using sapi::file_util::fileops::CreateDirectoryRecursively;
 
 namespace cuttlefish::process_sandboxer {
 
@@ -87,6 +80,8 @@ std::unique_ptr<sandbox2::Policy> PolicyForExecutable(
 
   builders[host.HostToolExe("adb_connector")] = AdbConnectorPolicy;
   builders[host.HostToolExe("assemble_cvd")] = AssembleCvdPolicy;
+  builders[host.HostToolExe("avbtool")] = AvbToolPolicy;
+  builders[host.HostToolExe("casimir")] = CasimirPolicy;
   builders[host.HostToolExe("casimir_control_server")] =
       CasimirControlServerPolicy;
   builders[host.HostToolExe("control_env_proxy_server")] =
@@ -97,6 +92,7 @@ std::unique_ptr<sandbox2::Policy> PolicyForExecutable(
   builders[host.HostToolExe("kernel_log_monitor")] = KernelLogMonitorPolicy;
   builders[host.HostToolExe("log_tee")] = LogTeePolicy;
   builders[host.HostToolExe("logcat_receiver")] = LogcatReceiverPolicy;
+  builders[host.HostToolExe("metrics")] = MetricsPolicy;
   builders[host.HostToolExe("mkenvimage_slim")] = MkEnvImgSlimPolicy;
   builders[host.HostToolExe("modem_simulator")] = ModemSimulatorPolicy;
   builders[host.HostToolExe("netsimd")] = NetsimdPolicy;
@@ -113,7 +109,9 @@ std::unique_ptr<sandbox2::Policy> PolicyForExecutable(
   builders[host.HostToolExe("socket_vsock_proxy")] = SocketVsockProxyPolicy;
   builders[host.HostToolExe("tcp_connector")] = TcpConnectorPolicy;
   builders[host.HostToolExe("tombstone_receiver")] = TombstoneReceiverPolicy;
+  builders[host.HostToolExe("vhost_device_vsock")] = VhostDeviceVsockPolicy;
   builders[host.HostToolExe("webRTC")] = WebRtcPolicy;
+  builders[host.HostToolExe("webrtc_operator")] = WebRtcOperatorPolicy;
   builders[host.HostToolExe("wmediumd")] = WmediumdPolicy;
   builders[host.HostToolExe("wmediumd_gen_config")] = WmediumdGenConfigPolicy;
 

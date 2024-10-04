@@ -19,11 +19,13 @@
 #include <ostream>
 
 #include <GraphicsDetector.pb.h>
+#include <android-base/file.h>
 #include <android-base/strings.h>
 #include <fmt/format.h>
 #include <google/protobuf/text_format.h>
 
 #include "common/libs/utils/contains.h"
+#include "common/libs/utils/files.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/libs/config/cuttlefish_config.h"
 
@@ -205,26 +207,32 @@ GetNeededVhostUserGpuHostRendererFeatures(
     const ::gfxstream::proto::GraphicsAvailability& availability) {
   VhostUserGpuHostRendererFeatures features = {};
 
-  CF_EXPECT(
-      mode == RenderingMode::kGfxstream ||
-          mode == RenderingMode::kGfxstreamGuestAngle,
-      "vhost-user-gpu is only currently supported with --gpu_mode=gfxstream "
-      "and --gpu_mode=gfxstream_guest_angle");
+  // No features needed for guest rendering.
+  if (mode == RenderingMode::kGuestSwiftShader) {
+    return features;
+  }
 
+  // For any passthrough graphics mode, external blob is needed for sharing
+  // buffers between the vhost-user-gpu VMM process and the main VMM process.
   features.external_blob = true;
 
-  const bool has_external_memory_host =
-      availability.has_vulkan() &&
-      !availability.vulkan().physical_devices().empty() &&
-      Contains(availability.vulkan().physical_devices(0).extensions(),
-               "VK_EXT_external_memory_host");
+  // Prebuilt SwiftShader includes VK_EXT_external_memory_host.
+  if (mode == RenderingMode::kGfxstreamGuestAngleHostSwiftshader) {
+    features.system_blob = true;
+  } else {
+    const bool has_external_memory_host =
+        availability.has_vulkan() &&
+        !availability.vulkan().physical_devices().empty() &&
+        Contains(availability.vulkan().physical_devices(0).extensions(),
+                 "VK_EXT_external_memory_host");
 
-  CF_EXPECT(
-      has_external_memory_host || mode != RenderingMode::kGfxstreamGuestAngle,
-      "VK_EXT_external_memory_host is required for running with "
-      "--gpu_mode=gfxstream_guest_angle and --enable_gpu_vhost_user=true");
+    CF_EXPECT(
+        has_external_memory_host || mode != RenderingMode::kGfxstreamGuestAngle,
+        "VK_EXT_external_memory_host is required for running with "
+        "--gpu_mode=gfxstream_guest_angle and --enable_gpu_vhost_user=true");
 
-  features.system_blob = has_external_memory_host;
+    features.system_blob = has_external_memory_host;
+  }
 
   return features;
 }
@@ -305,8 +313,7 @@ Result<bool> SelectGpuVhostUserMode(const std::string& gpu_mode,
             gpu_vhost_user_mode_arg == kGpuVhostUserModeOn ||
             gpu_vhost_user_mode_arg == kGpuVhostUserModeOff);
   if (gpu_vhost_user_mode_arg == kGpuVhostUserModeAuto) {
-    if (gpu_mode == kGpuModeGuestSwiftshader ||
-        gpu_mode == kGpuModeGfxstreamGuestAngleHostSwiftShader) {
+    if (gpu_mode == kGpuModeGuestSwiftshader) {
       LOG(INFO) << "GPU vhost user auto mode: not needed for --gpu_mode="
                 << gpu_mode << ". Not enabling vhost user gpu.";
       return false;
@@ -489,7 +496,11 @@ GetGraphicsAvailabilityWithSubprocessCheck() {
     return {};
   }
 
+  TemporaryFile graphics_availability_file;
+
   Command graphics_detector_cmd(graphics_detector_binary_result.value());
+  graphics_detector_cmd.AddParameter(graphics_availability_file.path);
+
   std::string graphics_detector_stdout;
   auto ret = RunWithManagedStdio(std::move(graphics_detector_cmd), nullptr,
                                  &graphics_detector_stdout, nullptr);
@@ -498,12 +509,26 @@ GetGraphicsAvailabilityWithSubprocessCheck() {
                << ". Assuming no availability.";
     return {};
   }
+  LOG(DEBUG) << graphics_detector_stdout;
+
+  auto graphics_availability_content_result =
+      ReadFileContents(graphics_availability_file.path);
+  if (!graphics_availability_content_result.ok()) {
+    LOG(ERROR) << "Failed to read graphics availability from file "
+               << graphics_availability_file.path << ":"
+               << graphics_availability_content_result.error().FormatForEnv()
+               << ". Assuming no availability.";
+    return {};
+  }
+  const std::string& graphics_availability_content =
+      graphics_availability_content_result.value();
 
   gfxstream::proto::GraphicsAvailability availability;
   google::protobuf::TextFormat::Parser parser;
-  if (!parser.ParseFromString(graphics_detector_stdout, &availability)) {
-    LOG(ERROR) << "Failed to parse graphics detector stdout: "
-               << graphics_detector_stdout << ". Assuming no availability.";
+  if (!parser.ParseFromString(graphics_availability_content, &availability)) {
+    LOG(ERROR) << "Failed to parse graphics detector output: "
+               << graphics_availability_content
+               << ". Assuming no availability.";
     return {};
   }
 

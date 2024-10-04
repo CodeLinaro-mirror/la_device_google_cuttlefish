@@ -1,2 +1,1 @@
-# Bug component: 760438
-include device/google/atv:/OWNERS
+include device/google/cuttlefish:/shared/tv/OWNERS

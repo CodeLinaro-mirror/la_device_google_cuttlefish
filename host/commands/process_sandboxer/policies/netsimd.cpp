@@ -25,17 +25,13 @@
 
 #include <sandboxed_api/sandbox2/allow_unrestricted_networking.h>
 #include <sandboxed_api/sandbox2/policybuilder.h>
-#include <sandboxed_api/sandbox2/trace_all_syscalls.h>
 #include <sandboxed_api/sandbox2/util/bpf_helper.h>
-#include <sandboxed_api/util/path.h>
+
+#include "host/commands/process_sandboxer/filesystem.h"
 
 namespace cuttlefish::process_sandboxer {
 
-using sapi::file::JoinPath;
-
 sandbox2::PolicyBuilder NetsimdPolicy(const HostInfo& host) {
-  static_assert(IPPROTO_IPV6 == 41);
-  // TODO: b/318603863 - Add system call policy. This only applies namespaces.
   return BaselinePolicy(host, host.HostToolExe("netsimd"))
       .AddDirectory(JoinPath(host.host_artifacts_path, "bin", "netsim-ui"))
       .AddDirectory("/tmp", /* is_ro= */ false)  // to create new directories
@@ -79,6 +75,7 @@ sandbox2::PolicyBuilder NetsimdPolicy(const HostInfo& host) {
       .AllowEpollWait()
       .AllowEventFd()
       .AllowHandleSignals()
+      .AllowMkdir()
       .AllowPipe()
       .AllowPrctlSetName()
       .AllowReaddir()
@@ -94,6 +91,7 @@ sandbox2::PolicyBuilder NetsimdPolicy(const HostInfo& host) {
       .AllowSyscall(__NR_listen)
       .AllowSyscall(__NR_sched_getparam)
       .AllowSyscall(__NR_sched_getscheduler)
+      .AllowSyscall(__NR_sched_yield)
       .AllowSyscall(__NR_statx);  // Not covered by AllowStat
 }
 

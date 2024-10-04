@@ -28,19 +28,22 @@ namespace cuttlefish::process_sandboxer {
 sandbox2::PolicyBuilder SocketVsockProxyPolicy(const HostInfo& host) {
   return BaselinePolicy(host, host.HostToolExe("socket_vsock_proxy"))
       .AddDirectory(host.log_dir, /* is_ro= */ false)
+      .AddDirectory(host.vsock_device_dir, /* is_ro= */ false)
       .AddFile(host.cuttlefish_config_path)
-      .AddPolicyOnSyscall(__NR_socket,
-                          {ARG_32(0), JEQ32(AF_INET, ALLOW),
-                           JEQ32(AF_INET6, ALLOW), JEQ32(AF_VSOCK, ALLOW)})
+      .AddPolicyOnSyscall(
+          __NR_socket, {ARG_32(0), JEQ32(AF_UNIX, ALLOW), JEQ32(AF_INET, ALLOW),
+                        JEQ32(AF_INET6, ALLOW), JEQ32(AF_VSOCK, ALLOW)})
       .Allow(sandbox2::UnrestrictedNetworking())
       .AllowEventFd()
       .AllowFork()  // `clone` for multithreading
+      .AllowGetIDs()
       .AllowHandleSignals()
       .AllowSafeFcntl()
       .AllowSyscall(__NR_bind)
       .AllowSyscall(__NR_connect)
       .AllowSyscall(__NR_listen)
       .AllowSyscall(__NR_madvise)
+      .AllowSyscall(__NR_sendto)
       .AllowSyscall(__NR_setsockopt)
       .AllowSyscall(__NR_shutdown)
       .AllowSyscalls({__NR_accept, __NR_accept4})
