@@ -17,6 +17,7 @@
 #include "host/commands/process_sandboxer/policies.h"
 
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
@@ -25,20 +26,18 @@
 
 #include <sandboxed_api/sandbox2/allow_unrestricted_networking.h>
 #include <sandboxed_api/sandbox2/policybuilder.h>
-#include <sandboxed_api/sandbox2/trace_all_syscalls.h>
 #include <sandboxed_api/sandbox2/util/bpf_helper.h>
-#include <sandboxed_api/util/path.h>
+
+#include "host/commands/process_sandboxer/filesystem.h"
 
 namespace cuttlefish::process_sandboxer {
 
-using sapi::file::JoinPath;
-
 sandbox2::PolicyBuilder WebRtcPolicy(const HostInfo& host) {
-  // TODO: b/318609110 - Add system call policy. This only applies namespaces.
   return BaselinePolicy(host, host.HostToolExe("webRTC"))
       .AddDirectory(host.log_dir, /* is_ro= */ false)
       .AddDirectory(host.host_artifacts_path + "/usr/share/webrtc/assets")
       .AddDirectory(host.instance_uds_dir, /* is_ro= */ false)
+      .AddDirectory(host.vsock_device_dir, /* is_ro= */ false)
       .AddDirectory(JoinPath(host.runtime_dir, "recording"), /* is_ro= */ false)
       .AddFile(host.cuttlefish_config_path)
       .AddFile("/dev/urandom")
@@ -85,20 +84,20 @@ sandbox2::PolicyBuilder WebRtcPolicy(const HostInfo& host) {
                 JNE32(IPPROTO_TCP, JUMP(&labels, cf_webrtc_setsockopt_end)),
                 // IPPROTO_TCP
                 ARG_32(2),  // optname
-                JEQ32(SO_DEBUG, ALLOW),
+                JEQ32(TCP_NODELAY, ALLOW),
                 JUMP(&labels, cf_webrtc_setsockopt_end),
                 // SOL_IP
                 LABEL(&labels, cf_webrtc_setsockopt_ip),
                 ARG_32(2),  // optname
-                JEQ32(SO_NO_CHECK, ALLOW),
-                JEQ32(SO_DEBUG, ALLOW),
-                JEQ32(SO_SNDBUF, ALLOW),
-                JEQ32(SO_RCVBUF, ALLOW),
+                JEQ32(IP_RECVERR, ALLOW),
+                JEQ32(IP_TOS, ALLOW),
+                JEQ32(IP_RETOPTS, ALLOW),
+                JEQ32(IP_PKTINFO, ALLOW),
                 JUMP(&labels, cf_webrtc_setsockopt_end),
                 // SOL_IPV6
                 LABEL(&labels, cf_webrtc_setsockopt_ipv6),
                 ARG_32(2),  // optname
-                JEQ32(67 /* sometimes SO_SNDTIMEO? */, ALLOW),
+                JEQ32(IPV6_TCLASS, ALLOW),
                 JUMP(&labels, cf_webrtc_setsockopt_end),
                 // SOL_SOCKET
                 LABEL(&labels, cf_webrtc_setsockopt_sol),
@@ -131,6 +130,7 @@ sandbox2::PolicyBuilder WebRtcPolicy(const HostInfo& host) {
       .AllowSyscall(__NR_clone)  // Multithreading
       .AllowSyscall(__NR_connect)
       .AllowSyscall(__NR_ftruncate)
+      .AllowSyscall(__NR_getpeername)
       .AllowSyscall(__NR_getsockname)
       .AllowSyscall(__NR_listen)
       .AllowSyscall(__NR_memfd_create)

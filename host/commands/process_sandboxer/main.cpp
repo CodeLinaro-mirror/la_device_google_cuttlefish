@@ -34,8 +34,8 @@
 #include <absl/status/status.h>
 #include <absl/strings/numbers.h>
 #include <absl/strings/str_cat.h>
-#include <sandboxed_api/util/path.h>
 
+#include "host/commands/process_sandboxer/filesystem.h"
 #include "host/commands/process_sandboxer/logs.h"
 #include "host/commands/process_sandboxer/pidfd.h"
 #include "host/commands/process_sandboxer/policies.h"
@@ -56,12 +56,11 @@ ABSL_FLAG(std::vector<std::string>, log_files, std::vector<std::string>(),
 ABSL_FLAG(std::string, runtime_dir, "",
           "Working directory of host executables");
 ABSL_FLAG(bool, verbose_stderr, false, "Write debug messages to stderr");
+ABSL_FLAG(std::string, vsock_device_dir, "/tmp/vsock_3_1000",
+          "Directory path for unix sockets representing vsock connections");
 
 namespace cuttlefish::process_sandboxer {
 namespace {
-
-using sapi::file::CleanPath;
-using sapi::file::JoinPath;
 
 std::optional<std::string_view> FromEnv(const std::string& name) {
   char* value = getenv(name.c_str());
@@ -82,13 +81,6 @@ absl::Status ProcessSandboxerMain(int argc, char** argv) {
   absl::EnableLogPrefix(true);
   absl::SetGlobalVLogLevel(1);
 
-  absl::Status logs_status = LogToFiles(absl::GetFlag(FLAGS_log_files));
-  if (!logs_status.ok()) {
-    return logs_status;
-  }
-
-  VLOG(1) << "Entering ProcessSandboxerMain";
-
   if (prctl(PR_SET_CHILD_SUBREAPER, 1) < 0) {
     return absl::ErrnoToStatus(errno, "prctl(PR_SET_CHILD_SUBREAPER failed");
   }
@@ -106,7 +98,79 @@ absl::Status ProcessSandboxerMain(int argc, char** argv) {
       .instance_uds_dir = CleanPath(absl::GetFlag(FLAGS_instance_uds_dir)),
       .log_dir = CleanPath(absl::GetFlag(FLAGS_log_dir)),
       .runtime_dir = CleanPath(absl::GetFlag(FLAGS_runtime_dir)),
+      .vsock_device_dir = CleanPath(absl::GetFlag(FLAGS_vsock_device_dir)),
   };
+
+  // TODO: schuffelen - try to guess these from the cvd_internal_start arguments
+
+  std::optional<std::string_view> home = FromEnv("HOME");
+
+  // CleanPath will set empty strings to ".", so consider that the unset value.
+  if (host.assembly_dir == "." && home.has_value()) {
+    host.assembly_dir = CleanPath(JoinPath(*home, "cuttlefish", "assembly"));
+  }
+  if (host.cuttlefish_config_path == "." && home.has_value()) {
+    host.cuttlefish_config_path = CleanPath(
+        JoinPath(*home, "cuttlefish", "assembly", "cuttlefish_config.json"));
+  }
+  if (host.environments_dir == "." && home.has_value()) {
+    host.environments_dir =
+        CleanPath(JoinPath(*home, "cuttlefish", "environments"));
+  }
+  if (host.environments_uds_dir == ".") {
+    host.environments_uds_dir = "/tmp/cf_env_1000";
+  }
+  if (host.instance_uds_dir == ".") {
+    host.instance_uds_dir = "/tmp/cf_avd_1000/cvd-1";
+  }
+  if (host.log_dir == "." && home.has_value()) {
+    host.log_dir =
+        CleanPath(JoinPath(*home, "cuttlefish", "instances", "cvd-1", "logs"));
+  }
+  if (host.runtime_dir == "." && home.has_value()) {
+    host.runtime_dir =
+        CleanPath(JoinPath(*home, "cuttlefish", "instances", "cvd-1"));
+  }
+
+  std::optional<std::string_view> product_out = FromEnv("ANDROID_PRODUCT_OUT");
+
+  if (host.guest_image_path == ".") {
+    if (product_out.has_value()) {
+      host.guest_image_path = CleanPath(*product_out);
+    } else if (home.has_value()) {
+      host.guest_image_path = CleanPath(*home);
+    }
+  }
+
+  std::optional<std::string_view> host_out = FromEnv("ANDROID_HOST_OUT");
+
+  if (host.host_artifacts_path == ".") {
+    if (host_out.has_value()) {
+      host.host_artifacts_path = CleanPath(*host_out);
+    } else if (home.has_value()) {
+      host.host_artifacts_path = CleanPath(*home);
+    }
+  }
+
+  absl::Status dir_creation = host.EnsureOutputDirectoriesExist();
+  if (!dir_creation.ok()) {
+    return dir_creation;
+  }
+
+  absl::Status logs_status;
+  if (absl::GetFlag(FLAGS_log_files).empty()) {
+    std::string default_log_path = JoinPath(host.log_dir, "launcher.log");
+    unlink(default_log_path.c_str());  // Clean from previous run
+    logs_status = LogToFiles({default_log_path});
+  } else {
+    logs_status = LogToFiles(absl::GetFlag(FLAGS_log_files));
+    if (!logs_status.ok()) {
+      return logs_status;
+    }
+  }
+  if (!logs_status.ok()) {
+    return logs_status;
+  }
 
   VLOG(1) << host;
 

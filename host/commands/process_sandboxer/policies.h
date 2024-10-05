@@ -22,11 +22,14 @@
 #include <string>
 #include <string_view>
 
+#include <absl/status/status.h>
+
 #include "sandboxed_api/sandbox2/policybuilder.h"
 
 namespace cuttlefish::process_sandboxer {
 
 struct HostInfo {
+  absl::Status EnsureOutputDirectoriesExist();
   std::string HostToolExe(std::string_view exe) const;
 
   std::string assembly_dir;
@@ -38,6 +41,7 @@ struct HostInfo {
   std::string instance_uds_dir;
   std::string log_dir;
   std::string runtime_dir;
+  std::string vsock_device_dir;
 };
 
 std::ostream& operator<<(std::ostream&, const HostInfo&);
@@ -46,13 +50,17 @@ sandbox2::PolicyBuilder BaselinePolicy(const HostInfo&, std::string_view exe);
 
 sandbox2::PolicyBuilder AdbConnectorPolicy(const HostInfo&);
 sandbox2::PolicyBuilder AssembleCvdPolicy(const HostInfo&);
+sandbox2::PolicyBuilder AvbToolPolicy(const HostInfo&);
+sandbox2::PolicyBuilder CasimirPolicy(const HostInfo&);
 sandbox2::PolicyBuilder CasimirControlServerPolicy(const HostInfo&);
 sandbox2::PolicyBuilder ControlEnvProxyServerPolicy(const HostInfo&);
+sandbox2::PolicyBuilder CvdInternalStartPolicy(const HostInfo&);
 sandbox2::PolicyBuilder EchoServerPolicy(const HostInfo&);
 sandbox2::PolicyBuilder GnssGrpcProxyPolicy(const HostInfo&);
 sandbox2::PolicyBuilder KernelLogMonitorPolicy(const HostInfo&);
 sandbox2::PolicyBuilder LogTeePolicy(const HostInfo&);
 sandbox2::PolicyBuilder LogcatReceiverPolicy(const HostInfo&);
+sandbox2::PolicyBuilder MetricsPolicy(const HostInfo& host);
 sandbox2::PolicyBuilder MkEnvImgSlimPolicy(const HostInfo& host);
 sandbox2::PolicyBuilder ModemSimulatorPolicy(const HostInfo&);
 sandbox2::PolicyBuilder NetsimdPolicy(const HostInfo&);
@@ -67,7 +75,9 @@ sandbox2::PolicyBuilder Simg2ImgPolicy(const HostInfo&);
 sandbox2::PolicyBuilder SocketVsockProxyPolicy(const HostInfo&);
 sandbox2::PolicyBuilder TcpConnectorPolicy(const HostInfo&);
 sandbox2::PolicyBuilder TombstoneReceiverPolicy(const HostInfo&);
+sandbox2::PolicyBuilder VhostDeviceVsockPolicy(const HostInfo&);
 sandbox2::PolicyBuilder WebRtcPolicy(const HostInfo&);
+sandbox2::PolicyBuilder WebRtcOperatorPolicy(const HostInfo&);
 sandbox2::PolicyBuilder WmediumdPolicy(const HostInfo&);
 sandbox2::PolicyBuilder WmediumdGenConfigPolicy(const HostInfo&);
 
