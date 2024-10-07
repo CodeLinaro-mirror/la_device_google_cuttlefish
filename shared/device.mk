@@ -421,7 +421,13 @@ ifeq ($(RELEASE_AVF_ENABLE_EARLY_VM),true)
 endif
 ifeq ($(TRUSTY_SYSTEM_VM),nonsecure)
     $(call inherit-product, system/core/trusty/keymint/trusty-keymint.mk)
-    PRODUCT_PACKAGES += lk_trusty.elf trusty_vm_launcher cf-early_vms.xml
+    $(call inherit-product, system/core/trusty/trusty-storage-cf.mk)
+    PRODUCT_PACKAGES += \
+        lk_trusty.elf \
+        trusty_vm_launcher \
+        cf-early_vms.xml \
+        trusty-ut-ctrl.system \
+
 endif
 
 #
