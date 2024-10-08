@@ -415,12 +415,18 @@ endif
 #
 # Trusty VM for Keymint and Gatekeeper HAL
 #
-TRUSTY_KEYMINT_IMPL ?= rust
-TRUSTY_SYSTEM_VM ?= nonsecure
+ifeq ($(RELEASE_AVF_ENABLE_EARLY_VM),true)
+  TRUSTY_KEYMINT_IMPL ?= rust
+  TRUSTY_SYSTEM_VM ?= nonsecure
+endif
 ifeq ($(TRUSTY_SYSTEM_VM),nonsecure)
     $(call inherit-product, system/core/trusty/keymint/trusty-keymint.mk)
+    $(call inherit-product, system/core/trusty/trusty-storage-cf.mk)
     PRODUCT_PACKAGES += \
-        trusty_vm_nonsecure \
+        lk_trusty.elf \
+        trusty_vm_launcher \
+        cf-early_vms.xml \
+        trusty-ut-ctrl.system \
 
 endif
 
