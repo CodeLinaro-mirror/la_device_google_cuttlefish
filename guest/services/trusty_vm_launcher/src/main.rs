@@ -23,7 +23,7 @@ use anyhow::{Context, Result};
 use std::fs::File;
 use vmclient::VmInstance;
 
-const KERNEL_PATH: &str = "/system_ext/etc/hw/lk_trusty.elf";
+const KERNEL_PATH: &str = "/system_ext/etc/vm/trusty_vm/lk_trusty.elf";
 
 fn get_service() -> Result<Strong<dyn IVirtualizationService>> {
     let virtmgr = vmclient::VirtualizationService::new_early()
@@ -55,6 +55,7 @@ fn main() -> Result<()> {
         None, // console_in
         None, // console_out
         None, // log
+        None, // dump_dt
         None, // callback
     )
     .context("Failed to create VM")?;
