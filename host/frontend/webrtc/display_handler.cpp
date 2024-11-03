@@ -51,6 +51,7 @@ DisplayHandler::DisplayHandler(webrtc_streaming::Streamer& streamer,
               return;
             }
 
+            std::lock_guard<std::mutex> lock(send_mutex_);
             display_sinks_[display_number] = display;
           } else if constexpr (std::is_same_v<DisplayDestroyedEvent, T>) {
             LOG(VERBOSE) << "Display:" << e.display_number << " destroyed.";
@@ -58,8 +59,9 @@ DisplayHandler::DisplayHandler(webrtc_streaming::Streamer& streamer,
             const auto display_number = e.display_number;
             const auto display_id =
                 "display_" + std::to_string(e.display_number);
-            streamer_.RemoveDisplay(display_id);
+            std::lock_guard<std::mutex> lock(send_mutex_);
             display_sinks_.erase(display_number);
+            streamer_.RemoveDisplay(display_id);
           } else {
             static_assert("Unhandled display event.");
           }
