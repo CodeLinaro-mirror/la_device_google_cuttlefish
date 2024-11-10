@@ -72,10 +72,6 @@ class GenericCommandSource : public CommandSource,
     return {};
   }
 
-  bool Enabled() const override {
-    return true;  // TODO(schuffelen): Delete `Enabled()`, it hasn't been useful
-  }
-
   std::string Name() const override {
     static constexpr auto kName = ValueName<Fn>();
     return std::string(kName);
