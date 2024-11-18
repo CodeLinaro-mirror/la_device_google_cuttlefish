@@ -98,8 +98,11 @@ endif
 PRODUCT_PACKAGES += $(LOCAL_VHAL_PRODUCT_PACKAGE)
 
 # Ethernet setup script for vehicle HAL
-PRODUCT_PACKAGES += auto_ethernet_setup_script
-PRODUCT_PACKAGES += auto_ethernet_config_script
+ENABLE_AUTO_ETHERNET ?= true
+ifeq ($(ENABLE_AUTO_ETHERNET), true)
+    PRODUCT_PACKAGES += auto_ethernet_setup_script
+    PRODUCT_PACKAGES += auto_ethernet_config_script
+endif
 
 # Remote access HAL
 PRODUCT_PACKAGES += android.hardware.automotive.remoteaccess@V2-default-service
@@ -126,6 +129,15 @@ PRODUCT_PACKAGES += wpa_supplicant_macsec
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/macsec/wpa_supplicant_macsec.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wpa_supplicant_macsec.conf \
     $(LOCAL_PATH)/macsec/init.wpa_supplicant_macsec.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.wpa_supplicant_macsec.rc
+
+
+# Trout uses this .mk file, ignore if it isn't cf build
+ifneq (,$(findstring cf, $(PRODUCT_NAME)))
+PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += $(PRODUCT_OUT)/root/hibernation_swap.img
+
+PRODUCT_PACKAGES += \
+    hibernation_swap-soong
+endif
 
 # Occupant Awareness HAL
 PRODUCT_PACKAGES += android.hardware.automotive.occupant_awareness@1.0-service

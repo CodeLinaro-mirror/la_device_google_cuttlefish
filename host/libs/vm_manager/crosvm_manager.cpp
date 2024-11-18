@@ -447,23 +447,6 @@ Result<void> ConfigureGpu(const CuttlefishConfig& config, Command* crosvm_cmd) {
   return {};
 }
 
-std::string SerializeFreqDomains(
-    const std::map<std::string, std::vector<int>>& freq_domains) {
-  std::stringstream freq_domain_arg;
-  bool first_vector = true;
-
-  for (const auto& pair : freq_domains) {
-    if (!first_vector) {
-      freq_domain_arg << ",";
-    }
-    first_vector = false;
-
-    freq_domain_arg << "[" << android::base::Join(pair.second, ",") << "]";
-  }
-
-  return {std::format("[{}]", freq_domain_arg.str())};
-}
-
 Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     const CuttlefishConfig& config,
     std::vector<VmmDependencyCommand*>& dependencyCommands) {
@@ -575,71 +558,7 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     crosvm_cmd.Cmd().AddParameter("--mte");
   }
 
-  if (!instance.vcpu_config_path().empty()) {
-    std::map<std::string, std::vector<int>> freq_domains;
-    auto vcpu_config_json =
-        CF_EXPECT(LoadFromFile(instance.vcpu_config_path()));
-    std::string affinity_arg = "--cpu-affinity=";
-    std::string capacity_arg = "--cpu-capacity=";
-    std::string frequencies_arg = "--cpu-frequencies-khz=";
-    std::string cgroup_path_arg = "--vcpu-cgroup-path=";
-    std::string freq_domain_arg;
-
-    const auto parent_cgroup_path =
-        CF_EXPECT(GetValue<std::string>(vcpu_config_json, {"cgroup_path"}));
-    cgroup_path_arg += parent_cgroup_path;
-
-    for (int i = 0; i < instance.cpus(); i++) {
-      if (i != 0) {
-        capacity_arg += ",";
-        affinity_arg += ":";
-        frequencies_arg += ";";
-      }
-
-      auto cpu_cluster = fmt::format("--cpu-cluster={}", i);
-
-      auto cpu = fmt::format("cpu{}", i);
-      const auto cpu_json =
-          CF_EXPECT(GetValue<Json::Value>(vcpu_config_json, {cpu}),
-                    "Missing vCPU config!");
-
-      const auto affinity =
-          CF_EXPECT(GetValue<std::string>(cpu_json, {"affinity"}));
-      auto affine_arg = fmt::format("{}={}", i, affinity);
-
-      const auto freqs =
-          CF_EXPECT(GetValue<std::string>(cpu_json, {"frequencies"}));
-      auto freq_arg = fmt::format("{}={}", i, freqs);
-
-      const auto capacity =
-          CF_EXPECT(GetValue<std::string>(cpu_json, {"capacity"}));
-      auto cap_arg = fmt::format("{}={}", i, capacity);
-
-      const auto domain =
-          CF_EXPECT(GetValue<std::string>(cpu_json, {"freq_domain"}));
-
-      freq_domains[domain].push_back(i);
-
-      freq_domain_arg = SerializeFreqDomains(freq_domains);
-
-      capacity_arg += cap_arg;
-      affinity_arg += affine_arg;
-      frequencies_arg += freq_arg;
-
-      crosvm_cmd.Cmd().AddParameter(cpu_cluster);
-    }
-
-    crosvm_cmd.Cmd().AddParameter(affinity_arg);
-    crosvm_cmd.Cmd().AddParameter(capacity_arg);
-    crosvm_cmd.Cmd().AddParameter(frequencies_arg);
-    crosvm_cmd.Cmd().AddParameter(cgroup_path_arg);
-    crosvm_cmd.Cmd().AddParameter("--virt-cpufreq-upstream");
-    crosvm_cmd.Cmd().AddParameter(
-        "--cpus=", instance.cpus(),
-        fmt::format(",freq-domains={}", freq_domain_arg));
-  } else {
-    crosvm_cmd.Cmd().AddParameter("--cpus=", instance.cpus());
-  }
+  CF_EXPECT(crosvm_cmd.AddCpus(instance.cpus(), instance.vcpu_config_path()));
 
   auto disk_num = instance.virtual_disk_paths().size();
   CF_EXPECT(VmManager::kMaxDisks >= disk_num,
