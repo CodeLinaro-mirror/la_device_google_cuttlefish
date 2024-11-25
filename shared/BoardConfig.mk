@@ -47,8 +47,10 @@ PRODUCT_COPY_FILES += $(TARGET_KERNEL_PATH):kernel
 BOARD_KERNEL_VERSION := $(word 1,$(subst vermagic=,,$(shell egrep -h -ao -m 1 'vermagic=.*' $(KERNEL_MODULES_PATH)/nd_virtio.ko)))
 
 ifneq (,$(findstring auto, $(PRODUCT_NAME)))
-PRODUCT_COPY_FILES += \
-    $(PRODUCT_OUT)/root/hibernation_swap.img:hibernation_swap.img
+HIB_SWAP_IMAGE_SIZE_GB ?= 4
+ifeq ("$(wildcard $(PRODUCT_OUT)/hibernation_swap.img)", "")
+$(shell dd if=/dev/zero of=$(PRODUCT_OUT)/hibernation_swap.img bs=1K count=$(HIB_SWAP_IMAGE_SIZE_GB)M)
+endif
 endif
 
 # The list of modules strictly/only required either to reach second stage
@@ -115,8 +117,13 @@ TARGET_NO_BOOTLOADER := $(__TARGET_NO_BOOTLOADER)
 # For now modules are only blocked in second stage init.
 # If a module ever needs to blocked in first stage init - add a new blocklist to
 # BOARD_VENDOR_RAMDISK_KERNEL_MODULES_BLOCKLIST_FILE
+ifeq ($(TARGET_KERNEL_ARCH),arm64)
+BOARD_VENDOR_KERNEL_MODULES_BLOCKLIST_FILE := \
+    device/google/cuttlefish/shared/modules_aarch64.blocklist
+else
 BOARD_VENDOR_KERNEL_MODULES_BLOCKLIST_FILE := \
     device/google/cuttlefish/shared/modules.blocklist
+endif
 
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES_OPTIONS_FILE := \
     device/google/cuttlefish/shared/config/first_stage_modules.options

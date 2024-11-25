@@ -1,4 +1,3 @@
-//
 // Copyright (C) 2024 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,12 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package {
-    default_applicable_licenses: ["Android-Apache-2.0"],
-}
+#pragma once
 
-prebuilt_etc_host {
-    name: "cvd_config_auto.json",
-    src: "config_auto.json",
-    sub_dir: "cvd_config",
-}
+#define LOG_TAG "VulkanSample"
+#include <android/log.h>
+#include <android/log_macros.h>
