@@ -1,4 +1,3 @@
-//
 // Copyright (C) 2024 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,12 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package {
-    default_applicable_licenses: ["Android-Apache-2.0"],
+cc_library_shared {
+    name: "libcuttlefish_vulkan_samples_fullscreen_texture",
+    defaults: ["libcuttlefish_vulkan_samples_defaults"],
+    srcs: [
+        "fullscreen_texture.cpp",
+    ],
 }
 
-prebuilt_etc_host {
-    name: "cvd_config_auto.json",
-    src: "config_auto.json",
-    sub_dir: "cvd_config",
+android_app {
+    name: "CuttlefishVulkanSamplesFullscreenTexture",
+    min_sdk_version: "34",
+    sdk_version: "current",
+    jni_libs: ["libcuttlefish_vulkan_samples_fullscreen_texture"],
+    use_embedded_native_libs: true,
 }
