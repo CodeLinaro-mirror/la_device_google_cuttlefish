@@ -16,6 +16,7 @@
 
 #include <fcntl.h>
 #include <chrono>
+#include <cstdint>
 
 #include "casimir_controller.h"
 
@@ -25,31 +26,68 @@ using namespace casimir::rf;
 using namespace std::literals::chrono_literals;
 using pdl::packet::slice;
 
-Result<void> CasimirController::Close() {
+Result<void> CasimirController::Mute() {
   if (!sock_->IsOpen()) {
     return {};
   }
-  sock_->Close();
+  FieldInfoBuilder rf_off;
+  rf_off.field_status_ = FieldStatus::FieldOff;
+  rf_off.power_level_ = power_level;
+  CF_EXPECT(Write(rf_off));
   return {};
 }
 
-Result<void> CasimirController::Init(int casimir_rf_port) {
-  CF_EXPECT(!sock_->IsOpen());
+CasimirController::CasimirController(SharedFD sock)
+    : sock_(sock), power_level(10) {}
 
-  sock_ = cuttlefish::SharedFD::SocketLocalClient(casimir_rf_port, SOCK_STREAM);
-  CF_EXPECT(sock_->IsOpen(),
-            "Failed to connect to casimir with RF port" << casimir_rf_port);
+/* static */
+Result<CasimirController> CasimirController::ConnectToTcpPort(int rf_port) {
+  SharedFD sock = SharedFD::SocketLocalClient(rf_port, SOCK_STREAM);
+  CF_EXPECT(sock->IsOpen(),
+            "Failed to connect to casimir with RF port" << rf_port);
 
-  int flags = sock_->Fcntl(F_GETFL, 0);
+  int flags = sock->Fcntl(F_GETFL, 0);
   CF_EXPECT_GE(flags, 0, "Failed to get FD flags of casimir socket");
-  CF_EXPECT_EQ(sock_->Fcntl(F_SETFL, flags | O_NONBLOCK), 0,
+  CF_EXPECT_EQ(sock->Fcntl(F_SETFL, flags | O_NONBLOCK), 0,
                "Failed to set casimir socket nonblocking");
+
+  return CasimirController(sock);
+}
+
+/* static */
+Result<CasimirController> CasimirController::ConnectToUnixSocket(
+    const std::string& rf_path) {
+  SharedFD sock = SharedFD::SocketLocalClient(rf_path, false, SOCK_STREAM);
+  CF_EXPECT(sock->IsOpen(),
+            "Failed to connect to casimir with RF path" << rf_path);
+
+  int flags = sock->Fcntl(F_GETFL, 0);
+  CF_EXPECT_GE(flags, 0, "Failed to get FD flags of casimir socket");
+  CF_EXPECT_EQ(sock->Fcntl(F_SETFL, flags | O_NONBLOCK), 0,
+               "Failed to set casimir socket nonblocking");
+  return CasimirController(sock);
+}
+
+Result<void> CasimirController::Unmute() {
+  if (!sock_->IsOpen()) {
+    return {};
+  }
+  FieldInfoBuilder rf_on;
+  rf_on.field_status_ = FieldStatus::FieldOn;
+  rf_on.power_level_ = power_level;
+  CF_EXPECT(Write(rf_on));
+  return {};
+}
+
+Result<void> CasimirController::SetPowerLevel(uint32_t power_level) {
+  this->power_level = power_level;
   return {};
 }
 
 Result<uint16_t> CasimirController::SelectNfcA() {
   PollCommandBuilder poll_command;
   poll_command.technology_ = Technology::NFC_A;
+  poll_command.power_level_ = power_level;
   CF_EXPECT(Write(poll_command), "Failed to send NFC-A poll command");
 
   auto res = CF_EXPECT(ReadRfPacket(10s), "Failed to get NFC-A poll response");
@@ -91,12 +129,12 @@ Result<uint16_t> CasimirController::Poll() {
   return sender_id;
 }
 
-Result<std::shared_ptr<std::vector<uint8_t>>> CasimirController::SendApdu(
-    uint16_t receiver_id, const std::shared_ptr<std::vector<uint8_t>>& apdu) {
+Result<std::vector<uint8_t>> CasimirController::SendApdu(
+    uint16_t receiver_id, std::vector<uint8_t> apdu) {
   CF_EXPECT(sock_->IsOpen());
 
   DataBuilder data_builder;
-  data_builder.data_ = *apdu.get();
+  data_builder.data_ = std::move(apdu);
   data_builder.receiver_ = receiver_id;
   data_builder.technology_ = Technology::NFC_A;
   data_builder.protocol_ = Protocol::ISO_DEP;
@@ -108,7 +146,7 @@ Result<std::shared_ptr<std::vector<uint8_t>>> CasimirController::SendApdu(
   if (rf_packet.IsValid()) {
     auto data = DataView::Create(rf_packet);
     if (data.IsValid() && rf_packet.GetSender() == receiver_id) {
-      return std::make_shared<std::vector<uint8_t>>(data.GetData());
+      return data.GetData();
     }
   }
   return CF_ERR("Invalid APDU response");
