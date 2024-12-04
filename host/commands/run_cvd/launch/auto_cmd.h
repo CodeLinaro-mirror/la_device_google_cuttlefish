@@ -65,9 +65,7 @@ class GenericCommandSource : public CommandSource,
         commands_.emplace_back(std::move(*cmd));
       }
     } else {
-      //TODO: b/307808444 - 13684156136015732577 - Build Failure for boot_state_machine.o
-      //TODO: b/308214228 - 350640852809607874 - Build Failure for main.o
-      //static_assert(CommandAlwaysFalse<R>, "Unexpected AutoCmd return type");
+      static_assert(CommandAlwaysFalse<R>, "Unexpected AutoCmd return type");
     }
     return {};
   }
