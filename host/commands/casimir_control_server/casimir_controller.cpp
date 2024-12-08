@@ -16,6 +16,7 @@
 
 #include <fcntl.h>
 #include <chrono>
+#include <cstdint>
 
 #include "casimir_controller.h"
 
@@ -24,6 +25,17 @@ namespace cuttlefish {
 using namespace casimir::rf;
 using namespace std::literals::chrono_literals;
 using pdl::packet::slice;
+
+Result<void> CasimirController::Mute() {
+  if (!sock_->IsOpen()) {
+    return {};
+  }
+  FieldInfoBuilder rf_off;
+  rf_off.field_status_ = FieldStatus::FieldOff;
+  rf_off.power_level_ = power_level;
+  CF_EXPECT(Write(rf_off));
+  return {};
+}
 
 Result<void> CasimirController::Close() {
   if (!sock_->IsOpen()) {
@@ -34,11 +46,43 @@ Result<void> CasimirController::Close() {
 }
 
 Result<void> CasimirController::Init(int casimir_rf_port) {
+  LOG(INFO) << "CasimirController::Init";
   CF_EXPECT(!sock_->IsOpen());
 
-  sock_ = cuttlefish::SharedFD::SocketLocalClient(casimir_rf_port, SOCK_STREAM);
+  sock_ = SharedFD::SocketLocalClient(casimir_rf_port, SOCK_STREAM);
   CF_EXPECT(sock_->IsOpen(),
             "Failed to connect to casimir with RF port" << casimir_rf_port);
+
+  int flags = sock_->Fcntl(F_GETFL, 0);
+  CF_EXPECT_GE(flags, 0, "Failed to get FD flags of casimir socket");
+  CF_EXPECT_EQ(sock_->Fcntl(F_SETFL, flags | O_NONBLOCK), 0,
+               "Failed to set casimir socket nonblocking");
+  power_level = 10;
+  return {};
+}
+
+Result<void> CasimirController::Unmute() {
+  if (!sock_->IsOpen()) {
+    return {};
+  }
+  FieldInfoBuilder rf_on;
+  rf_on.field_status_ = FieldStatus::FieldOn;
+  rf_on.power_level_ = power_level;
+  CF_EXPECT(Write(rf_on));
+  return {};
+}
+
+Result<void> CasimirController::SetPowerLevel(uint32_t power_level) {
+  this->power_level = power_level;
+  return {};
+}
+
+Result<void> CasimirController::Init(const std::string& casimir_rf_path) {
+  CF_EXPECT(!sock_->IsOpen());
+
+  sock_ = SharedFD::SocketLocalClient(casimir_rf_path, false, SOCK_STREAM);
+  CF_EXPECT(sock_->IsOpen(),
+            "Failed to connect to casimir with RF path" << casimir_rf_path);
 
   int flags = sock_->Fcntl(F_GETFL, 0);
   CF_EXPECT_GE(flags, 0, "Failed to get FD flags of casimir socket");
@@ -50,6 +94,7 @@ Result<void> CasimirController::Init(int casimir_rf_port) {
 Result<uint16_t> CasimirController::SelectNfcA() {
   PollCommandBuilder poll_command;
   poll_command.technology_ = Technology::NFC_A;
+  poll_command.power_level_ = power_level;
   CF_EXPECT(Write(poll_command), "Failed to send NFC-A poll command");
 
   auto res = CF_EXPECT(ReadRfPacket(10s), "Failed to get NFC-A poll response");
