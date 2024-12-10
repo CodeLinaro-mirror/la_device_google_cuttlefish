@@ -14,29 +14,23 @@
  * limitations under the License.
  */
 
-syntax = "proto3";
+#pragma once
 
-package cuttlefish.run_cvd;
+#include <memory>
 
-message ExtendedLauncherAction {
-  oneof actions {
-    Suspend suspend = 5;
-    Resume resume = 6;
-    StartScreenRecording start_screen_recording = 7;
-    StopScreenRecording stop_screen_recording = 8;
-    SnapshotTake snapshot_take = 9;
-    ScreenshotDisplay screenshot_display = 10;
-  }
-  string verbosity = 20;
-}
-message Suspend {}
-message Resume {}
-message StartScreenRecording {}
-message StopScreenRecording {}
-message SnapshotTake {
-  string snapshot_path = 1;
-}
-message ScreenshotDisplay {
-  int32 display_number = 1;
-  string screenshot_path = 2;
-}
+#include "common/libs/fs/shared_fd.h"
+
+namespace cuttlefish {
+
+class InputConnection {
+ public:
+  virtual ~InputConnection() = default;
+
+  virtual Result<void> WriteEvents(const void* data, size_t len) = 0;
+};
+
+// Create an input device that accepts connection on a socket (TCP or UNIX) and
+// writes input events to its client (typically crosvm).
+std::unique_ptr<InputConnection> NewServerInputConnection(SharedFD server_fd);
+
+}  // namespace cuttlefish

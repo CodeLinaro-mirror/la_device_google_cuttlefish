@@ -14,29 +14,28 @@
  * limitations under the License.
  */
 
-syntax = "proto3";
+#pragma once
 
-package cuttlefish.run_cvd;
+#include <cstdint>
+#include <cstdlib>
 
-message ExtendedLauncherAction {
-  oneof actions {
-    Suspend suspend = 5;
-    Resume resume = 6;
-    StartScreenRecording start_screen_recording = 7;
-    StopScreenRecording stop_screen_recording = 8;
-    SnapshotTake snapshot_take = 9;
-    ScreenshotDisplay screenshot_display = 10;
-  }
-  string verbosity = 20;
-}
-message Suspend {}
-message Resume {}
-message StartScreenRecording {}
-message StopScreenRecording {}
-message SnapshotTake {
-  string snapshot_path = 1;
-}
-message ScreenshotDisplay {
-  int32 display_number = 1;
-  string screenshot_path = 2;
-}
+#include <memory>
+
+namespace cuttlefish {
+enum class InputEventType {
+  Virtio,
+  Evdev,
+};
+
+class EventBuffer {
+ public:
+  virtual ~EventBuffer() = default;
+  virtual void AddEvent(uint16_t type, uint16_t code, int32_t value) = 0;
+  virtual size_t size() const = 0;
+  virtual const void* data() const = 0;
+};
+
+std::unique_ptr<EventBuffer> CreateBuffer(InputEventType event_type,
+                                          size_t num_events);
+
+}  // namespace cuttlefish

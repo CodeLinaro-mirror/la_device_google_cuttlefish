@@ -250,6 +250,11 @@ static const std::set<std::string> kAlwaysMissingAidl = {
      * Context: (b/130076572, g/android-idl-discuss/c/0SaiY0p-vJw/)
      */
     "android.hardware.usb.gadget",
+    // Currently this HAL only implements a feature for protected VMs, and the
+    // reference implementation of this HAL only works with pKVM hypervisor.
+    // TODO(b/360102915): remove this after implementing no-op version of HAL
+    //  for cuttlefish.
+    "android.hardware.virtualization.capabilities.capabilities_service",
 };
 
 /*
@@ -274,6 +279,8 @@ static const std::vector<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.hardware.security.see.authmgr.", 1, 379940224},
     {"android.hardware.security.see.storage.", 1, 379940224},
     {"android.hardware.security.see.hwcrypto.", 1, 379940224},
+    {"android.hardware.security.see.hdcp.", 1, 379940224},
+    {"android.system.vold.", 1, 362567323},
 };
 
 // android.hardware.foo.IFoo -> android.hardware.foo.
