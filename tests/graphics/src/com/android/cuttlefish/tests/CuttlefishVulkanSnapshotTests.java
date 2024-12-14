@@ -21,22 +21,31 @@ import com.android.tradefed.config.Option;
 import com.android.tradefed.device.internal.DeviceResetHandler;
 import com.android.tradefed.device.internal.DeviceSnapshotHandler;
 import com.android.tradefed.log.LogUtil.CLog;
+import com.android.tradefed.result.ByteArrayInputStreamSource;
 import com.android.tradefed.result.InputStreamSource;
+import com.android.tradefed.result.LogDataType;
 import com.android.tradefed.testtype.DeviceJUnit4ClassRunner;
+import com.android.tradefed.testtype.DeviceJUnit4ClassRunner.TestLogData;
 import com.android.tradefed.testtype.junit4.BaseHostJUnit4Test;
 import com.google.auto.value.AutoValue;
 import java.awt.Color;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import javax.annotation.Nullable;
 import javax.imageio.ImageIO;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TestRule;
+import org.junit.runner.Description;
 import org.junit.runner.RunWith;
+import org.junit.runners.model.Statement;
 
 /**
  * Test snapshot/restore function.
@@ -70,6 +79,26 @@ public class CuttlefishVulkanSnapshotTests extends BaseHostJUnit4Test {
 
     private static final int SCREENSHOT_CHECK_TIMEOUT_MILLISECONDS = 1000;
 
+    @Rule
+    public TestLogData mLogs = new TestLogData();
+
+    // TODO: Move this into `device/google/cuttlefish/tests/utils` if it works?
+    @Rule
+    public final TestRule mUnlockScreenRule = new TestRule() {
+        @Override
+        public Statement apply(Statement base, Description description) {
+            return new Statement() {
+                @Override
+                public void evaluate() throws Throwable {
+                    getDevice().executeShellCommand("input keyevent KEYCODE_WAKEUP");
+                    getDevice().executeShellCommand("input keyevent KEYCODE_MENU");
+
+                    base.evaluate();
+                }
+            };
+        }
+    };
+
     @Before
     public void setUp() throws Exception {
         for (String apk : VK_SAMPLE_PKGS) {
@@ -85,6 +114,14 @@ public class CuttlefishVulkanSnapshotTests extends BaseHostJUnit4Test {
         for (String apk : VK_SAMPLE_PKGS) {
             getDevice().uninstallPackage(apk);
         }
+    }
+
+    private void saveScreenshotToTestResults(String name, BufferedImage screenshot) throws Exception {
+        ByteArrayOutputStream bytesOutputStream = new ByteArrayOutputStream();
+        ImageIO.write(screenshot, "png", bytesOutputStream);
+        byte[] bytes = bytesOutputStream.toByteArray();
+        ByteArrayInputStreamSource bytesInputStream = new ByteArrayInputStreamSource(bytes);
+        mLogs.addTestLog(name, LogDataType.PNG, bytesInputStream);
     }
 
     private BufferedImage getScreenshot() throws Exception {
@@ -118,13 +155,27 @@ public class CuttlefishVulkanSnapshotTests extends BaseHostJUnit4Test {
         abstract Color color();
     }
 
-    private boolean waitForColors(List<ExpectedColor> expectedColors) throws Exception {
+    @AutoValue
+    public static abstract class WaitForColorsResult {
+        static WaitForColorsResult create(@Nullable BufferedImage image) {
+            return new AutoValue_CuttlefishVulkanSnapshotTests_WaitForColorsResult(image);
+        }
+
+        @Nullable abstract BufferedImage failureImage();
+
+        boolean succeeded() { return failureImage() == null; }
+    }
+
+
+    private WaitForColorsResult waitForColors(List<ExpectedColor> expectedColors) throws Exception {
         assertThat(expectedColors).isNotEmpty();
+
+        BufferedImage screenshot = null;
 
         for (int attempt = 0; attempt < SCREENSHOT_CHECK_ATTEMPTS; attempt++) {
             CLog.i("Grabbing screenshot (attempt %d of %d)", attempt, SCREENSHOT_CHECK_ATTEMPTS);
 
-            BufferedImage screenshot = getScreenshot();
+            screenshot = getScreenshot();
 
             final int screenshotW = screenshot.getWidth();
             final int screenshotH = screenshot.getHeight();
@@ -154,7 +205,7 @@ public class CuttlefishVulkanSnapshotTests extends BaseHostJUnit4Test {
 
             if (foundAllExpectedColors) {
                 CLog.i("Screenshot attempt %d found all expected colors.", attempt);
-                return true;
+                return WaitForColorsResult.create(null);
             }
 
             CLog.i("Screenshot attempt %d did not find all expected colors. Sleeping for %d ms and "
@@ -164,7 +215,7 @@ public class CuttlefishVulkanSnapshotTests extends BaseHostJUnit4Test {
             Thread.sleep(SCREENSHOT_CHECK_TIMEOUT_MILLISECONDS);
         }
 
-        return false;
+        return WaitForColorsResult.create(screenshot);
     }
 
     private void runOneSnapshotTest(String pkg, List<ExpectedColor> expectedColors)
@@ -177,8 +228,11 @@ public class CuttlefishVulkanSnapshotTests extends BaseHostJUnit4Test {
         getDevice().executeShellCommand(
             String.format("am start -n %s/%s", pkg, VK_SAMPLES_MAIN_ACTIVITY));
 
-        final boolean foundExpectedColorsBeforeSnapshot = waitForColors(expectedColors);
-        assertThat(foundExpectedColorsBeforeSnapshot).isTrue();
+        final WaitForColorsResult beforeSnapshotResult = waitForColors(expectedColors);
+        if (!beforeSnapshotResult.succeeded()) {
+            saveScreenshotToTestResults("before_snapshot_restore_screenshot", beforeSnapshotResult.failureImage());
+        }
+        assertThat(beforeSnapshotResult.succeeded()).isTrue();
 
         // Snapshot the device
         new DeviceSnapshotHandler().snapshotDevice(getDevice(), snapshotId);
@@ -189,8 +243,11 @@ public class CuttlefishVulkanSnapshotTests extends BaseHostJUnit4Test {
             new DeviceSnapshotHandler().deleteSnapshot(getDevice(), snapshotId);
         }
 
-        final boolean foundExpectedColorsAfterSnapshotRestore = waitForColors(expectedColors);
-        assertThat(foundExpectedColorsAfterSnapshotRestore).isTrue();
+        final WaitForColorsResult afterSnapshotRestoreResult = waitForColors(expectedColors);
+        if (!afterSnapshotRestoreResult.succeeded()) {
+            saveScreenshotToTestResults("after_snapshot_restore_screenshot", afterSnapshotRestoreResult.failureImage());
+        }
+        assertThat(afterSnapshotRestoreResult.succeeded()).isTrue();
     }
 
     @Test

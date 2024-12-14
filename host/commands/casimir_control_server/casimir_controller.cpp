@@ -37,28 +37,35 @@ Result<void> CasimirController::Mute() {
   return {};
 }
 
-Result<void> CasimirController::Close() {
-  if (!sock_->IsOpen()) {
-    return {};
-  }
-  sock_->Close();
-  return {};
+CasimirController::CasimirController(SharedFD sock)
+    : sock_(sock), power_level(10) {}
+
+/* static */
+Result<CasimirController> CasimirController::ConnectToTcpPort(int rf_port) {
+  SharedFD sock = SharedFD::SocketLocalClient(rf_port, SOCK_STREAM);
+  CF_EXPECT(sock->IsOpen(),
+            "Failed to connect to casimir with RF port" << rf_port);
+
+  int flags = sock->Fcntl(F_GETFL, 0);
+  CF_EXPECT_GE(flags, 0, "Failed to get FD flags of casimir socket");
+  CF_EXPECT_EQ(sock->Fcntl(F_SETFL, flags | O_NONBLOCK), 0,
+               "Failed to set casimir socket nonblocking");
+
+  return CasimirController(sock);
 }
 
-Result<void> CasimirController::Init(int casimir_rf_port) {
-  LOG(INFO) << "CasimirController::Init";
-  CF_EXPECT(!sock_->IsOpen());
+/* static */
+Result<CasimirController> CasimirController::ConnectToUnixSocket(
+    const std::string& rf_path) {
+  SharedFD sock = SharedFD::SocketLocalClient(rf_path, false, SOCK_STREAM);
+  CF_EXPECT(sock->IsOpen(),
+            "Failed to connect to casimir with RF path" << rf_path);
 
-  sock_ = SharedFD::SocketLocalClient(casimir_rf_port, SOCK_STREAM);
-  CF_EXPECT(sock_->IsOpen(),
-            "Failed to connect to casimir with RF port" << casimir_rf_port);
-
-  int flags = sock_->Fcntl(F_GETFL, 0);
+  int flags = sock->Fcntl(F_GETFL, 0);
   CF_EXPECT_GE(flags, 0, "Failed to get FD flags of casimir socket");
-  CF_EXPECT_EQ(sock_->Fcntl(F_SETFL, flags | O_NONBLOCK), 0,
+  CF_EXPECT_EQ(sock->Fcntl(F_SETFL, flags | O_NONBLOCK), 0,
                "Failed to set casimir socket nonblocking");
-  power_level = 10;
-  return {};
+  return CasimirController(sock);
 }
 
 Result<void> CasimirController::Unmute() {
@@ -74,20 +81,6 @@ Result<void> CasimirController::Unmute() {
 
 Result<void> CasimirController::SetPowerLevel(uint32_t power_level) {
   this->power_level = power_level;
-  return {};
-}
-
-Result<void> CasimirController::Init(const std::string& casimir_rf_path) {
-  CF_EXPECT(!sock_->IsOpen());
-
-  sock_ = SharedFD::SocketLocalClient(casimir_rf_path, false, SOCK_STREAM);
-  CF_EXPECT(sock_->IsOpen(),
-            "Failed to connect to casimir with RF path" << casimir_rf_path);
-
-  int flags = sock_->Fcntl(F_GETFL, 0);
-  CF_EXPECT_GE(flags, 0, "Failed to get FD flags of casimir socket");
-  CF_EXPECT_EQ(sock_->Fcntl(F_SETFL, flags | O_NONBLOCK), 0,
-               "Failed to set casimir socket nonblocking");
   return {};
 }
 
@@ -136,12 +129,12 @@ Result<uint16_t> CasimirController::Poll() {
   return sender_id;
 }
 
-Result<std::shared_ptr<std::vector<uint8_t>>> CasimirController::SendApdu(
-    uint16_t receiver_id, const std::shared_ptr<std::vector<uint8_t>>& apdu) {
+Result<std::vector<uint8_t>> CasimirController::SendApdu(
+    uint16_t receiver_id, std::vector<uint8_t> apdu) {
   CF_EXPECT(sock_->IsOpen());
 
   DataBuilder data_builder;
-  data_builder.data_ = *apdu.get();
+  data_builder.data_ = std::move(apdu);
   data_builder.receiver_ = receiver_id;
   data_builder.technology_ = Technology::NFC_A;
   data_builder.protocol_ = Protocol::ISO_DEP;
@@ -153,7 +146,7 @@ Result<std::shared_ptr<std::vector<uint8_t>>> CasimirController::SendApdu(
   if (rf_packet.IsValid()) {
     auto data = DataView::Create(rf_packet);
     if (data.IsValid() && rf_packet.GetSender() == receiver_id) {
-      return std::make_shared<std::vector<uint8_t>>(data.GetData());
+      return data.GetData();
     }
   }
   return CF_ERR("Invalid APDU response");
