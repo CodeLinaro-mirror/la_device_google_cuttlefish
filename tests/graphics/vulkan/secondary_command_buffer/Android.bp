@@ -1,5 +1,4 @@
-//
-// Copyright (C) 2022 The Android Open Source Project
+// Copyright (C) 2024 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,27 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package {
-    default_applicable_licenses: ["Android-Apache-2.0"],
+cc_library_shared {
+    name: "libcuttlefish_vulkan_samples_secondary_command_buffer",
+    defaults: ["libcuttlefish_vulkan_samples_defaults"],
+    srcs: [
+        "secondary_command_buffer.cpp",
+    ],
 }
 
-cc_binary_host {
-    name: "cvd_internal_display",
-    srcs: [
-        "main.cpp",
-    ],
-    stl: "libc++_static",
-    static_libs: [
-        "libbase",
-        "libcuttlefish_command_util",
-        "libcuttlefish_fs",
-        "libcuttlefish_host_config",
-        "libcuttlefish_run_cvd_proto",
-        "libcuttlefish_utils",
-        "libgflags",
-        "libjsoncpp",
-        "liblog",
-        "libprotobuf-cpp-full",
-    ],
-    defaults: ["cuttlefish_host"],
+android_app {
+    name: "CuttlefishVulkanSamplesSecondaryCommandBuffer",
+    min_sdk_version: "34",
+    sdk_version: "current",
+    jni_libs: ["libcuttlefish_vulkan_samples_secondary_command_buffer"],
+    use_embedded_native_libs: true,
 }
