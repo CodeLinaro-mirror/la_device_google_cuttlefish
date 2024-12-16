@@ -25,10 +25,10 @@
 #include <grpcpp/health_check_service_interface.h>
 
 #include "casimir_control.grpc.pb.h"
-#include "casimir_controller.h"
-#include "utils.h"
 
 #include "common/libs/utils/result.h"
+#include "host/commands/casimir_control_server/casimir_controller.h"
+#include "host/commands/casimir_control_server/hex.h"
 
 using casimircontrolserver::CasimirControlService;
 using casimircontrolserver::PowerLevel;
@@ -53,188 +53,173 @@ DEFINE_string(grpc_uds_path, "", "grpc_uds_path");
 DEFINE_int32(casimir_rf_port, -1, "RF port to control Casimir");
 DEFINE_string(casimir_rf_path, "", "RF unix server path to control Casimir");
 
-#define CHECK_RETURN(call, msg)                          \
-  auto res = call;                                       \
-  if (!res.ok()) {                                       \
-    LOG(ERROR) << msg;                                   \
-    return Status(StatusCode::FAILED_PRECONDITION, msg); \
-  }
-#define ENSURE_INIT()        \
-  {                          \
-    const auto res = Init(); \
-    if (!res.ok()) {         \
-      return res;            \
-    }                        \
-  }
-
 namespace cuttlefish {
 namespace {
 
-class CasimirControlServiceImpl final : public CasimirControlService::Service {
-  CasimirController device;
-  bool isInitialized = false;
-  bool isRadioOn = false;
+Result<CasimirController> ConnectToCasimir() {
+  if (FLAGS_casimir_rf_port >= 0) {
+    return CF_EXPECT(
+        CasimirController::ConnectToTcpPort(FLAGS_casimir_rf_port));
+  } else if (!FLAGS_casimir_rf_path.empty()) {
+    return CF_EXPECT(
+        CasimirController::ConnectToUnixSocket(FLAGS_casimir_rf_path));
+  } else {
+    return CF_ERR("`--casimir_rf_port` or `--casimir_rf_path` must be set");
+  }
+}
 
+Status ResultToStatus(Result<void> res) {
+  if (res.ok()) {
+    return Status::OK;
+  } else {
+    LOG(ERROR) << "RPC failed: " << res.error().FormatForEnv();
+    return Status(StatusCode::INTERNAL,
+                  res.error().FormatForEnv(/* color = */ false));
+  }
+}
+
+class CasimirControlServiceImpl final : public CasimirControlService::Service {
+ private:
   Status SetPowerLevel(ServerContext* context, const PowerLevel* power_level,
                        Void*) override {
-    if (!isInitialized) {
-      return Status::OK;
+    return ResultToStatus(SetPowerLevelResult(power_level));
+  }
+
+  Result<void> SetPowerLevelResult(const PowerLevel* power_level) {
+    if (!device_) {
+      return {};
     }
-    if (!device.SetPowerLevel(power_level->power_level())) {
-      return Status(StatusCode::FAILED_PRECONDITION,
-                    "Failed to set power level");
-    }
+    CF_EXPECT(device_->SetPowerLevel(power_level->power_level()),
+              "Failed to set power level");
+    return {};
+  }
+
+  Status Close(ServerContext* context, const Void*, Void* senderId) override {
+    device_ = std::nullopt;
     return Status::OK;
   }
 
-  Status Init(ServerContext*, const Void*, Void*) override { return Init(); }
+  Status Init(ServerContext*, const Void*, Void*) override {
+    return ResultToStatus(Init());
+  }
 
-  Status Init() {
-    if (isInitialized) {
-      return Status::OK;
+  Result<void> Init() {
+    if (device_.has_value()) {
+      return {};
     }
     // Step 1: Initialize connection with casimir
-    cuttlefish::Result<void> init_res;
-    if (FLAGS_casimir_rf_port >= 0) {
-      init_res = device.Init(FLAGS_casimir_rf_port);
-    } else if (!FLAGS_casimir_rf_path.empty()) {
-      init_res = device.Init(FLAGS_casimir_rf_path);
-    } else {
-      std::string message =
-          "`--casimir_rf_port` or `--casimir_rf_path` must be set";
-      LOG(ERROR) << message;
-      return Status(StatusCode::FAILED_PRECONDITION, message);
-    }
-    if (!init_res.ok()) {
-      LOG(ERROR) << "Failed to initialize connection to casimir: "
-                 << init_res.error().FormatForEnv();
-      return Status(StatusCode::FAILED_PRECONDITION,
-                    "Failed to connect with casimir");
-    }
-    isInitialized = true;
-    return Status::OK;
+    device_ = CF_EXPECT(ConnectToCasimir());
+    return {};
   }
 
-  Status Close(ServerContext* context, const Void*, Void*) override {
-    if (!isInitialized) {
-      return Status::OK;
+  Result<void> Mute() {
+    if (!device_.has_value()) {
+      return {};
     }
-    isInitialized = false;
-    CHECK_RETURN(device.Close(), "Failed to close connection to casimir")
-    return Status::OK;
+
+    if (is_radio_on_) {
+      CF_EXPECT(device_->Mute(), "Failed to mute radio");
+      is_radio_on_ = false;
+    }
+    return {};
   }
 
-  Status Mute() {
-    if (isRadioOn) {
-      CHECK_RETURN(device.Mute(), "Failed to mute radio")
-      isRadioOn = false;
+  Result<void> Unmute() {
+    if (!is_radio_on_) {
+      CF_EXPECT(device_->Unmute(), "Failed to unmute radio");
+      is_radio_on_ = true;
     }
-    return Status::OK;
-  }
-
-  Status Unmute() {
-    if (!isRadioOn) {
-      CHECK_RETURN(device.Unmute(), "Failed to unmute radio")
-      isRadioOn = true;
-    }
-    return Status::OK;
+    return {};
   }
 
   Status SetRadioState(ServerContext* context, const RadioState* radio_state,
                        Void*) override {
+    return ResultToStatus(SetRadioStateResult(radio_state));
+  }
+
+  Result<void> SetRadioStateResult(const RadioState* radio_state) {
     if (radio_state->radio_on()) {
-      ENSURE_INIT()
-      return Unmute();
+      CF_EXPECT(Init());
+      CF_EXPECT(Unmute());
+      return {};
     } else {
-      if (!isInitialized) {
-        return Status::OK;
+      if (!device_.has_value()) {
+        return {};
       }
-      return Mute();
+      CF_EXPECT(Mute());
+      return {};
     }
   }
 
-  Status PollA(ServerContext* context, const Void*,
-               SenderId* senderId) override {
-    ENSURE_INIT()
-    if (!isInitialized) {
-      // Step 1: Initialize connection with casimir
-      cuttlefish::Result<void> init_res;
-      if (FLAGS_casimir_rf_port >= 0) {
-        init_res = device.Init(FLAGS_casimir_rf_port);
-      } else if (!FLAGS_casimir_rf_path.empty()) {
-        init_res = device.Init(FLAGS_casimir_rf_path);
-      } else {
-        std::string message =
-            "`--casimir_rf_port` or `--casimir_rf_path` must be set";
-        LOG(ERROR) << message;
-        return Status(StatusCode::FAILED_PRECONDITION, message);
-      }
-      if (!init_res.ok()) {
-        LOG(ERROR) << "Failed to initialize connection to casimir: "
-                   << init_res.error().FormatForEnv();
-        return Status(StatusCode::FAILED_PRECONDITION,
-                      "Failed to connect with casimir");
-      }
-      isInitialized = true;
-      CHECK_RETURN(Unmute(), "failed to unmute the device")
+  Result<void> PollAResult(SenderId* sender_id) {
+    // Step 1: Initialize connection with casimir
+    if (!device_.has_value()) {
+      device_ = CF_EXPECT(ConnectToCasimir(), "Failed to connect with casimir");
+      CF_EXPECT(Unmute(), "failed to unmute the device");
     }
     // Step 2: Poll
-    auto poll_res = device.Poll();
-    if (!poll_res.ok()) {
-      LOG(ERROR) << "Failed to poll(): " << poll_res.error().FormatForEnv();
-      return Status(StatusCode::FAILED_PRECONDITION,
-                    "Failed to poll and select NFC-A and ISO-DEP");
-    }
-    uint32_t id = static_cast<uint32_t>(poll_res.value());
-    senderId->set_sender_id(id);
-    return Status::OK;
+    /* Casimir control server seems to be dropping integer values of zero.
+      This works around that issue by translating the 0-based sender IDs to
+      be 1-based.*/
+    sender_id->set_sender_id(
+
+        CF_EXPECT(device_->Poll(),
+                  "Failed to poll and select NFC-A and ISO-DEP") +
+        1);
+    return {};
   }
 
-  Status SendApdu(ServerContext* context, const SendApduRequest* request,
-                  SendApduReply* response) override {
+  Status PollA(ServerContext*, const Void*, SenderId* sender_id) override {
+    return ResultToStatus(PollAResult(sender_id));
+  }
+
+  Result<void> SendApduResult(const SendApduRequest* request,
+                              SendApduReply* response) {
     // Step 0: Parse input
-    std::vector<std::shared_ptr<std::vector<uint8_t>>> apdu_bytes;
-    for (int i = 0; i < request->apdu_hex_strings_size(); i++) {
-      auto apdu_bytes_res = BytesArray(request->apdu_hex_strings(i));
-      if (!apdu_bytes_res.ok()) {
-        LOG(ERROR) << "Failed to parse input " << request->apdu_hex_strings(i)
-                   << ", " << apdu_bytes_res.error().FormatForEnv();
-        return Status(StatusCode::INVALID_ARGUMENT,
-                      "Failed to parse input. Must only contain [0-9a-fA-F]");
-      }
-      apdu_bytes.push_back(apdu_bytes_res.value());
+    std::vector<std::vector<uint8_t>> apdu_bytes;
+    for (const std::string& apdu_hex_string : request->apdu_hex_strings()) {
+      apdu_bytes.emplace_back(
+          CF_EXPECT(HexToBytes(apdu_hex_string),
+                    "Failed to parse input. Must only contain [0-9a-fA-F]"));
     }
-    ENSURE_INIT()
+    // Step 1: Initialize connection with casimir
+    CF_EXPECT(Init());
 
     int16_t id;
     if (request->has_sender_id()) {
-      id = request->sender_id();
+      /* Casimir control server seems to be dropping integer values of zero.
+        This works around that issue by translating the 0-based sender IDs to
+        be 1-based.*/
+      id = request->sender_id() - 1;
     } else {
       // Step 2: Poll
-      Void voidArg;
-      SenderId senderId;
-      PollA(context, &voidArg, &senderId);
-      id = senderId.sender_id();
+      SenderId sender_id;
+      CF_EXPECT(PollAResult(&sender_id));
+      id = sender_id.sender_id();
     }
 
     // Step 3: Send APDU bytes
     response->clear_response_hex_strings();
     for (int i = 0; i < apdu_bytes.size(); i++) {
-      auto send_res = device.SendApdu(id, apdu_bytes[i]);
-      if (!send_res.ok()) {
-        LOG(ERROR) << "Failed to send APDU bytes: "
-                   << send_res.error().FormatForEnv();
-        return Status(StatusCode::UNKNOWN, "Failed to send APDU bytes");
-      }
-      auto bytes = *(send_res.value());
-      auto resp = android::base::HexString(
+      std::vector<uint8_t> bytes =
+          CF_EXPECT(device_->SendApdu(id, std::move(apdu_bytes[i])),
+                    "Failed to send APDU bytes");
+      std::string resp = android::base::HexString(
           reinterpret_cast<void*>(bytes.data()), bytes.size());
-      response->add_response_hex_strings(resp);
+      response->add_response_hex_strings(std::move(resp));
     }
 
     // Returns OK although returned bytes is valids if ends with [0x90, 0x00].
-    return Status::OK;
+    return {};
   }
+
+  Status SendApdu(ServerContext*, const SendApduRequest* request,
+                  SendApduReply* response) override {
+    return ResultToStatus(SendApduResult(request, response));
+  }
+
+  std::optional<CasimirController> device_;
+  bool is_radio_on_ = false;
 };
 
 void RunServer(int argc, char** argv) {
