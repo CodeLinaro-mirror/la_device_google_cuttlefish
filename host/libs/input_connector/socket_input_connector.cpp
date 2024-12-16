@@ -157,14 +157,16 @@ class TouchDevice {
     if (slot_it == slots_by_source_and_id_.end()) {
       return;
     }
-    slots_by_source_and_id_.erase(slot_it);
     active_slots_[slot_it->second] = false;
+    slots_by_source_and_id_.erase(slot_it);
   }
 
   size_t NumActiveSlots() {
     std::lock_guard<std::mutex> lock(slots_mtx_);
     return slots_by_source_and_id_.size();
   }
+
+  int NewTrackingId() { return ++tracking_id_; }
 
   // The InputConnector holds state of on-going touch contacts. Event sources
   // that can produce multi touch events should call this function when it's
@@ -206,6 +208,7 @@ class TouchDevice {
   std::mutex slots_mtx_;
   std::map<std::pair<void*, int32_t>, int32_t> slots_by_source_and_id_;
   std::vector<bool> active_slots_;
+  std::atomic<int> tracking_id_ = 0;
 };
 
 struct InputDevices {
@@ -230,6 +233,7 @@ class InputSocketsEventSink : public InputConnector::EventSink {
 
   Result<void> SendMouseMoveEvent(int x, int y) override;
   Result<void> SendMouseButtonEvent(int button, bool down) override;
+  Result<void> SendMouseWheelEvent(int pixels) override;
   Result<void> SendTouchEvent(const std::string& device_label, int x, int y,
                               bool down) override;
   Result<void> SendMultiTouchEvent(const std::string& device_label,
@@ -287,6 +291,16 @@ Result<void> InputSocketsEventSink::SendMouseButtonEvent(int button,
   return {};
 }
 
+Result<void> InputSocketsEventSink::SendMouseWheelEvent(int pixels) {
+  CF_EXPECT(input_devices_.mouse != nullptr, "No mouse device setup");
+  auto buffer = CreateBuffer(input_devices_.event_type, 2);
+  CF_EXPECT(buffer != nullptr, "Failed to allocate input events buffer");
+  buffer->AddEvent(EV_REL, REL_WHEEL, pixels);
+  buffer->AddEvent(EV_SYN, SYN_REPORT, 0);
+  input_devices_.mouse->WriteEvents(std::move(buffer));
+  return {};
+}
+
 Result<void> InputSocketsEventSink::SendTouchEvent(
     const std::string& device_label, int x, int y, bool down) {
   auto buffer = CreateBuffer(input_devices_.event_type, 4);
@@ -324,13 +338,12 @@ Result<void> InputSocketsEventSink::SendMultiTouchEvent(
     auto this_y = f.y;
 
     auto is_new_contact = !ts.HasSlot(this, this_id);
-    auto was_down = ts.NumActiveSlots() > 0;
 
     // Make sure to call HasSlot before this line or it will always return true
     auto this_slot = ts.GetOrAcquireSlot(this, this_id);
 
     // BTN_TOUCH DOWN must be the first event in a series
-    if (down && !was_down) {
+    if (down && is_new_contact) {
       buffer->AddEvent(EV_KEY, BTN_TOUCH, 1);
     }
 
@@ -339,7 +352,7 @@ Result<void> InputSocketsEventSink::SendMultiTouchEvent(
       if (is_new_contact) {
         // We already assigned this slot to this source and id combination, we
         // could use any tracking id for the slot as long as it's greater than 0
-        buffer->AddEvent(EV_ABS, ABS_MT_TRACKING_ID, this_id);
+        buffer->AddEvent(EV_ABS, ABS_MT_TRACKING_ID, ts.NewTrackingId());
       }
       buffer->AddEvent(EV_ABS, ABS_MT_POSITION_X, this_x);
       buffer->AddEvent(EV_ABS, ABS_MT_POSITION_Y, this_y);
@@ -347,9 +360,6 @@ Result<void> InputSocketsEventSink::SendMultiTouchEvent(
       // released touch
       buffer->AddEvent(EV_ABS, ABS_MT_TRACKING_ID, -1);
       ts.ReleaseSlot(this, this_id);
-    }
-    // Send BTN_TOUCH UP when no more contacts are detected
-    if (was_down && ts.NumActiveSlots() == 0) {
       buffer->AddEvent(EV_KEY, BTN_TOUCH, 0);
     }
   }
@@ -435,8 +445,8 @@ void InputSocketsConnectorBuilder::WithTouchDevice(
   CHECK(connector_->devices_.touch_devices.find(device_label) ==
         connector_->devices_.touch_devices.end())
       << "Multiple touch devices with same label: " << device_label;
-  connector_->devices_.touch_devices.emplace(device_label,
-                                     std::make_unique<InputSocket>(server));
+  connector_->devices_.touch_devices.emplace(
+      device_label, std::make_unique<InputSocket>(server));
 }
 
 void InputSocketsConnectorBuilder::WithKeyboard(SharedFD server) {

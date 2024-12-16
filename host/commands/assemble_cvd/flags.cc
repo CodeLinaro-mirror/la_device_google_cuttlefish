@@ -63,6 +63,7 @@
 #include "host/libs/config/instance_nums.h"
 #include "host/libs/config/secure_hals.h"
 #include "host/libs/config/touchpad.h"
+#include "host/libs/vhal_proxy_server/vhal_proxy_server_eth_addr.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
 #include "host/libs/vm_manager/gem5_manager.h"
 #include "host/libs/vm_manager/qemu_manager.h"
@@ -520,6 +521,9 @@ DEFINE_vec(
 DEFINE_vec(vhost_user_block, CF_DEFAULTS_VHOST_USER_BLOCK ? "true" : "false",
            "(experimental) use crosvm vhost-user block device implementation ");
 
+DEFINE_string(early_tmp_dir, cuttlefish::StringFromEnv("TEMP", "/tmp"),
+              "Parent directory to use for temporary files in early startup");
+
 DECLARE_string(assembly_dir);
 DECLARE_string(boot_image);
 DECLARE_string(system_image_dir);
@@ -622,9 +626,9 @@ Result<std::vector<GuestConfig>> ReadGuestConfig() {
     }
 
     GuestConfig guest_config;
-    guest_config.android_version_number =
-        CF_EXPECT(ReadAndroidVersionFromBootImage(cur_boot_image),
-                  "Failed to read guest's android version");
+    guest_config.android_version_number = CF_EXPECT(
+        ReadAndroidVersionFromBootImage(FLAGS_early_tmp_dir, cur_boot_image),
+        "Failed to read guest's android version");
 
     if (InSandbox()) {
       // TODO: b/359309462 - real sandboxing for extract-ikconfig
@@ -636,8 +640,7 @@ Result<std::vector<GuestConfig>> ReadGuestConfig() {
       ikconfig_cmd.AddParameter(kernel_image_path);
       ikconfig_cmd.UnsetFromEnvironment("PATH").AddEnvironmentVariable(
           "PATH", new_path);
-      std::string ikconfig_path =
-          StringFromEnv("TEMP", "/tmp") + "/ikconfig.XXXXXX";
+      std::string ikconfig_path = FLAGS_early_tmp_dir + "/ikconfig.XXXXXX";
       auto ikconfig_fd = SharedFD::Mkstemp(&ikconfig_path);
       CF_EXPECT(ikconfig_fd->IsOpen(),
                 "Unable to create ikconfig file: " << ikconfig_fd->StrError());
@@ -1346,8 +1349,9 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   if (FLAGS_vhal_proxy_server_instance_num > 0) {
     vhal_proxy_server_instance_num = FLAGS_vhal_proxy_server_instance_num - 1;
   }
-  tmp_config_obj.set_vhal_proxy_server_port(9300 +
-                                            vhal_proxy_server_instance_num);
+  tmp_config_obj.set_vhal_proxy_server_port(
+      cuttlefish::vhal_proxy_server::kDefaultEthPort +
+      vhal_proxy_server_instance_num);
   LOG(DEBUG) << "launch vhal proxy server: "
              << (FLAGS_enable_vhal_proxy_server &&
                  vhal_proxy_server_instance_num <= 0);

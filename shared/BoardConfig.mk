@@ -117,8 +117,13 @@ TARGET_NO_BOOTLOADER := $(__TARGET_NO_BOOTLOADER)
 # For now modules are only blocked in second stage init.
 # If a module ever needs to blocked in first stage init - add a new blocklist to
 # BOARD_VENDOR_RAMDISK_KERNEL_MODULES_BLOCKLIST_FILE
+ifeq ($(TARGET_KERNEL_ARCH),arm64)
+BOARD_VENDOR_KERNEL_MODULES_BLOCKLIST_FILE := \
+    device/google/cuttlefish/shared/modules_aarch64.blocklist
+else
 BOARD_VENDOR_KERNEL_MODULES_BLOCKLIST_FILE := \
     device/google/cuttlefish/shared/modules.blocklist
+endif
 
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES_OPTIONS_FILE := \
     device/google/cuttlefish/shared/config/first_stage_modules.options
@@ -377,7 +382,6 @@ BOARD_BOOTCONFIG += \
     kernel.vmw_vsock_virtio_transport_common.virtio_transport_max_vsock_pkt_buf_size=16384
 
 BOARD_BOOTCONFIG += \
-    androidboot.vendor.apex.com.android.wifi.hal=com.google.cf.wifi_hwsim \
     androidboot.vendor.apex.com.google.emulated.camera.provider.hal=com.google.emulated.camera.provider.hal \
 
 BOARD_INCLUDE_DTB_IN_BOOTIMG := true

@@ -21,8 +21,11 @@
 #include <string>
 #include <vector>
 
+#include <android-base/parseint.h>
+
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
+#include "common/libs/utils/json.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/known_paths.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
@@ -208,13 +211,29 @@ Result<std::unordered_map<std::string, std::string>> BootconfigArgsFromConfig(
 
   bootconfig_args
       ["androidboot.vendor.apex.com.android.hardware.graphics.composer"] =
-          instance.hwcomposer() == "drm_hwcomposer"
+          instance.hwcomposer() == kHwComposerDrm
               ? "com.android.hardware.graphics.composer.drm_hwcomposer"
               : "com.android.hardware.graphics.composer.ranchu";
 
   if (config.vhal_proxy_server_port()) {
     bootconfig_args["androidboot.vhal_proxy_server_port"] =
         std::to_string(config.vhal_proxy_server_port());
+    int32_t instance_id;
+    CF_EXPECT(android::base::ParseInt(instance.id(), &instance_id),
+              "instance id: " << instance.id() << " is not a valid int");
+    // The static ethernet IP address assigned for the guest.
+    bootconfig_args["androidboot.auto_eth_guest_addr"] =
+        fmt::format("192.168.98.{}", instance_id + 2);
+  }
+
+  if (!instance.vcpu_config_path().empty()) {
+    auto vcpu_config_json =
+        CF_EXPECT(LoadFromFile(instance.vcpu_config_path()));
+
+    const auto guest_soc =
+        CF_EXPECT(GetValue<std::string>(vcpu_config_json, {"guest_soc"}));
+
+    bootconfig_args["androidboot.guest_soc.model"] = guest_soc;
   }
 
   std::vector<std::string> args = instance.extra_bootconfig_args();

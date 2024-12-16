@@ -84,8 +84,7 @@ public class GceService extends Service {
             mPreviousDpi = getResources().getConfiguration().densityDpi;
 
             mExecutor.schedule(mWifiManager);
-            // TODO(b/169348344): Re-enable bluetooth checker.
-            //mExecutor.schedule(mBluetoothChecker);
+            mExecutor.schedule(mBluetoothChecker);
             mExecutor.schedule(mConnChecker);
 
             mExecutor.schedule(mEventReporter, 10, mBluetoothChecker.getEnabled());

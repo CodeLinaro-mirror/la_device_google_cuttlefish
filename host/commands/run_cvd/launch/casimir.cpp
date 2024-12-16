@@ -16,12 +16,12 @@
 #include "host/commands/run_cvd/launch/launch.h"
 
 #include <string>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include <fruit/fruit.h>
 
+#include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/result.h"
 #include "host/commands/run_cvd/launch/log_tee_creator.h"
 #include "host/libs/config/command_source.h"
@@ -32,30 +32,39 @@ namespace cuttlefish {
 
 Result<std::vector<MonitorCommand>> Casimir(
     const CuttlefishConfig& config,
+    const CuttlefishConfig::EnvironmentSpecific& environment,
     const CuttlefishConfig::InstanceSpecific& instance,
     LogTeeCreator& log_tee) {
   if (!(config.enable_host_nfc() && instance.start_casimir())) {
     return {};
   }
 
-  Command command(ProcessRestarterBinary());
-  command.AddParameter("-when_killed");
-  command.AddParameter("-when_dumped");
-  command.AddParameter("-when_exited_with_failure");
-  command.AddParameter("--");
+  SharedFD nci_server = SharedFD::SocketLocalServer(
+      environment.casimir_nci_socket_path(), false, SOCK_STREAM, 0600);
+  CF_EXPECTF(nci_server->IsOpen(), "{}", nci_server->StrError());
 
-  command.AddParameter(CasimirBinary());
-  command.AddParameter("--nci-port");
-  command.AddParameter(config.casimir_nci_port());
-  command.AddParameter("--rf-port");
-  command.AddParameter(config.casimir_rf_port());
+  SharedFD rf_server = SharedFD::SocketLocalServer(
+      environment.casimir_rf_socket_path(), false, SOCK_STREAM, 0600);
+  CF_EXPECTF(rf_server->IsOpen(), "{}", rf_server->StrError());
+
+  Command casimir = Command(ProcessRestarterBinary())
+                        .AddParameter("-when_killed")
+                        .AddParameter("-when_dumped")
+                        .AddParameter("-when_exited_with_failure")
+                        .AddParameter("--")
+                        .AddParameter(CasimirBinary())
+                        .AddParameter("--nci-unix-fd")
+                        .AddParameter(nci_server)
+                        .AddParameter("--rf-unix-fd")
+                        .AddParameter(rf_server);
+
   for (auto const& arg : config.casimir_args()) {
-    command.AddParameter(arg);
+    casimir.AddParameter(arg);
   }
 
   std::vector<MonitorCommand> commands;
-  commands.emplace_back(CF_EXPECT(log_tee.CreateLogTee(command, "casimir")));
-  commands.emplace_back(std::move(command));
+  commands.emplace_back(CF_EXPECT(log_tee.CreateLogTee(casimir, "casimir")));
+  commands.emplace_back(std::move(casimir));
   return commands;
 }
 
