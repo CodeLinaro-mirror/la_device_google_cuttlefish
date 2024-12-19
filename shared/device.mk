@@ -29,6 +29,11 @@ VENDOR_SECURITY_PATCH = $(PLATFORM_SECURITY_PATCH)
 # Set boot SPL
 BOOT_SECURITY_PATCH = $(PLATFORM_SECURITY_PATCH)
 
+# Use EROFS APEX as default
+ifeq (true,$(RELEASE_APEX_USE_EROFS_PREINSTALLED))
+PRODUCT_DEFAULT_APEX_PAYLOAD_TYPE := erofs
+endif
+
 PRODUCT_VENDOR_PROPERTIES += \
     ro.vendor.boot_security_patch=$(BOOT_SECURITY_PATCH)
 
@@ -267,6 +272,7 @@ PRODUCT_PACKAGES += \
     fstab.cf.f2fs.hctr2 \
     fstab.cf.f2fs.hctr2.vendor_ramdisk \
     fstab.cf.f2fs.cts \
+    fstab.cf.f2fs.cts.recovery \
     fstab.cf.f2fs.cts.vendor_ramdisk \
     fstab.cf.ext4.hctr2 \
     fstab.cf.ext4.hctr2.vendor_ramdisk \
