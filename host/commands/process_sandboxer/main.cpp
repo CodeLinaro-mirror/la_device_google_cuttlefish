@@ -17,7 +17,9 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <sys/prctl.h>
+#include <unistd.h>
 
+#include <cerrno>
 #include <memory>
 #include <optional>
 #include <string>
@@ -25,6 +27,7 @@
 #include <utility>
 #include <vector>
 
+#include <absl/base/log_severity.h>
 #include <absl/flags/flag.h>
 #include <absl/flags/parse.h>
 #include <absl/log/check.h>
@@ -33,15 +36,14 @@
 #include <absl/log/log.h>
 #include <absl/status/status.h>
 #include <absl/strings/match.h>
-#include <absl/strings/numbers.h>
 #include <absl/strings/str_cat.h>
+#include <sandboxed_api/util/fileops.h>
+#include <sandboxed_api/util/path.h>
 
-#include "host/commands/process_sandboxer/filesystem.h"
 #include "host/commands/process_sandboxer/logs.h"
 #include "host/commands/process_sandboxer/pidfd.h"
 #include "host/commands/process_sandboxer/policies.h"
 #include "host/commands/process_sandboxer/sandbox_manager.h"
-#include "host/commands/process_sandboxer/unique_fd.h"
 
 inline constexpr char kCuttlefishConfigEnvVarName[] = "CUTTLEFISH_CONFIG_FILE";
 
@@ -62,6 +64,10 @@ ABSL_FLAG(std::string, vsock_device_dir, "/tmp/vsock_3_1000",
 
 namespace cuttlefish::process_sandboxer {
 namespace {
+
+using sapi::file::CleanPath;
+using sapi::file::JoinPath;
+using sapi::file_util::fileops::FDCloser;
 
 std::optional<std::string_view> FromEnv(const std::string& name) {
   char* value = getenv(name.c_str());
@@ -202,14 +208,14 @@ absl::Status ProcessSandboxerMain(int argc, char** argv) {
   }
   std::unique_ptr<SandboxManager> manager = std::move(*sandbox_manager_res);
 
-  std::vector<std::pair<UniqueFd, int>> fds;
+  std::vector<std::pair<FDCloser, int>> fds;
   for (int i = 0; i <= 2; i++) {
     auto duped = fcntl(i, F_DUPFD_CLOEXEC, 0);
     if (duped < 0) {
       static constexpr char kErr[] = "Failed to `dup` stdio file descriptor";
       return absl::ErrnoToStatus(errno, kErr);
     }
-    fds.emplace_back(UniqueFd(duped), i);
+    fds.emplace_back(FDCloser(duped), i);
   }
 
   std::vector<std::string> this_env;

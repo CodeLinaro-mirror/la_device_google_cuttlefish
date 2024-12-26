@@ -24,8 +24,15 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <cerrno>
+#include <cstdint>
 #include <fstream>
+#include <ios>
 #include <memory>
+#include <sstream>
+#include <string>
+#include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -39,14 +46,15 @@
 #include <absl/strings/str_join.h>
 #include <absl/strings/str_split.h>
 #include <absl/types/span.h>
-
-#include "host/commands/process_sandboxer/unique_fd.h"
+#include <sandboxed_api/util/fileops.h>
 
 namespace cuttlefish::process_sandboxer {
 
+using sapi::file_util::fileops::FDCloser;
+
 absl::StatusOr<PidFd> PidFd::FromRunningProcess(pid_t pid) {
-  UniqueFd fd(syscall(__NR_pidfd_open, pid, 0));  // Always CLOEXEC
-  if (fd.Get() < 0) {
+  FDCloser fd(syscall(__NR_pidfd_open, pid, 0));  // Always CLOEXEC
+  if (fd.get() < 0) {
     return absl::ErrnoToStatus(errno, "`pidfd_open` failed");
   }
   return PidFd(std::move(fd), pid);
@@ -54,7 +62,7 @@ absl::StatusOr<PidFd> PidFd::FromRunningProcess(pid_t pid) {
 
 absl::StatusOr<PidFd> PidFd::LaunchSubprocess(
     absl::Span<const std::string> argv,
-    std::vector<std::pair<UniqueFd, int>> fds,
+    std::vector<std::pair<FDCloser, int>> fds,
     absl::Span<const std::string> env) {
   int pidfd;
   clone_args args_for_clone = clone_args{
@@ -71,7 +79,7 @@ absl::StatusOr<PidFd> PidFd::LaunchSubprocess(
     std::string argv_str = absl::StrJoin(argv, "','");
     VLOG(1) << res << ": Running w/o sandbox ['" << argv_str << "]";
 
-    UniqueFd fd(pidfd);
+    FDCloser fd(pidfd);
     return PidFd(std::move(fd), res);
   }
 
@@ -86,7 +94,7 @@ absl::StatusOr<PidFd> PidFd::LaunchSubprocess(
 
   std::unordered_map<int, int> backup_mapping;
   for (const auto& [my_fd, target_fd] : fds) {
-    int backup = fcntl(my_fd.Get(), F_DUPFD, minimum_backup_fd);
+    int backup = fcntl(my_fd.get(), F_DUPFD, minimum_backup_fd);
     PCHECK(backup >= 0) << "fcntl(..., F_DUPFD) failed";
     int flags = fcntl(backup, F_GETFD);
     PCHECK(flags >= 0) << "fcntl(..., F_GETFD failed";
@@ -102,6 +110,7 @@ absl::StatusOr<PidFd> PidFd::LaunchSubprocess(
 
   std::vector<std::string> argv_clone(argv.begin(), argv.end());
   std::vector<char*> argv_cstr;
+  argv_cstr.reserve(argv_clone.size());
   for (auto& arg : argv_clone) {
     argv_cstr.emplace_back(arg.data());
   }
@@ -109,6 +118,7 @@ absl::StatusOr<PidFd> PidFd::LaunchSubprocess(
 
   std::vector<std::string> env_clone(env.begin(), env.end());
   std::vector<char*> env_cstr;
+  env_cstr.reserve(env_clone.size());
   for (std::string& env_member : env_clone) {
     env_cstr.emplace_back(env_member.data());
   }
@@ -123,16 +133,16 @@ absl::StatusOr<PidFd> PidFd::LaunchSubprocess(
   PLOG(FATAL) << "execv failed";
 }
 
-PidFd::PidFd(UniqueFd fd, pid_t pid) : fd_(std::move(fd)), pid_(pid) {}
+PidFd::PidFd(FDCloser fd, pid_t pid) : fd_(std::move(fd)), pid_(pid) {}
 
-int PidFd::Get() const { return fd_.Get(); }
+int PidFd::Get() const { return fd_.get(); }
 
-absl::StatusOr<std::vector<std::pair<UniqueFd, int>>> PidFd::AllFds() {
-  std::vector<std::pair<UniqueFd, int>> fds;
+absl::StatusOr<std::vector<std::pair<FDCloser, int>>> PidFd::AllFds() {
+  std::vector<std::pair<FDCloser, int>> fds;
 
   std::string dir_name = absl::StrFormat("/proc/%d/fd", pid_);
   std::unique_ptr<DIR, int (*)(DIR*)> dir(opendir(dir_name.c_str()), closedir);
-  if (dir.get() == nullptr) {
+  if (!dir) {
     return absl::ErrnoToStatus(errno, "`opendir` failed");
   }
   for (dirent* ent = readdir(dir.get()); ent; ent = readdir(dir.get())) {
@@ -147,8 +157,8 @@ absl::StatusOr<std::vector<std::pair<UniqueFd, int>>> PidFd::AllFds() {
       return absl::InternalError(error);
     }
     // Always CLOEXEC
-    UniqueFd our_fd(syscall(__NR_pidfd_getfd, fd_.Get(), other_fd, 0));
-    if (our_fd.Get() < 0) {
+    FDCloser our_fd(syscall(__NR_pidfd_getfd, fd_.get(), other_fd, 0));
+    if (our_fd.get() < 0) {
       return absl::ErrnoToStatus(errno, "`pidfd_getfd` failed");
     }
     fds.emplace_back(std::move(our_fd), other_fd);
@@ -174,7 +184,7 @@ static absl::StatusOr<std::vector<std::string>> ReadNullSepFile(
   std::vector<std::string> members = absl::StrSplit(buffer.str(), '\0');
   if (members.empty()) {
     return absl::InternalError(absl::StrFormat("'%v' is empty", path));
-  } else if (members.back() == "") {
+  } else if (members.back().empty()) {
     members.pop_back();  // may end in a null terminator
   }
   return members;
@@ -205,7 +215,7 @@ static absl::StatusOr<std::vector<pid_t>> FindChildPids(pid_t pid) {
 
   std::string task_dir = absl::StrFormat("/proc/%d/task", pid);
   std::unique_ptr<DIR, int (*)(DIR*)> dir(opendir(task_dir.c_str()), closedir);
-  if (dir.get() == nullptr) {
+  if (!dir) {
     return absl::ErrnoToStatus(errno, "`opendir` failed");
   }
 
@@ -225,7 +235,7 @@ static absl::StatusOr<std::vector<pid_t>> FindChildPids(pid_t pid) {
 
     std::string children_str;
     std::getline(children_stream, children_str);
-    for (std::string_view child_str : absl::StrSplit(children_str, " ")) {
+    for (std::string_view child_str : absl::StrSplit(children_str, ' ')) {
       if (child_str.empty()) {
         continue;
       }
@@ -262,7 +272,7 @@ absl::Status PidFd::HaltChildHierarchy() {
 }
 
 absl::Status PidFd::SendSignal(int signal) {
-  if (syscall(__NR_pidfd_send_signal, fd_.Get(), signal, nullptr, 0) < 0) {
+  if (syscall(__NR_pidfd_send_signal, fd_.get(), signal, nullptr, 0) < 0) {
     return absl::ErrnoToStatus(errno, "pidfd_send_signal failed");
   }
   return absl::OkStatus();
