@@ -17,10 +17,11 @@
 
 #include <unistd.h>
 
+#include <utility>
+
 #include <absl/log/log.h>
 
-namespace cuttlefish {
-namespace process_sandboxer {
+namespace cuttlefish::process_sandboxer {
 
 UniqueFd::UniqueFd(int fd) : fd_(fd) {}
 
@@ -54,5 +55,4 @@ void UniqueFd::Close() {
   fd_ = -1;
 }
 
-}  // namespace process_sandboxer
-}  // namespace cuttlefish
+}  // namespace cuttlefish::process_sandboxer

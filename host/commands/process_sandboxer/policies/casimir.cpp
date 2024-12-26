@@ -16,11 +16,14 @@
 
 #include "host/commands/process_sandboxer/policies.h"
 
+#include <linux/filter.h>
 #include <netinet/ip_icmp.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
-#include <sys/prctl.h>
+#include <sys/socket.h>
 #include <sys/syscall.h>
+
+#include <vector>
 
 #include <sandboxed_api/sandbox2/policybuilder.h>
 #include <sandboxed_api/sandbox2/util/bpf_helper.h>
@@ -70,7 +73,8 @@ sandbox2::PolicyBuilder CasimirPolicy(const HostInfo& host) {
       .AllowSyscall(__NR_getrandom)
       .AllowSyscall(__NR_recvfrom)
       .AllowSyscall(__NR_sendto)
-      .AllowSyscall(__NR_shutdown);
+      .AllowSyscall(__NR_shutdown)
+      .AllowSyscall(__NR_statx);  // Not covered by AllowStat
 }
 
 }  // namespace cuttlefish::process_sandboxer
