@@ -16,14 +16,19 @@
 
 #include "host/commands/process_sandboxer/policies.h"
 
+#include <linux/filter.h>
 #include <sys/mman.h>
+
+#include <string_view>
+#include <vector>
 
 #include <sandboxed_api/sandbox2/policybuilder.h>
 #include <sandboxed_api/sandbox2/util/bpf_helper.h>
-
-#include "host/commands/process_sandboxer/filesystem.h"
+#include <sandboxed_api/util/path.h>
 
 namespace cuttlefish::process_sandboxer {
+
+using sapi::file::JoinPath;
 
 sandbox2::PolicyBuilder BaselinePolicy(const HostInfo& host,
                                        std::string_view exe) {
