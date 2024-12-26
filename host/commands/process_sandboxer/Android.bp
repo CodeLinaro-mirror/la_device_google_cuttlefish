@@ -25,7 +25,6 @@ cc_binary_host {
     defaults: ["cuttlefish_buildhost_only"],
     srcs: [
         "credentialed_unix_server.cpp",
-        "filesystem.cpp",
         "logs.cpp",
         "main.cpp",
         "pidfd.cpp",
@@ -67,7 +66,6 @@ cc_binary_host {
         "poll_callback.cpp",
         "sandbox_manager.cpp",
         "signal_fd.cpp",
-        "unique_fd.cpp",
     ],
     shared_libs: ["sandboxed_api_sandbox2"],
     static_libs: [
