@@ -15,18 +15,21 @@
  */
 #include "host/commands/process_sandboxer/policies.h"
 
+#include <linux/prctl.h>
 #include <sys/mman.h>
-#include <sys/prctl.h>
+#include <sys/socket.h>
 #include <sys/syscall.h>
 
-#include <absl/strings/str_cat.h>
-#include <absl/strings/str_replace.h>
+#include <cerrno>
+#include <string>
+
 #include <sandboxed_api/sandbox2/policybuilder.h>
 #include <sandboxed_api/sandbox2/util/bpf_helper.h>
-
-#include "host/commands/process_sandboxer/filesystem.h"
+#include <sandboxed_api/util/path.h>
 
 namespace cuttlefish::process_sandboxer {
+
+using sapi::file::JoinPath;
 
 sandbox2::PolicyBuilder AssembleCvdPolicy(const HostInfo& host) {
   std::string sandboxer_proxy = host.HostToolExe("sandboxer_proxy");

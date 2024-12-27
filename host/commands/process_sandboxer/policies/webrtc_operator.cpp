@@ -16,19 +16,24 @@
 
 #include "host/commands/process_sandboxer/policies.h"
 
+#include <linux/filter.h>
+#include <linux/prctl.h>
 #include <netinet/ip_icmp.h>
 #include <netinet/tcp.h>
 #include <sys/mman.h>
-#include <sys/prctl.h>
+#include <sys/socket.h>
 #include <sys/syscall.h>
+
+#include <vector>
 
 #include <sandboxed_api/sandbox2/allow_unrestricted_networking.h>
 #include <sandboxed_api/sandbox2/policybuilder.h>
 #include <sandboxed_api/sandbox2/util/bpf_helper.h>
-
-#include "host/commands/process_sandboxer/filesystem.h"
+#include <sandboxed_api/util/path.h>
 
 namespace cuttlefish::process_sandboxer {
+
+using sapi::file::JoinPath;
 
 sandbox2::PolicyBuilder WebRtcOperatorPolicy(const HostInfo& host) {
   return BaselinePolicy(host, host.HostToolExe("webrtc_operator"))

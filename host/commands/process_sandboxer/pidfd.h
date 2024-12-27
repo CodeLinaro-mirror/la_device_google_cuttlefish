@@ -23,11 +23,9 @@
 
 #include <absl/status/statusor.h>
 #include <absl/types/span.h>
+#include <sandboxed_api/util/fileops.h>
 
-#include "host/commands/process_sandboxer/unique_fd.h"
-
-namespace cuttlefish {
-namespace process_sandboxer {
+namespace cuttlefish::process_sandboxer {
 
 class PidFd {
  public:
@@ -42,7 +40,7 @@ class PidFd {
    * process. */
   static absl::StatusOr<PidFd> LaunchSubprocess(
       absl::Span<const std::string> argv,
-      std::vector<std::pair<UniqueFd, int>> fds,
+      std::vector<std::pair<sapi::file_util::fileops::FDCloser, int>> fds,
       absl::Span<const std::string> env);
 
   int Get() const;
@@ -53,7 +51,9 @@ class PidFd {
    * Keys are file descriptor numbers in the target process, values are open
    * file descriptors in the current process.
    */
-  absl::StatusOr<std::vector<std::pair<UniqueFd, int>>> AllFds();
+  absl::StatusOr<
+      std::vector<std::pair<sapi::file_util::fileops::FDCloser, int>>>
+  AllFds();
   absl::StatusOr<std::vector<std::string>> Argv();
   absl::StatusOr<std::vector<std::string>> Env();
 
@@ -64,13 +64,12 @@ class PidFd {
   absl::Status HaltChildHierarchy();
 
  private:
-  PidFd(UniqueFd, pid_t);
+  PidFd(sapi::file_util::fileops::FDCloser, pid_t);
   absl::Status SendSignal(int signal);
 
-  UniqueFd fd_;
+  sapi::file_util::fileops::FDCloser fd_;
   pid_t pid_;
 };
 
-}  // namespace process_sandboxer
-}  // namespace cuttlefish
+}  // namespace cuttlefish::process_sandboxer
 #endif
