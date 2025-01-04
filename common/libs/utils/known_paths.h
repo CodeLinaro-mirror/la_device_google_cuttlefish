@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018 The Android Open Source Project
+ * Copyright (C) 2024 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,21 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#pragma once
 
-#include "common/libs/utils/environment.h"
-
-#include <cstdlib>
 #include <string>
 
 namespace cuttlefish {
 
-std::string StringFromEnv(const std::string& varname,
-                          const std::string& defval) {
-  const char* const valstr = std::getenv(varname.c_str());
-  if (!valstr) {
-    return defval;
-  }
-  return valstr;
-}
+std::string TempDir();
 
 }  // namespace cuttlefish
