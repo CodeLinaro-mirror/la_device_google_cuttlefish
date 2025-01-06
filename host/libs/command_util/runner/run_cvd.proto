@@ -25,6 +25,7 @@ message ExtendedLauncherAction {
     StartScreenRecording start_screen_recording = 7;
     StopScreenRecording stop_screen_recording = 8;
     SnapshotTake snapshot_take = 9;
+    ScreenshotDisplay screenshot_display = 10;
   }
   string verbosity = 20;
 }
@@ -34,4 +35,8 @@ message StartScreenRecording {}
 message StopScreenRecording {}
 message SnapshotTake {
   string snapshot_path = 1;
+}
+message ScreenshotDisplay {
+  int32 display_number = 1;
+  string screenshot_path = 2;
 }
