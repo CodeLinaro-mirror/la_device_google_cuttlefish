@@ -19,6 +19,7 @@
 
 static constexpr auto RAMDISK_MODULES = {
     "failover.ko",   "nd_virtio.ko",      "net_failover.ko",
+    "gh_arm_drv.ko", "gh_rm_drv.ko", "hvc_gunyah.ko",
     "virtio_blk.ko", "virtio_console.ko", "virtio_dma_buf.ko",
     "virtio-gpu.ko", "virtio_input.ko",   "virtio_net.ko",
     "virtio_pci.ko", "virtio-rng.ko",     "vmw_vsock_virtio_transport.ko",

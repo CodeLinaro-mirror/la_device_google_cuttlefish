@@ -33,6 +33,9 @@ RAMDISK_KERNEL_MODULES := \
     failover.ko \
     nd_virtio.ko \
     net_failover.ko \
+    gh_arm_drv.ko \
+    gh_rm_drv.ko \
+    hvc_gunyah.ko \
     virtio_blk.ko \
     virtio_console.ko \
     virtio_dma_buf.ko \
