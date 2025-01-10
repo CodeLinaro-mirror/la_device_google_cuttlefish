@@ -18,9 +18,10 @@
 #include <set>
 
 static constexpr auto RAMDISK_MODULES = {
+    "gh_arm_drv.ko", "gh_rm_drv.ko", "hvc_gunyah.ko", "gh_dbl.ko", "gh_msgq.ko",
     "failover.ko",   "nd_virtio.ko",      "net_failover.ko",
-    "gh_arm_drv.ko", "gh_rm_drv.ko", "hvc_gunyah.ko",
-    "virtio_blk.ko", "virtio_console.ko", "virtio_dma_buf.ko",
+    "virtio_blk.ko", "rename_devices.ko",
+    "virtio_console.ko", "virtio_dma_buf.ko",
     "virtio-gpu.ko", "virtio_input.ko",   "virtio_net.ko",
     "virtio_pci.ko", "virtio-rng.ko",     "vmw_vsock_virtio_transport.ko",
     "virtio_snd.ko", "system_heap.ko",

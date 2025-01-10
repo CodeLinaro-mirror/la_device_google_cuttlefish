@@ -30,13 +30,16 @@ PRODUCT_COPY_FILES += $(TARGET_KERNEL_PATH):kernel
 # init, OR for recovery. Do not use this list to workaround second stage
 # issues.
 RAMDISK_KERNEL_MODULES := \
-    failover.ko \
-    nd_virtio.ko \
-    net_failover.ko \
     gh_arm_drv.ko \
     gh_rm_drv.ko \
     hvc_gunyah.ko \
+    gh_dbl.ko \
+    gh_msgq.ko \
+    failover.ko \
+    nd_virtio.ko \
+    net_failover.ko \
     virtio_blk.ko \
+    rename_devices.ko \
     virtio_console.ko \
     virtio_dma_buf.ko \
     virtio-gpu.ko \
