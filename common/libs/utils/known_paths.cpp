@@ -14,20 +14,14 @@
  * limitations under the License.
  */
 
+#include "common/libs/utils/known_paths.h"
+
 #include "common/libs/utils/environment.h"
 
-#include <cstdlib>
 #include <string>
 
 namespace cuttlefish {
 
-std::string StringFromEnv(const std::string& varname,
-                          const std::string& defval) {
-  const char* const valstr = std::getenv(varname.c_str());
-  if (!valstr) {
-    return defval;
-  }
-  return valstr;
-}
+std::string TempDir() { return StringFromEnv("TMPDIR", "/tmp/"); }
 
 }  // namespace cuttlefish
