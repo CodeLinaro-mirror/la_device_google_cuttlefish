@@ -186,7 +186,7 @@ Result<void> EnsureDirectoryExists(const std::string& directory_path,
   }
   const auto parent_dir = android::base::Dirname(directory_path);
   if (parent_dir.size() > 1) {
-    EnsureDirectoryExists(parent_dir, mode, group_name);
+    CF_EXPECT(EnsureDirectoryExists(parent_dir, mode, group_name));
   }
   LOG(VERBOSE) << "Setting up " << directory_path;
   if (mkdir(directory_path.c_str(), mode) < 0 && errno != EEXIST) {
@@ -476,13 +476,17 @@ Result<std::string> ReadFileContents(const std::string& filepath) {
 }
 
 std::string CurrentDirectory() {
-  std::unique_ptr<char, void (*)(void*)> cwd(getcwd(nullptr, 0), &free);
-  std::string process_cwd(cwd.get());
-  if (!cwd) {
-    PLOG(ERROR) << "`getcwd(nullptr, 0)` failed";
-    return "";
+  std::vector<char> process_wd(1 << 12, ' ');
+  while (getcwd(process_wd.data(), process_wd.size()) == nullptr) {
+    if (errno == ERANGE) {
+      process_wd.resize(process_wd.size() * 2, ' ');
+    } else {
+      PLOG(ERROR) << "getcwd failed";
+      return "";
+    }
   }
-  return process_cwd;
+  // Will find the null terminator and size the string appropriately.
+  return std::string(process_wd.data());
 }
 
 FileSizes SparseFileSizes(const std::string& path) {
