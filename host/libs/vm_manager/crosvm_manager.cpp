@@ -34,9 +34,10 @@
 #include <json/json.h>
 #include <vulkan/vulkan.h>
 
-#include "common/libs/utils/environment.h"
+#include "common/libs/utils/architecture.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/json.h"
+#include "common/libs/utils/known_paths.h"
 #include "common/libs/utils/network.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
@@ -627,8 +628,14 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     }
     crosvm_cmd.Cmd().AddParameter("--input=rotary[path=",
                                   instance.rotary_socket_path(), "]");
-    crosvm_cmd.Cmd().AddParameter("--input=keyboard[path=",
-                                  instance.keyboard_socket_path(), "]");
+    if (instance.custom_keyboard_config().has_value()) {
+      crosvm_cmd.Cmd().AddParameter(
+          "--input=custom[path=", instance.keyboard_socket_path(),
+          ",config-path=", instance.custom_keyboard_config().value(), "]");
+    } else {
+      crosvm_cmd.Cmd().AddParameter(
+          "--input=keyboard[path=", instance.keyboard_socket_path(), "]");
+    }
     crosvm_cmd.Cmd().AddParameter("--input=switches[path=",
                                   instance.switches_socket_path(), "]");
   }
@@ -682,9 +689,9 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
 
   if (instance.vsock_guest_cid() >= 2) {
     if (instance.vhost_user_vsock()) {
-      auto param =
-          fmt::format("/tmp/vsock_{}_{}/vhost.socket,max-queue-size=256",
-                      instance.vsock_guest_cid(), std::to_string(getuid()));
+      std::string param = fmt::format(
+          "{}/vsock_{}_{}/vhost.socket,max-queue-size=256", TempDir(),
+          instance.vsock_guest_cid(), std::to_string(getuid()));
       crosvm_cmd.Cmd().AddParameter("--vhost-user=vsock,socket=", param);
     } else {
       crosvm_cmd.Cmd().AddParameter("--cid=", instance.vsock_guest_cid());
