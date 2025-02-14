@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 The Android Open Source Project
+ * Copyright (C) 2025 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,22 +14,22 @@
  * limitations under the License.
  */
 
-#include "host/libs/input_connector/event_buffer.h"
+#include "host/libs/input_connector/input_connection.h"
 
-#include <cstdint>
-#include <cstdlib>
-#include <memory>
-#include <vector>
-
-#include <linux/input.h>
+#include "common/libs/fs/shared_buf.h"
+#include "common/libs/fs/shared_fd.h"
+#include "common/libs/utils/result.h"
 
 namespace cuttlefish {
 
-EventBuffer::EventBuffer(size_t num_events) { buffer_.reserve(num_events); }
+InputConnection::InputConnection(SharedFD conn) : conn_(conn) {}
 
-void EventBuffer::AddEvent(uint16_t type, uint16_t code, int32_t value) {
-  buffer_.push_back(
-      {.type = Le16(type), .code = Le16(code), .value = Le32(value)});
+Result<void> InputConnection::WriteEvents(const void* data, size_t len) {
+  auto res = WriteAll(conn_, reinterpret_cast<const char*>(data), len);
+  CF_EXPECTF(res == len,
+             "Failed to write entire event buffer: wrote {} of {} bytes", res,
+             len);
+  return {};
 }
 
 }  // namespace cuttlefish

@@ -45,7 +45,6 @@
 #include "host/libs/confui/host_mode_ctrl.h"
 #include "host/libs/confui/host_server.h"
 #include "host/libs/input_connector/input_connector.h"
-#include "host/libs/screen_connector/composition_manager.h"
 #include "host/libs/screen_connector/screen_connector.h"
 #include "webrtc_commands.pb.h"
 
@@ -70,8 +69,6 @@ DEFINE_int32(sensors_out_fd, -1, "Sensors virtio-console from guest to host");
 DEFINE_string(action_servers, "",
               "A comma-separated list of server_name:fd pairs, "
               "where each entry corresponds to one custom action server.");
-DEFINE_bool(write_virtio_input, true,
-            "Whether to send input events in virtio format.");
 DEFINE_int32(audio_server_fd, -1, "An fd to listen on for audio frames");
 DEFINE_int32(camera_streamer_fd, -1, "An fd to send client camera frames");
 DEFINE_string(client_dir, "webrtc", "Location of the client files");
@@ -189,9 +186,7 @@ int CuttlefishMain() {
   auto cvd_config = CuttlefishConfig::Get();
   auto instance = cvd_config->ForDefaultInstance();
 
-  cuttlefish::InputConnectorBuilder inputs_builder(
-      FLAGS_write_virtio_input ? cuttlefish::InputEventType::Virtio
-                               : cuttlefish::InputEventType::Evdev);
+  cuttlefish::InputConnectorBuilder inputs_builder;
 
   const auto display_count = instance.display_configs().size();
   const auto touch_fds = android::base::Split(FLAGS_touch_fds, ",");
@@ -310,22 +305,8 @@ int CuttlefishMain() {
       Streamer::Create(streamer_config, recording_manager, observer_factory);
   CHECK(streamer) << "Could not create streamer";
 
-  // Determine whether to enable Display Composition feature.
-  // It's enabled via the multi-vd config file entry 'overlays'
-  std::optional<std::unique_ptr<CompositionManager>> composition_manager;
-
-  if (cvd_config->OverlaysEnabled()) {
-    Result<std::unique_ptr<CompositionManager>> composition_manager_result =
-        CompositionManager::Create();
-    if (composition_manager_result.ok() && *composition_manager_result) {
-      composition_manager = std::optional<std::unique_ptr<CompositionManager>>(
-          std::move(*composition_manager_result));
-    }
-  }
-
   auto display_handler = std::make_shared<DisplayHandler>(
-      *streamer, screenshot_handler, screen_connector,
-      std::move(composition_manager));
+      *streamer, screenshot_handler, screen_connector);
 
   if (instance.camera_server_port()) {
     auto camera_controller = streamer->AddCamera(instance.camera_server_port(),
@@ -345,7 +326,8 @@ int CuttlefishMain() {
   }
 
   streamer->SetHardwareSpec("CPUs", instance.cpus());
-  streamer->SetHardwareSpec("RAM", std::to_string(instance.memory_mb()) + " mb");
+  streamer->SetHardwareSpec("RAM",
+                            std::to_string(instance.memory_mb()) + " mb");
 
   std::string user_friendly_gpu_mode;
   if (instance.gpu_mode() == kGpuModeGuestSwiftshader) {
@@ -366,11 +348,16 @@ int CuttlefishMain() {
 
   std::shared_ptr<AudioHandler> audio_handler;
   if (instance.enable_audio()) {
-    auto audio_stream = streamer->AddAudioStream("audio");
+    int output_streams_count = instance.audio_output_streams_count();
+    std::vector<std::shared_ptr<webrtc_streaming::AudioSink>> audio_streams(
+        output_streams_count);
+    for (int i = 0; i < audio_streams.size(); i++) {
+      audio_streams[i] = streamer->AddAudioStream("audio-" + std::to_string(i));
+    }
     auto audio_server = CreateAudioServer();
     auto audio_source = streamer->GetAudioSource();
-    audio_handler = std::make_shared<AudioHandler>(std::move(audio_server),
-                                                   audio_stream, audio_source);
+    audio_handler = std::make_shared<AudioHandler>(
+        std::move(audio_server), std::move(audio_streams), audio_source);
   }
 
   // Parse the -action_servers flag, storing a map of action server name -> fd
