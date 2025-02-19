@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 The Android Open Source Project
+// Copyright (C) 2024 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,24 +17,32 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-cc_binary_host {
-    name: "cvd_internal_display",
-    srcs: [
-        "main.cpp",
+rust_binary_host {
+    name: "cf_vhost_user_input",
+
+    srcs: ["main.rs"],
+
+    rustlibs: [
+        "libanyhow",
+        "libclap",
+        "libclap_builder",
+        "liblog_rust",
+        "libenv_logger",
+        "librustutils",
+        "libserde",
+        "libserde_json",
+        "libvhost_android",
+        "libvhost_user_backend",
+        "libvirtio_bindings",
+        "libvirtio_queue",
+        "libvm_memory_android",
+        "libvmm_sys_util",
+        "libzerocopy",
     ],
-    stl: "libc++_static",
-    static_libs: [
-        "libbase",
-        "libcuttlefish_command_util",
-        "libcuttlefish_fs",
-        "libcuttlefish_host_config",
-        "libcuttlefish_run_cvd_proto",
-        "libcuttlefish_utils",
-        "libcuttlefish_vm_manager",
-        "libgflags",
-        "libjsoncpp",
-        "liblog",
-        "libprotobuf-cpp-full",
+    proc_macros: [
+        "libclap_derive",
     ],
-    defaults: ["cuttlefish_host"],
+    defaults: [
+        "cuttlefish_buildhost_only",
+    ],
 }
