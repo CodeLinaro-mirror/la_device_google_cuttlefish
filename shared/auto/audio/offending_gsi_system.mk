@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2022 The Android Open Source Project
+# Copyright (C) 2025 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,21 +12,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 #
-
-# If downstream target does not want telephony, do not include this file
-
-ifneq ($(TARGET_NO_TELEPHONY), true)
-
-$(call inherit-product, $(SRC_TARGET_DIR)/product/telephony_vendor.mk)
-
-# If downstream target provides its own RILD, set TARGET_USES_CF_RILD := false
-TARGET_USES_CF_RILD ?= true
-ifeq ($(TARGET_USES_CF_RILD),true)
-    PRODUCT_VENDOR_PROPERTIES += \
-        ro.telephony.default_network=9
-
-    PRODUCT_PACKAGES += com.google.cf.rild
-endif
-
-endif # if not TARGET_NO_TELEPHONY
+# Any changes vs GSI images should be done here
+#
+PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
+    system/bin/remote-process
