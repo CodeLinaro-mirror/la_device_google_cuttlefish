@@ -144,6 +144,24 @@ class DeviceControlApp {
   #micActive = false;
   #adbConnected = false;
 
+  #displaySpecPresets = {
+    'display-spec-preset-phone': {
+      name: 'Phone (720x1280)',
+      width: 720,
+      height: 1280,
+      dpi: 320,
+      'refresh-rate-hz': 60
+    },
+    'display-spec-preset-monitor': {
+      name: 'Monitor (1600x900)',
+      width: 1600,
+      height: 900,
+      dpi: 160,
+      'refresh-rate-hz': 60
+    }
+  };
+
+
   constructor(deviceConnection, parentController) {
     this.#deviceConnection = deviceConnection;
     this.#parentController = parentController;
@@ -267,6 +285,7 @@ class DeviceControlApp {
         'location-set-modal');
     createModalButton('keyboard-modal-button', 'keyboard-prompt-modal',
         'keyboard-prompt-modal-close');
+    createModalButton('display-add-modal-button', 'display-add-modal', 'display-add-modal-close');
     positionModal('rotation-modal-button', 'rotation-modal');
     positionModal('device-details-button', 'bluetooth-modal');
     positionModal('device-details-button', 'bluetooth-prompt');
@@ -311,6 +330,9 @@ class DeviceControlApp {
       () => this.#setOrientation(-180));
 
     createSliderListener('rotation-slider', () => this.#onMotionChanged(this.#deviceConnection));
+
+    createSelectListener('display-spec-preset-select', () => this.#updateDisplaySpecFrom());
+    createButtonListener('display-add-confirm', null, this.#deviceConnection, evt => this.#onDisplayAdditionConfirm(evt));
 
     if (this.#deviceConnection.description.custom_control_panel_buttons.length >
         0) {
@@ -424,6 +446,8 @@ class DeviceControlApp {
     this.#deviceConnection.onLocationMessage(msg => {
       console.debug("onLocationMessage = " +msg);
     });
+
+    this.#setupDisplaySpecPresetSelector();
   }
 
   #onStreamChange(stream) {
@@ -586,6 +610,80 @@ class DeviceControlApp {
 
   }
 
+  #setupDisplaySpecPresetSelector() {
+    const presetSelector = document.getElementById('display-spec-preset-select');
+    for (const id in this.#displaySpecPresets) {
+      const option = document.createElement('option');
+      option.value = id;
+      option.textContent = this.#displaySpecPresets[id].name;
+      presetSelector.appendChild(option);
+    }
+
+    const customOption = document.createElement('option');
+    customOption.value = 'display-spec-custom';
+    customOption.textContent = 'Custom';
+    presetSelector.appendChild(customOption);
+
+    this.#updateDisplaySpecFrom();
+  }
+
+  #updateDisplaySpecFrom() {
+    const presetSelector = document.getElementById('display-spec-preset-select');
+    const selectedPreset = presetSelector.value;
+
+    const parameters = ['width', 'height', 'dpi', 'refresh-rate-hz'];
+    const applyToParameterInputs = (fn) => {
+      for (const parameter of parameters) {
+        const inputElement = document.getElementById('display-spec-' + parameter);
+        fn(inputElement, parameter);
+      }
+    }
+
+    if (selectedPreset == 'display-spec-custom') {
+      applyToParameterInputs((inputElement, parameter) => inputElement.disabled = false);
+      return;
+    }
+
+    const preset = this.#displaySpecPresets[selectedPreset];
+    if (preset == undefined) {
+      console.error('Unknown preset is selected', selectedPreset);
+      return;
+    }
+
+    applyToParameterInputs((inputElement, parameter) => {
+      inputElement.value = preset[parameter];
+      inputElement.disabled = true;
+    });
+  }
+
+  #onDisplayAdditionConfirm(evt) {
+    if (evt.type != 'mousedown') {
+      return;
+    }
+
+    const getValue = (parameter) => {
+      const inputElement = document.getElementById('display-spec-' + parameter);
+      return inputElement.valueAsNumber;
+    }
+
+    const message = {
+      command: 'add-display',
+      width: getValue('width'),
+      height: getValue('height'),
+      dpi: getValue('dpi'),
+      refresh_rate_hz: getValue('refresh-rate-hz')
+    };
+    this.#deviceConnection.sendControlMessage(JSON.stringify(message));
+  }
+
+  #removeDisplay(displayId) {
+    const message = {
+      command: 'remove-display',
+      display_id: displayId
+    };
+    this.#deviceConnection.sendControlMessage(JSON.stringify(message));
+  }
+
   #showWebrtcError() {
     showError(
         'No connection to the guest device.  Please ensure the WebRTC' +
@@ -743,7 +841,8 @@ class DeviceControlApp {
         text += ` (Rotated ${this.#currentRotation}deg)`
       }
 
-      l.textContent = text;
+      const textElement = l.querySelector('.device-display-info-text');
+      textElement.textContent = text;
     });
 
     deviceDisplaysMessage.send();
@@ -818,7 +917,8 @@ class DeviceControlApp {
 
     const MAX_DISPLAYS = 16;
     for (let i = 0; i < MAX_DISPLAYS; i++) {
-      const stream_id = 'display_' + i.toString();
+      const display_id = i.toString();
+      const stream_id = 'display_' + display_id;
       const stream = this.#deviceConnection.getStream(stream_id);
 
       let deviceDisplayVideo = document.querySelector('#' + stream_id);
@@ -837,6 +937,13 @@ class DeviceControlApp {
         let deviceDisplayInfo =
             displayFragment.querySelector('.device-display-info');
         deviceDisplayInfo.id = stream_id + '_info';
+
+        let deviceDisplayRemoveButton =
+          displayFragment.querySelector('.device-display-remove-button');
+        deviceDisplayRemoveButton.id = stream_id + '_remove_button';
+        deviceDisplayRemoveButton.addEventListener('mousedown', () => {
+          this.#removeDisplay(display_id);
+        });
 
         deviceDisplayVideo = displayFragment.querySelector('video');
         deviceDisplayVideo.id = stream_id;
