@@ -21,7 +21,6 @@ cc_library {
     name: "libcuttlefish_process_monitor",
     srcs: [
         "process_monitor.cc",
-        "process_monitor_channel.cc",
     ],
     shared_libs: [
         "libbase",
@@ -35,6 +34,7 @@ cc_library {
     static_libs: [
         "libcuttlefish_command_util",
         "libcuttlefish_host_config",
+        "libcuttlefish_transport",
         "libgflags",
     ],
     target: {
