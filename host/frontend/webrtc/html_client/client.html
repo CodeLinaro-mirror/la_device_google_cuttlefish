@@ -31,7 +31,6 @@
         </h3>
       </div>
       <section id="device-connection">
-        <audio id="device-audio"></audio>
         <div id='controls-and-displays'>
           <div id='control-panel-default-buttons' class='control-panel-column'>
             <button id='power_btn' title='Power' disabled='true' class='material-icons'>power_settings_new</button>
@@ -62,7 +61,10 @@
             <div id='device-displays' tabindex="-1">
             </div>
           </div>
+          <button id='display-add-modal-button' title='Add display' class='material-icons'>add_to_queue</button>
         </div>
+        <!-- Audio tags of id with a prefix of "device-audio" will be inserted here dynamically
+        based on the number of audio streams.-->
       </section>
       <div id='device-details-modal' class='modal'>
         <div id='device-details-modal-header' class='modal-header'>
@@ -271,6 +273,24 @@
           <div class='touchpads'></div>
         </span>
       </div>
+      <div id='display-add-modal' class='modal'>
+        <div id='display-add-modal-header' class='modal-header'>
+          <h2>Add display</h2>
+          <button id='display-add-modal-close' title='Close' class='material-icons modal-close'>close</button>
+        </div>
+        <div>
+          <select id='display-spec-preset-select'>
+            <!-- setupDisplaySpecPresetSelector adds its options -->
+          </select>
+          <div class='display-spec-form'>
+            <label class='display-spec-label'>width<input type=number min=1 id='display-spec-width' required/></label>
+            <label class='display-spec-label'>height<input type=number min=1 id='display-spec-height' required/></label>
+            <label class='display-spec-label'>dpi<input type=number min=1 id='display-spec-dpi' required/></label>
+            <label class='display-spec-label'>refresh_rate_hz<input type=number min=1 id='display-spec-refresh-rate-hz' required/></label>
+          </div>
+          <button id='display-add-confirm' title='Add a new display' class='modal-button'>Add</button>
+        </div>
+      </div>
       <script src="js/adb.js"></script>
       <script src="js/location.js"></script>
       <script src="js/keyboard.js"></script>
@@ -282,9 +302,12 @@
       <script src="js/app.js"></script>
       <template id="display-template">
         <div class="device-display">
-          <div class="device-display-info"></div>
+          <div class="device-display-info">
+            <div class="device-display-info-text"></div>
+            <button class="material-icons device-display-remove-button" title="Remove display">delete</button>
+          </div>
           <div class="device-video-container">
-            <video autoplay muted class="device-display-video"></video>
+            <video autoplay muted playsinline src="/" class="device-display-video"></video>
           </div>
         </div>
       </template>
