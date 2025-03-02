@@ -63,7 +63,7 @@ class InputConnectorImpl;
 
 class InputConnectorBuilder {
  public:
-  explicit InputConnectorBuilder(InputEventType type);
+  explicit InputConnectorBuilder();
   ~InputConnectorBuilder();
   InputConnectorBuilder(const InputConnectorBuilder&) = delete;
   InputConnectorBuilder(InputConnectorBuilder&&) = delete;
@@ -73,7 +73,7 @@ class InputConnectorBuilder {
   void WithTouchDevice(const std::string& device_label, SharedFD server);
   void WithKeyboard(SharedFD server);
   void WithSwitches(SharedFD server);
-  void WithRotary(SharedFD server);
+  void WithRotary(SharedFD conn);
   void WithMouse(SharedFD server);
   // This object becomes invalid after calling Build(), the rvalue reference
   // makes it explicit that it shouldn't be used after.
@@ -81,7 +81,6 @@ class InputConnectorBuilder {
 
  private:
   std::unique_ptr<InputConnectorImpl> connector_;
-  InputEventType event_type_;
 };
 
 }  // namespace cuttlefish

@@ -36,10 +36,11 @@ std::string MacCrosvmArgument(std::optional<std::string_view> mac) {
 }
 
 std::string PciCrosvmArgument(std::optional<pci::Address> pci) {
-  return pci.has_value() ? fmt::format(",pci-address={}", pci.value().Id()) : "";
+  return pci.has_value() ? fmt::format(",pci-address={}", pci.value().Id())
+                         : "";
 }
 
-}
+}  // namespace
 
 CrosvmBuilder::CrosvmBuilder() : command_("crosvm") {}
 
@@ -97,21 +98,19 @@ void CrosvmBuilder::AddCpus(size_t cpus) {
   command_.AddParameter("--cpus=", cpus);
 }
 
-// TODO: b/243198718 - switch to virtio-console
 void CrosvmBuilder::AddHvcSink() {
-  command_.AddParameter(
-      "--serial=hardware=legacy-virtio-console,num=", ++hvc_num_, ",type=sink");
+  command_.AddParameter("--serial=hardware=virtio-console,num=", ++hvc_num_,
+                        ",type=sink");
 }
 void CrosvmBuilder::AddHvcReadOnly(const std::string& output, bool console) {
-  command_.AddParameter(
-      "--serial=hardware=legacy-virtio-console,num=", ++hvc_num_,
-      ",type=file,path=", output, console ? ",console=true" : "");
+  command_.AddParameter("--serial=hardware=virtio-console,num=", ++hvc_num_,
+                        ",type=file,path=", output,
+                        console ? ",console=true" : "");
 }
 void CrosvmBuilder::AddHvcReadWrite(const std::string& output,
                                     const std::string& input) {
-  command_.AddParameter(
-      "--serial=hardware=legacy-virtio-console,num=", ++hvc_num_,
-      ",type=file,path=", output, ",input=", input);
+  command_.AddParameter("--serial=hardware=virtio-console,num=", ++hvc_num_,
+                        ",type=file,path=", output, ",input=", input);
 }
 void CrosvmBuilder::AddHvcSocket(const std::string& socket) {
   command_.AddParameter(
@@ -155,8 +154,14 @@ void CrosvmBuilder::AddTap(const std::string& tap_name,
   command_.AddParameter("--net=tap-name=", tap_name, MacCrosvmArgument(mac),
                         PciCrosvmArgument(pci));
 }
-
 #endif
+
+void CrosvmBuilder::AddVhostUser(const std::string& type,
+                                 const std::string& socket_path,
+                                 int max_queue_size) {
+  command_.AddParameter("--vhost-user=type=", type, ",socket=", socket_path,
+                        ",max-queue-size=", max_queue_size);
+}
 
 int CrosvmBuilder::HvcNum() { return hvc_num_; }
 

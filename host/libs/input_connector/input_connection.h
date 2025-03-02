@@ -16,21 +16,22 @@
 
 #pragma once
 
-#include <memory>
-
 #include "common/libs/fs/shared_fd.h"
+#include "common/libs/utils/result.h"
 
 namespace cuttlefish {
 
+// A connection to a vhost user input device, allowing to inject events to the
+// device.
 class InputConnection {
  public:
-  virtual ~InputConnection() = default;
+  InputConnection(SharedFD conn);
+  ~InputConnection() = default;
 
-  virtual Result<void> WriteEvents(const void* data, size_t len) = 0;
+  Result<void> WriteEvents(const void* data, size_t len);
+
+ private:
+  SharedFD conn_;
 };
-
-// Create an input device that accepts connection on a socket (TCP or UNIX) and
-// writes input events to its client (typically crosvm).
-std::unique_ptr<InputConnection> NewServerInputConnection(SharedFD server_fd);
 
 }  // namespace cuttlefish
