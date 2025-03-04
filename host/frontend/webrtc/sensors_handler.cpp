@@ -25,7 +25,7 @@ namespace cuttlefish {
 namespace webrtc_streaming {
 
 namespace {
-static constexpr sensors::SensorsMask kUiSupportedSensors =
+static constexpr int kUiSupportedSensorsMask =
     (1 << sensors::kAccelerationId) | (1 << sensors::kGyroscopeId) |
     (1 << sensors::kMagneticId) | (1 << sensors::kRotationVecId);
 }  // namespace
@@ -58,7 +58,7 @@ Result<void> SensorsHandler::RefreshSensors(const double x, const double y,
 }
 
 Result<std::string> SensorsHandler::GetSensorsData() {
-  auto msg = std::to_string(kUiSupportedSensors);
+  auto msg = std::to_string(kUiSupportedSensorsMask);
   auto size = msg.size();
   auto cmd = sensors::kGetSensorsData;
   auto request = CF_EXPECT(transport::CreateMessage(cmd, size),

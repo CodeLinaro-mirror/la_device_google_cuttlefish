@@ -23,7 +23,6 @@
 #include <utility>
 #include <vector>
 
-#include "common/libs/transport/channel_sharedfd.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/libs/config/command_source.h"
@@ -88,8 +87,8 @@ class ProcessMonitor {
   Properties properties_;
   const SharedFD channel_to_secure_env_;
   pid_t monitor_;
-  std::optional<transport::SharedFdChannel> parent_channel_;
-  std::optional<transport::SharedFdChannel> child_channel_;
+  SharedFD parent_monitor_socket_;
+  SharedFD child_monitor_socket_;
 
   /*
    * The lock that should be acquired when multiple threads

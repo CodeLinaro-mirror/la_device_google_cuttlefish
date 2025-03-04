@@ -15,6 +15,9 @@
  */
 #pragma once
 
+#include "common/libs/fs/shared_fd.h"
+#include "common/libs/transport/channel_sharedfd.h"
+
 namespace cuttlefish {
 namespace sensors {
 /*
