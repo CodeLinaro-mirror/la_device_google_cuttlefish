@@ -508,6 +508,11 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   crosvm_cmd.AddControlSocket(instance.CrosvmSocketPath(),
                               instance.crosvm_binary());
 
+  if (!config.kvm_path().empty()) {
+    crosvm_cmd.Cmd().AddParameter("--hypervisor=kvm[device=", config.kvm_path(),
+                                  "]");
+  }
+
   if (!instance.smt()) {
     crosvm_cmd.Cmd().AddParameter("--no-smt");
   }
@@ -628,7 +633,7 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   // GPU capture can only support named files and not file descriptors due to
   // having to pass arguments to crosvm via a wrapper script.
 #ifdef __linux__
-  if (!gpu_capture_enabled) {
+  if (instance.enable_tap_devices() && !gpu_capture_enabled) {
     // The PCI ordering of tap devices is important. Make sure any change here
     // is reflected in ethprime u-boot variable.
     // TODO(b/218364216, b/322862402): Crosvm occupies 32 PCI devices first and
