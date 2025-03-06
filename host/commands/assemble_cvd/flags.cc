@@ -147,7 +147,8 @@ DEFINE_vec(vm_manager, CF_DEFAULTS_VM_MANAGER,
 DEFINE_vec(gpu_mode, CF_DEFAULTS_GPU_MODE,
            "What gpu configuration to use, one of {auto, custom, drm_virgl, "
            "gfxstream, gfxstream_guest_angle, "
-           "gfxstream_guest_angle_host_swiftshader, guest_swiftshader}");
+           "gfxstream_guest_angle_host_swiftshader, "
+           "gfxstream_guest_angle_host_lavapipe, guest_swiftshader}");
 DEFINE_vec(gpu_vhost_user_mode,
            fmt::format("{}", CF_DEFAULTS_GPU_VHOST_USER_MODE),
            "Whether or not to run the Virtio GPU worker in a separate"
@@ -554,6 +555,10 @@ DEFINE_vec(vcpu_config_path, CF_DEFAULTS_VCPU_CONFIG_PATH,
 
 DEFINE_string(kvm_path, "",
               "Device node file used to create VMs. Uses a default if empty.");
+
+DEFINE_string(vhost_vsock_path, "",
+              "Device node file for the kernel vhost-vsock implementation. "
+              "Uses a default if empty. Ignored for QEMU.");
 
 namespace cuttlefish {
 using vm_manager::QemuManager;
@@ -1448,6 +1453,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
                  vhal_proxy_server_instance_num <= 0);
 
   tmp_config_obj.set_kvm_path(FLAGS_kvm_path);
+  tmp_config_obj.set_vhost_vsock_path(FLAGS_vhost_vsock_path);
 
   // Environment specific configs
   // Currently just setting for the default environment

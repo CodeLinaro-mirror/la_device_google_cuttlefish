@@ -301,6 +301,9 @@ class CuttlefishConfig {
   std::string kvm_path() const;
   void set_kvm_path(const std::string&);
 
+  std::string vhost_vsock_path() const;
+  void set_vhost_vsock_path(const std::string&);
+
   bool IsCrosvm() const;
 
   class InstanceSpecific;
@@ -1098,6 +1101,7 @@ extern const char* const kGpuModeDrmVirgl;
 extern const char* const kGpuModeGfxstream;
 extern const char* const kGpuModeGfxstreamGuestAngle;
 extern const char* const kGpuModeGfxstreamGuestAngleHostSwiftShader;
+extern const char* const kGpuModeGfxstreamGuestAngleHostLavapipe;
 extern const char* const kGpuModeGuestSwiftshader;
 extern const char* const kGpuModeNone;
 
