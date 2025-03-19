@@ -94,6 +94,68 @@ Result<VmmMode> ParseVmm(std::string_view str) {
   }
 }
 
+std::ostream& operator<<(std::ostream& out, GuestHwuiRenderer renderer) {
+  return out << ToString(renderer);
+}
+
+std::string ToString(GuestHwuiRenderer renderer) {
+  switch (renderer) {
+    case GuestHwuiRenderer::kUnknown:
+      return "unknown";
+    case GuestHwuiRenderer::kSkiaGl:
+      return "skiagl";
+    case GuestHwuiRenderer::kSkiaVk:
+      return "skiavk";
+  }
+}
+
+Result<GuestHwuiRenderer> ParseGuestHwuiRenderer(std::string_view str) {
+  if (android::base::EqualsIgnoreCase(str, "unknown")) {
+    return GuestHwuiRenderer::kUnknown;
+  } else if (android::base::EqualsIgnoreCase(str, "skiagl")) {
+    return GuestHwuiRenderer::kSkiaGl;
+  } else if (android::base::EqualsIgnoreCase(str, "skiavk")) {
+    return GuestHwuiRenderer::kSkiaVk;
+  } else {
+    return CF_ERRF("\"{}\" is not a valid HWUI renderer.", str);
+  }
+}
+
+std::ostream& operator<<(std::ostream& out, GuestRendererPreload preload) {
+  return out << ToString(preload);
+}
+
+std::string ToString(GuestRendererPreload preload) {
+  switch (preload) {
+    case GuestRendererPreload::kAuto:
+      return "auto";
+    case GuestRendererPreload::kGuestDefault:
+      return "default";
+    case GuestRendererPreload::kEnabled:
+      return "enabled";
+    case GuestRendererPreload::kDisabled:
+      return "disabled";
+  }
+}
+
+Result<GuestRendererPreload> ParseGuestRendererPreload(std::string_view str) {
+  if (android::base::EqualsIgnoreCase(str, "auto")) {
+    return GuestRendererPreload::kAuto;
+  } else if (android::base::EqualsIgnoreCase(str, "default")) {
+    return GuestRendererPreload::kGuestDefault;
+  } else if (android::base::EqualsIgnoreCase(str, "enabled")) {
+    return GuestRendererPreload::kEnabled;
+  } else if (android::base::EqualsIgnoreCase(str, "disabled")) {
+    return GuestRendererPreload::kDisabled;
+  } else {
+    return CF_ERRF("\"{}\" is not a valid renderer preload.", str);
+  }
+}
+
+std::ostream& operator<<(std::ostream&, GuestRendererPreload);
+std::string ToString(GuestRendererPreload);
+Result<GuestRendererPreload> ParseGuestRendererPreload(std::string_view);
+
 static constexpr char kInstanceDir[] = "instance_dir";
 CuttlefishConfig::MutableInstanceSpecific::MutableInstanceSpecific(
     CuttlefishConfig* config, const std::string& id)
@@ -814,6 +876,28 @@ std::string CuttlefishConfig::InstanceSpecific::gpu_context_types() const {
 void CuttlefishConfig::MutableInstanceSpecific::set_gpu_context_types(
     const std::string& context_types) {
   (*Dictionary())[kGpuContextTypes] = context_types;
+}
+
+static constexpr char kGuestHwuiRenderer[] = "guest_hwui_renderer";
+GuestHwuiRenderer CuttlefishConfig::InstanceSpecific::guest_hwui_renderer()
+    const {
+  auto str = (*Dictionary())[kGuestHwuiRenderer].asString();
+  return ParseGuestHwuiRenderer(str).value_or(GuestHwuiRenderer::kUnknown);
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_guest_hwui_renderer(
+    GuestHwuiRenderer renderer) {
+  (*Dictionary())[kGuestHwuiRenderer] = ToString(renderer);
+}
+
+static constexpr char kGuestRendererPreload[] = "guest_renderer_preload";
+GuestRendererPreload
+CuttlefishConfig::InstanceSpecific::guest_renderer_preload() const {
+  auto str = (*Dictionary())[kGuestRendererPreload].asString();
+  return ParseGuestRendererPreload(str).value_or(GuestRendererPreload::kAuto);
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_guest_renderer_preload(
+    GuestRendererPreload preload) {
+  (*Dictionary())[kGuestRendererPreload] = ToString(preload);
 }
 
 static constexpr char kVulkanDriver[] = "guest_vulkan_driver";
@@ -1948,6 +2032,15 @@ void CuttlefishConfig::MutableInstanceSpecific::set_start_vhal_proxy_server(
 }
 bool CuttlefishConfig::InstanceSpecific::start_vhal_proxy_server() const {
   return (*Dictionary())[kStartVhalProxyServer].asBool();
+}
+
+static constexpr char kAudioOutputStreamsCount[] = "audio_output_streams_count";
+void CuttlefishConfig::MutableInstanceSpecific::set_audio_output_streams_count(
+    int count) {
+  (*Dictionary())[kAudioOutputStreamsCount] = count;
+}
+int CuttlefishConfig::InstanceSpecific::audio_output_streams_count() const {
+  return (*Dictionary())[kAudioOutputStreamsCount].asInt();
 }
 
 std::string CuttlefishConfig::InstanceSpecific::factory_reset_protected_path() const {

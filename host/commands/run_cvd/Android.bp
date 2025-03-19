@@ -41,6 +41,8 @@ cc_binary_host {
         "launch/root_canal.cpp",
         "launch/screen_recording_server.cpp",
         "launch/secure_env.cpp",
+        "launch/sensors_simulator.cpp",
+        "launch/sensors_socket_pair.cpp",
         "launch/snapshot_control_files.cpp",
         "launch/streamer.cpp",
         "launch/uwb_connector.cpp",
@@ -107,6 +109,7 @@ cc_binary_host {
                 "launch/ti50_emulator.cpp",
                 "launch/tombstone_receiver.cpp",
                 "launch/vhost_device_vsock.cpp",
+                "launch/vhost_input_devices.cpp",
                 "launch/wmediumd_server.cpp",
             ],
             shared_libs: [

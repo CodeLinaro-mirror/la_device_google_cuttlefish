@@ -64,15 +64,12 @@ DEFINE_int32(confui_in_fd, -1,
              "Confirmation UI virtio-console from host to guest");
 DEFINE_int32(confui_out_fd, -1,
              "Confirmation UI virtio-console from guest to host");
-DEFINE_int32(sensors_in_fd, -1, "Sensors virtio-console from host to guest");
-DEFINE_int32(sensors_out_fd, -1, "Sensors virtio-console from guest to host");
 DEFINE_string(action_servers, "",
               "A comma-separated list of server_name:fd pairs, "
               "where each entry corresponds to one custom action server.");
-DEFINE_bool(write_virtio_input, true,
-            "Whether to send input events in virtio format.");
 DEFINE_int32(audio_server_fd, -1, "An fd to listen on for audio frames");
 DEFINE_int32(camera_streamer_fd, -1, "An fd to send client camera frames");
+DEFINE_int32(sensors_fd, -1, "An fd to communicate with sensors_simulator.");
 DEFINE_string(client_dir, "webrtc", "Location of the client files");
 DEFINE_string(group_id, "", "The group id of device");
 
@@ -188,9 +185,7 @@ int CuttlefishMain() {
   auto cvd_config = CuttlefishConfig::Get();
   auto instance = cvd_config->ForDefaultInstance();
 
-  cuttlefish::InputConnectorBuilder inputs_builder(
-      FLAGS_write_virtio_input ? cuttlefish::InputEventType::Virtio
-                               : cuttlefish::InputEventType::Evdev);
+  cuttlefish::InputConnectorBuilder inputs_builder;
 
   const auto display_count = instance.display_configs().size();
   const auto touch_fds = android::base::Split(FLAGS_touch_fds, ",");
@@ -235,6 +230,9 @@ int CuttlefishMain() {
 
   auto kernel_log_events_client = SharedFD::Dup(FLAGS_kernel_log_events_fd);
   close(FLAGS_kernel_log_events_fd);
+
+  auto sensors_fd = cuttlefish::SharedFD::Dup(FLAGS_sensors_fd);
+  close(FLAGS_sensors_fd);
 
   confui::PipeConnectionPair conf_ui_comm_fd_pair{
       .from_guest_ = SharedFD::Dup(FLAGS_confui_out_fd),
@@ -298,8 +296,11 @@ int CuttlefishMain() {
     lights_observer->Start();
   }
 
+  webrtc_streaming::SensorsHandler sensors_handler(sensors_fd);
+
   auto observer_factory = std::make_shared<CfConnectionObserverFactory>(
-      confui_virtual_input, &kernel_logs_event_handler, lights_observer);
+      confui_virtual_input, &kernel_logs_event_handler, &sensors_handler,
+      lights_observer);
 
   RecordingManager recording_manager;
 
@@ -330,7 +331,8 @@ int CuttlefishMain() {
   }
 
   streamer->SetHardwareSpec("CPUs", instance.cpus());
-  streamer->SetHardwareSpec("RAM", std::to_string(instance.memory_mb()) + " mb");
+  streamer->SetHardwareSpec("RAM",
+                            std::to_string(instance.memory_mb()) + " mb");
 
   std::string user_friendly_gpu_mode;
   if (instance.gpu_mode() == kGpuModeGuestSwiftshader) {
@@ -351,11 +353,16 @@ int CuttlefishMain() {
 
   std::shared_ptr<AudioHandler> audio_handler;
   if (instance.enable_audio()) {
-    auto audio_stream = streamer->AddAudioStream("audio");
+    int output_streams_count = instance.audio_output_streams_count();
+    std::vector<std::shared_ptr<webrtc_streaming::AudioSink>> audio_streams(
+        output_streams_count);
+    for (int i = 0; i < audio_streams.size(); i++) {
+      audio_streams[i] = streamer->AddAudioStream("audio-" + std::to_string(i));
+    }
     auto audio_server = CreateAudioServer();
     auto audio_source = streamer->GetAudioSource();
-    audio_handler = std::make_shared<AudioHandler>(std::move(audio_server),
-                                                   audio_stream, audio_source);
+    audio_handler = std::make_shared<AudioHandler>(
+        std::move(audio_server), std::move(audio_streams), audio_source);
   }
 
   // Parse the -action_servers flag, storing a map of action server name -> fd
