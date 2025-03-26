@@ -298,6 +298,12 @@ class CuttlefishConfig {
   std::set<std::string> straced_host_executables() const;
   void set_straced_host_executables(const std::set<std::string>& executables);
 
+  std::string kvm_path() const;
+  void set_kvm_path(const std::string&);
+
+  std::string vhost_vsock_path() const;
+  void set_vhost_vsock_path(const std::string&);
+
   bool IsCrosvm() const;
 
   class InstanceSpecific;
@@ -551,6 +557,8 @@ class CuttlefishConfig {
 
     bool crosvm_use_balloon() const;
     bool crosvm_use_rng() const;
+    bool crosvm_simple_media_device() const;
+    std::string crosvm_v4l2_proxy() const;
     bool use_pmem() const;
 
     // Wifi MAC address inside the guest
@@ -745,6 +753,8 @@ class CuttlefishConfig {
     bool start_vhal_proxy_server() const;
 
     int audio_output_streams_count() const;
+
+    bool enable_tap_devices() const;
   };
 
   // A view into an existing CuttlefishConfig object for a particular instance.
@@ -807,6 +817,8 @@ class CuttlefishConfig {
     void set_ap_boot_flow(InstanceSpecific::APBootFlow flow);
     void set_crosvm_use_balloon(const bool use_balloon);
     void set_crosvm_use_rng(const bool use_rng);
+    void set_crosvm_simple_media_device(const bool simple_media_device);
+    void set_crosvm_v4l2_proxy(const std::string v4l2_proxy);
     void set_use_pmem(const bool use_pmem);
     // Wifi MAC address inside the guest
     void set_wifi_mac_prefix(const int wifi_mac_prefix);
@@ -972,6 +984,8 @@ class CuttlefishConfig {
 
     void set_audio_output_streams_count(int count);
 
+    void set_enable_tap_devices(bool);
+
    private:
     void SetPath(const std::string& key, const std::string& path);
   };
@@ -1091,6 +1105,7 @@ extern const char* const kGpuModeDrmVirgl;
 extern const char* const kGpuModeGfxstream;
 extern const char* const kGpuModeGfxstreamGuestAngle;
 extern const char* const kGpuModeGfxstreamGuestAngleHostSwiftShader;
+extern const char* const kGpuModeGfxstreamGuestAngleHostLavapipe;
 extern const char* const kGpuModeGuestSwiftshader;
 extern const char* const kGpuModeNone;
 
