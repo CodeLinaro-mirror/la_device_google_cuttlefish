@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2022 The Android Open Source Project
+# Copyright (C) 2025 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,8 +14,14 @@
 # limitations under the License.
 #
 
-$(call inherit-product, $(SRC_TARGET_DIR)/product/base_system_ext.mk)
+$(call inherit-product, device/google/cuttlefish/vsoc_arm64_only/phone/aosp_cf.mk)
 
-PRODUCT_PACKAGES += \
-    CarrierConfig \
-    StatementService \
+PRODUCT_NAME := aosp_cf_arm64_only_phone_vendor
+
+PRODUCT_BUILD_SYSTEM_IMAGE := false
+PRODUCT_BUILD_SYSTEM_OTHER_IMAGE := false
+PRODUCT_BUILD_PRODUCT_IMAGE := false
+PRODUCT_BUILD_SYSTEM_EXT_IMAGE := false
+PRODUCT_BUILD_SUPER_PARTITION := false
+TARGET_SKIP_OTA_PACKAGE := true
+
