@@ -64,7 +64,6 @@ cc_binary_host {
         "libcuttlefish_utils",
         "libcuttlefish_webrtc_command_channel",
         "libcuttlefish_webrtc_commands_proto",
-        "libext2_blkid",
         "libfruit",
         "libgoogleapis-status-proto",
         "libgrpc++_unsecure",
@@ -111,9 +110,6 @@ cc_binary_host {
                 "launch/vhost_device_vsock.cpp",
                 "launch/vhost_input_devices.cpp",
                 "launch/wmediumd_server.cpp",
-            ],
-            shared_libs: [
-                "libnl",
             ],
         },
     },

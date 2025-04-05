@@ -9,6 +9,9 @@ on early-init
     start vendor.dlkm_loader
     # specially load zram as it is a "leaf" GKI module
     exec u:r:modprobe:s0 -- /system/bin/modprobe -a -d /system/lib/modules zram.ko
+    # only load vkms after virtio_gpu has been loaded
+    wait /dev/dri/card0
+    exec u:r:vendor_modprobe:s0 -- /vendor/bin/modprobe -d /vendor/lib/modules vkms.ko create_default_dev=0
 
 on early-init && property:ro.boot.vendor.apex.com.android.hardware.keymint=\
 com.android.hardware.keymint.rust_cf_guest_trusty_nonsecure
@@ -85,6 +88,10 @@ on boot
     setprop ro.hardware.audio.primary goldfish
     symlink /dev/hvc6 /dev/gnss0
     symlink /dev/hvc7 /dev/gnss1
+
+    # enable f2fs sanity check to dump more metadata info to kmsg
+    # once it detects inode corruption
+    write /dev/sys/fs/by-name/userdata/sanity_check 1
 
 on property:sys.boot_completed=1
     trigger sys-boot-completed-set

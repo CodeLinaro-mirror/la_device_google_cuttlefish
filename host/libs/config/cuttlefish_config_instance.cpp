@@ -522,6 +522,17 @@ void CuttlefishConfig::MutableInstanceSpecific::set_serial_number(
   (*Dictionary())[kSerialNumber] = serial_number;
 }
 
+int CuttlefishConfig::InstanceSpecific::index() const {
+  int instance_index = 0;
+  for (const auto& i : config_->Instances()) {
+    if (i.serial_number() == serial_number()) {
+      break;
+    }
+    instance_index++;
+  }
+  return instance_index;
+}
+
 static constexpr char kVirtualDiskPaths[] = "virtual_disk_paths";
 std::vector<std::string> CuttlefishConfig::InstanceSpecific::virtual_disk_paths() const {
   std::vector<std::string> virtual_disks;
@@ -1315,6 +1326,7 @@ static constexpr char kXRes[] = "x_res";
 static constexpr char kYRes[] = "y_res";
 static constexpr char kDpi[] = "dpi";
 static constexpr char kRefreshRateHz[] = "refresh_rate_hz";
+static constexpr char kOverlays[] = "overlays";
 std::vector<CuttlefishConfig::DisplayConfig>
 CuttlefishConfig::InstanceSpecific::display_configs() const {
   std::vector<DisplayConfig> display_configs;
@@ -1325,6 +1337,7 @@ CuttlefishConfig::InstanceSpecific::display_configs() const {
     display_config.dpi = display_config_json[kDpi].asInt();
     display_config.refresh_rate_hz =
         display_config_json[kRefreshRateHz].asInt();
+    display_config.overlays = display_config_json[kOverlays].asString();
     display_configs.emplace_back(display_config);
   }
   return display_configs;
@@ -1339,6 +1352,7 @@ void CuttlefishConfig::MutableInstanceSpecific::set_display_configs(
     display_config_json[kYRes] = display_configs.height;
     display_config_json[kDpi] = display_configs.dpi;
     display_config_json[kRefreshRateHz] = display_configs.refresh_rate_hz;
+    display_config_json[kOverlays] = display_configs.overlays;
     display_configs_json.append(display_config_json);
   }
 
@@ -1392,6 +1406,15 @@ void CuttlefishConfig::MutableInstanceSpecific::set_target_arch(
 }
 Arch CuttlefishConfig::InstanceSpecific::target_arch() const {
   return static_cast<Arch>((*Dictionary())[kTargetArch].asInt());
+}
+
+static constexpr char kDeviceType[] = "device_type";
+void CuttlefishConfig::MutableInstanceSpecific::set_device_type(
+    DeviceType type) {
+  (*Dictionary())[kDeviceType] = static_cast<int>(type);
+}
+DeviceType CuttlefishConfig::InstanceSpecific::device_type() const {
+  return static_cast<DeviceType>((*Dictionary())[kDeviceType].asInt());
 }
 
 static constexpr char kEnableSandbox[] = "enable_sandbox";
@@ -1975,6 +1998,24 @@ bool CuttlefishConfig::InstanceSpecific::crosvm_use_rng() const {
   return (*Dictionary())[kCrosvmUseRng].asBool();
 }
 
+static constexpr char kCrosvmSimpleMediaDevice[] = "crosvm_simple_media_device";
+void CuttlefishConfig::MutableInstanceSpecific::set_crosvm_simple_media_device(
+    const bool use_media) {
+  (*Dictionary())[kCrosvmSimpleMediaDevice] = use_media;
+}
+bool CuttlefishConfig::InstanceSpecific::crosvm_simple_media_device() const {
+  return (*Dictionary())[kCrosvmSimpleMediaDevice].asBool();
+}
+
+static constexpr char kCrosvmV4l2Proxy[] = "crosvm_v4l2_proxy";
+void CuttlefishConfig::MutableInstanceSpecific::set_crosvm_v4l2_proxy(
+    const std::string v4l2_proxy) {
+  (*Dictionary())[kCrosvmV4l2Proxy] = v4l2_proxy;
+}
+std::string CuttlefishConfig::InstanceSpecific::crosvm_v4l2_proxy() const {
+  return (*Dictionary())[kCrosvmV4l2Proxy].asString();
+}
+
 static constexpr char kCrosvmUsePmem[] = "use_pmem";
 void CuttlefishConfig::MutableInstanceSpecific::set_use_pmem(
     const bool use_pmem) {
@@ -1982,6 +2023,15 @@ void CuttlefishConfig::MutableInstanceSpecific::set_use_pmem(
 }
 bool CuttlefishConfig::InstanceSpecific::use_pmem() const {
   return (*Dictionary())[kCrosvmUsePmem].asBool();
+}
+
+static constexpr char kEnableTapDevices[] = "enable_tap_devices";
+void CuttlefishConfig::MutableInstanceSpecific::set_enable_tap_devices(
+    const bool enable_tap_devices) {
+  (*Dictionary())[kEnableTapDevices] = enable_tap_devices;
+}
+bool CuttlefishConfig::InstanceSpecific::enable_tap_devices() const {
+  return (*Dictionary())[kEnableTapDevices].asBool();
 }
 
 std::string CuttlefishConfig::InstanceSpecific::touch_socket_path(

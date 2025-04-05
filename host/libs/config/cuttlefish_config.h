@@ -29,6 +29,7 @@
 #include <fmt/ostream.h>
 
 #include "common/libs/utils/architecture.h"
+#include "common/libs/utils/device_type.h"
 #include "common/libs/utils/result.h"
 #include "host/libs/config/config_constants.h"
 #include "host/libs/config/config_fragment.h"
@@ -133,6 +134,7 @@ class CuttlefishConfig {
     int height;
     int dpi;
     int refresh_rate_hz;
+    std::string overlays;
   };
 
   struct TouchpadConfig {
@@ -253,6 +255,9 @@ class CuttlefishConfig {
   void set_sig_server_strict(bool strict);
   bool sig_server_strict() const;
 
+  // Whether display composition is enabled for one or more displays
+  bool OverlaysEnabled() const;
+
   void set_host_tools_version(const std::map<std::string, uint32_t>&);
   std::map<std::string, uint32_t> host_tools_version() const;
 
@@ -294,6 +299,12 @@ class CuttlefishConfig {
   std::set<std::string> straced_host_executables() const;
   void set_straced_host_executables(const std::set<std::string>& executables);
 
+  std::string kvm_path() const;
+  void set_kvm_path(const std::string&);
+
+  std::string vhost_vsock_path() const;
+  void set_vhost_vsock_path(const std::string&);
+
   bool IsCrosvm() const;
 
   class InstanceSpecific;
@@ -322,8 +333,12 @@ class CuttlefishConfig {
 
     Json::Value* Dictionary();
     const Json::Value* Dictionary() const;
-  public:
+   public:
     std::string serial_number() const;
+
+    // Index of this instance within current configured group of VMs
+    int index() const;
+
     // If any of the following port numbers is 0, the relevant service is not
     // running on the guest.
 
@@ -543,6 +558,8 @@ class CuttlefishConfig {
 
     bool crosvm_use_balloon() const;
     bool crosvm_use_rng() const;
+    bool crosvm_simple_media_device() const;
+    std::string crosvm_v4l2_proxy() const;
     bool use_pmem() const;
 
     // Wifi MAC address inside the guest
@@ -577,6 +594,8 @@ class CuttlefishConfig {
     // happens, this function can be deleted along with all the code paths it
     // forces.
     bool use_bootloader() const;
+
+    DeviceType device_type() const;
 
     Arch target_arch() const;
 
@@ -737,6 +756,8 @@ class CuttlefishConfig {
     bool start_vhal_proxy_server() const;
 
     int audio_output_streams_count() const;
+
+    bool enable_tap_devices() const;
   };
 
   // A view into an existing CuttlefishConfig object for a particular instance.
@@ -748,7 +769,7 @@ class CuttlefishConfig {
     MutableInstanceSpecific(CuttlefishConfig* config, const std::string& id);
 
     Json::Value* Dictionary();
-  public:
+   public:
     void set_serial_number(const std::string& serial_number);
     void set_qemu_vnc_server_port(int qemu_vnc_server_port);
     void set_tombstone_receiver_port(int tombstone_receiver_port);
@@ -799,6 +820,8 @@ class CuttlefishConfig {
     void set_ap_boot_flow(InstanceSpecific::APBootFlow flow);
     void set_crosvm_use_balloon(const bool use_balloon);
     void set_crosvm_use_rng(const bool use_rng);
+    void set_crosvm_simple_media_device(const bool simple_media_device);
+    void set_crosvm_v4l2_proxy(const std::string v4l2_proxy);
     void set_use_pmem(const bool use_pmem);
     // Wifi MAC address inside the guest
     void set_wifi_mac_prefix(const int wifi_mac_prefix);
@@ -815,6 +838,7 @@ class CuttlefishConfig {
     void set_enable_sandbox(const bool enable_sandbox);
     void set_enable_virtiofs(const bool enable_virtiofs);
     void set_kgdb(bool kgdb);
+    void set_device_type(DeviceType type);
     void set_target_arch(Arch target_arch);
     void set_cpus(int cpus);
     void set_vcpu_config_path(const std::string& vcpu_config_path);
@@ -964,6 +988,8 @@ class CuttlefishConfig {
 
     void set_audio_output_streams_count(int count);
 
+    void set_enable_tap_devices(bool);
+
    private:
     void SetPath(const std::string& key, const std::string& path);
   };
@@ -1021,6 +1047,7 @@ class CuttlefishConfig {
     std::string wmediumd_api_server_socket() const;
     std::string wmediumd_config() const;
     int wmediumd_mac_prefix() const;
+    int group_uuid() const;
   };
 
   class MutableEnvironmentSpecific {
@@ -1045,6 +1072,8 @@ class CuttlefishConfig {
     void set_wmediumd_api_server_socket(const std::string& path);
     void set_wmediumd_config(const std::string& path);
     void set_wmediumd_mac_prefix(int mac_prefix);
+
+    void set_group_uuid(const int group_uuid);
   };
 
  private:
@@ -1080,6 +1109,7 @@ extern const char* const kGpuModeDrmVirgl;
 extern const char* const kGpuModeGfxstream;
 extern const char* const kGpuModeGfxstreamGuestAngle;
 extern const char* const kGpuModeGfxstreamGuestAngleHostSwiftShader;
+extern const char* const kGpuModeGfxstreamGuestAngleHostLavapipe;
 extern const char* const kGpuModeGuestSwiftshader;
 extern const char* const kGpuModeNone;
 

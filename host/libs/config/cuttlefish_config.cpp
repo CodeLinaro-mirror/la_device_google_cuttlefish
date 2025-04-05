@@ -56,6 +56,8 @@ const char* const kGpuModeGfxstream = "gfxstream";
 const char* const kGpuModeGfxstreamGuestAngle = "gfxstream_guest_angle";
 const char* const kGpuModeGfxstreamGuestAngleHostSwiftShader =
     "gfxstream_guest_angle_host_swiftshader";
+const char* const kGpuModeGfxstreamGuestAngleHostLavapipe =
+    "gfxstream_guest_angle_host_lavapipe";
 const char* const kGpuModeGuestSwiftshader = "guest_swiftshader";
 const char* const kGpuModeNone = "none";
 
@@ -210,6 +212,19 @@ void CuttlefishConfig::set_sig_server_strict(bool strict) {
 }
 bool CuttlefishConfig::sig_server_strict() const {
   return (*dictionary_)[kSigServerStrict].asBool();
+}
+
+bool CuttlefishConfig::OverlaysEnabled() const {
+  for (const auto& curinstance : Instances()) {
+    if (curinstance.display_configs().size() > 0) {
+      for (const auto& curdisplay : curinstance.display_configs()) {
+        if (curdisplay.overlays.length() > 0) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
 }
 
 static constexpr char kHostToolsVersion[] = "host_tools_version";
@@ -539,6 +554,22 @@ std::string CuttlefishConfig::snapshot_path() const {
 }
 void CuttlefishConfig::set_snapshot_path(const std::string& snapshot_path) {
   (*dictionary_)[kSnapshotPath] = snapshot_path;
+}
+
+static constexpr char kKvmPath[] = "kvm_path";
+std::string CuttlefishConfig::kvm_path() const {
+  return (*dictionary_)[kKvmPath].asString();
+}
+void CuttlefishConfig::set_kvm_path(const std::string& kvm_path) {
+  (*dictionary_)[kKvmPath] = kvm_path;
+}
+
+static constexpr char kVhostVsockPath[] = "vhost_vsock_path";
+std::string CuttlefishConfig::vhost_vsock_path() const {
+  return (*dictionary_)[kVhostVsockPath].asString();
+}
+void CuttlefishConfig::set_vhost_vsock_path(const std::string& path) {
+  (*dictionary_)[kVhostVsockPath] = path;
 }
 
 static constexpr char kStracedExecutables[] = "straced_host_executables";

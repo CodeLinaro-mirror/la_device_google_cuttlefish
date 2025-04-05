@@ -54,7 +54,6 @@ cc_binary_host {
         "libcuttlefish_command_util",
         "libcuttlefish_fs",
         "libcuttlefish_utils",
-        "libext2_blkid",
         "libfruit",
         "libjsoncpp",
         "libprotobuf-cpp-full",
@@ -69,7 +68,6 @@ cc_binary_host {
         "libcuttlefish_host_config_fastboot",
         "libcuttlefish_launch_cvd_proto",
         "libcuttlefish_vm_manager",
-        "libext2_uuid",
         "libgflags",
         "libgfxstream_graphics_detector_proto",
         "libimage_aggregator",
@@ -97,13 +95,38 @@ cc_binary_host {
             enabled: true,
         },
         linux: {
-            shared_libs: [
-                "libnl",
-            ],
             required: [
                 "mkuserimg_mke2fs",
             ],
         },
+    },
+    defaults: ["cuttlefish_host"],
+}
+
+cc_test_host {
+    name: "cf_assemble_tests",
+    shared_libs: [
+        "libbase",
+        "libcurl",
+        "libcuttlefish_fs",
+        "libcuttlefish_utils",
+        "libfruit",
+        "liblog",
+        "libprotobuf-cpp-full",
+    ],
+    srcs: [
+        "unittest/main_test.cc",
+        "unittest/utils_tests.cpp",
+    ],
+    static_libs: [
+        "libcuttlefish_host_config",
+        "libcuttlefish_launch_cvd_proto",
+        "libcuttlefish_msg_queue",
+        "libgflags",
+        "libgmock",
+    ],
+    test_options: {
+        unit_test: true,
     },
     defaults: ["cuttlefish_host"],
 }
