@@ -18,15 +18,6 @@ set -x
 set -o errexit
 shopt -s extglob
 
-# If "true" install host orchestration capabilities.
-host_orchestration_flag="false"
-
-while getopts ":o" flag; do
-    case "${flag}" in
-        o) host_orchestration_flag="true";;
-    esac
-done
-
 sudo apt-get update
 
 sudo apt install -y debconf-utils
@@ -80,11 +71,7 @@ for dsc in *.dsc; do
 done
 
 # Now gather all of the relevant .deb files to copy them into the image
-debs=(!(cuttlefish-orchestration*).deb)
-if [[ "${host_orchestration_flag}" == "true" ]]; then
-  debs+=( cuttlefish-orchestration*.deb )
-fi
-
+debs=(*.deb)
 tmp_debs=()
 for i in "${debs[@]}"; do
   tmp_debs+=(/tmp/"$(basename "$i")")
@@ -120,9 +107,11 @@ if ! echo "$JDK21_SHA256SUM /usr/java/openjdk-21.0.2_linux-x64_bin.tar.gz" | sud
 fi
 sudo chroot /mnt/image /usr/bin/tar xvzf /usr/java/openjdk-21.0.2_linux-x64_bin.tar.gz -C /usr/java
 sudo chroot /mnt/image /usr/bin/rm /usr/java/openjdk-21.0.2_linux-x64_bin.tar.gz
-echo 'JAVA_HOME=/usr/java/jdk-21.0.2' | sudo chroot /mnt/image /usr/bin/tee -a /etc/environment >/dev/null
-echo 'JAVA_HOME=/usr/java/jdk-21.0.2' | sudo chroot /mnt/image /usr/bin/tee -a /etc/profile >/dev/null
+ENV_JAVA_HOME='/usr/java/jdk-21.0.2'
+echo "JAVA_HOME=$ENV_JAVA_HOME" | sudo chroot /mnt/image /usr/bin/tee -a /etc/environment >/dev/null
+echo "JAVA_HOME=$ENV_JAVA_HOME" | sudo chroot /mnt/image /usr/bin/tee -a /etc/profile >/dev/null
 echo 'PATH=$JAVA_HOME/bin:$PATH' | sudo chroot /mnt/image /usr/bin/tee -a /etc/profile >/dev/null
+echo "PATH=$ENV_JAVA_HOME/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games" | sudo chroot /mnt/image /usr/bin/tee -a /etc/environment >/dev/null
 
 # install tools dependencies
 sudo chroot /mnt/image /usr/bin/apt install -y unzip bzip2 lzop

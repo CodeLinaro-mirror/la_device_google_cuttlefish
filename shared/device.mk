@@ -233,9 +233,12 @@ PRODUCT_CHECK_PREBUILT_MAX_PAGE_SIZE := true
 # General files
 #
 
+$(call soong_config_set_bool,cuttlefish_config,use_general_files,true)
+PRODUCT_PACKAGES += \
+    device_google_cuttlefish_shared_config_init_vendor_rc \
+    device_google_cuttlefish_shared_config_init_product_rc
+
 PRODUCT_COPY_FILES += \
-    device/google/cuttlefish/shared/config/init.product.rc:$(TARGET_COPY_OUT_PRODUCT)/etc/init/init.rc \
-    device/google/cuttlefish/shared/config/init.vendor.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.cutf_cvm.rc \
     device/google/cuttlefish/shared/config/media_codecs_google_video.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_video.xml \
     device/google/cuttlefish/shared/config/media_codecs_performance.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_performance.xml \
     device/google/cuttlefish/shared/config/media_codecs.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs.xml \
@@ -313,13 +316,17 @@ LOCAL_AUDIO_PRODUCT_PACKAGE += \
     com.android.hardware.audio
 PRODUCT_SYSTEM_EXT_PROPERTIES += \
     ro.audio.ihaladaptervendorextension_enabled=true
+PRODUCT_PRODUCT_PROPERTIES += \
+    aaudio.mmap_policy=2 \
+    aaudio.mmap_exclusive_policy=2 \
+    aaudio.hw_burst_min_usec=2000
 endif
 
 ifneq ($(LOCAL_USE_VENDOR_AUDIO_CONFIGURATION),true)
 ifndef LOCAL_AUDIO_PRODUCT_COPY_FILES
-LOCAL_AUDIO_PRODUCT_COPY_FILES := \
-    device/google/cuttlefish/shared/config/audio/policy/audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy_configuration.xml \
-    device/google/cuttlefish/shared/config/audio/policy/primary_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/primary_audio_policy_configuration.xml
+PRODUCT_PACKAGES += device_google_cuttlefish_shared_config_audio_policy
+$(call soong_config_set_bool,cuttlefish_config,use_audio_policy,true)
+
 LOCAL_AUDIO_PRODUCT_COPY_FILES += \
     hardware/interfaces/audio/aidl/default/audio_effects_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects_config.xml
 endif
@@ -592,8 +599,9 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     com.android.hardware.cas
 
-PRODUCT_COPY_FILES += \
-    device/google/cuttlefish/shared/config/pci.ids:$(TARGET_COPY_OUT_VENDOR)/pci.ids
+PRODUCT_PACKAGES += \
+    device_google_cuttlefish_shared_config_pci_ids
+$(call soong_config_set_bool,cuttlefish_config,use_pci_ids,true)
 
 # Thread Network AIDL HAL and Demo App
 PRODUCT_PACKAGES += \

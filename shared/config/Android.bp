@@ -17,10 +17,16 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-filegroup {
+prebuilt_root {
     name: "device_google_cuttlefish_shared_config_pci_ids",
-    srcs: ["pci.ids"],
+    src: "pci.ids",
+    vendor: true,
+    filename_from_src: true,
     licenses: ["device_google_cuttlefish_shared_config_pci_ids_license"],
+    enabled: select(soong_config_variable("cuttlefish_config", "use_pci_ids"), {
+        true: true,
+        default: false,
+    }),
 }
 
 license {
@@ -167,4 +173,52 @@ prebuilt_etc {
         "fstab.cf.ext4.cts",
     ],
     vendor_ramdisk: true,
+}
+
+prebuilt_etc {
+    name: "device_google_cuttlefish_shared_config_audio_policy",
+    srcs: [
+        "audio/policy/audio_policy_configuration.xml",
+        "audio/policy/primary_audio_policy_configuration.xml",
+    ],
+    vendor: true,
+    enabled: select(soong_config_variable("cuttlefish_config", "use_audio_policy"), {
+        true: true,
+        default: false,
+    }),
+}
+
+prebuilt_etc {
+    name: "device_google_cuttlefish_shared_config_init_graphics_vendor_rc",
+    srcs: ["graphics/init_graphics.vendor.rc"],
+    vendor: true,
+    relative_install_path: "init",
+    enabled: select(soong_config_variable("cuttlefish_config", "use_init_graphics_vendor_rc"), {
+        true: true,
+        default: false,
+    }),
+}
+
+prebuilt_etc {
+    name: "device_google_cuttlefish_shared_config_init_vendor_rc",
+    srcs: ["init.vendor.rc"],
+    dsts: ["init.cutf_cvm.rc"],
+    vendor: true,
+    relative_install_path: "init",
+    enabled: select(soong_config_variable("cuttlefish_config", "use_general_files"), {
+        true: true,
+        default: false,
+    }),
+}
+
+prebuilt_etc {
+    name: "device_google_cuttlefish_shared_config_init_product_rc",
+    srcs: ["init.product.rc"],
+    dsts: ["init.rc"],
+    product_specific: true,
+    relative_install_path: "init",
+    enabled: select(soong_config_variable("cuttlefish_config", "use_general_files"), {
+        true: true,
+        default: false,
+    }),
 }
