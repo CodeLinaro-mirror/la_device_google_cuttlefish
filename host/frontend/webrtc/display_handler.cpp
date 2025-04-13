@@ -142,9 +142,7 @@ DisplayHandler::GetScreenConnectorCallback() {
       display_last_buffers_[display_number] =
           std::make_shared<BufferInfo>(BufferInfo{
               .last_sent_time_stamp = std::chrono::system_clock::now(),
-              .buffer =
-                  std::static_pointer_cast<webrtc_streaming::VideoFrameBuffer>(
-                      buffer),
+              .buffer = std::static_pointer_cast<VideoFrameBuffer>(buffer),
           });
     }
     if (processed_frame.is_success_) {
@@ -262,6 +260,7 @@ void DisplayHandler::RepeatFramesPeriodically() {
     SendBuffers(buffers);
     {
       std::lock_guard last_buffers_lock(last_buffers_mutex_);
+      next_send = std::chrono::system_clock::now() + kRepeatingInterval;
       for (const auto& [_, buffer_info] : display_last_buffers_) {
         next_send = std::min(
             next_send, buffer_info->last_sent_time_stamp + kRepeatingInterval);

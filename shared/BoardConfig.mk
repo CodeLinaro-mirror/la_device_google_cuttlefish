@@ -20,12 +20,19 @@
 
 # Some targets still require 32 bit, and 6.6 kernels don't support
 # 32 bit devices
-ifeq (true,$(CLOCKWORK_EMULATOR_PRODUCT))
+
+ifneq (,$(findstring cf_gwear_arm,$(PRODUCT_NAME)))
+TARGET_KERNEL_USE ?= 6.6
+else ifeq (true,$(CLOCKWORK_EMULATOR_PRODUCT))
 TARGET_KERNEL_USE ?= 6.1
 else ifneq (,$(findstring x86_tv,$(PRODUCT_NAME)))
 TARGET_KERNEL_USE ?= 6.1
-else ifneq (,$(findstring _desktop,$(PRODUCT_NAME)))
-TARGET_KERNEL_USE ?= 6.6
+else ifneq (,$(findstring cf_x86_64_desktop,$(PRODUCT_NAME)))
+TARGET_KERNEL_USE ?= $(RELEASE_KERNEL_CUTTLEFISH_X86_64_VERSION)
+TARGET_KERNEL_DIR ?= $(RELEASE_KERNEL_CUTTLEFISH_X86_64_DIR)
+else ifneq (,$(findstring cf_arm64_desktop,$(PRODUCT_NAME)))
+TARGET_KERNEL_USE ?= $(RELEASE_KERNEL_CUTTLEFISH_ARM64_VERSION)
+TARGET_KERNEL_DIR ?= $(RELEASE_KERNEL_CUTTLEFISH_ARM64_DIR)
 else
 TARGET_KERNEL_USE ?= 6.12
 endif
@@ -33,8 +40,8 @@ endif
 TARGET_KERNEL_ARCH ?= $(TARGET_ARCH)
 
 ifneq (,$(filter cf_x86_64_desktop cf_arm64_desktop,$(PRODUCT_NAME)))
-SYSTEM_DLKM_SRC ?= device/google/cuttlefish_prebuilts/kernel/6.6-$(TARGET_KERNEL_ARCH)-desktop/system_dlkm
-KERNEL_MODULES_PATH ?= device/google/cuttlefish_prebuilts/kernel/6.6-$(TARGET_KERNEL_ARCH)-desktop/vendor_dlkm
+SYSTEM_DLKM_SRC ?= device/google/cuttlefish_prebuilts/kernel/$(TARGET_KERNEL_USE)-$(TARGET_KERNEL_ARCH)-desktop/$(TARGET_KERNEL_DIR)/system_dlkm
+KERNEL_MODULES_PATH ?= device/google/cuttlefish_prebuilts/kernel/$(TARGET_KERNEL_USE)-$(TARGET_KERNEL_ARCH)-desktop/$(TARGET_KERNEL_DIR)/vendor_dlkm
 else
 SYSTEM_DLKM_SRC ?= kernel/prebuilts/$(TARGET_KERNEL_USE)/$(TARGET_KERNEL_ARCH)
 KERNEL_MODULES_PATH ?= \
@@ -44,7 +51,24 @@ endif
 TARGET_KERNEL_PATH ?= $(SYSTEM_DLKM_SRC)/kernel-$(TARGET_KERNEL_USE)
 PRODUCT_COPY_FILES += $(TARGET_KERNEL_PATH):kernel
 
+# This check prevents the $(shell grep ...) subexpression below from printing
+# "grep: ... No such file or directory" to stdout. Explanation:
+#
+# - For some reason BOARD_KERNEL_VERSION seems to be evaluated twice, once
+#   before the RELEASE_KERNEL_CUTTLEFISH_* variables are loaded, and again
+#   after they are loaded. The first evaluation results in KERNEL_MODULES_PATH
+#   having an invalid path, causing grep to fail with the above message.
+#
+# - The build still works without this workaround (e.g. "m" and "m dist"
+#   complete successfully). The goal of the workaround is just to prevent the
+#   spurious grep error message.
+#
+# - The check uses the RELEASE_KERNEL_CUTTLEFISH_X86_64_VERSION variable, which
+#   was chosen arbirarily. Any other RELEASE_KERNEL_CUTTLEFISH_* flag works,
+#   even when building for Arm64.
+ifneq (,$(RELEASE_KERNEL_CUTTLEFISH_X86_64_VERSION))
 BOARD_KERNEL_VERSION := $(word 1,$(subst vermagic=,,$(shell grep -E -h -ao -m 1 'vermagic=.*' $(KERNEL_MODULES_PATH)/nd_virtio.ko)))
+endif
 
 ifneq (,$(findstring auto, $(PRODUCT_NAME)))
 HIB_SWAP_IMAGE_SIZE_GB ?= 4
