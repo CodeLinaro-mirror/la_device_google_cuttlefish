@@ -1,0 +1,36 @@
+# cuttlefish debian_substitution_marker v1
+
+symlinks {
+  target: "/usr/lib/cuttlefish-common/bin/console_forwarder"
+  link_name: "bin/console_forwarder"
+}
+
+symlinks {
+  target: "/usr/lib/cuttlefish-common/bin/cvd_import_locations"
+  link_name: "bin/cvd_import_locations"
+}
+
+symlinks {
+  target: "/usr/lib/cuttlefish-common/bin/cvd_send_id_disclosure"
+  link_name: "bin/cvd_send_id_disclosure"
+}
+
+symlinks {
+  target: "/usr/lib/cuttlefish-common/bin/cvd_update_security_algorithm"
+  link_name: "bin/cvd_update_security_algorithm"
+}
+
+symlinks {
+  target: "/usr/lib/cuttlefish-common/bin/kernel_log_monitor"
+  link_name: "bin/kernel_log_monitor"
+}
+
+symlinks {
+  target: "/usr/lib/cuttlefish-common/bin/logcat_receiver"
+  link_name: "bin/logcat_receiver"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/bin/process_restarter"
+  link_name: "bin/process_restarter"
+}
