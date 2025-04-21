@@ -11,6 +11,11 @@ symlinks {
 }
 
 symlinks {
+  target: "/usr/lib/cuttlefish-common/bin/cvd_internal_display"
+  link_name: "bin/cvd_internal_display"
+}
+
+symlinks {
   target: "/usr/lib/cuttlefish-common/bin/cvd_send_id_disclosure"
   link_name: "bin/cvd_send_id_disclosure"
 }
@@ -18,6 +23,11 @@ symlinks {
 symlinks {
   target: "/usr/lib/cuttlefish-common/bin/cvd_update_security_algorithm"
   link_name: "bin/cvd_update_security_algorithm"
+}
+
+symlinks {
+  target: "/usr/lib/cuttlefish-common/bin/echo_server"
+  link_name: "bin/echo_server"
 }
 
 symlinks {
