@@ -1,6 +1,11 @@
 # cuttlefish debian_substitution_marker v1
 
 symlinks {
+  target: "/usr/lib/cuttlefish-common/bin/acloud_translator"
+  link_name: "bin/acloud_translator"
+}
+
+symlinks {
   target: "/usr/lib/cuttlefish-common/bin/console_forwarder"
   link_name: "bin/console_forwarder"
 }
@@ -38,6 +43,16 @@ symlinks {
 symlinks {
   target: "/usr/lib/cuttlefish-common/bin/logcat_receiver"
   link_name: "bin/logcat_receiver"
+}
+
+symlinks {
+  target: "/usr/lib/cuttlefish-common/bin/openwrt_control_server"
+  link_name: "bin/openwrt_control_server"
+}
+
+symlinks {
+  target: "/usr/lib/cuttlefish-common/bin/powerbtn_cvd"
+  link_name: "bin/powerbtn_cvd"
 }
 
 symlinks: {
