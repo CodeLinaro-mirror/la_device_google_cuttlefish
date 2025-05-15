@@ -23,6 +23,5 @@ static constexpr auto RAMDISK_MODULES = {
     "virtio-gpu.ko", "virtio_input.ko",   "virtio_net.ko",
     "virtio_pci.ko", "virtio-rng.ko",     "vmw_vsock_virtio_transport.ko",
     "virtio_snd.ko", "system_heap.ko",
-    "virtio_snd.ko", "system_heap.ko",
-    "virtio_mmio.ko",
+    "virtio_mmio.ko", "virtio_video.ko",
 };
