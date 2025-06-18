@@ -123,22 +123,15 @@ std::string GetFsType(const std::string& path) {
   return blkid_out.substr(type_begin, type_end - type_begin);
 }
 
-enum class DataImageAction { kNoAction, kCreateImage, kResizeImage };
+enum class DataImageAction { kNoAction, kResizeImage, kCreateBlankImage };
 
 static Result<DataImageAction> ChooseDataImageAction(
     const CuttlefishConfig::InstanceSpecific& instance) {
   if (instance.data_policy() == kDataPolicyAlwaysCreate) {
-    return DataImageAction::kCreateImage;
+    return DataImageAction::kCreateBlankImage;
   }
   if (!FileHasContent(instance.data_image())) {
-    if (instance.data_policy() == kDataPolicyUseExisting) {
-      return CF_ERR("A data image must exist to use -data_policy="
-                    << kDataPolicyUseExisting);
-    } else if (instance.data_policy() == kDataPolicyResizeUpTo) {
-      return CF_ERR(instance.data_image()
-                    << " does not exist, but resizing was requested");
-    }
-    return DataImageAction::kCreateImage;
+    return DataImageAction::kCreateBlankImage;
   }
   if (instance.data_policy() == kDataPolicyUseExisting) {
     return DataImageAction::kNoAction;
@@ -149,7 +142,7 @@ static Result<DataImageAction> ChooseDataImageAction(
               "Changing the fs format is incompatible with -data_policy="
                   << kDataPolicyResizeUpTo << " (\"" << current_fs_type
                   << "\" != \"" << instance.userdata_format() << "\")");
-    return DataImageAction::kCreateImage;
+    return DataImageAction::kCreateBlankImage;
   }
   if (instance.data_policy() == kDataPolicyResizeUpTo) {
     return DataImageAction::kResizeImage;
@@ -164,8 +157,8 @@ Result<void> CreateBlankImage(const std::string& image, int num_mb,
   LOG(DEBUG) << "Creating " << image;
 
   off_t image_size_bytes = static_cast<off_t>(num_mb) << 20;
-  // The newfs_msdos tool with the mandatory -C option will do the same
-  // as below to zero the image file, so we don't need to do it here
+  // MakeFatImage will do the same as below to zero the image files, so we
+  // don't need to do it here
   if (image_fmt != "sdcard") {
     auto fd = SharedFD::Open(image, O_CREAT | O_TRUNC | O_RDWR, 0666);
     CF_EXPECTF(fd->Truncate(image_size_bytes) == 0,
@@ -186,7 +179,7 @@ Result<void> CreateBlankImage(const std::string& image, int num_mb,
     // other OSes do by default when partitioning a drive
     off_t offset_size_bytes = 1 << 20;
     image_size_bytes -= offset_size_bytes;
-    CF_EXPECT(NewfsMsdos(image, num_mb, 1), "Failed to create SD-Card fs");
+    CF_EXPECT(MakeFatImage(image, num_mb, 1), "Failed to create SD-Card fs");
     // Write the MBR after the filesystem is formatted, as the formatting tools
     // don't consistently preserve the image contents
     MasterBootRecord mbr = {
@@ -214,18 +207,16 @@ Result<void> InitializeDataImage(
     case DataImageAction::kNoAction:
       LOG(DEBUG) << instance.data_image() << " exists. Not creating it.";
       return {};
-    case DataImageAction::kCreateImage: {
+    case DataImageAction::kCreateBlankImage: {
       RemoveFile(instance.new_data_image());
       CF_EXPECT(instance.blank_data_image_mb() != 0,
                 "Expected `-blank_data_image_mb` to be set for "
                 "image creation.");
       CF_EXPECT(CreateBlankImage(instance.new_data_image(),
-                                 instance.blank_data_image_mb(),
-                                 instance.userdata_format()),
+                                 instance.blank_data_image_mb(), "none"),
                 "Failed to create a blank image at \""
                     << instance.new_data_image() << "\" with size "
-                    << instance.blank_data_image_mb() << " and format \""
-                    << instance.userdata_format() << "\"");
+                    << instance.blank_data_image_mb() << "\"");
       return {};
     }
     case DataImageAction::kResizeImage: {

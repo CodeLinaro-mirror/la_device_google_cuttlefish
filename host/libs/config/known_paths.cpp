@@ -42,6 +42,8 @@ std::string ControlEnvProxyServerBinary() {
   return HostBinaryPath("control_env_proxy_server");
 }
 
+std::string CpioBinary() { return HostBinaryPath("cpio"); }
+
 std::string DefaultKeyboardSpec() {
   return DefaultHostArtifactsPath("etc/default_input_devices/keyboard.json");
 }
@@ -91,9 +93,13 @@ std::string LogcatReceiverBinary() { return HostBinaryPath("logcat_receiver"); }
 
 std::string MetricsBinary() { return HostBinaryPath("metrics"); }
 
+std::string MkfsFat() { return HostBinaryPath("mkfs.fat"); }
+
 std::string ModemSimulatorBinary() { return HostBinaryPath("modem_simulator"); }
 
 std::string NetsimdBinary() { return HostBinaryPath("netsimd"); }
+
+std::string NewfsMsdos() { return HostBinaryPath("newfs_msdos"); }
 
 std::string OpenwrtControlServerBinary() {
   return HostBinaryPath("openwrt_control_server");
