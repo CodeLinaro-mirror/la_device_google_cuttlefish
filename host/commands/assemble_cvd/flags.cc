@@ -98,9 +98,8 @@ DEFINE_vec(data_policy, CF_DEFAULTS_DATA_POLICY,
               "How to handle userdata partition."
               " Either 'use_existing', 'create_if_missing', 'resize_up_to', or "
               "'always_create'.");
-DEFINE_vec(blank_data_image_mb,
-              std::to_string(CF_DEFAULTS_BLANK_DATA_IMAGE_MB),
-             "The size of the blank data image to generate, MB.");
+DEFINE_vec(blank_data_image_mb, CF_DEFAULTS_BLANK_DATA_IMAGE_MB,
+           "The size of the blank data image to generate, MB.");
 DEFINE_vec(gdb_port, std::to_string(CF_DEFAULTS_GDB_PORT),
              "Port number to spawn kernel gdb on e.g. -gdb_port=1234. The"
              "kernel must have been built with CONFIG_RANDOMIZE_BASE "
@@ -807,6 +806,16 @@ Result<std::vector<GuestConfig>> ReadGuestConfig() {
       }
     }
 
+    auto res_blank_data_image_mb =
+        GetAndroidInfoConfig(instance_android_info_txt, "blank_data_image_mb");
+    if (res_blank_data_image_mb.ok()) {
+      std::string res_blank_data_image_mb_str = res_blank_data_image_mb.value();
+      CF_EXPECT(android::base::ParseInt(res_blank_data_image_mb_str.c_str(),
+                                        &guest_config.blank_data_image_mb),
+                "Failed to parse value \"" << res_blank_data_image_mb_str
+                                           << "\" for blank data image size");
+    }
+
     guest_configs.push_back(guest_config);
   }
   return guest_configs;
@@ -961,7 +970,7 @@ Result<std::vector<bool>> GetFlagBoolValueForInstances(
 
   for (int instance_index=0; instance_index<instances_size; instance_index++) {
     if (instance_index >= flag_vec.size()) {
-      value_vec[instance_index] = CF_EXPECT(ParseBool(flag_vec[0], flag_name));
+      value_vec[instance_index] = value_vec[0];
     } else {
       if (flag_vec[instance_index] == "unset" || flag_vec[instance_index] == "\"unset\"") {
         std::string default_value = default_value_vec[0];
@@ -988,8 +997,7 @@ Result<std::vector<int>> GetFlagIntValueForInstances(
 
   for (int instance_index=0; instance_index<instances_size; instance_index++) {
     if (instance_index >= flag_vec.size()) {
-      CF_EXPECT(android::base::ParseInt(flag_vec[0].c_str(), &value_vec[instance_index]),
-      "Failed to parse value \"" << flag_vec[0] << "\" for " << flag_name);
+      value_vec[instance_index] = value_vec[0];
     } else {
       if (flag_vec[instance_index] == "unset" || flag_vec[instance_index] == "\"unset\"") {
         std::string default_value = default_value_vec[0];
@@ -1009,6 +1017,56 @@ Result<std::vector<int>> GetFlagIntValueForInstances(
   return value_vec;
 }
 
+Result<std::vector<int>> GetDataImageFlagOrGuestIntValueForInstances(
+    const std::string& flag_values,
+    const std::vector<GuestConfig>& guest_configs, int32_t instances_size,
+    std::map<std::string, std::string>& name_to_default_value) {
+  std::vector<std::string> flag_vec = android::base::Split(flag_values, ",");
+  std::vector<int> value_vec(instances_size);
+  std::string flag_name = "blank_data_image_mb";
+  bool flag_set =
+      !gflags::GetCommandLineFlagInfoOrDie(flag_name.c_str()).is_default;
+  CF_EXPECT(name_to_default_value.find(flag_name) !=
+            name_to_default_value.end());
+  std::string default_value = name_to_default_value[flag_name];
+  bool first_unset = false;
+
+  for (int instance_index = 0; instance_index < instances_size;
+       instance_index++) {
+    if (flag_set) {
+      if (instance_index < flag_vec.size()) {
+        if ((flag_vec[instance_index] == "unset" ||
+             flag_vec[instance_index] == "\"unset\"") &&
+            instance_index == 0) {
+          first_unset = true;
+        } else {
+          CF_EXPECT(android::base::ParseInt(default_value,
+                                            &value_vec[instance_index]),
+                    "Failed to parse value \"" << default_value << "\" for "
+                                               << flag_name);
+          continue;
+        }
+      } else {
+        if (!first_unset) {
+          value_vec[instance_index] = value_vec[0];
+          continue;
+        }
+      }
+    }
+
+    if (guest_configs[instance_index].blank_data_image_mb != 0) {
+      value_vec[instance_index] =
+          guest_configs[instance_index].blank_data_image_mb;
+    } else {
+      CF_EXPECT(
+          android::base::ParseInt(default_value, &value_vec[instance_index]),
+          "Failed to parse value \"" << default_value << "\" for "
+                                     << flag_name);
+    }
+  }
+  return value_vec;
+}
+
 Result<std::vector<std::string>> GetFlagStrValueForInstances(
     const std::string& flag_values, int32_t instances_size,
     const std::string& flag_name, std::map<std::string, std::string>& name_to_default_value) {
@@ -1020,7 +1078,7 @@ Result<std::vector<std::string>> GetFlagStrValueForInstances(
 
   for (int instance_index=0; instance_index<instances_size; instance_index++) {
     if (instance_index >= flag_vec.size()) {
-      value_vec[instance_index] = flag_vec[0];
+      value_vec[instance_index] = value_vec[0];
     } else {
       if (flag_vec[instance_index] == "unset" || flag_vec[instance_index] == "\"unset\"") {
         std::string default_value = default_value_vec[0];
@@ -1271,8 +1329,10 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   std::vector<std::string> vsock_guest_group_vec =
       CF_EXPECT(GET_FLAG_STR_VALUE(vsock_guest_group));
   std::vector<int> cpus_vec = CF_EXPECT(GET_FLAG_INT_VALUE(cpus));
-  std::vector<int> blank_data_image_mb_vec = CF_EXPECT(GET_FLAG_INT_VALUE(
-      blank_data_image_mb));
+  std::vector<int> blank_data_image_mb_vec =
+      CF_EXPECT(GetDataImageFlagOrGuestIntValueForInstances(
+          FLAGS_blank_data_image_mb, guest_configs, instances_size,
+          name_to_default_value));
   std::vector<int> gdb_port_vec = CF_EXPECT(GET_FLAG_INT_VALUE(gdb_port));
   std::vector<std::string> setupwizard_mode_vec =
       CF_EXPECT(GET_FLAG_STR_VALUE(setupwizard_mode));
