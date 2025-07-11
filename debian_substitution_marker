@@ -15,6 +15,11 @@ symlinks {
   link_name: "bin/allocd_client"
 }
 
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/bin/casimir_control_server"
+  link_name: "bin/casimir_control_server"
+}
+
 symlinks {
   target: "/usr/lib/cuttlefish-common/bin/console_forwarder"
   link_name: "bin/console_forwarder"
@@ -53,6 +58,11 @@ symlinks: {
 symlinks {
   target: "/usr/lib/cuttlefish-common/bin/cvd_send_id_disclosure"
   link_name: "bin/cvd_send_id_disclosure"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/bin/cvd_update_location"
+  link_name: "bin/cvd_update_location"
 }
 
 symlinks {
