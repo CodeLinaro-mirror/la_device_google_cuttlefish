@@ -267,7 +267,7 @@ Result<void> MaybeConfigureMemOverridesLibrary(const CuttlefishConfig& config,
         << "Enabling libmem_overrides.so preload to work around b/277618912.";
 
     const std::string mem_override_lib_path =
-        HostBinaryPath("aarch64-linux-gnu/libmem_overrides.so");
+        HostBinaryPath("prebuilts/libmem_overrides.so");
     CF_EXPECT(FileExists(mem_override_lib_path),
               "Failed to find " << mem_override_lib_path);
 
@@ -281,10 +281,9 @@ Result<std::string> CrosvmPathForVhostUserGpu(const CuttlefishConfig& config) {
   const auto& instance = config.ForDefaultInstance();
   switch (HostArch()) {
     case Arch::Arm64:
-      return HostBinaryPath("aarch64-linux-gnu/crosvm");
     case Arch::X86:
     case Arch::X86_64:
-      return instance.crosvm_binary();
+      return HostBinaryPath("prebuilts/crosvm");
     default:
       break;
   }
@@ -334,7 +333,8 @@ Result<VhostUserDeviceCommands> BuildVhostUserGpu(
       gpu_mode == kGpuModeGfxstream ||
           gpu_mode == kGpuModeGfxstreamGuestAngle ||
           gpu_mode == kGpuModeGfxstreamGuestAngleHostSwiftShader ||
-          gpu_mode == kGpuModeGfxstreamGuestAngleHostLavapipe,
+          gpu_mode == kGpuModeGfxstreamGuestAngleHostLavapipe ||
+          gpu_mode == kGpuModeGuestSwiftshader,
       "GPU mode " << gpu_mode << " not yet supported with vhost user gpu.");
 
   const std::string gpu_pci_address =
@@ -343,7 +343,9 @@ Result<VhostUserDeviceCommands> BuildVhostUserGpu(
   // Why does this need JSON instead of just following the normal flags style...
   Json::Value gpu_params_json;
   gpu_params_json["pci-address"] = gpu_pci_address;
-  if (gpu_mode == kGpuModeGfxstream) {
+  if (gpu_mode == kGpuModeGuestSwiftshader) {
+    gpu_params_json["backend"] = "2D";
+  } else if (gpu_mode == kGpuModeGfxstream) {
     gpu_params_json["context-types"] = "gfxstream-gles:gfxstream-vulkan";
     gpu_params_json["egl"] = true;
     gpu_params_json["gles"] = true;
@@ -360,6 +362,14 @@ Result<VhostUserDeviceCommands> BuildVhostUserGpu(
   gpu_params_json["system-blob"] = instance.enable_gpu_system_blob();
   if (!instance.gpu_renderer_features().empty()) {
     gpu_params_json["renderer-features"] = instance.gpu_renderer_features();
+  }
+  gpu_params_json["udmabuf"] = instance.enable_gpu_udmabuf();
+
+  const bool target_is_32bit = instance.target_arch() == Arch::Arm ||
+                               instance.target_arch() == Arch::X86;
+  if (target_is_32bit) {
+    // 256MB so it is small enough for a 32-bit kernel.
+    gpu_params_json["pci-bar-size"] = 268435456;
   }
 
   if (instance.hwcomposer() != kHwComposerNone) {
@@ -684,6 +694,9 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     }
     if (instance.enable_mouse()) {
       crosvm_cmd.AddVhostUser("input", instance.mouse_socket_path());
+    }
+    if (instance.enable_gamepad()) {
+      crosvm_cmd.AddVhostUser("input", instance.gamepad_socket_path());
     }
     crosvm_cmd.AddVhostUser("input", instance.rotary_socket_path());
     crosvm_cmd.AddVhostUser("input", instance.keyboard_socket_path());
