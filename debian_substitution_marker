@@ -196,6 +196,11 @@ symlinks: {
 }
 
 symlinks: {
+  target: "/usr/lib/cuttlefish-common/bin/socket_vsock_proxy"
+  link_name: "bin/socket_vsock_proxy"
+}
+
+symlinks: {
   target: "/usr/lib/cuttlefish-common/bin/tcp_connector"
   link_name: "bin/tcp_connector"
 }
@@ -203,6 +208,46 @@ symlinks: {
 symlinks: {
   target: "/usr/lib/cuttlefish-common/bin/tombstone_receiver"
   link_name: "bin/tombstone_receiver"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/etc/default_input_devices/keyboard.json"
+  link_name: "etc/default_input_devices/keyboard.json"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/etc/default_input_devices/mouse.json"
+  link_name: "etc/default_input_devices/mouse.json"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/etc/default_input_devices/multi_touchpad_template.json"
+  link_name: "etc/default_input_devices/multi_touchpad_template.json"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/etc/default_input_devices/multi_touchscreen_template.json"
+  link_name: "etc/default_input_devices/multi_touchscreen_template.json"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/etc/default_input_devices/rotary_wheel.json"
+  link_name: "etc/default_input_devices/rotary_wheel.json"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/etc/default_input_devices/single_touchpad_template.json"
+  link_name: "etc/default_input_devices/single_touchpad_template.json"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/etc/default_input_devices/single_touchscreen_template.json"
+  link_name: "etc/default_input_devices/single_touchscreen_template.json"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/etc/default_input_devices/switches.json"
+  link_name: "etc/default_input_devices/switches.json"
 }
 
 symlinks: {
