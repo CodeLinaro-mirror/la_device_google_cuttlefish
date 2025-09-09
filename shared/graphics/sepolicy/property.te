@@ -1,0 +1,6 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: BSD-3-Clause-Clear
+#
+
+vendor_restricted_prop(vendor_cuttlefish_config_server_port_prop)
+vendor_internal_prop(vendor_hwcomposer_prop)
