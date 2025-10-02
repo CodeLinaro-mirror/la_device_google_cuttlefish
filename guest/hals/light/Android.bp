@@ -8,7 +8,7 @@ rust_binary {
     vendor: true,
     prefer_rlib: true,
     rustlibs: [
-        "android.hardware.light-V2-rust",
+        "android.hardware.light-V3-rust",
         "libanyhow",
         "libbinder_rs",
         "liblog_rust",
@@ -54,8 +54,6 @@ apex {
     // remove some modules manually.
     // TODO(b/295593640) delete this once the bug fixed.
     unwanted_transitive_deps: [
-        "libbase",
-        "libc++",
         "libcutils",
     ],
 }
