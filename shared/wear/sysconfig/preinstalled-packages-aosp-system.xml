@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Copyright 2023 The Android Open Source Project
+<!-- Copyright (C) 2025 The Android Open Source Project
 
      Licensed under the Apache License, Version 2.0 (the "License");
      you may not use this file except in compliance with the License.
@@ -13,8 +13,13 @@
      See the License for the specific language governing permissions and
      limitations under the License.
 -->
-
-<permissions>
-  <!-- Tablet does not support autofocus -->
-  <unavailable-feature name="android.hardware.camera.autofocus" />
-</permissions>
+<!-- Allowlist for system packages included in aosp_system.mk
+     Documentation at frameworks/base/data/etc/preinstalled-packages-platform.xml
+-->
+<config>
+    <!--  Blocked Number Provider (BlockedNumberProvider) -->
+    <install-in-user-type package="com.android.providers.blockednumber">
+        <install-in user-type="FULL" />
+        <install-in user-type="android.os.usertype.profile.MANAGED" />
+    </install-in-user-type>
+</config>

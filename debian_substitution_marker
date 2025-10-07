@@ -15,6 +15,16 @@ symlinks {
   link_name: "bin/allocd_client"
 }
 
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/bin/casimir_control_server"
+  link_name: "bin/casimir_control_server"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/bin/cf_vhost_user_input"
+  link_name: "bin/cf_vhost_user_input"
+}
+
 symlinks {
   target: "/usr/lib/cuttlefish-common/bin/console_forwarder"
   link_name: "bin/console_forwarder"
@@ -55,6 +65,11 @@ symlinks {
   link_name: "bin/cvd_send_id_disclosure"
 }
 
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/bin/cvd_update_location"
+  link_name: "bin/cvd_update_location"
+}
+
 symlinks {
   target: "/usr/lib/cuttlefish-common/bin/cvd_update_security_algorithm"
   link_name: "bin/cvd_update_security_algorithm"
@@ -78,6 +93,11 @@ symlinks {
 symlinks {
   target: "/usr/lib/cuttlefish-common/bin/gnss_grpc_proxy"
   link_name: "bin/gnss_grpc_proxy"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/bin/graphics_detector"
+  link_name: "bin/graphics_detector"
 }
 
 symlinks {
@@ -188,6 +208,46 @@ symlinks: {
 symlinks: {
   target: "/usr/lib/cuttlefish-common/bin/tombstone_receiver"
   link_name: "bin/tombstone_receiver"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/etc/default_input_devices/keyboard.json"
+  link_name: "etc/default_input_devices/keyboard.json"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/etc/default_input_devices/mouse.json"
+  link_name: "etc/default_input_devices/mouse.json"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/etc/default_input_devices/multi_touchpad_template.json"
+  link_name: "etc/default_input_devices/multi_touchpad_template.json"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/etc/default_input_devices/multi_touchscreen_template.json"
+  link_name: "etc/default_input_devices/multi_touchscreen_template.json"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/etc/default_input_devices/rotary_wheel.json"
+  link_name: "etc/default_input_devices/rotary_wheel.json"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/etc/default_input_devices/single_touchpad_template.json"
+  link_name: "etc/default_input_devices/single_touchpad_template.json"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/etc/default_input_devices/single_touchscreen_template.json"
+  link_name: "etc/default_input_devices/single_touchscreen_template.json"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/etc/default_input_devices/switches.json"
+  link_name: "etc/default_input_devices/switches.json"
 }
 
 symlinks: {

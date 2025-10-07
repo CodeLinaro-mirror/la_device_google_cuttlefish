@@ -33,7 +33,6 @@ PRODUCT_VENDOR_PROPERTIES += \
     ro.vendor.boot_security_patch=$(BOOT_SECURITY_PATCH)
 
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish # for audio, wifi and sensors
-PRODUCT_SOONG_NAMESPACES += device/google/cuttlefish/shared/config/recovery.fstab # for recovery.fstab
 
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
@@ -49,6 +48,10 @@ TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE ?= f2fs
 TARGET_USERDATAIMAGE_PARTITION_SIZE ?= 8589934592
 
 TARGET_VULKAN_SUPPORT ?= true
+
+ifneq ($(RELEASE_ADBD_OPEN_VSOCK_PORT),)
+PRODUCT_SYSTEM_PROPERTIES += service.adb.listen_addrs=vsock:8382,vsock:5555
+endif
 
 # Enable Virtual A/B
 $(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/vabc_features.mk)
@@ -259,7 +262,6 @@ PRODUCT_PACKAGES += \
     fstab.cf.f2fs.hctr2 \
     fstab.cf.f2fs.hctr2.vendor_ramdisk \
     fstab.cf.f2fs.cts \
-    fstab.cf.f2fs.cts.recovery \
     fstab.cf.f2fs.cts.vendor_ramdisk \
     fstab.cf.ext4.hctr2 \
     fstab.cf.ext4.hctr2.vendor_ramdisk \
@@ -335,6 +337,7 @@ endif
 LOCAL_ENABLE_WIDEVINE ?= true
 ifeq ($(LOCAL_ENABLE_WIDEVINE),true)
 -include vendor/widevine/libwvdrmengine/apex/device/device.mk
+-include vendor/widevine/libwvdrmengine/apex/device/device-rikers.mk
 endif
 
 #

@@ -203,7 +203,7 @@ DEFINE_vec(
     "Stop the bootflow in u-boot. You can continue the boot by connecting "
     "to the device console and typing in \"boot\".");
 DEFINE_bool(enable_host_bluetooth, CF_DEFAULTS_ENABLE_HOST_BLUETOOTH,
-            "Enable the root-canal which is Bluetooth emulator in the host.");
+            "Enable the rootcanal which is Bluetooth emulator in the host.");
 DEFINE_int32(
     rootcanal_instance_num, CF_DEFAULTS_ROOTCANAL_INSTANCE_NUM,
     "If it is greater than 0, use an existing rootcanal instance which is "
@@ -753,6 +753,11 @@ Result<std::vector<GuestConfig>> ReadGuestConfig() {
     guest_config.mouse_supported =
         res_mouse_support.ok() && res_mouse_support.value() == "supported";
 
+    auto res_gamepad_support =
+        GetAndroidInfoConfig(instance_android_info_txt, "gamepad");
+    guest_config.gamepad_supported =
+        res_gamepad_support.ok() && res_gamepad_support.value() == "supported";
+
     auto res_custom_keyboard_config =
         GetAndroidInfoConfig(instance_android_info_txt, "custom_keyboard");
     if (res_custom_keyboard_config.ok()) {
@@ -840,7 +845,6 @@ Result<ProtoType> ParseBinProtoFlagHelper(const std::string& flag_value,
   std::vector<uint8_t> output;
   CF_EXPECT(DecodeBase64(flag_value, &output));
   std::string serialized = std::string(output.begin(), output.end());
-  bool result = proto_result.ParseFromString(serialized);
   CF_EXPECT(proto_result.ParseFromString(serialized),
             "Failed to parse binary proto, flag: " << flag_name << ", value: "
                                                    << flag_value);
@@ -1458,7 +1462,6 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   std::vector<std::string> v4l2_proxy_vec =
       CF_EXPECT(GET_FLAG_STR_VALUE(crosvm_v4l2_proxy));
   std::vector<bool> use_pmem_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(use_pmem));
-  const bool restore_from_snapshot = !std::string(FLAGS_snapshot_path).empty();
   std::vector<std::string> device_external_network_vec =
       CF_EXPECT(GET_FLAG_STR_VALUE(device_external_network));
 
@@ -1624,6 +1627,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_use_pmem(use_pmem_vec[instance_index]);
     instance.set_bootconfig_supported(guest_configs[instance_index].bootconfig_supported);
     instance.set_enable_mouse(guest_configs[instance_index].mouse_supported);
+    instance.set_enable_gamepad(
+        guest_configs[instance_index].gamepad_supported);
     if (guest_configs[instance_index].custom_keyboard_config.has_value()) {
       instance.set_custom_keyboard_config(
           guest_configs[instance_index].custom_keyboard_config.value());

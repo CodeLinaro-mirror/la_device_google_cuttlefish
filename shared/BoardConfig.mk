@@ -364,11 +364,12 @@ DHCPCD_USE_SCRIPT := yes
 
 TARGET_RECOVERY_PIXEL_FORMAT := ABGR_8888
 TARGET_RECOVERY_UI_LIB := librecovery_ui_cuttlefish
+TARGET_RECOVERY_FSTAB_GENRULE := gen_fstab_cf_f2fs_cts
 
-BOARD_SUPER_PARTITION_SIZE := 7516192768  # 7GiB
+BOARD_SUPER_PARTITION_SIZE := 8589934592  # 8GiB
 BOARD_SUPER_PARTITION_GROUPS := google_system_dynamic_partitions google_vendor_dynamic_partitions
 BOARD_GOOGLE_SYSTEM_DYNAMIC_PARTITIONS_PARTITION_LIST := product system system_ext system_dlkm
-BOARD_GOOGLE_SYSTEM_DYNAMIC_PARTITIONS_SIZE := 5771362304  # 5.375GiB
+BOARD_GOOGLE_SYSTEM_DYNAMIC_PARTITIONS_SIZE := 6845104128  # 6.375GiB
 BOARD_GOOGLE_VENDOR_DYNAMIC_PARTITIONS_PARTITION_LIST := odm vendor vendor_dlkm odm_dlkm
 # 1404MiB, reserve 4MiB for dynamic partition metadata
 BOARD_GOOGLE_VENDOR_DYNAMIC_PARTITIONS_SIZE := 1472200704
@@ -395,6 +396,10 @@ BOARD_KERNEL_CMDLINE += panic=-1
 # Always enable one legacy serial port, for alternative earlycon, kgdb, and
 # serial console. Doesn't do anything on ARM/ARM64 + QEMU or Gem5.
 BOARD_KERNEL_CMDLINE += 8250.nr_uarts=1
+
+# Enable rust_binder explicitly, because the prop + reboot system doesn't work for
+# cuttlefish.
+BOARD_KERNEL_CMDLINE += binder.impl=rust
 
 # Cuttlefish doesn't use CMA, so don't reserve RAM for it
 BOARD_KERNEL_CMDLINE += cma=0
@@ -439,9 +444,6 @@ endif
 BOARD_MOVE_GSI_AVB_KEYS_TO_VENDOR_BOOT := true
 
 BOARD_GENERIC_RAMDISK_KERNEL_MODULES_LOAD := dm-user.ko
-
-# Enable the new fingerprint format on cuttlefish
-BOARD_USE_VBMETA_DIGTEST_IN_FINGERPRINT := true
 
 # Set AB OTA partitions based on the build configuration
 AB_OTA_UPDATER := true
