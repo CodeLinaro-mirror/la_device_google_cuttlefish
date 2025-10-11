@@ -61,6 +61,8 @@ PRODUCT_VIRTUAL_AB_COMPRESSION_FACTOR := 65536
 
 PRODUCT_VENDOR_PROPERTIES += ro.virtual_ab.compression.threads=true
 PRODUCT_VENDOR_PROPERTIES += ro.virtual_ab.batch_writes=true
+# Opt in for ublk based OTA for testing
+PRODUCT_VENDOR_PROPERTIES += ro.virtual_ab.ublk.enabled=true
 
 # Enable Scoped Storage related
 $(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
@@ -228,7 +230,8 @@ $(call soong_config_set_bool,cuttlefish_config,use_general_files,true)
 PRODUCT_PACKAGES += \
     device_google_cuttlefish_shared_config_init_vendor_rc \
     device_google_cuttlefish_shared_config_init_product_rc \
-    device_google_cuttlefish_shared_config_media_files \
+    device_google_cuttlefish_shared_config_media_codecs \
+    device_google_cuttlefish_shared_config_media_profiles \
     device_google_cuttlefish_shared_config_media_profiles_vendor \
     device_google_cuttlefish_shared_config_seriallogging_rc \
     device_google_cuttlefish_shared_config_ueventd_rc \
