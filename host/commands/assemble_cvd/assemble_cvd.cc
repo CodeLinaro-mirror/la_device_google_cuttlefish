@@ -43,32 +43,32 @@ DEFINE_bool(resume, true, "Resume using the disk from the last session, if "
 DEFINE_int32(modem_simulator_count, 1,
              "Modem simulator count corresponding to maximum sim number");
 
+DECLARE_string(system_image_dir);
+
 namespace cuttlefish {
 namespace {
 
 std::string kFetcherConfigFile = "fetcher_config.json";
 
-FetcherConfig FindFetcherConfig(const std::vector<std::string>& files) {
-  FetcherConfig fetcher_config;
-  for (const auto& file : files) {
-    if (android::base::EndsWith(file, kFetcherConfigFile)) {
-      std::string home_directory = StringFromEnv("HOME", CurrentDirectory());
-      std::string fetcher_file = file;
-      if (!FileExists(file) &&
-          FileExists(home_directory + "/" + fetcher_file)) {
-        LOG(INFO) << "Found " << fetcher_file << " in HOME directory ('"
-                  << home_directory << "') and not current working directory";
-
-        fetcher_file = home_directory + "/" + fetcher_file;
-      }
-
-      if (fetcher_config.LoadFromFile(fetcher_file)) {
-        return fetcher_config;
-      }
-      LOG(ERROR) << "Could not load fetcher config file.";
-    }
+FetcherConfigs FindFetcherConfigs() {
+  std::string system_image_dir_flag = FLAGS_system_image_dir;
+  if (system_image_dir_flag.empty()) {
+    system_image_dir_flag = DefaultGuestImagePath("");
   }
-  return fetcher_config;
+  std::vector<std::string> system_image_dirs =
+      android::base::Split(system_image_dir_flag, ",");
+
+  std::vector<FetcherConfig> fetcher_configs;
+  for (size_t i = 0; i < system_image_dirs.size(); ++i) {
+    std::string fetcher_file = system_image_dirs[i] + "/" + kFetcherConfigFile;
+    FetcherConfig fetcher_config;
+    if (!fetcher_config.LoadFromFile(fetcher_file)) {
+      LOG(DEBUG) << "No valid fetcher_config in '" << fetcher_file
+                 << "', falling back to default";
+    }
+    fetcher_configs.emplace_back(std::move(fetcher_config));
+  }
+  return FetcherConfigs::Create(std::move(fetcher_configs));
 }
 
 std::string GetLegacyConfigFilePath(const CuttlefishConfig& config) {
@@ -111,7 +111,7 @@ void ValidateAdbModeFlag(const CuttlefishConfig& config) {
 #endif
 
 const CuttlefishConfig* InitFilesystemAndCreateConfig(
-    FetcherConfig fetcher_config, KernelConfig kernel_config) {
+    FetcherConfigs fetcher_configs, KernelConfig kernel_config) {
   std::string assembly_dir_parent = AbsolutePath(FLAGS_assembly_dir);
   while (assembly_dir_parent[assembly_dir_parent.size() - 1] == '/') {
     assembly_dir_parent =
@@ -208,7 +208,7 @@ const CuttlefishConfig* InitFilesystemAndCreateConfig(
 
   ValidateAdbModeFlag(*config);
 
-  CreateDynamicDiskFiles(fetcher_config, config);
+  CreateDynamicDiskFiles(fetcher_configs, config);
 
   return config;
 }
@@ -216,16 +216,24 @@ const CuttlefishConfig* InitFilesystemAndCreateConfig(
 const std::string kKernelDefaultPath = "kernel";
 const std::string kInitramfsImg = "initramfs.img";
 static void ExtractKernelParamsFromFetcherConfig(
-    const FetcherConfig& fetcher_config) {
-  std::string discovered_kernel =
-      fetcher_config.FindCvdFileWithSuffix(kKernelDefaultPath);
-  std::string discovered_ramdisk =
-      fetcher_config.FindCvdFileWithSuffix(kInitramfsImg);
+    const FetcherConfigs& fetcher_configs) {
+  std::vector<std::string> discovered_kernel_files;
+  std::vector<std::string> discovered_initramfs_files;
+  for (size_t i = 0; i < fetcher_configs.Size(); i++) {
+    const FetcherConfig& fetcher_config = fetcher_configs.ForInstance(i);
+    discovered_kernel_files.emplace_back(
+        fetcher_config.FindCvdFileWithSuffix(kKernelDefaultPath));
+    discovered_initramfs_files.emplace_back(
+        fetcher_config.FindCvdFileWithSuffix(kInitramfsImg));
+  }
 
-  SetCommandLineOptionWithMode("kernel_path", discovered_kernel.c_str(),
+  std::string kernel_arg = android::base::Join(discovered_kernel_files, ",");
+  SetCommandLineOptionWithMode("kernel_path", kernel_arg.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
 
-  SetCommandLineOptionWithMode("initramfs_path", discovered_ramdisk.c_str(),
+  std::string initramfs_arg =
+      android::base::Join(discovered_initramfs_files, ",");
+  SetCommandLineOptionWithMode("initramfs_path", initramfs_arg.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
 }
 } // namespace
@@ -252,15 +260,18 @@ int AssembleCvdMain(int argc, char** argv) {
   }
   std::vector<std::string> input_files = android::base::Split(input_files_str, "\n");
 
-  FetcherConfig fetcher_config = FindFetcherConfig(input_files);
+  (void)input_files;
+
+  FetcherConfigs fetcher_configs = FindFetcherConfigs();
+
   // set gflags defaults to point to kernel/RD from fetcher config
-  ExtractKernelParamsFromFetcherConfig(fetcher_config);
+  ExtractKernelParamsFromFetcherConfig(fetcher_configs);
 
   KernelConfig kernel_config;
   CHECK(ParseCommandLineFlags(&argc, &argv, &kernel_config)) << "Failed to parse arguments";
 
   auto config =
-      InitFilesystemAndCreateConfig(std::move(fetcher_config), kernel_config);
+      InitFilesystemAndCreateConfig(std::move(fetcher_configs), kernel_config);
 
   std::cout << GetConfigFilePath(*config) << "\n";
   std::cout << std::flush;

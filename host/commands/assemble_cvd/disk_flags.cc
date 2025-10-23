@@ -477,7 +477,7 @@ static void RepackAllBootImages(const CuttlefishConfig* config) {
   }
 }
 
-void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
+void CreateDynamicDiskFiles(const FetcherConfigs& fetcher_configs,
                             const CuttlefishConfig* config) {
   // Create misc if necessary
   CHECK(InitializeMiscImage(FLAGS_misc_image)) << "Failed to create misc image";
@@ -582,8 +582,8 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
         << "File not found: " << FLAGS_esp;
   }
 
-  if (SuperImageNeedsRebuilding(fetcher_config, *config)) {
-    bool success = RebuildSuperImage(fetcher_config, *config, FLAGS_super_image);
+  if (SuperImageNeedsRebuilding(fetcher_configs.ForInstance(0), *config)) {
+    bool success = RebuildSuperImage(fetcher_configs.ForInstance(0), *config, FLAGS_super_image);
     CHECK(success) << "Super image rebuilding requested but could not be completed.";
   }
 

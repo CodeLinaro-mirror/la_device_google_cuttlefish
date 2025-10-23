@@ -27,7 +27,7 @@ namespace cuttlefish {
 
 bool ResolveInstanceFiles();
 bool ShouldCreateAllCompositeDisks(const CuttlefishConfig& config);
-void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
+void CreateDynamicDiskFiles(const FetcherConfigs& fetcher_configs,
                             const CuttlefishConfig* config);
 
 } // namespace cuttlefish
