@@ -381,7 +381,7 @@ const std::string kKernelDefaultPath = "kernel";
 const std::string kInitramfsImg = "initramfs.img";
 const std::string kRamdiskConcatExt = ".concat";
 
-void CreateDynamicDiskFiles(const cuttlefish::FetcherConfig &fetcher_config,
+void CreateDynamicDiskFiles(const cuttlefish::FetcherConfigs &fetcher_configs,
                             const cuttlefish::CuttlefishConfig *config,
                             cuttlefish::BootImageUnpacker *boot_img_unpacker) {
 
@@ -405,9 +405,9 @@ void CreateDynamicDiskFiles(const cuttlefish::FetcherConfig &fetcher_config,
     exit(AssemblerExitCodes::kBootImageUnpackError);
   }
 
-  std::string discovered_kernel = fetcher_config.FindCvdFileWithSuffix(kKernelDefaultPath);
+  std::string discovered_kernel = fetcher_configs.ForInstance(0).FindCvdFileWithSuffix(kKernelDefaultPath);
   std::string foreign_kernel = FLAGS_kernel_path.size() ? FLAGS_kernel_path : discovered_kernel;
-  std::string discovered_ramdisk = fetcher_config.FindCvdFileWithSuffix(kInitramfsImg);
+  std::string discovered_ramdisk = fetcher_configs.ForInstance(0).FindCvdFileWithSuffix(kInitramfsImg);
   std::string foreign_ramdisk = FLAGS_initramfs_path.size () ? FLAGS_initramfs_path : discovered_ramdisk;
   std::string new_boot_image_path = config->AssemblyPath("boot_repacked.img");
   std::string new_vendor_boot_image_path = config->AssemblyPath("vendor_boot_repacked.img");
@@ -528,8 +528,8 @@ void CreateDynamicDiskFiles(const cuttlefish::FetcherConfig &fetcher_config,
     exit(cuttlefish::kCuttlefishConfigurationInitError);
   }
 
-  if (SuperImageNeedsRebuilding(fetcher_config, *config)) {
-    if (!RebuildSuperImage(fetcher_config, *config, FLAGS_super_image)) {
+  if (SuperImageNeedsRebuilding(fetcher_configs.ForInstance(0), *config)) {
+    if (!RebuildSuperImage(fetcher_configs.ForInstance(0), *config, FLAGS_super_image)) {
       LOG(ERROR)
           << "Super image rebuilding requested but could not be completed.";
       exit(cuttlefish::kCuttlefishConfigurationInitError);

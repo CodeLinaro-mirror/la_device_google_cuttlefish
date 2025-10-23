@@ -4,5 +4,5 @@
 #include "host/libs/config/fetcher_config.h"
 
 const cuttlefish::CuttlefishConfig* InitFilesystemAndCreateConfig(
-    int* argc, char*** argv, cuttlefish::FetcherConfig config);
+    int* argc, char*** argv, cuttlefish::FetcherConfigs config);
 std::string GetConfigFilePath(const cuttlefish::CuttlefishConfig& config);

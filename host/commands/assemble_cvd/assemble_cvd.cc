@@ -17,6 +17,7 @@
 
 #include <android-base/strings.h>
 #include <glog/logging.h>
+#include <gflags/gflags.h>
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
@@ -26,32 +27,31 @@
 #include "host/commands/assemble_cvd/flags.h"
 #include "host/libs/config/fetcher_config.h"
 
+DECLARE_string(system_image_dir);
+
 namespace {
 
 std::string kFetcherConfigFile = "fetcher_config.json";
 
-cuttlefish::FetcherConfig FindFetcherConfig(const std::vector<std::string>& files) {
-  cuttlefish::FetcherConfig fetcher_config;
-  for (const auto& file : files) {
-    if (android::base::EndsWith(file, kFetcherConfigFile)) {
-      std::string home_directory =
-          cuttlefish::StringFromEnv("HOME", cuttlefish::CurrentDirectory());
-      std::string fetcher_file = file;
-      if (!cuttlefish::FileExists(file) &&
-          cuttlefish::FileExists(home_directory + "/" + fetcher_file)) {
-        LOG(INFO) << "Found " << fetcher_file << " in HOME directory ('"
-                  << home_directory << "') and not current working directory";
-
-        fetcher_file = home_directory + "/" + fetcher_file;
-      }
-
-      if (fetcher_config.LoadFromFile(fetcher_file)) {
-        return fetcher_config;
-      }
-      LOG(ERROR) << "Could not load fetcher config file.";
-    }
+cuttlefish::FetcherConfigs FindFetcherConfigs() {
+  std::string system_image_dir_flag = FLAGS_system_image_dir;
+  if (system_image_dir_flag.empty()) {
+    system_image_dir_flag = cuttlefish::DefaultGuestImagePath("");
   }
-  return fetcher_config;
+  std::vector<std::string> system_image_dirs =
+      android::base::Split(system_image_dir_flag, ",");
+
+  std::vector<cuttlefish::FetcherConfig> fetcher_configs;
+  for (size_t i = 0; i < system_image_dirs.size(); ++i) {
+    std::string fetcher_file = system_image_dirs[i] + "/" + kFetcherConfigFile;
+    cuttlefish::FetcherConfig fetcher_config;
+    if (!fetcher_config.LoadFromFile(fetcher_file)) {
+      LOG(DEBUG) << "No valid fetcher_config in '" << fetcher_file
+                 << "', falling back to default";
+    }
+    fetcher_configs.emplace_back(std::move(fetcher_config));
+  }
+  return cuttlefish::FetcherConfigs::Create(std::move(fetcher_configs));
 }
 
 } // namespace
@@ -83,8 +83,9 @@ int main(int argc, char** argv) {
   }
   std::vector<std::string> input_files = android::base::Split(input_files_str, "\n");
 
+  (void)input_files;
   auto config = InitFilesystemAndCreateConfig(&argc, &argv,
-                                              FindFetcherConfig(input_files));
+                                              FindFetcherConfigs());
 
   std::cout << GetConfigFilePath(*config) << "\n";
   std::cout << std::flush;

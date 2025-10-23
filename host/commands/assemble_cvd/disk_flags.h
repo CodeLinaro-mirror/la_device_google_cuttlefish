@@ -28,6 +28,6 @@
 bool ResolveInstanceFiles();
 std::unique_ptr<cuttlefish::BootImageUnpacker> CreateBootImageUnpacker();
 bool ShouldCreateAllCompositeDisks(const cuttlefish::CuttlefishConfig& config);
-void CreateDynamicDiskFiles(const cuttlefish::FetcherConfig &fetcher_config,
+void CreateDynamicDiskFiles(const cuttlefish::FetcherConfigs &fetcher_configs,
                             const cuttlefish::CuttlefishConfig *config,
                             cuttlefish::BootImageUnpacker *boot_img_unpacker);

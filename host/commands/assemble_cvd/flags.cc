@@ -329,7 +329,7 @@ cuttlefish::GraphicsAvailability GetGraphicsAvailabilityWithSubprocessCheck() {
 // further uses of the config should happen through the singleton
 cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
     const cuttlefish::BootImageUnpacker& boot_image_unpacker,
-    const cuttlefish::FetcherConfig& fetcher_config) {
+    const cuttlefish::FetcherConfigs& fetcher_configs) {
   // At most one streamer can be started.
   CHECK(NumStreamers() <= 1);
 
@@ -380,7 +380,7 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_gdb_flag(FLAGS_qemu_gdb);
   std::vector<std::string> adb = android::base::Split(FLAGS_adb_mode, ",");
   tmp_config_obj.set_adb_mode(std::set<std::string>(adb.begin(), adb.end()));
-  std::string discovered_kernel = fetcher_config.FindCvdFileWithSuffix(kKernelDefaultPath);
+  std::string discovered_kernel = fetcher_configs.ForInstance(0).FindCvdFileWithSuffix(kKernelDefaultPath);
   std::string foreign_kernel = FLAGS_kernel_path.size() ? FLAGS_kernel_path : discovered_kernel;
   if (foreign_kernel.size()) {
     tmp_config_obj.set_kernel_image_path(foreign_kernel);
@@ -403,7 +403,7 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
     LOG(FATAL) << "A ramdisk is required, but the boot image did not have one.";
   }
 
-  std::string discovered_ramdisk = fetcher_config.FindCvdFileWithSuffix(kInitramfsImg);
+  std::string discovered_ramdisk = fetcher_configs.ForInstance(0).FindCvdFileWithSuffix(kInitramfsImg);
   std::string foreign_ramdisk = FLAGS_initramfs_path.size () ? FLAGS_initramfs_path : discovered_ramdisk;
 
   tmp_config_obj.set_boot_image_kernel_cmdline(boot_image_unpacker.kernel_cmdline());
@@ -839,7 +839,7 @@ void ValidateAdbModeFlag(const cuttlefish::CuttlefishConfig& config) {
 #endif
 
 const cuttlefish::CuttlefishConfig* InitFilesystemAndCreateConfig(
-    int* argc, char*** argv, cuttlefish::FetcherConfig fetcher_config) {
+    int* argc, char*** argv, cuttlefish::FetcherConfigs fetcher_configs) {
   if (!ParseCommandLineFlags(argc, argv)) {
     LOG(ERROR) << "Failed to parse command arguments";
     exit(AssemblerExitCodes::kArgumentParsingError);
@@ -872,7 +872,7 @@ const cuttlefish::CuttlefishConfig* InitFilesystemAndCreateConfig(
     // SaveConfig line below. Don't launch cuttlefish subprocesses between these
     // two operations, as those will assume they can read the config object from
     // disk.
-    auto config = InitializeCuttlefishConfiguration(*boot_img_unpacker, fetcher_config);
+    auto config = InitializeCuttlefishConfiguration(*boot_img_unpacker, fetcher_configs);
     std::set<std::string> preserving;
     bool creating_os_disk = ShouldCreateAllCompositeDisks(config);
     creating_os_disk &= FLAGS_use_overlay;
@@ -965,7 +965,7 @@ const cuttlefish::CuttlefishConfig* InitFilesystemAndCreateConfig(
 
   ValidateAdbModeFlag(*config);
 
-  CreateDynamicDiskFiles(fetcher_config, config, boot_img_unpacker.get());
+  CreateDynamicDiskFiles(fetcher_configs, config, boot_img_unpacker.get());
 
   return config;
 }
