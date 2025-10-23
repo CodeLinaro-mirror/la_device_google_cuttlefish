@@ -50,33 +50,32 @@ DEFINE_int32(modem_simulator_count, 1,
              "Modem simulator count corresponding to maximum sim number");
 
 DECLARE_bool(use_overlay);
+DECLARE_string(system_image_dir);
 
 namespace cuttlefish {
 namespace {
 
 std::string kFetcherConfigFile = "fetcher_config.json";
 
-FetcherConfig FindFetcherConfig(const std::vector<std::string>& files) {
-  FetcherConfig fetcher_config;
-  for (const auto& file : files) {
-    if (android::base::EndsWith(file, kFetcherConfigFile)) {
-      std::string home_directory = StringFromEnv("HOME", CurrentDirectory());
-      std::string fetcher_file = file;
-      if (!FileExists(file) &&
-          FileExists(home_directory + "/" + fetcher_file)) {
-        LOG(INFO) << "Found " << fetcher_file << " in HOME directory ('"
-                  << home_directory << "') and not current working directory";
-
-        fetcher_file = home_directory + "/" + fetcher_file;
-      }
-
-      if (fetcher_config.LoadFromFile(fetcher_file)) {
-        return fetcher_config;
-      }
-      LOG(ERROR) << "Could not load fetcher config file.";
-    }
+FetcherConfigs FindFetcherConfigs() {
+  std::string system_image_dir_flag = FLAGS_system_image_dir;
+  if (system_image_dir_flag.empty()) {
+    system_image_dir_flag = DefaultGuestImagePath("");
   }
-  return fetcher_config;
+  std::vector<std::string> system_image_dirs =
+      android::base::Split(system_image_dir_flag, ",");
+
+  std::vector<FetcherConfig> fetcher_configs;
+  for (size_t i = 0; i < system_image_dirs.size(); ++i) {
+    std::string fetcher_file = system_image_dirs[i] + "/" + kFetcherConfigFile;
+    FetcherConfig fetcher_config;
+    if (!fetcher_config.LoadFromFile(fetcher_file)) {
+      LOG(DEBUG) << "No valid fetcher_config in '" << fetcher_file
+                 << "', falling back to default";
+    }
+    fetcher_configs.emplace_back(std::move(fetcher_config));
+  }
+  return FetcherConfigs::Create(std::move(fetcher_configs));
 }
 
 std::string GetLegacyConfigFilePath(const CuttlefishConfig& config) {
@@ -144,7 +143,7 @@ Result<void> CreateLegacySymlinks(
 }
 
 Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
-    FetcherConfig fetcher_config, KernelConfig kernel_config,
+    FetcherConfigs fetcher_configs, KernelConfig kernel_config,
     fruit::Injector<>& injector) {
   std::string runtime_dir_parent = AbsolutePath(FLAGS_instance_dir);
   while (runtime_dir_parent[runtime_dir_parent.size() - 1] == '/') {
@@ -284,7 +283,7 @@ Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
                                  << double_legacy_instance_dir << "\") failed");
   }
 
-  CF_EXPECT(CreateDynamicDiskFiles(fetcher_config, *config));
+  CF_EXPECT(CreateDynamicDiskFiles(fetcher_configs, *config));
 
   return config;
 }
@@ -292,16 +291,24 @@ Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
 const std::string kKernelDefaultPath = "kernel";
 const std::string kInitramfsImg = "initramfs.img";
 static void ExtractKernelParamsFromFetcherConfig(
-    const FetcherConfig& fetcher_config) {
-  std::string discovered_kernel =
-      fetcher_config.FindCvdFileWithSuffix(kKernelDefaultPath);
-  std::string discovered_ramdisk =
-      fetcher_config.FindCvdFileWithSuffix(kInitramfsImg);
+    const FetcherConfigs& fetcher_configs) {
+  std::vector<std::string> discovered_kernel_files;
+  std::vector<std::string> discovered_initramfs_files;
+  for (size_t i = 0; i < fetcher_configs.Size(); i++) {
+    const FetcherConfig& fetcher_config = fetcher_configs.ForInstance(i);
+    discovered_kernel_files.emplace_back(
+        fetcher_config.FindCvdFileWithSuffix(kKernelDefaultPath));
+    discovered_initramfs_files.emplace_back(
+        fetcher_config.FindCvdFileWithSuffix(kInitramfsImg));
+  }
 
-  SetCommandLineOptionWithMode("kernel_path", discovered_kernel.c_str(),
+  std::string kernel_arg = android::base::Join(discovered_kernel_files, ",");
+  SetCommandLineOptionWithMode("kernel_path", kernel_arg.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
 
-  SetCommandLineOptionWithMode("initramfs_path", discovered_ramdisk.c_str(),
+  std::string initramfs_arg =
+      android::base::Join(discovered_initramfs_files, ",");
+  SetCommandLineOptionWithMode("initramfs_path", initramfs_arg.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
 }
 
@@ -315,12 +322,7 @@ fruit::Component<> FlagsComponent() {
       .install(CustomActionsComponent);
 }
 
-} // namespace
-
-Result<int> AssembleCvdMain(int argc, char** argv) {
-  setenv("ANDROID_LOG_TAGS", "*:v", /* overwrite */ 0);
-  ::android::base::InitLogging(argv, android::base::StderrLogger);
-
+Result<void> CheckNoTTY() {
   int tty = isatty(0);
   int error_num = errno;
   CF_EXPECT(tty == 0,
@@ -329,20 +331,36 @@ Result<int> AssembleCvdMain(int argc, char** argv) {
   CF_EXPECT(error_num != EBADF,
             "stdin was not a valid file descriptor, expected to be "
             "passed the output of launch_cvd. Did you mean to run launch_cvd?");
+  return {};
+}
 
+Result<std::vector<std::string>> ReadInputFiles() {
   std::string input_files_str;
-  {
-    auto input_fd = SharedFD::Dup(0);
-    auto bytes_read = ReadAll(input_fd, &input_files_str);
-    CF_EXPECT(bytes_read >= 0, "Failed to read input files. Error was \""
-                                   << input_fd->StrError() << "\"");
-  }
-  std::vector<std::string> input_files = android::base::Split(input_files_str, "\n");
+  auto input_fd = SharedFD::Dup(0);
+  CF_EXPECT(input_fd->IsOpen(),
+            "Failed to dup stdin: " << input_fd->StrError());
+  auto bytes_read = ReadAll(input_fd, &input_files_str);
+  CF_EXPECT(bytes_read >= 0, "Failed to read input files. Error was \""
+                                 << input_fd->StrError() << "\"");
+  return android::base::Split(input_files_str, "\n");
+}
 
-  FetcherConfig fetcher_config = FindFetcherConfig(input_files);
+}  // namespace
+
+Result<int> AssembleCvdMain(int argc, char** argv) {
+  setenv("ANDROID_LOG_TAGS", "*:v", /* overwrite */ 0);
+  ::android::base::InitLogging(argv, android::base::StderrLogger);
+
+  CF_EXPECT(CheckNoTTY());
+
+  // Read everything that cvd_internal_start writes, but ignore it since
+  // fetcher_config.json will be searched for in the system image directory.
+  (void)CF_EXPECT(ReadInputFiles());
+
+  FetcherConfigs fetcher_configs = FindFetcherConfigs();
 
   // set gflags defaults to point to kernel/RD from fetcher config
-  ExtractKernelParamsFromFetcherConfig(fetcher_config);
+  ExtractKernelParamsFromFetcherConfig(fetcher_configs);
 
   auto args = ArgsToVec(argc - 1, argv + 1);
 
@@ -389,7 +407,7 @@ Result<int> AssembleCvdMain(int argc, char** argv) {
       CF_EXPECT(GetKernelConfigAndSetDefaults(), "Failed to parse arguments");
 
   auto config = CF_EXPECT(InitFilesystemAndCreateConfig(
-                              std::move(fetcher_config),
+                              std::move(fetcher_configs),
                               kernel_config, injector),
                           "Failed to create config");
 

@@ -18,6 +18,7 @@
 #include <map>
 #include <ostream>
 #include <string>
+#include <vector>
 
 namespace Json {
 class Value;
@@ -82,6 +83,23 @@ class FetcherConfig {
   std::map<std::string, CvdFile> get_cvd_files() const;
 
   std::string FindCvdFileWithSuffix(const std::string& suffix) const;
+};
+
+class FetcherConfigs {
+ public:
+  static FetcherConfigs Create(std::vector<FetcherConfig> configs);
+  FetcherConfigs(FetcherConfigs&&) = default;
+  ~FetcherConfigs() = default;
+
+  void Append(FetcherConfig&& config);
+
+  size_t Size() const { return fetcher_configs_.size(); }
+
+  const FetcherConfig& ForInstance(size_t instance_index) const;
+
+ private:
+  FetcherConfigs(std::vector<FetcherConfig> configs);
+  std::vector<FetcherConfig> fetcher_configs_;
 };
 
 } // namespace cuttlefish

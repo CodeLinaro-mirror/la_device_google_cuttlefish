@@ -30,7 +30,7 @@ namespace cuttlefish {
 
 Result<void> ResolveInstanceFiles();
 
-Result<void> CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
+Result<void> CreateDynamicDiskFiles(const FetcherConfigs& fetcher_configs,
                                     const CuttlefishConfig& config);
 std::vector<ImagePartition> GetOsCompositeDiskConfig();
 DiskBuilder OsCompositeDiskBuilder(const CuttlefishConfig& config);

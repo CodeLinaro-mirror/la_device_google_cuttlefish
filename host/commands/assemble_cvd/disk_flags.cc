@@ -957,22 +957,26 @@ static fruit::Component<> DiskChangesPerInstanceComponent(
       .install(InitBootloaderEnvPartitionComponent);
 }
 
-Result<void> CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
+Result<void> CreateDynamicDiskFiles(const FetcherConfigs& fetcher_configs,
                                     const CuttlefishConfig& config) {
   // TODO(schuffelen): Unify this with the other injector created in
   // assemble_cvd.cpp
-  fruit::Injector<> injector(DiskChangesComponent, &fetcher_config, &config);
+  fruit::Injector<> injector(DiskChangesComponent,
+                             &fetcher_configs.ForInstance(0), &config);
 
   const auto& features = injector.getMultibindings<SetupFeature>();
   CF_EXPECT(SetupFeature::RunSetup(features));
 
+  size_t instance_index = 0;
   for (const auto& instance : config.Instances()) {
-    fruit::Injector<> instance_injector(DiskChangesPerInstanceComponent,
-                                        &fetcher_config, &config, &instance);
+    fruit::Injector<> instance_injector(
+        DiskChangesPerInstanceComponent,
+        &fetcher_configs.ForInstance(instance_index), &config, &instance);
     const auto& instance_features =
         instance_injector.getMultibindings<SetupFeature>();
     CF_EXPECT(SetupFeature::RunSetup(instance_features),
               "instance = \"" << instance.instance_name() << "\"");
+    instance_index++;
   }
 
   // Check if filling in the sparse image would run out of disk space.
