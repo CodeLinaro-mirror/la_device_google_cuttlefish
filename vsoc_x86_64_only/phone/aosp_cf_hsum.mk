@@ -20,9 +20,14 @@ PRODUCT_NAME := aosp_cf_x86_64_only_phone_hsum
 PRODUCT_MODEL := Cuttlefish x86_64 phone 64-bit only Headless System User Mode
 
 # Set Headless System User Mode
-PRODUCT_SYSTEM_DEFAULT_PROPERTIES = \
+PRODUCT_SYSTEM_EXT_PROPERTIES = \
     ro.fw.mu.headless_system_user=true
 
 # TODO(b/204071542): add package allow-list; something like
 # PRODUCT_COPY_FILES += \
 #    device/google/cuttlefish/SOME_PATH/preinstalled-packages.xml:$(TARGET_COPY_OUT_PRODUCT)/etc/sysconfig/preinstalled-packages-cf_phone.xml
+
+# Soong-only configuration for aosp_cf_x86_64_only_phone_hsum
+ifeq ($(TARGET_PRODUCT),aosp_cf_x86_64_only_phone_hsum)
+PRODUCT_SOONG_ONLY := $(RELEASE_SOONG_ONLY_CUTTLEFISH)
+endif

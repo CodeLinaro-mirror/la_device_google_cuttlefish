@@ -52,7 +52,7 @@ PRODUCT_COPY_FILES += \
 # TODO(b/206676167): This property can be removed when renderscript is removed.
 # Prevents framework from attempting to load renderscript libraries, which are
 # not supported on this architecture.
-PRODUCT_SYSTEM_PROPERTIES += \
+PRODUCT_PRODUCT_PROPERTIES += \
     config.disable_renderscript=1 \
 
 PRODUCT_NAME := aosp_cf_riscv64_slim
@@ -65,3 +65,8 @@ PRODUCT_VENDOR_PROPERTIES += \
     ro.soc.model=$(PRODUCT_DEVICE)
 
 TARGET_BOARD_INFO_FILE ?= device/google/cuttlefish/vsoc_riscv64/slim/android-info.txt
+
+# Soong-only configuration for aosp_cf_riscv64_slim
+ifeq ($(TARGET_PRODUCT),aosp_cf_riscv64_slim)
+PRODUCT_SOONG_ONLY := $(RELEASE_SOONG_ONLY_CUTTLEFISH)
+endif

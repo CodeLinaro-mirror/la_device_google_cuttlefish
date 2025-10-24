@@ -14,19 +14,5 @@
 # limitations under the License.
 #
 
-$(call inherit-product, device/google/cuttlefish/vsoc_arm64_only/phone/aosp_cf.mk)
-
-PRODUCT_NAME := aosp_cf_arm64_only_phone_vendor
-
-PRODUCT_BUILD_SYSTEM_IMAGE := false
-PRODUCT_BUILD_SYSTEM_OTHER_IMAGE := false
-PRODUCT_BUILD_PRODUCT_IMAGE := false
-PRODUCT_BUILD_SYSTEM_EXT_IMAGE := false
-PRODUCT_BUILD_SUPER_PARTITION := false
-TARGET_SKIP_OTA_PACKAGE := true
-
-
-# Soong-only configuration for aosp_cf_arm64_only_phone_vendor
-ifeq ($(TARGET_PRODUCT),aosp_cf_arm64_only_phone_vendor)
-PRODUCT_SOONG_ONLY := $(RELEASE_SOONG_ONLY_CUTTLEFISH)
-endif
+DESKTOP_USE_TRUSTY_GK_KM := true
+PRODUCT_PACKAGES += pvmfw-cf

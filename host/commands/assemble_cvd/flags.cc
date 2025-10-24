@@ -202,8 +202,9 @@ DEFINE_vec(
     pause_in_bootloader, CF_DEFAULTS_PAUSE_IN_BOOTLOADER?"true":"false",
     "Stop the bootflow in u-boot. You can continue the boot by connecting "
     "to the device console and typing in \"boot\".");
-DEFINE_bool(enable_host_bluetooth, CF_DEFAULTS_ENABLE_HOST_BLUETOOTH,
-            "Enable the rootcanal which is Bluetooth emulator in the host.");
+DEFINE_vec(enable_host_bluetooth,
+           fmt::format("{}", CF_DEFAULTS_ENABLE_HOST_BLUETOOTH),
+           "Enable the rootcanal which is Bluetooth emulator in the host.");
 DEFINE_int32(
     rootcanal_instance_num, CF_DEFAULTS_ROOTCANAL_INSTANCE_NUM,
     "If it is greater than 0, use an existing rootcanal instance which is "
@@ -227,21 +228,22 @@ DEFINE_int32(
     "If it is greater than 0, use an existing pica instance which is "
     "launched from cuttlefish instance "
     "with pica_instance_num. Else, launch a new pica instance");
-DEFINE_bool(netsim, CF_DEFAULTS_NETSIM,
-            "[Experimental] Connect all radios to netsim.");
 
-DEFINE_bool(netsim_bt, CF_DEFAULTS_NETSIM_BT,
-            "Connect Bluetooth radio to netsim.");
-DEFINE_bool(netsim_uwb, CF_DEFAULTS_NETSIM_UWB,
-            "[Experimental] Connect Uwb radio to netsim.");
+DEFINE_vec(netsim, fmt::format("{}", CF_DEFAULTS_NETSIM),
+           "[Experimental] Connect all radios to netsim.");
+DEFINE_vec(netsim_bt, fmt::format("{}", CF_DEFAULTS_NETSIM_BT),
+           "Connect Bluetooth radio to netsim.");
+DEFINE_vec(netsim_uwb, fmt::format("{}", CF_DEFAULTS_NETSIM_UWB),
+           "[Experimental] Connect Uwb radio to netsim.");
 DEFINE_string(netsim_args, CF_DEFAULTS_NETSIM_ARGS,
               "Space-separated list of netsim args.");
 
 DEFINE_bool(enable_automotive_proxy, CF_DEFAULTS_ENABLE_AUTOMOTIVE_PROXY,
             "Enable the automotive proxy service on the host.");
 
-DEFINE_bool(enable_vhal_proxy_server, CF_DEFAULTS_ENABLE_VHAL_PROXY_SERVER,
-            "Enable the vhal proxy service on the host.");
+DEFINE_vec(enable_vhal_proxy_server,
+           fmt::format("{}", CF_DEFAULTS_ENABLE_VHAL_PROXY_SERVER),
+           "Enable the vhal proxy service on the host.");
 DEFINE_int32(vhal_proxy_server_instance_num,
              CF_DEFAULTS_VHAL_PROXY_SERVER_INSTANCE_NUM,
              "If it is greater than 0, use an existing vhal proxy server "
@@ -333,7 +335,7 @@ DEFINE_vec(
     "with the instance number to support multiple instances");
 
 DEFINE_vec(uuid, CF_DEFAULTS_UUID,
-              "UUID to use for the device. Random if not specified");
+           "UUID to use for the device. Random if not specified");
 DEFINE_vec(daemon, CF_DEFAULTS_DAEMON?"true":"false",
             "Run cuttlefish in background, the launcher exits on boot "
             "completed/failed");
@@ -526,7 +528,8 @@ DEFINE_vec(crosvm_v4l2_proxy, CF_DEFAULTS_CROSVM_V4L2_PROXY,
 DEFINE_vec(use_pmem, "true",
            "Make this flag false to disable pmem with crosvm");
 
-DEFINE_bool(enable_wifi, true, "Enables the guest WIFI. Mainly for Minidroid");
+DEFINE_vec(enable_wifi, fmt::format("{}", CF_DEFAULTS_ENABLE_WIFI),
+           "Enables the guest WIFI. Mainly for Minidroid");
 
 DEFINE_vec(device_external_network, CF_DEFAULTS_DEVICE_EXTERNAL_NETWORK,
            "The mechanism to connect to the public internet.");
@@ -1287,33 +1290,51 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   tmp_config_obj.set_ap_rootfs_image(ap_rootfs_image);
   tmp_config_obj.set_ap_kernel_image(FLAGS_ap_kernel_image);
 
-  // netsim flags allow all radios or selecting a specific radio
-  bool is_any_netsim = FLAGS_netsim || FLAGS_netsim_bt || FLAGS_netsim_uwb;
-  bool is_bt_netsim = FLAGS_netsim || FLAGS_netsim_bt;
-  bool is_uwb_netsim = FLAGS_netsim || FLAGS_netsim_uwb;
-
-  // crosvm should create fifos for Bluetooth
-  tmp_config_obj.set_enable_host_bluetooth(FLAGS_enable_host_bluetooth ||
-                                           is_bt_netsim);
-
-  // rootcanal and bt_connector should handle Bluetooth (instead of netsim)
-  tmp_config_obj.set_enable_host_bluetooth_connector(FLAGS_enable_host_bluetooth && !is_bt_netsim);
-
   tmp_config_obj.set_enable_host_nfc(FLAGS_enable_host_nfc);
   tmp_config_obj.set_enable_host_nfc_connector(FLAGS_enable_host_nfc);
 
+  // old flags but vectorized for multi-device instances
+  int32_t instances_size = instance_nums.size();
+  // get flag default values and store into map
+  auto name_to_default_value = CurrentFlagsToDefaultValue();
+
+  // netsim flags allow all radios or selecting a specific radio
+  std::vector<bool> netsim_all_radios_vec =
+      CF_EXPECT(GET_FLAG_BOOL_VALUE(netsim));
+  bool any_netsim_all_radios =
+      std::any_of(netsim_all_radios_vec.begin(), netsim_all_radios_vec.end(),
+                  [](bool e) { return e; });
+  std::vector<bool> netsim_bt_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(netsim_bt));
+  bool any_netsim_bt = std::any_of(netsim_bt_vec.begin(), netsim_bt_vec.end(),
+                                   [](bool e) { return e; });
+  std::vector<bool> netsim_uwb_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(netsim_uwb));
+  bool any_netsim_uwb = std::any_of(
+      netsim_uwb_vec.begin(), netsim_uwb_vec.end(), [](bool e) { return e; });
+  bool netsim_has_bt = any_netsim_all_radios || any_netsim_bt;
+  bool netsim_has_uwb = any_netsim_all_radios || any_netsim_uwb;
+
   // These flags inform NetsimServer::ResultSetup which radios it owns.
-  if (is_bt_netsim) {
+  if (netsim_has_bt) {
     tmp_config_obj.netsim_radio_enable(CuttlefishConfig::NetsimRadio::Bluetooth);
   }
+  if (netsim_has_uwb) {
+    tmp_config_obj.netsim_radio_enable(CuttlefishConfig::NetsimRadio::Uwb);
+  }
+
+  bool any_not_netsim_bt = false;
+  bool any_not_netsim_uwb = false;
+  for (int32_t i = 0; i < instances_size; ++i) {
+    any_not_netsim_bt |= !netsim_all_radios_vec[i] && !netsim_bt_vec[i];
+    any_not_netsim_uwb |= !netsim_all_radios_vec[i] && !netsim_uwb_vec[i];
+  }
+
+  std::vector<bool> enable_host_bluetooth_vec =
+      CF_EXPECT(GET_FLAG_BOOL_VALUE(enable_host_bluetooth));
+
   // end of vectorize ap_rootfs_image, ap_kernel_image, wmediumd_config
 
   tmp_config_obj.set_enable_automotive_proxy(FLAGS_enable_automotive_proxy);
 
-  // get flag default values and store into map
-  auto name_to_default_value = CurrentFlagsToDefaultValue();
-  // old flags but vectorized for multi-device instances
-  int32_t instances_size = instance_nums.size();
   std::vector<std::string> gnss_file_paths =
       CF_EXPECT(GET_FLAG_STR_VALUE(gnss_file_path));
   std::vector<std::string> fixed_location_file_paths =
@@ -1344,12 +1365,15 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       CF_EXPECT(GET_FLAG_STR_VALUE(userdata_format));
   std::vector<bool> guest_enforce_security_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(
       guest_enforce_security));
+  std::vector<std::string> serial_number_vec =
+      CF_EXPECT(GET_FLAG_STR_VALUE(serial_number));
   std::vector<bool> use_random_serial_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(
       use_random_serial));
   std::vector<bool> use_allocd_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(use_allocd));
   std::vector<bool> use_sdcard_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(use_sdcard));
   std::vector<bool> pause_in_bootloader_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(
       pause_in_bootloader));
+  std::vector<std::string> uuid_vec = CF_EXPECT(GET_FLAG_STR_VALUE(uuid));
   std::vector<bool> daemon_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(daemon));
   std::vector<bool> enable_minimal_mode_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(
       enable_minimal_mode));
@@ -1525,15 +1549,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   if (FLAGS_pica_instance_num > 0) {
     pica_instance_num = FLAGS_pica_instance_num - 1;
   }
-  tmp_config_obj.set_enable_host_uwb(FLAGS_enable_host_uwb || is_uwb_netsim);
-
-  // netsim has its own connector for uwb
-  tmp_config_obj.set_enable_host_uwb_connector(FLAGS_enable_host_uwb &&
-                                               !is_uwb_netsim);
-
-  if (is_uwb_netsim) {
-    tmp_config_obj.netsim_radio_enable(CuttlefishConfig::NetsimRadio::Uwb);
-  }
+  tmp_config_obj.set_enable_host_uwb(FLAGS_enable_host_uwb || any_netsim_uwb);
 
   tmp_config_obj.set_pica_uci_port(7000 + pica_instance_num);
   LOG(DEBUG) << "launch pica: " << (FLAGS_pica_instance_num <= 0);
@@ -1542,6 +1558,11 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   std::set<std::string> straced_set(straced.begin(), straced.end());
   tmp_config_obj.set_straced_host_executables(straced_set);
 
+  std::vector<bool> enable_vhal_proxy_server_vec =
+      CF_EXPECT(GET_FLAG_BOOL_VALUE(enable_vhal_proxy_server));
+  bool enable_vhal_proxy_server =
+      std::any_of(enable_vhal_proxy_server_vec.begin(),
+                  enable_vhal_proxy_server_vec.end(), [](bool e) { return e; });
   auto vhal_proxy_server_instance_num = *instance_nums.begin() - 1;
   if (FLAGS_vhal_proxy_server_instance_num > 0) {
     vhal_proxy_server_instance_num = FLAGS_vhal_proxy_server_instance_num - 1;
@@ -1550,7 +1571,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       cuttlefish::vhal_proxy_server::kDefaultEthPort +
       vhal_proxy_server_instance_num);
   LOG(DEBUG) << "launch vhal proxy server: "
-             << (FLAGS_enable_vhal_proxy_server &&
+             << (enable_vhal_proxy_server &&
                  vhal_proxy_server_instance_num <= 0);
 
   tmp_config_obj.set_kvm_path(FLAGS_kvm_path);
@@ -1566,7 +1587,11 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 
   mutable_env_config.set_group_uuid(std::time(0));
 
-  mutable_env_config.set_enable_wifi(FLAGS_enable_wifi);
+  std::vector<bool> enable_wifi_vec =
+      CF_EXPECT(GET_FLAG_BOOL_VALUE(enable_wifi));
+  bool enable_wifi = std::any_of(enable_wifi_vec.begin(), enable_wifi_vec.end(),
+                                 [](bool e) { return e; });
+  mutable_env_config.set_enable_wifi(enable_wifi);
 
   mutable_env_config.set_vhost_user_mac80211_hwsim(
       FLAGS_vhost_user_mac80211_hwsim);
@@ -1577,7 +1602,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   // vhost_user_mac80211_hwsim is not specified.
   const bool start_wmediumd = tmp_config_obj.virtio_mac80211_hwsim() &&
                               FLAGS_vhost_user_mac80211_hwsim.empty() &&
-                              FLAGS_enable_wifi;
+                              enable_wifi;
   if (start_wmediumd) {
     auto vhost_user_socket_path =
         env_config.PerEnvironmentUdsPath("vhost_user_mac80211");
@@ -1604,6 +1629,20 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   auto num_to_webrtc_device_id_flag_map =
       CF_EXPECT(CreateNumToWebrtcDeviceIdMap(tmp_config_obj, instance_nums,
                                              FLAGS_webrtc_device_id));
+  size_t provided_serials_cnt =
+      android::base::Split(FLAGS_serial_number, ",").size();
+  CF_EXPECTF(
+      provided_serials_cnt == 1 || provided_serials_cnt == instances_size,
+      "Must have a single serial number prefix or one serial number per "
+      "instance, have {} but expectected {}",
+      provided_serials_cnt, instances_size);
+  if (provided_serials_cnt == 1 && instances_size > 1) {
+    // Make sure the serial numbers are different when running multiple
+    // instances and using the default value for the flag
+    for (size_t i = 0; i < instance_nums.size(); ++i) {
+      serial_number_vec[i] += std::to_string(instance_nums[i]);
+    }
+  }
   for (const auto& num : instance_nums) {
     IfaceConfig iface_config;
     if (use_allocd_vec[instance_index]) {
@@ -1726,7 +1765,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       instance.set_serial_number(
           RandomSerialNumber("CFCVD" + std::to_string(num)));
     } else {
-      instance.set_serial_number(FLAGS_serial_number + std::to_string(num));
+      instance.set_serial_number(serial_number_vec[instance_index]);
     }
 
     instance.set_grpc_socket_path(const_instance.PerInstanceGrpcSocketPath(""));
@@ -1834,6 +1873,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_data_policy(data_policy_vec[instance_index]);
 
     instance.set_mobile_bridge_name(StrForInstance("cvd-mbr-", num));
+    instance.set_has_wifi_card(enable_wifi_vec[instance_index]);
     instance.set_wifi_bridge_name("cvd-wbr");
     instance.set_ethernet_bridge_name("cvd-ebr");
     instance.set_mobile_tap_name(iface_config.mobile_tap.name);
@@ -1852,7 +1892,24 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 
     instance.set_ethernet_tap_name(iface_config.ethernet_tap.name);
 
-    instance.set_uuid(FLAGS_uuid);
+    // crosvm should create fifos for Bluetooth
+    bool enable_host_bluetooth = enable_host_bluetooth_vec[instance_index];
+    bool is_netsim_all = netsim_all_radios_vec[instance_index];
+    bool is_bt_netsim = is_netsim_all || netsim_bt_vec[instance_index];
+    // or is_bt_netsim is here for backwards compatibility only
+    instance.set_has_bluetooth(enable_host_bluetooth || is_bt_netsim);
+    // rootcanal and bt_connector should handle Bluetooth (instead of netsim)
+    instance.set_enable_host_bluetooth_connector(enable_host_bluetooth &&
+                                                 !is_bt_netsim);
+
+    bool is_uwb_netsim = is_netsim_all || netsim_uwb_vec[instance_index];
+    // netsim has its own connector for uwb
+    instance.set_enable_host_uwb_connector(FLAGS_enable_host_uwb &&
+        !is_uwb_netsim);
+
+    bool is_any_netsim = is_netsim_all || is_bt_netsim || is_uwb_netsim;
+
+    instance.set_uuid(uuid_vec[instance_index]);
 
     instance.set_environment_name(environment_name);
 
@@ -2059,15 +2116,15 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 
     instance.set_start_netsim(is_first_instance && is_any_netsim);
 
-    instance.set_start_rootcanal(is_first_instance && !is_bt_netsim &&
+    instance.set_start_rootcanal(is_first_instance && any_not_netsim_bt &&
                                  (FLAGS_rootcanal_instance_num <= 0));
 
     instance.set_start_casimir(is_first_instance && FLAGS_casimir_instance_num <= 0);
 
-    instance.set_start_pica(is_first_instance && !is_uwb_netsim &&
+    instance.set_start_pica(is_first_instance && any_not_netsim_uwb &&
                             FLAGS_pica_instance_num <= 0);
     instance.set_start_vhal_proxy_server(
-        is_first_instance && FLAGS_enable_vhal_proxy_server &&
+        is_first_instance && enable_vhal_proxy_server &&
         FLAGS_vhal_proxy_server_instance_num <= 0);
 
     // TODO(b/288987294) Remove this when separating environment is done

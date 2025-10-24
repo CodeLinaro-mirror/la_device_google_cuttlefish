@@ -54,7 +54,7 @@ PRODUCT_COPY_FILES += \
 # TODO(b/206676167): This property can be removed when renderscript is removed.
 # Prevents framework from attempting to load renderscript libraries, which are
 # not supported on this architecture.
-PRODUCT_SYSTEM_PROPERTIES += \
+PRODUCT_PRODUCT_PROPERTIES += \
     config.disable_renderscript=1 \
 
 PRODUCT_NAME := aosp_cf_riscv64_phone
@@ -74,7 +74,6 @@ PRODUCT_VENDOR_PROPERTIES += \
 
 # Ignore all Android.mk files
 PRODUCT_IGNORE_ALL_ANDROIDMK := true
-PRODUCT_ALLOWED_ANDROIDMK_FILES := art/Android.mk
 
 TARGET_BOARD_INFO_FILE ?= device/google/cuttlefish/vsoc_riscv64/phone/android-info.txt
 

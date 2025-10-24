@@ -1,4 +1,5 @@
-// Copyright (C) 2022 The Android Open Source Project
+//
+// Copyright (C) 2025 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,28 +13,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package {
-    default_applicable_licenses: ["Android-Apache-2.0"],
-}
-
-java_library_host {
-    name: "cuttlefish_host_test_utils_impl",
-    srcs: [
-        "src/**/*.java",
-    ],
-    plugins: [
-        "auto_annotation_plugin",
-        "auto_value_plugin",
-    ],
-    libs: [
-        "compatibility-host-util",
-        "tradefed",
-    ],
-}
-
-java_defaults {
-    name: "cuttlefish_host_test_utils_defaults",
-    static_libs: [
-        "cuttlefish_host_test_utils_impl",
-    ],
+sh_binary {
+    name: "wifi_on",
+    src: "wifi_on.sh",
+    vendor: true,
+    filename_from_src: true,
+    init_rc: ["wifi_on.rc"],
 }

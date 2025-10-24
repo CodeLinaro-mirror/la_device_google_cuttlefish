@@ -573,7 +573,7 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
   // /dev/hvc4 = gatekeeper
   add_hvc(instance.PerInstanceInternalPath("gatekeeper_fifo_vm"));
   // /dev/hvc5 = bt
-  if (config.enable_host_bluetooth()) {
+  if (instance.has_bluetooth()) {
     add_hvc(instance.PerInstanceInternalPath("bt_fifo_vm"));
   } else {
     add_hvc_sink();
@@ -861,7 +861,8 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
     qemu_cmd.AddParameter("-cpu");
     qemu_cmd.AddParameter("rv64",
                           ",v=true,elen=64,vlen=128",
-                          ",zba=true,zbb=true,zbs=true");
+                          ",zba=true,zbb=true,zbs=true",
+                          ",zacas=true");
   }
 
   qemu_cmd.AddParameter("-msg");

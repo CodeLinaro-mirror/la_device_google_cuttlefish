@@ -74,4 +74,8 @@ TARGET_BOOTS_16K := true
 
 # Ignore all Android.mk files
 PRODUCT_IGNORE_ALL_ANDROIDMK := true
-PRODUCT_ALLOWED_ANDROIDMK_FILES := art/Android.mk
+
+# Soong-only configuration for aosp_cf_x86_64_phone_pgagnostic
+ifeq ($(TARGET_PRODUCT),aosp_cf_x86_64_phone_pgagnostic)
+PRODUCT_SOONG_ONLY := $(RELEASE_SOONG_ONLY_CUTTLEFISH)
+endif
