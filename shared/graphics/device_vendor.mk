@@ -52,7 +52,6 @@ endif
 #
 PRODUCT_PACKAGES += \
     com.android.hardware.graphics.composer.drm_hwcomposer \
-    com.android.hardware.graphics.composer.ranchu \
 
 PRODUCT_VENDOR_PROPERTIES += \
     ro.vendor.hwcomposer.pmem=/dev/block/pmem1
