@@ -23,6 +23,7 @@
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
+#include "common/libs/utils/flag_parser.h"
 #include "common/libs/utils/tee_logging.h"
 #include "host/commands/assemble_cvd/clean.h"
 #include "host/commands/assemble_cvd/disk_flags.h"
@@ -43,20 +44,26 @@ DEFINE_bool(resume, true, "Resume using the disk from the last session, if "
 DEFINE_int32(modem_simulator_count, 1,
              "Modem simulator count corresponding to maximum sim number");
 
-DECLARE_string(system_image_dir);
 
 namespace cuttlefish {
 namespace {
 
+std::vector<std::string> SystemImageDirsFromArgs(
+    std::vector<std::string> args) {
+  std::string value;
+  Flag flag = GflagsCompatFlag("system_image_dir", value);
+  if (!flag.Parse(args)) {
+    value = DefaultGuestImagePath("");
+  }
+  return android::base::Split(value, ",");
+}
+
 std::string kFetcherConfigFile = "fetcher_config.json";
 
-FetcherConfigs FindFetcherConfigs() {
-  std::string system_image_dir_flag = FLAGS_system_image_dir;
-  if (system_image_dir_flag.empty()) {
-    system_image_dir_flag = DefaultGuestImagePath("");
-  }
-  std::vector<std::string> system_image_dirs =
-      android::base::Split(system_image_dir_flag, ",");
+FetcherConfigs FindFetcherConfigs(const std::vector<std::string>& args) {
+  // The flags haven't been parsed yet, parse only the system_image_dir flag
+  // from a copy of the arguments.
+  std::vector<std::string> system_image_dirs = SystemImageDirsFromArgs(args);
 
   std::vector<FetcherConfig> fetcher_configs;
   for (size_t i = 0; i < system_image_dirs.size(); ++i) {
@@ -262,7 +269,9 @@ int AssembleCvdMain(int argc, char** argv) {
 
   (void)input_files;
 
-  FetcherConfigs fetcher_configs = FindFetcherConfigs();
+  auto args = ArgsToVec(argc - 1, argv + 1);
+
+  FetcherConfigs fetcher_configs = FindFetcherConfigs(args);
 
   // set gflags defaults to point to kernel/RD from fetcher config
   ExtractKernelParamsFromFetcherConfig(fetcher_configs);
