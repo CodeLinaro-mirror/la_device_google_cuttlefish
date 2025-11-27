@@ -23,23 +23,31 @@
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
+#include "common/libs/utils/flag_parser.h"
 #include "host/commands/assemble_cvd/assembler_defs.h"
 #include "host/commands/assemble_cvd/flags.h"
 #include "host/libs/config/fetcher_config.h"
 
-DECLARE_string(system_image_dir);
 
 namespace {
 
+std::vector<std::string> SystemImageDirsFromArgs(
+    std::vector<std::string> args) {
+  std::string value;
+  cuttlefish::Flag flag = cuttlefish::GflagsCompatFlag("system_image_dir", value);
+  if (!flag.Parse(args)) {
+    value = cuttlefish::DefaultGuestImagePath("");
+  }
+  return android::base::Split(value, ",");
+}
+
 std::string kFetcherConfigFile = "fetcher_config.json";
 
-cuttlefish::FetcherConfigs FindFetcherConfigs() {
-  std::string system_image_dir_flag = FLAGS_system_image_dir;
-  if (system_image_dir_flag.empty()) {
-    system_image_dir_flag = cuttlefish::DefaultGuestImagePath("");
-  }
-  std::vector<std::string> system_image_dirs =
-      android::base::Split(system_image_dir_flag, ",");
+cuttlefish::FetcherConfigs FindFetcherConfigs(
+    const std::vector<std::string>& args) {
+  // The flags haven't been parsed yet, parse only the system_image_dir flag
+  // from a copy of the arguments.
+  std::vector<std::string> system_image_dirs = SystemImageDirsFromArgs(args);
 
   std::vector<cuttlefish::FetcherConfig> fetcher_configs;
   for (size_t i = 0; i < system_image_dirs.size(); ++i) {
@@ -84,8 +92,9 @@ int main(int argc, char** argv) {
   std::vector<std::string> input_files = android::base::Split(input_files_str, "\n");
 
   (void)input_files;
+  auto args = cuttlefish::ArgsToVec(argc - 1, argv + 1);
   auto config = InitFilesystemAndCreateConfig(&argc, &argv,
-                                              FindFetcherConfigs());
+                                              FindFetcherConfigs(args));
 
   std::cout << GetConfigFilePath(*config) << "\n";
   std::cout << std::flush;
