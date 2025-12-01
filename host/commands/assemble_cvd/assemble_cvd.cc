@@ -36,6 +36,9 @@ std::vector<std::string> SystemImageDirsFromArgs(
   std::string value;
   cuttlefish::Flag flag = cuttlefish::GflagsCompatFlag("system_image_dir", value);
   if (!flag.Parse(args)) {
+    LOG(ERROR) << "Failed to parse `system_image_dir` flag";
+  }
+  if (value.empty()) {
     value = cuttlefish::DefaultGuestImagePath("");
   }
   return android::base::Split(value, ",");
