@@ -84,8 +84,8 @@ class Flag {
   Flag Setter(std::function<bool(const FlagMatch&)>) &&;
 
   /* Examines a list of arguments, removing any matches from the list and
-   * invoking the `Setter` for every match. Returns `false` if the callback ever
-   * returns `false`. Non-matches are left in place. */
+   * invoking the `Setter` for every match. Returns error if the callback ever
+   * returns error. Non-matches are left in place. */
   bool Parse(std::vector<std::string>& flags) const;
   bool Parse(std::vector<std::string>&& flags) const;
 
