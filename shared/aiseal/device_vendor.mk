@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2019 The Android Open-Source Project
+# Copyright (C) 2025 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,10 +14,11 @@
 # limitations under the License.
 #
 
-service vendor.health-storage-default /apex/com.google.cf.health.storage/bin/hw/android.hardware.health.storage-service.cuttlefish
-    interface aidl android.hardware.health.storage.IStorage/default
-    oneshot
-    disabled
-    class hal
-    user system
-    group system
+# Cuttlefish-specific AiSeal configuration.
+
+ifeq ($(RELEASE_AISEAL_FRAMEWORK),true)
+PRODUCT_PACKAGES += android.software.aiseal.prebuilt.xml
+
+# Protected VM is not supported in Cuttlefish, use nonprotected VM instead.
+PRODUCT_PRODUCT_PROPERTIES += service.aiseal.protected_vm=0
+endif
