@@ -263,6 +263,7 @@ Result<std::set<std::string>> PreservingOnResume(
   preserving.insert("uboot_env.img");
   preserving.insert("factory_reset_protected.img");
   preserving.insert("misc.img");
+  preserving.insert("vmmtruststore.img");
   preserving.insert("metadata.img");
   preserving.insert("persistent_vbmeta.img");
   preserving.insert("oemlock_secure");

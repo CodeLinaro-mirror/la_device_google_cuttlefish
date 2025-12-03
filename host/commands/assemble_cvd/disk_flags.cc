@@ -87,6 +87,17 @@ DEFINE_string(
     "to "
     "be vbmeta_system_dlkm.img in the directory specified by "
     "-system_image_dir.");
+DEFINE_string(default_vvmtruststore_file_name,
+              CF_DEFAULTS_DEFAULT_VVMTRUSTSTORE_FILE_NAME,
+              "If the vvmtruststore_path parameter is empty then the default "
+              "file name of the vvmtruststore image in the directory specified"
+              " by -system_image_dir. If empty then there's no vvmtruststore "
+              "image assumed by default.");
+DEFINE_string(vvmtruststore_path, CF_DEFAULTS_VVMTRUSTSTORE_PATH,
+              "Location of the vvmtruststore image. If empty and the "
+              "default_vvmtruststore_file_name parameter is not empty then the "
+              "image file is assumed to be the default_vvmtruststore_file_name "
+              "file in the directory specified by -system_image_dir.");
 
 DEFINE_string(
     default_target_zip, CF_DEFAULTS_DEFAULT_TARGET_ZIP,
@@ -182,11 +193,14 @@ Result<void> ResolveInstanceFiles() {
   std::string default_16k_kernel_image = "";
   std::string default_16k_ramdisk_image = "";
   std::string default_hibernation_image = "";
+  std::string vvmtruststore_path = "";
 
   std::string cur_system_image_dir;
   std::string comma_str = "";
   auto instance_nums =
       CF_EXPECT(InstanceNumsCalculator().FromGlobalGflags().Calculate());
+  auto default_vvmtruststore_file_name =
+      android::base::Split(FLAGS_default_vvmtruststore_file_name, ",");
   for (int instance_index = 0; instance_index < instance_nums.size(); instance_index++) {
     if (instance_index < system_image_dir.size()) {
       cur_system_image_dir = system_image_dir[instance_index];
@@ -224,6 +238,15 @@ Result<void> ResolveInstanceFiles() {
                 kernel_16k + " missing for launching 16k cuttlefish");
       CF_EXPECT(FileExists(ramdisk_16k),
                 ramdisk_16k + " missing for launching 16k cuttlefish");
+    }
+
+    if (instance_index < default_vvmtruststore_file_name.size()) {
+      if (default_vvmtruststore_file_name[instance_index].empty()) {
+        vvmtruststore_path += comma_str;
+      } else {
+        vvmtruststore_path += comma_str + cur_system_image_dir + "/" +
+                              default_vvmtruststore_file_name[instance_index];
+      }
     }
   }
   if (FLAGS_use_16k) {
@@ -265,7 +288,8 @@ Result<void> ResolveInstanceFiles() {
   SetCommandLineOptionWithMode("hibernation_image",
                                default_hibernation_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
-
+  SetCommandLineOptionWithMode("vvmtruststore_path", vvmtruststore_path.c_str(),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
   return {};
 }
 
@@ -458,6 +482,16 @@ std::vector<ImagePartition> android_composite_disk_config(
         .read_only = FLAGS_use_overlay,
     });
   }
+
+  const auto vvmtruststore_path = instance.vvmtruststore_path();
+  if (!vvmtruststore_path.empty()) {
+    partitions.push_back(ImagePartition{
+        .label = "vvmtruststore",
+        .image_file_path = AbsolutePath(vvmtruststore_path),
+        .read_only = FLAGS_use_overlay,
+    });
+  }
+
   const auto custom_partition_path = instance.custom_partition_path();
   if (!custom_partition_path.empty()) {
     partitions.push_back(ImagePartition{
@@ -751,6 +785,7 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
       android::base::Split(FLAGS_vbmeta_vendor_dlkm_image, ",");
   auto vbmeta_system_dlkm_image =
       android::base::Split(FLAGS_vbmeta_system_dlkm_image, ",");
+  auto vvmtruststore_path = android::base::Split(FLAGS_vvmtruststore_path, ",");
 
   std::vector<std::string> default_target_zip_vec =
       android::base::Split(FLAGS_default_target_zip, ",");
@@ -856,6 +891,11 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
     } else {
       instance.set_vbmeta_system_dlkm_image(
           vbmeta_system_dlkm_image[instance_index]);
+    }
+    if (instance_index >= vvmtruststore_path.size()) {
+      instance.set_vvmtruststore_path(vvmtruststore_path[0]);
+    } else {
+      instance.set_vvmtruststore_path(vvmtruststore_path[instance_index]);
     }
     if (instance_index >= super_image.size()) {
       cur_super_image = super_image[0];
