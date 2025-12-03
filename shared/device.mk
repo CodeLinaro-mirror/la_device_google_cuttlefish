@@ -35,10 +35,6 @@ PRODUCT_VENDOR_PROPERTIES += \
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish # for audio, wifi and sensors
 
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
-DISABLE_RILD_OEM_HOOK := true
-# For customize cflags for libril share library building by soong.
-$(call soong_config_set,ril,disable_rild_oem_hook,true)
-
 PRODUCT_SET_DEBUGFS_RESTRICTIONS := true
 
 PRODUCT_FS_COMPRESSION := 1
@@ -61,6 +57,8 @@ PRODUCT_VIRTUAL_AB_COMPRESSION_FACTOR := 65536
 
 PRODUCT_VENDOR_PROPERTIES += ro.virtual_ab.compression.threads=true
 PRODUCT_VENDOR_PROPERTIES += ro.virtual_ab.batch_writes=true
+# Opt in for ublk based OTA for testing
+PRODUCT_VENDOR_PROPERTIES += ro.virtual_ab.ublk.enabled=true
 
 # Enable Scoped Storage related
 $(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
@@ -93,7 +91,7 @@ PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
 endif
 
 # Use AIDL for media.c2 HAL
-PRODUCT_VENDOR_PROPERTIES += media.c2.hal.selection=aidl
+PRODUCT_VENDOR_PROPERTIES += media.c2.hal.selection?=aidl
 
 # Explanation of specific properties:
 #   ro.hardware.keystore_desede=true needed for CtsKeystoreTestCases
@@ -228,7 +226,8 @@ $(call soong_config_set_bool,cuttlefish_config,use_general_files,true)
 PRODUCT_PACKAGES += \
     device_google_cuttlefish_shared_config_init_vendor_rc \
     device_google_cuttlefish_shared_config_init_product_rc \
-    device_google_cuttlefish_shared_config_media_files \
+    device_google_cuttlefish_shared_config_media_codecs \
+    device_google_cuttlefish_shared_config_media_profiles \
     device_google_cuttlefish_shared_config_media_profiles_vendor \
     device_google_cuttlefish_shared_config_seriallogging_rc \
     device_google_cuttlefish_shared_config_ueventd_rc \
@@ -338,6 +337,12 @@ LOCAL_ENABLE_WIDEVINE ?= true
 ifeq ($(LOCAL_ENABLE_WIDEVINE),true)
 -include vendor/widevine/libwvdrmengine/apex/device/device.mk
 -include vendor/google/widevine/cdm/android/level3/generic/widevine_release_level3.mk
+
+ifeq ($(RELEASE_WIDEVINE_CUTTLEFISH_L1),true)
+PRODUCT_SOONG_NAMESPACES += vendor/google/widevine/cdm
+PRODUCT_PACKAGES += liboemcrypto_no_ipc_test_only
+endif
+
 endif
 
 #

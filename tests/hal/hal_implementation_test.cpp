@@ -269,8 +269,8 @@ static const std::vector<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.hardware.identity.", 5, 266869317},
 
     {"android.se.omapi.", 2, 266870904},
-    {"android.hardware.soundtrigger3.", 3, 266941225},
-    {"android.media.soundtrigger.", 3, 266941225},
+    {"android.hardware.soundtrigger3.", 4, 266941225},
+    {"android.media.soundtrigger.", 4, 266941225},
     {"android.hardware.weaver.", 2, 262418065},
 
     {"android.automotive.computepipe.registry.", 2, 273549907},
@@ -280,7 +280,6 @@ static const std::vector<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.hardware.security.see.storage.", 1, 379940224},
     {"android.hardware.security.see.hwcrypto.", 1, 379940224},
     {"android.hardware.security.see.hdcp.", 1, 379940224},
-    {"android.hardware.security.factory_reset_protection.", 1, 445988884},
 };
 
 // android.hardware.foo.IFoo -> android.hardware.foo.

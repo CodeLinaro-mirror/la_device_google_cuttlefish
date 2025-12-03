@@ -333,9 +333,10 @@ class DeviceControlApp {
 
     createSelectListener('display-spec-preset-select', () => this.#updateDisplaySpecFrom());
     createButtonListener('display-add-confirm', null, this.#deviceConnection, evt => this.#onDisplayAdditionConfirm(evt));
-
-    createButtonListener('display-remove-modal-confirm',null,this.#deviceConnection, () => this.#handleDisplayRemovalModalAction('confirm'));
-    createButtonListener('display-remove-modal-cancel',null,this.#deviceConnection, () => this.#handleDisplayRemovalModalAction('cancel'));
+    createButtonListener('display-single-row-button', null, this.#deviceConnection, evt => setDisplaysToVerticalStack(evt));
+    createButtonListener('display-vertical-stacking-button', null, this.#deviceConnection, evt => setDisplaysToSingleRow(evt));
+    createButtonListener('display-remove-modal-confirm', null, this.#deviceConnection, () => this.#handleDisplayRemovalModalAction('confirm'));
+    createButtonListener('display-remove-modal-cancel', null, this.#deviceConnection, () => this.#handleDisplayRemovalModalAction('cancel'));
 
     if (this.#deviceConnection.description.custom_control_panel_buttons.length >
         0) {
@@ -684,11 +685,11 @@ class DeviceControlApp {
     this.#deviceConnection.sendControlMessage(JSON.stringify(message));
   }
 
-  #handleDisplayRemovalModalAction(action){
+  #handleDisplayRemovalModalAction(action) {
     const removeModalElement = document.getElementById('display-remove-modal');
     const removeDisplayId = removeModalElement.dataset.removal_display_id;
     let removeButtonId = removeDisplayId + '_remove_button';
-    if(action === 'confirm'){
+    if (action === 'confirm') {
       this.#removeDisplay(removeDisplayId);
     } else {
       // Clear the dataset on cancel.
@@ -1009,6 +1010,17 @@ class DeviceControlApp {
           deviceDisplays.removeChild(deviceDisplay);
         }
       }
+    }
+
+    const displayVideos = deviceDisplays.querySelectorAll('.device-display-video');
+    const controlsAndDisplays = document.getElementById('controls-and-displays');
+    if (displayVideos.length <= 1) {
+      controlsAndDisplays.classList.remove('multiple-displays');
+
+      // When there is one display, the alignment mode becomes 'single-row'.
+      setDisplaysToSingleRow();
+    } else {
+      controlsAndDisplays.classList.add('multiple-displays');
     }
 
     this.#updateDeviceDisplaysInfo();
