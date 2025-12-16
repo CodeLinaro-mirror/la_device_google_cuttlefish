@@ -279,6 +279,8 @@ static const std::vector<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.automotive.computepipe.runner.", 2, 273549907},
     {"android.hardware.automotive.evs.", 2, 274162534},
     {"android.hardware.security.see.authmgr.", 1, 379940224},
+    // TODO(b/466983803): Remove this after implementing Trusted Hals on CF.
+    {"android.hardware.security.see.devicestate.", 1, 466983803},
     {"android.hardware.security.see.storage.", 1, 379940224},
     {"android.hardware.security.see.hwcrypto.", 1, 379940224},
     {"android.hardware.security.see.hdcp.", 1, 379940224},
