@@ -17,7 +17,6 @@ PRODUCT_SOONG_NAMESPACES += \
     device/google/cuttlefish/shared/auto/audio
 
 # Car Audio Policy Configurable emulator
-$(call inherit-product, device/google/cuttlefish/shared/auto/audio/offending_gsi_system.mk)
 $(call inherit-product, device/google/cuttlefish/shared/auto/audio/audio.mk)
 
 

@@ -69,5 +69,28 @@
     {
       "name": "VtsHalAutomotiveVehicle_TargetTest"
     }
+  ],
+  "auto-presubmit-all-ui-targets": [
+    {
+      "name": "CarExtendedApiTest"
+    },
+    {
+      "name": "CarHiddenApiTest"
+    },
+    {
+      "name": "CarServiceAudioTest"
+    },
+    {
+      "name": "CarServiceDrivingStateTest"
+    },
+    {
+      "name": "CarServiceInputTest"
+    },
+    {
+      "name": "CarServicePmTest"
+    },
+    {
+      "name": "CtsCarTestCases"
+    }
   ]
 }
