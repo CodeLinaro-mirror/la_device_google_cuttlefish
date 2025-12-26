@@ -339,8 +339,10 @@ ifeq ($(LOCAL_ENABLE_WIDEVINE),true)
 -include vendor/google/widevine/cdm/android/level3/generic/widevine_release_level3.mk
 
 ifeq ($(RELEASE_WIDEVINE_CUTTLEFISH_L1),true)
-PRODUCT_SOONG_NAMESPACES += vendor/google/widevine/cdm
-PRODUCT_PACKAGES += liboemcrypto_no_ipc_test_only
+    ifndef TARGET_BUILD_WIDEVINE_BUILD_CONFIG
+        PRODUCT_SOONG_NAMESPACES += vendor/google/widevine/cdm
+        PRODUCT_PACKAGES += liboemcrypto_no_ipc_test_only
+    endif
 endif
 
 endif
@@ -478,6 +480,18 @@ PRODUCT_PACKAGES += $(LOCAL_THERMAL_HAL_PRODUCT_PACKAGE)
 #
 PRODUCT_PACKAGES += \
     com.android.hardware.neuralnetworks
+
+#
+# NPU HAL
+#
+ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
+    PRODUCT_PACKAGES += \
+        com.android.hardware.npu.cf
+
+    # Indicates that Cuttlefish has NPU support
+    PRODUCT_COPY_FILES += \
+        frameworks/native/data/etc/android.hardware.npu.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.npu.xml
+endif
 
 # USB
 PRODUCT_PACKAGES += \
