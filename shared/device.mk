@@ -446,6 +446,12 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.software.device_id_attestation.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.device_id_attestation.xml
 
 #
+# MotionContext HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.motioncontext-service.default
+
+#
 # Non-secure implementation of AuthGraph HAL for compliance.
 #
 PRODUCT_PACKAGES += \
