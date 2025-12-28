@@ -68,6 +68,13 @@ PRODUCT_VENDOR_PROPERTIES += \
 # Ignore all Android.mk files
 PRODUCT_IGNORE_ALL_ANDROIDMK := true
 
+ifneq ($(CLANG_COVERAGE),true)
+ifneq ($(NATIVE_COVERAGE),true)
+USE_SOONG_DEFINED_SYSTEM_IMAGE := true
+PRODUCT_SOONG_DEFINED_SYSTEM_IMAGE := aosp_shared_system_image
+endif # NATIVE_COVERAGE
+endif # CLANG_COVERAGE
+
 ifeq ($(TARGET_PRODUCT),aosp_cf_x86_64_only_phone)
 PRODUCT_SOONG_ONLY := $(RELEASE_SOONG_ONLY_CUTTLEFISH)
 endif

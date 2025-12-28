@@ -16,7 +16,7 @@
 
 package com.android.javacard.jcproxy;
 
-import com.android.javacard.keymaster.KMJCardSimApplet;
+import com.android.javacard.keymaster.KM4Applet;
 
 import com.licel.jcardsim.smartcardio.CardSimulator;
 import com.licel.jcardsim.utils.AIDUtil;
@@ -69,7 +69,7 @@ public class JCardSimulator implements Simulator {
 
     private void installKeyMint() throws Exception {
         AID appletAID = AIDUtil.create(KEYMINT_AID);
-        simulator.installApplet(appletAID, KMJCardSimApplet.class);
+        simulator.installApplet(appletAID, KM4Applet.class);
         // Select applet
         simulator.selectApplet(appletAID);
         // Provision
