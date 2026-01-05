@@ -25,7 +25,7 @@ import (
 	"android/soong/cc"
 )
 
-//go:generate go run ../../../../build/blueprint/gobtools/codegen/gob_gen.go
+//go:generate go run ../../../../build/blueprint/gobtools/codegen
 
 func init() {
 	android.RegisterModuleType("cvd_host_package", cvdHostPackageFactory)
@@ -35,6 +35,7 @@ func init() {
 type cvdHostPackage struct {
 	android.ModuleBase
 	android.PackagingBase
+	blueprint.ModuleUsesIncrementalWalkDeps
 	tarballFile android.InstallPath
 	stampFile   android.InstallPath
 }

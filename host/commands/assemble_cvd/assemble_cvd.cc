@@ -66,20 +66,31 @@ DEFINE_bool(resume, CF_DEFAULTS_RESUME,
             "If the device starts from a snapshot, this will be always true.");
 
 DECLARE_bool(use_overlay);
-DECLARE_string(system_image_dir);
 
 namespace cuttlefish {
 namespace {
 
+std::vector<std::string> SystemImageDirsFromArgs(
+    std::vector<std::string> args) {
+  std::string value;
+  Flag flag = GflagsCompatFlag("system_image_dir", value);
+  auto parse_res = flag.Parse(args);
+  if (!parse_res.ok()) {
+    LOG(ERROR) << "Failed to parse `system_image_dir` flag"
+               << parse_res.error().FormatForEnv();
+  }
+  if (value.empty()) {
+    value = DefaultGuestImagePath("");
+  }
+  return android::base::Split(value, ",");
+}
+
 static constexpr std::string_view kFetcherConfigFile = "fetcher_config.json";
 
-FetcherConfigs FindFetcherConfigs() {
-  std::string system_image_dir_flag = FLAGS_system_image_dir;
-  if (system_image_dir_flag.empty()) {
-    system_image_dir_flag = DefaultGuestImagePath("");
-  }
-  std::vector<std::string> system_image_dirs =
-      android::base::Split(system_image_dir_flag, ",");
+FetcherConfigs FindFetcherConfigs(const std::vector<std::string>& args) {
+  // The flags haven't been parsed yet, parse only the system_image_dir flag
+  // from a copy of the arguments.
+  std::vector<std::string> system_image_dirs = SystemImageDirsFromArgs(args);
 
   std::vector<FetcherConfig> fetcher_configs;
   for (size_t i = 0; i < system_image_dirs.size(); ++i) {
@@ -606,12 +617,12 @@ Result<int> AssembleCvdMain(int argc, char** argv) {
   // fetcher_config.json will be searched for in the system image directory.
   (void)CF_EXPECT(ReadInputFiles());
 
-  FetcherConfigs fetcher_configs = FindFetcherConfigs();
+  auto args = ArgsToVec(argc - 1, argv + 1);
+
+  FetcherConfigs fetcher_configs = FindFetcherConfigs(args);
 
   // set gflags defaults to point to kernel/RD from fetcher config
   ExtractKernelParamsFromFetcherConfig(fetcher_configs);
-
-  auto args = ArgsToVec(argc - 1, argv + 1);
 
   bool help = false;
   std::string help_str;

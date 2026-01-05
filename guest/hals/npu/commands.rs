@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 The Android Open Source Project
+ * Copyright (C) 2025 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,16 +14,20 @@
  * limitations under the License.
  */
 
-#pragma once
+use serde::{Deserialize, Serialize};
 
-#include <aidl/android/hardware/health/storage/BnStorage.h>
+pub const NPU_SOCKET_NAME: &str = "hal_npu_scheculing_cf";
 
-namespace aidl::android::hardware::health::storage {
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+pub struct InferenceOptions {
+    pub priority: i32,
+    pub original_uid: i32,
+    pub num_requests: u32,
+}
 
-class Storage : public BnStorage {
-  ndk::ScopedAStatus
-  garbageCollect(int64_t timeout_seconds,
-                 const std::shared_ptr<IGarbageCollectCallback> &cb) override;
-};
-
-} // namespace aidl::android::hardware::health::storage
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+pub enum Command {
+    RunTestInference(InferenceOptions),
+    Success,
+    Error,
+}
