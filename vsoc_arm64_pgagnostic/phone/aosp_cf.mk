@@ -71,3 +71,6 @@ TARGET_BOOTS_16K := true
 
 # Ignore all Android.mk files
 PRODUCT_IGNORE_ALL_ANDROIDMK := true
+
+# TODO(b/469875222): This property is temporarily disabled to unblock other testing.
+PRODUCT_VENDOR_PROPERTIES += apexd.config.erofs_file_backed_mount=false
