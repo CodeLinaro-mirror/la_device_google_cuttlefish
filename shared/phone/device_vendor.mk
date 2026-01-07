@@ -64,6 +64,10 @@ DEVICE_PACKAGE_OVERLAYS += device/google/cuttlefish/shared/phone/overlay
 # Runtime Resource Overlays
 PRODUCT_PACKAGES += cuttlefish_phone_overlay_frameworks_base_core
 
+# MotionContext HAL
+PRODUCT_PACKAGES += \
+    android.hardware.motioncontext-service.default
+
 # NFC AIDL HAL
 PRODUCT_PACKAGES += \
     com.google.cf.nfc
