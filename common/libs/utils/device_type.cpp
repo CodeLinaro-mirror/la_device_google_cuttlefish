@@ -24,8 +24,7 @@ DeviceType ParseDeviceType(std::string_view type_name) {
     return DeviceType::Phone;
   } else if (type_name == "wear") {
     return DeviceType::Wear;
-  } else if (type_name == "auto" || type_name == "auto_portrait" ||
-             type_name == "auto_dd" || type_name == "auto_md") {
+  } else if (type_name.starts_with("auto")) {
     return DeviceType::Auto;
   } else if (type_name == "foldable") {
     return DeviceType::Foldable;
