@@ -196,6 +196,7 @@ PRODUCT_PACKAGES += \
     cuttlefish_overlay_connectivity \
     cuttlefish_overlay_frameworks_base_core \
     cuttlefish_overlay_nfc \
+    cuttlefish_overlay_nfc_gsi \
     cuttlefish_overlay_settings_provider \
 
 #
