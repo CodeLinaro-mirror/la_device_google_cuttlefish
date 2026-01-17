@@ -43,10 +43,13 @@ cc_library {
     shared_libs: [
         "libbase",
         "libcuttlefish_fs",
+        "libcuttlefish_guest_config_proto",
+        "libprotobuf-cpp-full",
         "libcuttlefish_utils",
         "libfruit",
         "libgflags",
         "libjsoncpp",
+        "libprotobuf-cpp-full",
         "libz",
     ],
     target: {

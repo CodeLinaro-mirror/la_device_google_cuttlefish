@@ -273,3 +273,10 @@ prebuilt_etc {
     ],
     vendor: true,
 }
+
+prebuilt_etc {
+    name: "device_google_cuttlefish_shared_config_dma_heap_config",
+    defaults: ["cuttlefish_config_general_files_defaults"],
+    srcs: ["dma_heap.json"],
+    vendor: true,
+}

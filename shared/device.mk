@@ -638,3 +638,6 @@ ifeq ($(LOCAL_ENABLE_INIT_DEV_CONFIG),true)
     PRODUCT_VENDOR_PROPERTIES += \
         ro.vendor.init_dev_config.path=/vendor/bin/init_dev_config
 endif
+
+PRODUCT_PACKAGES += \
+    device_google_cuttlefish_shared_config_dma_heap_config

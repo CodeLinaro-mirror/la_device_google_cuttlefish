@@ -50,6 +50,8 @@ cc_defaults {
         not_windows: {
             static_libs: [
                 "libcuttlefish_host_config",
+                "libcuttlefish_guest_config_proto",
+                "libprotobuf-cpp-full",
             ],
             shared_libs: [
                 "libcuttlefish_fs",
@@ -175,8 +177,6 @@ cc_binary_host {
             shared_libs: [
                 "libcuttlefish_command_util",
                 "libcuttlefish_run_cvd_proto",
-            ],
-            static_libs: [
                 "libsecure_env_not_windows",
             ],
         },

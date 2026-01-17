@@ -22,4 +22,11 @@
         <install-in user-type="FULL" />
         <install-in user-type="android.os.usertype.profile.MANAGED" />
     </install-in-user-type>
+
+    <!-- Managed Provisioning (ManagedProvisioning) -->
+    <install-in-user-type package="com.android.managedprovisioning">
+        <install-in user-type="SYSTEM" />
+        <install-in user-type="FULL" />
+        <install-in user-type="android.os.usertype.profile.MANAGED" />
+    </install-in-user-type>
 </config>

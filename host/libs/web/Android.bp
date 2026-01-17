@@ -23,7 +23,11 @@ cc_library {
         "http_client/http_client.cc",
         "http_client/http_client_util.cc",
     ],
+    shared_libs: [
+        "libprotobuf-cpp-full",
+    ],
     static_libs: [
+        "libcuttlefish_guest_config_proto",
         "libcuttlefish_host_config",
     ],
     target: {
