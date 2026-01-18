@@ -26,10 +26,12 @@ cc_binary {
         "libbase",
         "libcuttlefish_fs",
         "libcuttlefish_utils",
+        "libprotobuf-cpp-full",
         "libjsoncpp",
     ],
     static_libs: [
         "libcuttlefish_host_config",
+        "libcuttlefish_guest_config_proto",
         "libgflags",
     ],
     target: {

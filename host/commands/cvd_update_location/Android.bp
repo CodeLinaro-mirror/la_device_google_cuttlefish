@@ -41,6 +41,8 @@ cc_binary {
     ],
     static_libs: [
         "libcuttlefish_host_config",
+        "libcuttlefish_guest_config_proto",
+        "libprotobuf-cpp-full",
         "libcvd_gnss_grpc_proxy",
         "libgflags",
         "liblocation",

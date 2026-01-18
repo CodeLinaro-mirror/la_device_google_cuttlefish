@@ -22,8 +22,6 @@ To add custom actions to the WebRTC control panel:
       $(call soong_config_set, cvd, custom_action_config, my_custom_action_config.json)
     ```
 
-TODO(b/171709037): Add documentation to source.android.com
-
 See https://source.android.com/setup/create/cuttlefish-control-panel for
 detailed information about the format of the config file.
 

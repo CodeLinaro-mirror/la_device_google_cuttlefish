@@ -48,6 +48,8 @@ cc_binary_host {
     static_libs: [
         "libcap",
         "libcuttlefish_host_config",
+        "libcuttlefish_guest_config_proto",
+        "libprotobuf-cpp-full",
         "libcuttlefish_host_websocket",
         "libcuttlefish_utils",
         "libgflags",

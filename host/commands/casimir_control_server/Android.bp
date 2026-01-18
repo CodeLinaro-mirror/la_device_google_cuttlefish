@@ -61,6 +61,8 @@ cc_binary_host {
     static_libs: [
         "libcasimir_control_server",
         "libcuttlefish_host_config",
+        "libcuttlefish_guest_config_proto",
+        "libprotobuf-cpp-full",
         "libgflags",
         "libgrpc++_reflection",
     ],

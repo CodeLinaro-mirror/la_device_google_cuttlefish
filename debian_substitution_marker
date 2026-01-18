@@ -211,6 +211,11 @@ symlinks: {
 }
 
 symlinks: {
+  target: "/usr/lib/cuttlefish-common/bin/webRTC"
+  link_name: "bin/webRTC"
+}
+
+symlinks: {
   target: "/usr/lib/cuttlefish-common/etc/default_input_devices/keyboard.json"
   link_name: "etc/default_input_devices/keyboard.json"
 }
@@ -263,4 +268,9 @@ symlinks: {
 symlinks: {
   target: "/usr/lib/cuttlefish-common/etc/modem_simulator/files/numeric_operator.xml"
   link_name: "etc/modem_simulator/files/numeric_operator.xml"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/lib64/vulkan.pastel.so"
+  link_name: "lib64/vulkan.pastel.so"
 }

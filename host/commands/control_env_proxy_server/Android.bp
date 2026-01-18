@@ -59,6 +59,8 @@ cc_binary_host {
         "libcontrol_env_proxy_server",
         "libcuttlefish_control_env",
         "libcuttlefish_host_config",
+        "libcuttlefish_guest_config_proto",
+        "libprotobuf-cpp-full",
         "libgflags",
         "libgrpc++_reflection",
     ],

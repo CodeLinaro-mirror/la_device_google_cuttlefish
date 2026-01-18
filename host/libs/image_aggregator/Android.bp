@@ -48,6 +48,7 @@ cc_library {
         "libbase",
         "libcuttlefish_fs",
         "libcuttlefish_utils",
+        "libcuttlefish_guest_config_proto",
         "libjsoncpp",
         "libprotobuf-cpp-lite",
         "libz",
