@@ -79,7 +79,6 @@ cc_binary_host {
     srcs: [
         "adb_handler.cpp",
         "audio_handler.cpp",
-        "audio_mixer.cpp",
         "bluetooth_handler.cpp",
         "client_server.cpp",
         "connection_observer.cpp",
@@ -114,7 +113,6 @@ cc_binary_host {
         "libcuttlefish_confui",
         "libcuttlefish_confui_host",
         "libcuttlefish_host_config",
-        "libcuttlefish_guest_config_proto",
         "libcuttlefish_input_connector",
         "libcuttlefish_screen_connector",
         "libcuttlefish_security",
@@ -161,7 +159,6 @@ cc_binary_host {
         "libwebm_mkvmuxer",
         "libxml2",
         "libyuv",
-        "libprotobuf-cpp-full",
     ],
     defaults: [
         "cuttlefish_buildhost_only",

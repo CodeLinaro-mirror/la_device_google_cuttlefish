@@ -28,8 +28,6 @@ cc_binary_host {
         "libcuttlefish_command_util",
         "libcuttlefish_fs",
         "libcuttlefish_host_config",
-        "libcuttlefish_guest_config_proto",
-        "libprotobuf-cpp-full",
         "libcuttlefish_run_cvd_proto",
         "libcuttlefish_utils",
         "libcuttlefish_vm_manager",

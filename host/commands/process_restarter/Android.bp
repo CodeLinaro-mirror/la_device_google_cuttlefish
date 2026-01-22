@@ -26,8 +26,6 @@ cc_binary_host {
     shared_libs: [
         "libbase",
         "libcuttlefish_host_config",
-        "libcuttlefish_guest_config_proto",
-        "libprotobuf-cpp-full",
         "libcuttlefish_utils",
         "libjsoncpp",
     ],

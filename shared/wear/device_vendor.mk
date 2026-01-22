@@ -40,6 +40,8 @@ TARGET_USE_LAZY_CLEARKEY := true
 
 $(call inherit-product, device/google/cuttlefish/shared/device.mk)
 
+PRODUCT_PACKAGES += wear_excluded_hardware.prebuilt.xml
+
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.audio.output.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.audio.output.xml \
     frameworks/native/data/etc/android.hardware.faketouch.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.faketouch.xml \

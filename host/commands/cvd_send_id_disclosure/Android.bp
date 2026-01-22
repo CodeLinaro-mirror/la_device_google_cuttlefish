@@ -40,8 +40,6 @@ cc_binary {
     name: "cvd_send_id_disclosure",
     static_libs: [
         "libcuttlefish_host_config",
-        "libcuttlefish_guest_config_proto",
-        "libprotobuf-cpp-full",
         "libgflags",
     ],
     srcs: [

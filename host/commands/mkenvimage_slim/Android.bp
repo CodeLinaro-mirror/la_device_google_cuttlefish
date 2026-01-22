@@ -27,8 +27,6 @@ cc_binary_host {
         "libbase",
         "libcuttlefish_fs",
         "libcuttlefish_host_config",
-        "libcuttlefish_guest_config_proto",
-        "libprotobuf-cpp-full",
         "libcuttlefish_utils",
         "libgflags",
         "liblog",

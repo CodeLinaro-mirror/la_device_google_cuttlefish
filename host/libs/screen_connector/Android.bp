@@ -39,8 +39,6 @@ cc_library {
         "libcuttlefish_confui",
         "libcuttlefish_confui_host",
         "libcuttlefish_host_config",
-        "libcuttlefish_guest_config_proto",
-        "libprotobuf-cpp-full",
         "libcuttlefish_utils",
         "libcuttlefish_wayland_server",
         "libffi",
