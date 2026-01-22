@@ -28,8 +28,6 @@ cc_library {
         "libfruit",
         "libjsoncpp", // need to access host/libs/config/cuttlefish_config.h
         "liblog",
-        "libcuttlefish_guest_config_proto",
-        "libprotobuf-cpp-full",
     ],
     static_libs: [
         "libbase",

@@ -42,11 +42,9 @@ cc_defaults {
         "libcuttlefish_fs",
         "libcuttlefish_utils",
         "libjsoncpp",
-        "libprotobuf-cpp-full",
     ],
     static_libs: [
         "libcuttlefish_host_config",
-        "libcuttlefish_guest_config_proto",
         "libgflags",
         "libtinyxml2",
     ],

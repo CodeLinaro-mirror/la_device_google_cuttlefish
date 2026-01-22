@@ -41,11 +41,9 @@ cc_library {
         "libcuttlefish_utils",
         "libfruit",
         "libjsoncpp",
-        "libprotobuf-cpp-full",
     ],
     static_libs: [
         "libcuttlefish_host_config",
-        "libcuttlefish_guest_config_proto",
     ],
     defaults: ["cuttlefish_host"],
     target: {

@@ -29,7 +29,6 @@ cc_library {
         "libcuttlefish_utils",
         "libjsoncpp",
         "liblog",
-        "libcuttlefish_guest_config_proto",
         "libprotobuf-cpp-full",
     ],
     export_shared_lib_headers: [

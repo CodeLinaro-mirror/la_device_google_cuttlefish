@@ -17,6 +17,13 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
+prebuilt_etc {
+    name: "wear_excluded_hardware.prebuilt.xml",
+    src: "wear_excluded_hardware.xml",
+    relative_install_path: "permissions",
+    soc_specific: true,
+}
+
 prebuilt_etc_host {
     name: "cvd_config_wear.json",
     src: "config_wear.json",

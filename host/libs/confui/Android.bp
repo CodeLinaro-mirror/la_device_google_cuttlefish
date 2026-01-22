@@ -59,8 +59,6 @@ cc_library {
     static_libs: [
         "libcuttlefish_confui",
         "libcuttlefish_host_config",
-        "libcuttlefish_guest_config_proto",
-        "libprotobuf-cpp-full",
         "libcuttlefish_input_connector",
         "libcuttlefish_security",
         "libcuttlefish_utils",
