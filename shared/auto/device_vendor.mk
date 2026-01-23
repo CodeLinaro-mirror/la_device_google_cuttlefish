@@ -55,7 +55,7 @@ PRODUCT_COPY_FILES += \
 PRODUCT_PRODUCT_PROPERTIES += \
     ro.boot.uwbcountrycode=US
 
-PRODUCT_SYSTEM_PROPERTIES += \
+PRODUCT_PRODUCT_PROPERTIES += \
     ro.sys.hibernate_enabled=1 \
     ro.sys.swap_storage_device=/dev/block/vda19
 
@@ -91,7 +91,7 @@ endif
 PRODUCT_PACKAGES += $(LOCAL_VHAL_PRODUCT_PACKAGE)
 
 # Set car power policy daemon connect to VHAL timeout to 60s for emulator (default is 5s).
-PRODUCT_SYSTEM_PROPERTIES += cppd.connectvhal.Timeoutmillis=60000
+PRODUCT_PRODUCT_PROPERTIES += cppd.connectvhal.Timeoutmillis=60000
 
 # Ethernet setup script for vehicle HAL
 ENABLE_AUTO_ETHERNET ?= true

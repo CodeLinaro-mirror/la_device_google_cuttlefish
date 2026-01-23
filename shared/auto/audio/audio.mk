@@ -29,8 +29,6 @@ BOARD_SEPOLICY_DIRS += frameworks/av/services/audiopolicy/engineconfigurable/sep
 
 PRODUCT_PACKAGES += audio_policy_configuration.xml
 
-# Tool used for debug Parameter Framework (only for eng and userdebug builds)
-PRODUCT_PACKAGES_DEBUG += remote-process
 
 #
 # AudioPolicyEngine

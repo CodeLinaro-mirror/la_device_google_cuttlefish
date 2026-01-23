@@ -21,16 +21,17 @@
 # Some targets still require 32 bit, and 6.6 kernels don't support
 # 32 bit devices
 
+
 ifneq (,$(findstring cf_gwear_arm,$(PRODUCT_NAME)))
 TARGET_KERNEL_USE ?= 6.6
 else ifeq (true,$(CLOCKWORK_EMULATOR_PRODUCT))
 TARGET_KERNEL_USE ?= 6.1
 else ifneq (,$(findstring x86_tv,$(PRODUCT_NAME)))
 TARGET_KERNEL_USE ?= 6.1
-else ifneq (,$(findstring cf_x86_64_desktop,$(PRODUCT_NAME)))
+else ifneq (,$(filter cf_x86_64_desktop,$(PRODUCT_NAME)))
 TARGET_KERNEL_USE ?= $(RELEASE_KERNEL_CUTTLEFISH_X86_64_VERSION)
 TARGET_KERNEL_DIR ?= $(RELEASE_KERNEL_CUTTLEFISH_X86_64_DIR)
-else ifneq (,$(findstring cf_arm64_desktop,$(PRODUCT_NAME)))
+else ifneq (,$(filter cf_arm64_desktop,$(PRODUCT_NAME)))
 TARGET_KERNEL_USE ?= $(RELEASE_KERNEL_CUTTLEFISH_ARM64_VERSION)
 TARGET_KERNEL_DIR ?= $(RELEASE_KERNEL_CUTTLEFISH_ARM64_DIR)
 else
