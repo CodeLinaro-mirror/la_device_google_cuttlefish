@@ -58,5 +58,12 @@
         <volume deviceCategory="DEVICE_CATEGORY_SPEAKER" ref="DEFAULT_VOLUME_STEPS_CURVE"/>
     </volumeGroup>
 
+    <volumeGroup>
+        <name>enforced_audible</name>
+        <indexMin>0</indexMin>
+        <indexMax>40</indexMax>
+        <volume deviceCategory="DEVICE_CATEGORY_SPEAKER" ref="DEFAULT_VOLUME_STEPS_CURVE"/>
+    </volumeGroup>
+
 </volumeGroups>
 

@@ -38,8 +38,12 @@ cc_binary {
     ],
     target: {
         host: {
+            shared_libs: [
+                "libprotobuf-cpp-full",
+            ],
             static_libs: [
                 "libcuttlefish_host_config",
+                "libcuttlefish_guest_config_proto",
             ],
         },
     },

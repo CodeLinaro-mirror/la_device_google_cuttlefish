@@ -64,6 +64,7 @@ cc_binary_host {
         "libcdisk_spec",
         "libcuttlefish_avb",
         "libcuttlefish_host_config",
+        "libcuttlefish_guest_config_proto",
         "libcuttlefish_host_config_adb",
         "libcuttlefish_host_config_fastboot",
         "libcuttlefish_launch_cvd_proto",
@@ -120,6 +121,8 @@ cc_test_host {
     ],
     static_libs: [
         "libcuttlefish_host_config",
+        "libcuttlefish_guest_config_proto",
+        "libprotobuf-cpp-full",
         "libcuttlefish_launch_cvd_proto",
         "libcuttlefish_msg_queue",
         "libgflags",
