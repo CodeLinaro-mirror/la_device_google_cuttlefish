@@ -37,6 +37,7 @@ cc_library {
     static_libs: [
         "libbase",
         "libcuttlefish_host_config",
+        "libcuttlefish_guest_config_proto",
     ],
     target: {
         darwin: {

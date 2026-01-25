@@ -35,6 +35,7 @@ cc_binary {
         "libjsoncpp",
         "libxml2",
         "libz",
+        "libprotobuf-cpp-full",
     ],
     static_libs: [
         "libcuttlefish_host_config",

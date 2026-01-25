@@ -47,6 +47,7 @@ cc_library {
         "absl_container_inlined_vector",
         "libcap",
         "libcuttlefish_host_config",
+        "libcuttlefish_guest_config_proto",
         "libcuttlefish_screen_connector",
         "libcuttlefish_utils",
         "libcuttlefish_wayland_server",

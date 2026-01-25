@@ -24,6 +24,8 @@
 #include <android-base/strings.h>
 #include <json/json.h>
 
+#include <google/protobuf/text_format.h>
+
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/flags_validator.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
@@ -2167,6 +2169,24 @@ void CuttlefishConfig::MutableInstanceSpecific::set_audio_output_streams_count(
 }
 int CuttlefishConfig::InstanceSpecific::audio_output_streams_count() const {
   return (*Dictionary())[kAudioOutputStreamsCount].asInt();
+}
+
+static constexpr char kAudioSettingsTextProto[] = "audio_settings_textproto";
+void CuttlefishConfig::MutableInstanceSpecific::set_audio_settings(
+    const ::cuttlefish::config::Audio& audio_settings) {
+  std::string textproto;
+  google::protobuf::TextFormat::PrintToString(audio_settings, &textproto);
+  (*Dictionary())[kAudioSettingsTextProto] = std::move(textproto);
+}
+std::optional<::cuttlefish::config::Audio>
+CuttlefishConfig::InstanceSpecific::audio_settings() const {
+  if (!Dictionary()->isMember(kAudioSettingsTextProto)) {
+    return std::nullopt;
+  }
+  cuttlefish::config::Audio audio_settings;
+  CHECK(google::protobuf::TextFormat::ParseFromString(
+      (*Dictionary())[kAudioSettingsTextProto].asString(), &audio_settings));
+  return audio_settings;
 }
 
 std::string CuttlefishConfig::InstanceSpecific::factory_reset_protected_path() const {
