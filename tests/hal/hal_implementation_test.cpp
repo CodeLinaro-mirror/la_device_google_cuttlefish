@@ -284,6 +284,9 @@ static const std::vector<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.hardware.security.see.storage.", 1, 379940224},
     {"android.hardware.security.see.hwcrypto.", 1, 379940224},
     {"android.hardware.security.see.hdcp.", 1, 379940224},
+
+    // TODO(b/477790952): Temporary to unblock presubmits
+    {"android.hardware.security.timestamp.", 1, 455591722},
 };
 
 // android.hardware.foo.IFoo -> android.hardware.foo.

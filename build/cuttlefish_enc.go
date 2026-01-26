@@ -23,7 +23,11 @@ func (r CvdHostPackageMetadataInfo) Encode(ctx gobtools.EncContext, buf *bytes.B
 		return err
 	}
 
-	if err = gobtools.EncodeInterface(ctx, buf, r.StampMetadata); err != nil {
+	if err = gobtools.EncodeInterface(ctx, buf, r.InputsStamp); err != nil {
+		return err
+	}
+
+	if err = gobtools.EncodeBool(buf, r.IsLinuxX8664); err != nil {
 		return err
 	}
 	return err
@@ -31,7 +35,7 @@ func (r CvdHostPackageMetadataInfo) Encode(ctx gobtools.EncContext, buf *bytes.B
 
 func (r CvdHostPackageMetadataInfo) CustomHash(hasher *proptools.Hasher) error {
 	hasher.WriteString(":cuttlefish.CvdHostPackageMetadataInfo")
-	hasher.WriteInt(2)
+	hasher.WriteInt(3)
 	hasher.WriteString(":cuttlefish.android.Path")
 	val1 := r.TarballMetadata == nil
 	if val1 {
@@ -58,27 +62,33 @@ func (r CvdHostPackageMetadataInfo) CustomHash(hasher *proptools.Hasher) error {
 		}
 	}
 	hasher.WriteString(":cuttlefish.android.Path")
-	val4 := r.StampMetadata == nil
+	val4 := r.InputsStamp == nil
 	if val4 {
 		hasher.WriteByte(0)
 	} else {
-		if v := reflect.ValueOf(r.StampMetadata); v.Kind() == reflect.Ptr {
+		if v := reflect.ValueOf(r.InputsStamp); v.Kind() == reflect.Ptr {
 			if v.IsNil() {
 				panic(fmt.Errorf("nil pointer is not supported in interface"))
 			} else {
-				val5 := r.StampMetadata == nil
+				val5 := r.InputsStamp == nil
 				if val5 {
 					hasher.WriteByte(0)
 				} else {
-					val6 := func(hasher *proptools.Hasher) error { return r.StampMetadata.(proptools.CustomHash).CustomHash(hasher) }
+					val6 := func(hasher *proptools.Hasher) error { return r.InputsStamp.(proptools.CustomHash).CustomHash(hasher) }
 					if err := proptools.HashReference(hasher, uintptr(v.Pointer()), val6); err != nil {
 						return err
 					}
 				}
 			}
 		} else {
-			r.StampMetadata.(proptools.CustomHash).CustomHash(hasher)
+			r.InputsStamp.(proptools.CustomHash).CustomHash(hasher)
 		}
+	}
+	hasher.WriteString(":.bool")
+	if r.IsLinuxX8664 {
+		hasher.WriteByte(1)
+	} else {
+		hasher.WriteByte(0)
 	}
 	return nil
 }
@@ -97,9 +107,14 @@ func (r *CvdHostPackageMetadataInfo) Decode(ctx gobtools.EncContext, buf *bytes.
 	if val4, err := gobtools.DecodeInterface(ctx, buf); err != nil {
 		return err
 	} else if val4 == nil {
-		r.StampMetadata = nil
+		r.InputsStamp = nil
 	} else {
-		r.StampMetadata = val4.(android.Path)
+		r.InputsStamp = val4.(android.Path)
+	}
+
+	err = gobtools.DecodeBool(buf, &r.IsLinuxX8664)
+	if err != nil {
+		return err
 	}
 
 	return err
