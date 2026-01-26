@@ -94,8 +94,6 @@
             <Attributes>
                 <Usage value="AUDIO_USAGE_ASSISTANT"/>
             </Attributes>
-        </AttributesGroup>
-        <AttributesGroup streamType="AUDIO_STREAM_ACCESSIBILITY" volumeGroup="sdsvol">
             <Attributes>
                 <Usage value="AUDIO_USAGE_ASSISTANCE_ACCESSIBILITY"/>
             </Attributes>
@@ -133,6 +131,13 @@
             </Attributes>
             <!-- Default product strategy has empty attributes -->
             <Attributes></Attributes>
+        </AttributesGroup>
+        <!-- Work around to prevent CTSs from changing accessibility usage to default stream-->
+        <AttributesGroup streamType="AUDIO_STREAM_ACCESSIBILITY" volumeGroup="entertainment">
+            <Attributes>
+                <Usage value="AUDIO_USAGE_ASSISTANCE_ACCESSIBILITY"/>
+                <Bundle key="VX_OEM" value="ACCESSIBILITY"/>
+            </Attributes>
         </AttributesGroup>
     </ProductStrategy>
 
