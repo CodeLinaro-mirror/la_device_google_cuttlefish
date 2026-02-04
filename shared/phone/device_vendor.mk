@@ -81,3 +81,9 @@ PRODUCT_VENDOR_PROPERTIES += \
 # Cuttlefish doesn't support protected VMs, run AppSearch in non-protected mode
 PRODUCT_PRODUCT_PROPERTIES += ro.appsearch.feature.enable_isolated_storage=true
 PRODUCT_PRODUCT_PROPERTIES += ro.enable.nonprotected_appsearch_vm=true
+
+# AiSeal feature
+LOCAL_ENABLE_AISEAL ?= true
+ifeq ($(LOCAL_ENABLE_AISEAL),true)
+$(call inherit-product, device/google/cuttlefish/shared/aiseal/device_vendor.mk)
+endif
