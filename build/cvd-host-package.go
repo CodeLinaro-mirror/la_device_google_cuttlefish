@@ -136,17 +136,18 @@ func (c *cvdHostPackage) GenerateAndroidBuildActions(ctx android.ModuleContext) 
 		Text(".")
 	builder.Build("cvd_host_tarball", fmt.Sprintf("Creating tarball for %s", c.BaseModuleName()))
 
-	// The installed inputs to the cvd-host-package are load bearing. They need to be built in order
-	// to run `launch_cvd` locally. This code takes advantage of a very subtle behavior in soong:
-	// installed files also depend on all of the current module's transitive installed files.
-	// So we install an empty file just so all the installed files of our deps get built.
-	stampFile := android.PathForModuleOut(ctx, "inputs.stamp")
-	android.WriteFileRule(ctx, stampFile, "")
-	installedStamp := ctx.InstallFile(android.PathForModuleInstall(ctx), c.BaseModuleName()+".stamp", stampFile)
+	// We install the tarball to out/host/linux-x86 for two reasons:
+	// - acloud looks for it in this location:
+	//   https://cs.android.com/android/platform/superproject/main/+/main:tools/acloud/create/create_common.py;l=156;drc=0096a611441f708ad97a8b9935a7dc9a8d22d2b7
+	//
+	// - The inputs to the tarball need to be copied to their installed locations for `launch_cvd`
+	//   to work. This takes advantage of a very subtle behavior in soong:
+	//   installed files also depend on all of the current module's transitive installed files.
+	//   So installing the tarball also causes all of the tarball's inputs to be installed.
+	installedTarball := ctx.InstallFile(android.PathForModuleInstall(ctx), c.BaseModuleName()+".tar.gz", tarball)
 
 	android.SetProvider(ctx, CvdHostPackageMetadataInfoProvider, CvdHostPackageMetadataInfo{
-		TarballMetadata: tarball,
-		InputsStamp: installedStamp,
+		TarballMetadata: installedTarball,
 		IsLinuxX8664: ctx.Os().Linux() && ctx.Arch().ArchType == android.X86_64,
 	})
 
@@ -156,7 +157,6 @@ func (c *cvdHostPackage) GenerateAndroidBuildActions(ctx android.ModuleContext) 
 // @auto-generate: gob
 type CvdHostPackageMetadataInfo struct {
 	TarballMetadata android.Path
-	InputsStamp android.Path
 	IsLinuxX8664 bool
 }
 var CvdHostPackageMetadataInfoProvider = blueprint.NewProvider[CvdHostPackageMetadataInfo]()
@@ -187,7 +187,7 @@ func (p *cvdHostPackageSingleton) GenerateBuildActions(ctx android.SingletonCont
 	if (board_platform == "vsoc_arm") || (board_platform == "vsoc_arm64") || (board_platform == "vsoc_riscv64") || (board_platform == "vsoc_x86") || (board_platform == "vsoc_x86_64") {
 		for _, info := range cvdHostPackageMetadata {
 			ctx.Phony("hosttar", info.TarballMetadata)
-			ctx.Phony("droidcore", info.InputsStamp)
+			ctx.Phony("droidcore", info.TarballMetadata)
 			// The riscv64 cuttlefish builds can be run on qemu on an x86_64 or arm64 host. Dist both sets of host packages.
 			if len(cvdHostPackageMetadata) > 1 && info.IsLinuxX8664 {
 				ctx.DistForGoalWithFilename("dist_files", info.TarballMetadata, "cvd-host_package-x86_64.tar.gz")
