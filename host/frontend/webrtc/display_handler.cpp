@@ -34,8 +34,10 @@ DisplayHandler::DisplayHandler(
     : composition_manager_(std::move(composition_manager)),
       streamer_(streamer),
       screenshot_handler_(screenshot_handler),
-      screen_connector_(screen_connector),
-      frame_repeater_([this]() { RepeatFramesPeriodically(); }) {
+      screen_connector_(screen_connector)
+  {
+  // Initialize the thread after the other members have been constructed
+  frame_repeater_ = std::thread([this]() { RepeatFramesPeriodically(); });
   screen_connector_.SetCallback(GetScreenConnectorCallback());
   screen_connector_.SetDisplayEventCallback([this](const DisplayEvent& event) {
     std::visit(
