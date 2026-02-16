@@ -22,8 +22,6 @@ cc_test {
     srcs: ["hal_implementation_test.cpp"],
     static_libs: [
         "libaidlmetadata",
-        "libhidl-gen-utils",
-        "libhidlmetadata",
     ],
     require_root: true,
     shared_libs: [
