@@ -22,6 +22,8 @@
 # 32 bit devices
 
 
+DEFAULT_TARGET_KERNEL_USE := 6.12
+
 ifneq (,$(findstring cf_gwear_arm,$(PRODUCT_NAME)))
 TARGET_KERNEL_USE ?= 6.6
 else ifeq (true,$(CLOCKWORK_EMULATOR_PRODUCT))
@@ -35,7 +37,7 @@ else ifneq (,$(filter cf_arm64_desktop,$(PRODUCT_NAME)))
 TARGET_KERNEL_USE ?= $(RELEASE_KERNEL_CUTTLEFISH_ARM64_VERSION)
 TARGET_KERNEL_DIR ?= $(RELEASE_KERNEL_CUTTLEFISH_ARM64_DIR)
 else
-TARGET_KERNEL_USE ?= 6.12
+TARGET_KERNEL_USE ?= $(DEFAULT_TARGET_KERNEL_USE)
 endif
 
 TARGET_KERNEL_ARCH ?= $(TARGET_ARCH)
@@ -496,3 +498,13 @@ endif
 ifneq ($(PRODUCT_BUILD_VBMETA_IMAGE), false)
 AB_OTA_PARTITIONS += vbmeta
 endif
+
+BOARD_CUSTOMIMAGES_PARTITION_LIST += cuttlefish_example_custom
+
+ifeq ($(CLANG_COVERAGE),true)
+  VARIANT_DIR = android_common_cov
+else
+  VARIANT_DIR = android_common
+endif
+
+BOARD_CUTTLEFISH_EXAMPLE_CUSTOM_IMAGE_LIST := $(OUT_DIR)/soong/.intermediates/device/google/cuttlefish/custom_partition/cuttlefish_example_custom/$(VARIANT_DIR)/cuttlefish_example_custom.img

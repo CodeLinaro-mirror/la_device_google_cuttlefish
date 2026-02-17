@@ -74,6 +74,7 @@ cc_binary_host {
         "libbuildversion",
         "libcuttlefish_command_util",
         "libcuttlefish_host_config",
+        "libcuttlefish_guest_config_proto",
         "libcuttlefish_host_config_adb",
         "libcuttlefish_host_config_fastboot",
         "libcuttlefish_metrics",

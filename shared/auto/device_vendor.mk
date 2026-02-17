@@ -133,15 +133,36 @@ include packages/services/Car/car_product/occupant_awareness/OccupantAwareness.m
 BOARD_SEPOLICY_DIRS += packages/services/Car/car_product/occupant_awareness/sepolicy
 
 ENABLE_CARTELEMETRY_SERVICE ?= true
-USE_EMULATED_CAMERA2_HAL ?= false
+USE_EMULATED_CAMERA2_HAL_AUTO ?= false
 
-ifeq ($(USE_EMULATED_CAMERA2_HAL), true)
+$(call add_soong_config_namespace,emulated_camera)
+$(call soong_config_set_bool,emulated_camera,use_emulated_camera2_hal_auto,$(USE_EMULATED_CAMERA2_HAL_AUTO))
+
+# Whether to use the External Camera Provider HAL, which is used to detect V4L2
+# camera devices visible to the guest from the host using virtio-media.
+# Note that the emulated Camera2 HAL takes precedence over this one if both are
+# enabled.
+USE_CAMERA2_V4L2_HAL ?= false
+
+ifeq ($(USE_EMULATED_CAMERA2_HAL_AUTO), true)
 ENABLE_CAMERA_SERVICE := true
 PRODUCT_SOONG_NAMESPACES += hardware/google/camera/devices/EmulatedCamera
 PRODUCT_PACKAGES += com.google.emulated.camera.provider.hal
 
 PRODUCT_COPY_FILES += \
 frameworks/native/data/etc/android.hardware.camera.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.xml
+
+BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy/camera
+
+else ifeq ($(USE_CAMERA2_V4L2_HAL), true)
+ENABLE_CAMERA_SERVICE := true
+
+PRODUCT_PACKAGES += android.hardware.camera.provider-V1-external-service
+BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy/camera
+DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/auto/camera/android.hardware.camera.provider-V1-external-service.xml
+PRODUCT_COPY_FILES += \
+    frameworks/native/data/etc/android.hardware.camera.external.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.external.xml \
+    device/google/cuttlefish/shared/auto/camera/external_camera_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/external_camera_config.xml
 
 else
 # EVS

@@ -47,7 +47,14 @@ cc_library {
         "libfruit",
         "libgflags",
         "libjsoncpp",
+        "libprotobuf-cpp-full",
         "libz",
+    ],
+    static_libs: [
+        "libcuttlefish_guest_config_proto",
+    ],
+    export_static_lib_headers: [
+        "libcuttlefish_guest_config_proto",
     ],
     target: {
         darwin: {

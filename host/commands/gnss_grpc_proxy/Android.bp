@@ -67,6 +67,7 @@ cc_binary_host {
     ],
     static_libs: [
         "libcuttlefish_host_config",
+        "libcuttlefish_guest_config_proto",
         "libcvd_gnss_grpc_proxy",
         "libgflags",
         "libgrpc++_reflection",

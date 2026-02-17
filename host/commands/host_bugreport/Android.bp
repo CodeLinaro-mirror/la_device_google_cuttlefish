@@ -31,6 +31,7 @@ cc_binary {
         "libfruit",
         "libjsoncpp",
         "libziparchive",
+        "libprotobuf-cpp-full",
     ],
     static_libs: [
         "libcuttlefish_host_config",

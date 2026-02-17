@@ -53,6 +53,7 @@ cc_test_host {
         "libbase",
         "libcuttlefish_fs",
         "libcuttlefish_host_config",
+        "libcuttlefish_guest_config_proto",
         "libcuttlefish_host_config_adb",
         "libcuttlefish_utils",
     ],
@@ -61,6 +62,7 @@ cc_test_host {
         "libgflags",
         "libjsoncpp",
         "liblog",
+        "libprotobuf-cpp-full",
     ],
     defaults: ["cuttlefish_host"],
     test_options: {

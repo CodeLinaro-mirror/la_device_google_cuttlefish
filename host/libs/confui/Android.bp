@@ -51,6 +51,7 @@ cc_library {
         "libfruit",
         "libjsoncpp",
         "liblog",
+        "libprotobuf-cpp-full",
     ],
     header_libs: [
         "libcuttlefish_confui_host_headers",
@@ -59,6 +60,7 @@ cc_library {
     static_libs: [
         "libcuttlefish_confui",
         "libcuttlefish_host_config",
+        "libcuttlefish_guest_config_proto",
         "libcuttlefish_input_connector",
         "libcuttlefish_security",
         "libcuttlefish_utils",

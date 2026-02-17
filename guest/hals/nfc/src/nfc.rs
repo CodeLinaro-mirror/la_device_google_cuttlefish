@@ -27,6 +27,7 @@ use async_trait::async_trait;
 use binder::{DeathRecipient, IBinder, Interface, Strong};
 use log::{debug, error, info};
 use nix::sys::termios;
+use pdl_runtime::Packet;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::fs::{File, OpenOptions};
@@ -205,14 +206,14 @@ fn log_packet(packet: &[u8]) -> Result<(), anyhow::Error> {
     if !DBG {
         return Ok(());
     }
-    let header = nci::PacketHeader::parse(&packet[0..3])?;
-    match header.get_mt() {
+    let header = nci::PacketHeader::decode_full(&packet[0..3])?;
+    match header.mt() {
         nci::MessageType::Data => {
-            let packet = nci::DataPacket::parse(packet)?;
+            let packet = nci::DataPacket::decode_full(packet)?;
             debug!("+ Packet: {packet:?}");
         }
         _ => {
-            let packet = nci::ControlPacket::parse(packet)?;
+            let packet = nci::ControlPacket::decode_full(packet)?;
             debug!("+ Packet: {packet:?}");
         }
     }

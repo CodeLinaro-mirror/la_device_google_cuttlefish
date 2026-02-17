@@ -36,6 +36,8 @@
 #include "host/libs/config/config_utils.h"
 #include "host/libs/config/secure_hals.h"
 
+#include "guest_config.pb.h"
+
 namespace Json {
 class Value;
 }
@@ -754,6 +756,7 @@ class CuttlefishConfig {
     int vhal_proxy_server_port() const;
 
     int audio_output_streams_count() const;
+    std::optional<::cuttlefish::config::Audio> audio_settings() const;
 
     bool enable_tap_devices() const;
   };
@@ -992,6 +995,7 @@ class CuttlefishConfig {
     void set_vhal_proxy_server_port(int port);
 
     void set_audio_output_streams_count(int count);
+    void set_audio_settings(const ::cuttlefish::config::Audio& audio_settings);
 
     void set_enable_tap_devices(bool);
 

@@ -172,12 +172,14 @@ cc_binary_host {
             srcs: [
                 "secure_env_not_windows_main.cpp",
             ],
+            static_libs: [
+                "libcuttlefish_guest_config_proto",
+                "libsecure_env_not_windows",
+            ],
             shared_libs: [
                 "libcuttlefish_command_util",
                 "libcuttlefish_run_cvd_proto",
-            ],
-            static_libs: [
-                "libsecure_env_not_windows",
+                "libprotobuf-cpp-full",
             ],
         },
         darwin: {

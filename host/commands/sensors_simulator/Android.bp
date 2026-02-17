@@ -35,9 +35,11 @@ cc_binary_host {
         "libcuttlefish_utils",
         "libjsoncpp",
         "liblog",
+        "libprotobuf-cpp-full",
     ],
     static_libs: [
         "libcuttlefish_host_config",
+        "libcuttlefish_guest_config_proto",
         "libgflags",
     ],
     target: {
