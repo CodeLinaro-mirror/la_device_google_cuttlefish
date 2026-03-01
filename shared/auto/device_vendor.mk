@@ -71,9 +71,9 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/auto/preinstalled-packages-product-car-cuttlefish.xml:$(TARGET_COPY_OUT_PRODUCT)/etc/sysconfig/preinstalled-packages-product-car-cuttlefish.xml
 
 # Install automotive specific battery health HAL
-PRODUCT_PACKAGES += \
+LOCAL_HEALTH_PRODUCT_PACKAGE := \
     android.hardware.health-service.automotive \
-    android.hardware.health-service.automotive_recovery \
+    android.hardware.health-service.automotive_recovery
 
 # Include display settings for an auto device.
 PRODUCT_COPY_FILES += \
