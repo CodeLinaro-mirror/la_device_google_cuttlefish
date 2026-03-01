@@ -153,8 +153,9 @@ PRODUCT_COPY_FILES += \
 frameworks/native/data/etc/android.hardware.camera.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.xml
 
 BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy/camera
+endif
 
-else ifeq ($(USE_CAMERA2_V4L2_HAL), true)
+ifeq ($(USE_CAMERA2_V4L2_HAL), true)
 ENABLE_CAMERA_SERVICE := true
 
 PRODUCT_PACKAGES += android.hardware.camera.provider-V1-external-service
