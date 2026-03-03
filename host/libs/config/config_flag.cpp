@@ -94,8 +94,9 @@ class ConfigReader : public FlagFeature {
     auto path =
         DefaultHostArtifactsPath("etc/cvd_config/cvd_config_" + name + ".json");
     std::string config_contents;
-    CF_EXPECTF(android::base::ReadFileToString(path, &config_contents),
-               "Could not read config file \"{}\"", path);
+    CF_EXPECTF(
+        ReadFileToString(path, &config_contents, /* follow_symlinks */ true),
+        "Could not read config file \"{}\"", path);
     return CF_EXPECTF(ParseJson(config_contents),
                       "Could not parse config file \"{}\"", path);
   }
@@ -216,7 +217,8 @@ class ConfigFlagImpl : public ConfigFlag {
       return {};
     }
     std::string android_info;
-    if (!ReadFileToString(info_path, &android_info)) {
+    if (!ReadFileToString(info_path, &android_info,
+                          /* follow_symlinks */ true)) {
       return {};
     }
     // grab the config with name "config" in android-info.txt,

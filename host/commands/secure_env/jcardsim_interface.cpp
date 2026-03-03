@@ -34,9 +34,9 @@ constexpr uint8_t kKeyMintAppletAid[] = {0xa0, 0x00, 0x00, 0x00, 0x62, 0x03,
 constexpr uint8_t kManageChannel[] = {0x00, 0x70, 0x00, 0x00, 0x01};
 constexpr uint8_t KM3_P1 = 0x60;
 constexpr int32_t kSuccess = 0x9000;
-constexpr std::string kLibJvm = "lib/server/libjvm.so";
-constexpr std::string kDefaultJavaPath = "/usr/lib/jvm/jdk-64";
-constexpr std::string kJcardsimJar = "framework/jcardsim.jar";
+constexpr char kLibJvm[] = "lib/server/libjvm.so";
+constexpr char kDefaultJavaPath[] = "/usr/lib/jvm/jdk-64";
+constexpr char kStrongboxSim[] = "framework/strongbox_simulator.jar";
 
 namespace {
 
@@ -44,7 +44,7 @@ std::string JVMLibrary() {
   return StringFromEnv("JAVA_HOME", kDefaultJavaPath) + "/" + kLibJvm;
 }
 
-std::string JcardSimLib() { return DefaultHostArtifactsPath(kJcardsimJar); }
+std::string JcardSimLib() { return DefaultHostArtifactsPath(kStrongboxSim); }
 
 Result<void> ResponseOK(const std::vector<uint8_t>& response) {
   CF_EXPECT(response.size() >= 2, "Response Size less than 2");
