@@ -140,9 +140,7 @@ $(call soong_config_set_bool,emulated_camera,use_emulated_camera2_hal_auto,$(USE
 
 # Whether to use the External Camera Provider HAL, which is used to detect V4L2
 # camera devices visible to the guest from the host using virtio-media.
-# Note that the emulated Camera2 HAL takes precedence over this one if both are
-# enabled.
-USE_CAMERA2_V4L2_HAL ?= true
+USE_CAMERA2_V4L2_HAL ?= false
 
 ifeq ($(USE_EMULATED_CAMERA2_HAL_AUTO), true)
 ENABLE_CAMERA_SERVICE := true
