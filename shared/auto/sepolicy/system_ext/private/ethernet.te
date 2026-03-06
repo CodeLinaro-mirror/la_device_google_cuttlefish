@@ -29,7 +29,10 @@ allowxperm auto_ethernet_setup self:udp_socket ioctl priv_sock_ioctls;
 allow auto_ethernet_setup system_file:file execute_no_trans;
 
 # Required for `ip route` operations.
-allow auto_ethernet_setup self:netlink_route_socket { bind create getattr nlmsg_write read setopt write };
+allow auto_ethernet_setup self:netlink_route_socket { bind create getattr nlmsg nlmsg_write read setopt write };
+
+# Required starting kernel v6.13 for extended access vector rules.
+allowxperm auto_ethernet_setup self:netlink_route_socket nlmsg { RTM_NEWLINK RTM_GETNSID RTM_NEWNSID };
 
 # Required for `ip netns` and move ethernet interface into a particular network namespace operations.
 allow auto_ethernet_setup self:netlink_route_socket nlmsg_read;
