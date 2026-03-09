@@ -23,10 +23,6 @@ func (r CvdHostPackageMetadataInfo) Encode(ctx gobtools.EncContext, buf *bytes.B
 		return err
 	}
 
-	if err = gobtools.EncodeInterface(ctx, buf, r.InputsStamp); err != nil {
-		return err
-	}
-
 	if err = gobtools.EncodeBool(buf, r.IsLinuxX8664); err != nil {
 		return err
 	}
@@ -35,7 +31,7 @@ func (r CvdHostPackageMetadataInfo) Encode(ctx gobtools.EncContext, buf *bytes.B
 
 func (r CvdHostPackageMetadataInfo) CustomHash(hasher *proptools.Hasher) error {
 	hasher.WriteString(":cuttlefish.CvdHostPackageMetadataInfo")
-	hasher.WriteInt(3)
+	hasher.WriteInt(2)
 	hasher.WriteString(":cuttlefish.android.Path")
 	val1 := r.TarballMetadata == nil
 	if val1 {
@@ -61,29 +57,6 @@ func (r CvdHostPackageMetadataInfo) CustomHash(hasher *proptools.Hasher) error {
 			r.TarballMetadata.(proptools.CustomHash).CustomHash(hasher)
 		}
 	}
-	hasher.WriteString(":cuttlefish.android.Path")
-	val4 := r.InputsStamp == nil
-	if val4 {
-		hasher.WriteByte(0)
-	} else {
-		if v := reflect.ValueOf(r.InputsStamp); v.Kind() == reflect.Ptr {
-			if v.IsNil() {
-				panic(fmt.Errorf("nil pointer is not supported in interface"))
-			} else {
-				val5 := r.InputsStamp == nil
-				if val5 {
-					hasher.WriteByte(0)
-				} else {
-					val6 := func(hasher *proptools.Hasher) error { return r.InputsStamp.(proptools.CustomHash).CustomHash(hasher) }
-					if err := proptools.HashReference(hasher, uintptr(v.Pointer()), val6); err != nil {
-						return err
-					}
-				}
-			}
-		} else {
-			r.InputsStamp.(proptools.CustomHash).CustomHash(hasher)
-		}
-	}
 	hasher.WriteString(":.bool")
 	if r.IsLinuxX8664 {
 		hasher.WriteByte(1)
@@ -102,14 +75,6 @@ func (r *CvdHostPackageMetadataInfo) Decode(ctx gobtools.EncContext, buf *bytes.
 		r.TarballMetadata = nil
 	} else {
 		r.TarballMetadata = val2.(android.Path)
-	}
-
-	if val4, err := gobtools.DecodeInterface(ctx, buf); err != nil {
-		return err
-	} else if val4 == nil {
-		r.InputsStamp = nil
-	} else {
-		r.InputsStamp = val4.(android.Path)
 	}
 
 	err = gobtools.DecodeBool(buf, &r.IsLinuxX8664)

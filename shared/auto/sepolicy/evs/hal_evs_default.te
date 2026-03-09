@@ -9,7 +9,6 @@ allow hal_evs_default gpu_device:dir search;
 # Allow the driver to use SurfaceFlinger
 binder_call(hal_evs_default, surfaceflinger);
 allow hal_evs_default surfaceflinger_service:service_manager find;
-allow hal_evs_default ion_device:chr_file r_file_perms;
 
 # Allow the driver to use automotive display proxy service
 binder_call(hal_evs_default, automotive_display_service_server);
