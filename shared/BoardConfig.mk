@@ -22,7 +22,7 @@
 # 32 bit devices
 
 
-DEFAULT_TARGET_KERNEL_USE := 6.18
+DEFAULT_TARGET_KERNEL_USE := 6.12
 
 ifneq (,$(findstring cf_gwear_arm,$(PRODUCT_NAME)))
 TARGET_KERNEL_USE ?= 6.6

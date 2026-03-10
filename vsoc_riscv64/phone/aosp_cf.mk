@@ -37,7 +37,6 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/aosp_product.mk)
 # All components inherited here go to vendor image
 #
 LOCAL_ENABLE_WIDEVINE := false
-LOCAL_ENABLE_AISEAL := false
 $(call inherit-product, device/google/cuttlefish/shared/phone/device_vendor.mk)
 
 # TODO: Nested virtualization support
