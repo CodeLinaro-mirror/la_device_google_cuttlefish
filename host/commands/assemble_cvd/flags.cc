@@ -682,6 +682,10 @@ Result<void> ParseGuestConfigTextProto(const std::string& guest_config_path,
     guest_config.ti50_emulator = virtualization_config.ti50_emulator_path();
   }
 
+  // Unlike with android-info.txt, this defaults to false if not provided in the
+  // proto file.
+  guest_config.lights_server_enabled = proto_config.has_lights();
+
   return {};
 }
 
@@ -780,6 +784,15 @@ Result<void> ParseGuestConfigTxt(const std::string& guest_config_path,
                                       &guest_config.blank_data_image_mb),
               "Failed to parse value \"" << res_blank_data_image_mb_str
                                          << "\" for blank data image size");
+  }
+
+  if (const Result<std::string> res =
+          GetAndroidInfoConfig(guest_config_path, "lights_server_enabled");
+      res.ok()) {
+    bool value;
+    if (absl::SimpleAtob(*res, &value)) {
+      guest_config.lights_server_enabled = value;
+    }
   }
 
   return {};
@@ -2033,7 +2046,9 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_tombstone_receiver_port(calc_vsock_port(6600));
     instance.set_audiocontrol_server_port(
         9410); /* OK to use the same port number across instances */
-    instance.set_lights_server_port(calc_vsock_port(6900));
+    if (guest_configs[instance_index].lights_server_enabled) {
+      instance.set_lights_server_port(calc_vsock_port(6900));
+    }
 
     // gpu related settings
     const std::string gpu_mode = CF_EXPECT(ConfigureGpuSettings(
