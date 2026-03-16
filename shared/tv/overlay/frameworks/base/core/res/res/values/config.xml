@@ -17,5 +17,4 @@
 <resources>
     <!--  Maximum number of supported users -->
     <integer name="config_multiuserMaximumUsers">4</integer>
-    <bool name="config_supportsMultiWindow">false</bool>
 </resources>
