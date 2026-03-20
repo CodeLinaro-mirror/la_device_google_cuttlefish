@@ -29,7 +29,7 @@ namespace cuttlefish {
 gfxstream::proto::GraphicsAvailability
 GetGraphicsAvailabilityWithSubprocessCheck();
 
-Result<std::string> ConfigureGpuSettings(
+Result<GpuMode> ConfigureGpuSettings(
     const gfxstream::proto::GraphicsAvailability& graphics_availability,
     const std::string& gpu_mode_arg, const std::string& gpu_vhost_user_mode_arg,
     const std::string& gpu_renderer_features_arg,

@@ -68,16 +68,17 @@ class ScreenConnector : public ScreenConnectorInfo,
       LOG(FATAL) << "CuttlefishConfig is not available.";
     }
     auto instance = config->ForDefaultInstance();
-    std::unordered_set<std::string_view> valid_gpu_modes{
-        cuttlefish::kGpuModeCustom,
-        cuttlefish::kGpuModeDrmVirgl,
-        cuttlefish::kGpuModeGfxstream,
-        cuttlefish::kGpuModeGfxstreamGuestAngle,
-        cuttlefish::kGpuModeGfxstreamGuestAngleHostSwiftShader,
-        cuttlefish::kGpuModeGfxstreamGuestAngleHostLavapipe,
-        cuttlefish::kGpuModeGuestSwiftshader};
+    std::unordered_set<GpuMode> valid_gpu_modes{
+        GpuMode::Custom,
+        GpuMode::DrmVirgl,
+        GpuMode::Gfxstream,
+        GpuMode::GfxstreamGuestAngle,
+        GpuMode::GfxstreamGuestAngleHostSwiftshader,
+        GpuMode::GfxstreamGuestAngleHostLavapipe,
+        GpuMode::GuestSwiftshader,
+    };
     if (!Contains(valid_gpu_modes, instance.gpu_mode())) {
-      LOG(FATAL) << "Invalid gpu mode: " << instance.gpu_mode();
+      LOG(FATAL) << "Invalid gpu mode: " << GpuModeString(instance.gpu_mode());
     }
   }
 

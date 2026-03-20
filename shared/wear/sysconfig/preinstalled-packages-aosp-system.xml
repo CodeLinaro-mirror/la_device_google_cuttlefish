@@ -38,6 +38,13 @@
         <install-in user-type="android.os.usertype.profile.MANAGED" />
     </install-in-user-type>
 
+    <!-- Telephony Provider (TelephonyProvider) -->
+    <install-in-user-type package="com.android.providers.telephony">
+        <install-in user-type="SYSTEM" />
+        <install-in user-type="FULL" />
+        <install-in user-type="PROFILE" />
+    </install-in-user-type>
+
     <!-- Download Provider (DownloadProvider) -->
     <install-in-user-type package="com.android.providers.downloads">
         <install-in user-type="SYSTEM" />
