@@ -148,7 +148,8 @@ PRODUCT_SOONG_NAMESPACES += hardware/google/camera/devices/EmulatedCamera
 PRODUCT_PACKAGES += com.google.emulated.camera.provider.hal
 
 PRODUCT_COPY_FILES += \
-frameworks/native/data/etc/android.hardware.camera.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.xml
+frameworks/native/data/etc/android.hardware.camera.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.xml \
+device/google/cuttlefish/shared/auto/camera/ExampleSharedSessionConfiguration.xml:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/shared_session_config.xml
 
 BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy/camera
 endif
@@ -161,7 +162,8 @@ BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy/camera
 DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/auto/camera/android.hardware.camera.provider-V1-external-service.xml
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.camera.external.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.external.xml \
-    device/google/cuttlefish/shared/auto/camera/external_camera_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/external_camera_config.xml
+    device/google/cuttlefish/shared/auto/camera/external_camera_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/external_camera_config.xml \
+    device/google/cuttlefish/shared/auto/camera/ExampleSharedSessionConfiguration.xml:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/shared_session_config.xml
 endif
 
 # EVS

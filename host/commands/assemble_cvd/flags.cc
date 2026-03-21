@@ -64,6 +64,7 @@
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/display.h"
 #include "host/libs/config/esp.h"
+#include "host/libs/config/gpu_mode.h"
 #include "host/libs/config/host_tools_version.h"
 #include "host/libs/config/instance_nums.h"
 #include "host/libs/config/secure_hals.h"
@@ -715,6 +716,19 @@ Result<void> ParseGuestConfigTxt(const std::string& guest_config_path,
                              "gfxstream_gl_program_binary_link_status");
   guest_config.gfxstream_gl_program_binary_link_status_supported =
       res.ok() && res.value() == "supported";
+
+  res = GetAndroidInfoConfig(guest_config_path, "gpu_mode_candidates");
+  if (res.ok()) {
+    const std::string& gpu_mode_candidates_str = res.value();
+    for (const std::string& candidate_str :
+         android::base::Split(gpu_mode_candidates_str, ",")) {
+      const GpuMode candidate =
+          CF_EXPECTF(GpuModeFromString(candidate_str),
+                     "Failed to parse GPU modes from `gpu_mode_candidates`: {}",
+                     gpu_mode_candidates_str);
+      guest_config.gpu_mode_candidates.push_back(candidate);
+    }
+  }
 
   auto res_mouse_support = GetAndroidInfoConfig(guest_config_path, "mouse");
   guest_config.mouse_supported =
@@ -2051,7 +2065,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     }
 
     // gpu related settings
-    const std::string gpu_mode = CF_EXPECT(ConfigureGpuSettings(
+    const GpuMode gpu_mode = CF_EXPECT(ConfigureGpuSettings(
         graphics_availability, gpu_mode_vec[instance_index],
         gpu_vhost_user_mode_vec[instance_index],
         gpu_renderer_features_vec[instance_index],
@@ -2064,8 +2078,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_restart_subprocesses(restart_subprocesses_vec[instance_index]);
     instance.set_gpu_capture_binary(gpu_capture_binary_vec[instance_index]);
     if (!gpu_capture_binary_vec[instance_index].empty()) {
-      CF_EXPECT(gpu_mode == kGpuModeGfxstream ||
-                    gpu_mode == kGpuModeGfxstreamGuestAngle,
+      CF_EXPECT(gpu_mode == GpuMode::Gfxstream ||
+                    gpu_mode == GpuMode::GfxstreamGuestAngle,
                 "GPU capture only supported with --gpu_mode=gfxstream");
 
       // GPU capture runs in a detached mode where the "launcher" process
@@ -2077,15 +2091,15 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_hwcomposer(hwcomposer_vec[instance_index]);
     if (!hwcomposer_vec[instance_index].empty()) {
       if (hwcomposer_vec[instance_index] == kHwComposerRanchu) {
-        CF_EXPECT(gpu_mode != kGpuModeDrmVirgl,
+        CF_EXPECT(gpu_mode != GpuMode::DrmVirgl,
                   "ranchu hwcomposer not supported with --gpu_mode=drm_virgl");
       }
     }
 
     if (hwcomposer_vec[instance_index] == kHwComposerAuto) {
-      if (gpu_mode == kGpuModeDrmVirgl) {
+      if (gpu_mode == GpuMode::DrmVirgl) {
         instance.set_hwcomposer(kHwComposerDrm);
-      } else if (gpu_mode == kGpuModeNone) {
+      } else if (gpu_mode == GpuMode::None) {
         instance.set_hwcomposer(kHwComposerNone);
       } else {
         instance.set_hwcomposer(kHwComposerRanchu);
@@ -2116,7 +2130,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     // auto-enabling sandbox when gpu is enabled (b/152323505).
     default_enable_sandbox += comma_str;
     default_enable_virtiofs += comma_str;
-    if (gpu_mode != kGpuModeGuestSwiftshader) {
+    if (gpu_mode != GpuMode::GuestSwiftshader) {
       // original code, just moved to each instance setting block
       default_enable_sandbox += "false";
       default_enable_virtiofs += "false";
@@ -2524,7 +2538,8 @@ Result<void> SetDefaultFlagsForCrosvm(
 
 void SetDefaultFlagsForGem5() {
   // TODO: Add support for gem5 gpu models
-  SetCommandLineOptionWithMode("gpu_mode", kGpuModeGuestSwiftshader,
+  SetCommandLineOptionWithMode("gpu_mode",
+                               GpuModeString(GpuMode::GuestSwiftshader).c_str(),
                                SET_FLAGS_DEFAULT);
 
   SetCommandLineOptionWithMode("cpus", "1", SET_FLAGS_DEFAULT);

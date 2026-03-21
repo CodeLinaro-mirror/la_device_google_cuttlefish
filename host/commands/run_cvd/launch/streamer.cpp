@@ -30,6 +30,7 @@
 #include "host/commands/run_cvd/reporting.h"
 #include "host/libs/config/command_source.h"
 #include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/config/gpu_mode.h"
 #include "host/libs/config/known_paths.h"
 
 namespace cuttlefish {
@@ -138,7 +139,7 @@ class StreamerSockets : public virtual SetupFeature {
   std::string Name() const override { return "StreamerSockets"; }
   bool Enabled() const override {
     bool is_qemu = config_.vm_manager() == VmmMode::kQemu;
-    bool is_accelerated = instance_.gpu_mode() != kGpuModeGuestSwiftshader;
+    bool is_accelerated = instance_.gpu_mode() != GpuMode::GuestSwiftshader;
     return !(is_qemu && is_accelerated);
   }
 
