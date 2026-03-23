@@ -102,4 +102,5 @@ apex {
         // vintf_fragments
         "android.hardware.security.keymint-service.trusty_system_vm.xml",
     ],
+    init_rc: ["android.hardware.security.keymint-service.cf_trusty_system_vm.rc"],
 }
