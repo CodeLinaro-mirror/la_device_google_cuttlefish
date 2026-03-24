@@ -79,3 +79,5 @@ PRODUCT_IGNORE_ALL_ANDROIDMK := true
 ifeq ($(TARGET_PRODUCT),aosp_cf_x86_64_phone_pgagnostic)
 PRODUCT_SOONG_ONLY := $(RELEASE_SOONG_ONLY_CUTTLEFISH)
 endif
+
+PRODUCT_PRODUCT_PROPERTIES += ro.dalvik.vm.force_cmc_stw_compaction=true

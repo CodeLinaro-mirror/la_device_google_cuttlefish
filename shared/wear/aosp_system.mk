@@ -54,7 +54,23 @@ PRODUCT_SYSTEM_SERVER_APPS += \
     FusedLocation \
     InputDevices \
     KeyChain \
-    Telecom \
+
+ifeq ($(RELEASE_TELECOM_MAINLINE_MODULE),true)
+    PRODUCT_PACKAGES += \
+        TelecomShim \
+
+    PRODUCT_SYSTEM_SERVER_APPS += \
+        TelecomShim \
+
+else
+    PRODUCT_PACKAGES += \
+        Telecom \
+        TelecomUi \
+
+    PRODUCT_SYSTEM_SERVER_APPS += \
+        Telecom \
+
+endif
 
 PRODUCT_SYSTEM_SERVER_JARS += \
     services \

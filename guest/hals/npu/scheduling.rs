@@ -167,7 +167,7 @@ fn debounce_loop(data: Arc<Mutex<SchedulingData>>) -> Result<()> {
                 if let Err(e) = cb.onWorkEnded(&work_end.info, work_end.reason) {
                     warn!("Failed to call onWorkEnded: {e:?}");
                 } else {
-                    info!("onWorkEnded: {:?}", &work_end.info);
+                    info!("onWorkEnded: {:?}, EndReason: {:?}", &work_end.info, &work_end.reason);
                 }
             }
         }
@@ -208,7 +208,10 @@ fn worker_loop(
         info.id = data.next_id();
         info.timestampMs = now_in_millis()?;
 
-        data.debounce_map.insert(info.uid, WorkEndData { info, reason: EndReason::COMPLETED });
+        // This assumes that only one inference for a uid can be processed at a time.
+        let has_more_work = data.queue.iter().any(|req| req.info.uid == info.uid);
+        let reason = if has_more_work { EndReason::PAUSED } else { EndReason::COMPLETED };
+        data.debounce_map.insert(info.uid, WorkEndData { info, reason });
         drop(data);
 
         debounce_handle.thread().unpark();

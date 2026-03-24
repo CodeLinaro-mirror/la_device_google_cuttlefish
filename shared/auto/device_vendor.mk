@@ -71,9 +71,9 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/auto/preinstalled-packages-product-car-cuttlefish.xml:$(TARGET_COPY_OUT_PRODUCT)/etc/sysconfig/preinstalled-packages-product-car-cuttlefish.xml
 
 # Install automotive specific battery health HAL
-PRODUCT_PACKAGES += \
+LOCAL_HEALTH_PRODUCT_PACKAGE := \
     android.hardware.health-service.automotive \
-    android.hardware.health-service.automotive_recovery \
+    android.hardware.health-service.automotive_recovery
 
 # Include display settings for an auto device.
 PRODUCT_COPY_FILES += \
@@ -133,15 +133,13 @@ include packages/services/Car/car_product/occupant_awareness/OccupantAwareness.m
 BOARD_SEPOLICY_DIRS += packages/services/Car/car_product/occupant_awareness/sepolicy
 
 ENABLE_CARTELEMETRY_SERVICE ?= true
-USE_EMULATED_CAMERA2_HAL_AUTO ?= false
+USE_EMULATED_CAMERA2_HAL_AUTO ?= true
 
 $(call add_soong_config_namespace,emulated_camera)
 $(call soong_config_set_bool,emulated_camera,use_emulated_camera2_hal_auto,$(USE_EMULATED_CAMERA2_HAL_AUTO))
 
 # Whether to use the External Camera Provider HAL, which is used to detect V4L2
 # camera devices visible to the guest from the host using virtio-media.
-# Note that the emulated Camera2 HAL takes precedence over this one if both are
-# enabled.
 USE_CAMERA2_V4L2_HAL ?= false
 
 ifeq ($(USE_EMULATED_CAMERA2_HAL_AUTO), true)
@@ -153,8 +151,9 @@ PRODUCT_COPY_FILES += \
 frameworks/native/data/etc/android.hardware.camera.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.xml
 
 BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy/camera
+endif
 
-else ifeq ($(USE_CAMERA2_V4L2_HAL), true)
+ifeq ($(USE_CAMERA2_V4L2_HAL), true)
 ENABLE_CAMERA_SERVICE := true
 
 PRODUCT_PACKAGES += android.hardware.camera.provider-V1-external-service
@@ -163,8 +162,8 @@ DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/auto/camera/android.hard
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.camera.external.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.external.xml \
     device/google/cuttlefish/shared/auto/camera/external_camera_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/external_camera_config.xml
+endif
 
-else
 # EVS
 # By default, we enable EvsManager, a sample EVS app, and a mock EVS HAL implementation.
 # If you want to use your own EVS HAL implementation, please set ENABLE_MOCK_EVSHAL as false
@@ -188,7 +187,6 @@ BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy/evs
 ifeq ($(ENABLE_SAMPLE_EVS_APP), true)
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/auto/evs/evs_app_config.json:$(TARGET_COPY_OUT_VENDOR)/etc/automotive/evs/config_override.json
-endif
 endif
 
 BOARD_IS_AUTOMOTIVE := true
