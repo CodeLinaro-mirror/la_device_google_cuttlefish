@@ -31,7 +31,6 @@
 #include "common/libs/utils/in_sandbox.h"
 #include "common/libs/utils/known_paths.h"
 #include "common/libs/utils/tee_logging.h"
-#include "host/commands/assemble_cvd/camera.h"
 #include "host/commands/assemble_cvd/clean.h"
 #include "host/commands/assemble_cvd/disk_flags.h"
 #include "host/commands/assemble_cvd/display.h"
@@ -578,10 +577,7 @@ fruit::Component<> FlagsComponent() {
       .install(FastbootConfigFragmentComponent)
       .install(GflagsComponent)
       .install(ConfigFlagComponent)
-      .install(CustomActionsComponent)
-      .install(CamerasConfigsComponent)
-      .install(CamerasConfigsFlagComponent)
-      .install(CamerasConfigsFragmentComponent);
+      .install(CustomActionsComponent);
 }
 
 Result<void> CheckNoTTY() {

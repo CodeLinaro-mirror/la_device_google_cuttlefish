@@ -25,7 +25,6 @@ cc_binary_host {
         "boot_config.cc",
         "boot_image_utils.cc",
         "bootconfig_args.cpp",
-        "camera.cpp",
         "clean.cc",
         "disk/factory_reset_protected.cc",
         "disk/gem5_image_unpacker.cpp",

@@ -49,7 +49,7 @@ PRODUCT_PACKAGES += \
 DEVICE_MANIFEST_FILE += \
     device/google/cuttlefish/guest/hals/camera/manifest.xml
 else
-PRODUCT_PACKAGES += \
-    com.google.emulated.camera.provider.hal \
-    com.google.emulated.camera.provider.hal.v4l2
+PRODUCT_PACKAGES += com.google.emulated.camera.provider.hal
+# TODO: Enable back after this change lands.
+# PRODUCT_PACKAGES += com.google.emulated.camera.provider.hal.fastscenecycle
 endif

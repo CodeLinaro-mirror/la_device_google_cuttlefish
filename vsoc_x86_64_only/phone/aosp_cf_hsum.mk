@@ -14,15 +14,14 @@
 # limitations under the License.
 #
 
-# Set as HSUM. Should generally be inherited first as using an HSUM configuration can affect
-# downstream choices (such as ensuring that the HSUM-variants of packages are selected).
-
-$(call inherit-product, build/make/target/product/hsum_common.mk)
-
 # Inherit mostly from aosp_cf_x86_64_phone
 $(call inherit-product, device/google/cuttlefish/vsoc_x86_64_only/phone/aosp_cf.mk)
 PRODUCT_NAME := aosp_cf_x86_64_only_phone_hsum
 PRODUCT_MODEL := Cuttlefish x86_64 phone 64-bit only Headless System User Mode
+
+# Set Headless System User Mode
+PRODUCT_SYSTEM_EXT_PROPERTIES = \
+    ro.fw.mu.headless_system_user=true
 
 # TODO(b/204071542): add package allow-list; something like
 # PRODUCT_COPY_FILES += \
