@@ -38,6 +38,13 @@
         <install-in user-type="android.os.usertype.profile.MANAGED" />
     </install-in-user-type>
 
+    <!-- Key Chain app (KeyChain) -->
+    <install-in-user-type package="com.android.keychain">
+        <install-in user-type="SYSTEM" />
+        <install-in user-type="FULL" />
+        <install-in user-type="PROFILE" />
+    </install-in-user-type>
+
     <!-- Telephony Provider (TelephonyProvider) -->
     <install-in-user-type package="com.android.providers.telephony">
         <install-in user-type="SYSTEM" />
