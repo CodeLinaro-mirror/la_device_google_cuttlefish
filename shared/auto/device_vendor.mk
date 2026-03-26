@@ -198,8 +198,7 @@ DEVICE_PACKAGE_OVERLAYS += device/google/cuttlefish/shared/auto/overlay
 PRODUCT_PACKAGES += CarServiceOverlayCuttleFish
 GOOGLE_CAR_SERVICE_OVERLAY += CarServiceOverlayCuttleFishGoogle
 
-PRODUCT_PACKAGES += ConnectivityOverlayCuttleFish
-GOOGLE_CAR_SERVICE_OVERLAY += ConnectivityOverlayCuttleFishGoogle
+PRODUCT_PACKAGES += ConnectivityOverlayCuttleFish ConnectivityOverlayCuttleFishGoogle
 
 TARGET_BOARD_INFO_FILE ?= device/google/cuttlefish/shared/auto/android-info.txt
 BOARD_BOOTCONFIG += androidboot.hibernation_resume_device=259:3
