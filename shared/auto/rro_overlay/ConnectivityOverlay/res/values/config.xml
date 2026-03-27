@@ -26,6 +26,9 @@
     <string-array translatable="false" name="config_ethernet_interfaces">
         <!-- Not metered, trusted, not vpn, vehicle, not vcn managed, restricted -->
         <item>macsec0;11,14,15,27,28;</item>
+        <!-- In auto CF, eth1 is dedicated for VHAL/MACsec. Restricting eth1 to
+        prevent Android from automatically assigning it an IP via DHCP. -->
+        <item>eth1;11,12,14;;</item>
     </string-array>
     <string translatable="false" name="config_ethernet_iface_regex">(eth|macsec)\\d+</string>
 </resources>
