@@ -832,11 +832,43 @@ int CuttlefishConfig::InstanceSpecific::modem_simulator_sim_type() const {
 }
 
 static constexpr char kGpuMode[] = "gpu_mode";
-std::string CuttlefishConfig::InstanceSpecific::gpu_mode() const {
-  return (*Dictionary())[kGpuMode].asString();
+GpuMode CuttlefishConfig::InstanceSpecific::gpu_mode() const {
+  Result<GpuMode> gpu_mode_result =
+      GpuModeFromString((*Dictionary())[kGpuMode].asString());
+  // The value should be already be validated via `set_gpu_mode` and is only a
+  // string internally.  No need for a `Result` on every getter call
+  CHECK(gpu_mode_result.ok());
+  return *gpu_mode_result;
 }
-void CuttlefishConfig::MutableInstanceSpecific::set_gpu_mode(const std::string& name) {
-  (*Dictionary())[kGpuMode] = name;
+void CuttlefishConfig::MutableInstanceSpecific::set_gpu_mode(GpuMode mode) {
+  (*Dictionary())[kGpuMode] = GpuModeString(mode);
+}
+
+static constexpr char kGpuModeCandidates[] = "gpu_mode_candidates";
+std::vector<GpuMode> CuttlefishConfig::InstanceSpecific::gpu_mode_candidates()
+    const {
+  auto json_candidates = (*Dictionary())[kGpuModeCandidates];
+  CHECK(json_candidates.isArray())
+      << "Unexpected type for 'gpu_mode_candidates'.";
+
+  std::vector<GpuMode> candidates;
+
+  for (auto& json_candidate : json_candidates) {
+    CHECK(json_candidate.isString())
+        << "Unexpected type for 'gpu_mode_candidate'.";
+    Result<GpuMode> candidate = GpuModeFromString(json_candidate.asString());
+    CHECK(candidate.ok());
+    candidates.push_back(*candidate);
+  }
+  return candidates;
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_gpu_mode_candidates(
+    const std::vector<GpuMode>& candidates) {
+  Json::Value json_candidates(Json::arrayValue);
+  for (GpuMode candidate : candidates) {
+    json_candidates.append(Json::Value(GpuModeString(candidate)));
+  }
+  (*Dictionary())[kGpuModeCandidates] = json_candidates;
 }
 
 static constexpr char kGpuAngleFeatureOverridesEnabled[] =

@@ -51,6 +51,7 @@ struct GuestConfig {
   std::optional<bool> enforce_mac80211_hwsim;
   int blank_data_image_mb = 0;
   bool lights_server_enabled = true; // true for backwards compatibility
+  std::vector<GpuMode> gpu_mode_candidates;
 };
 
 Result<std::vector<GuestConfig>> GetGuestConfigAndSetDefaults();
