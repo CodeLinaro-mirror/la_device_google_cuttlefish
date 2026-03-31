@@ -23,6 +23,14 @@
         <install-in user-type="android.os.usertype.profile.MANAGED" />
     </install-in-user-type>
 
+    <!-- Telecom runs as a singleton in system_server but needs to be installed in other users as
+    well so that other users can access to manage calling. -->
+    <install-in-user-type package="com.android.server.telecom">
+        <install-in user-type="SYSTEM" />
+        <install-in user-type="FULL" />
+        <install-in user-type="PROFILE" />
+    </install-in-user-type>
+
     <!-- Managed Provisioning (ManagedProvisioning) -->
     <install-in-user-type package="com.android.managedprovisioning">
         <install-in user-type="SYSTEM" />

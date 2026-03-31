@@ -59,7 +59,8 @@ static Result<ProcStatusUids> OwnerUids(const pid_t pid) {
   std::regex uid_pattern(R"(Uid:\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+))");
   std::string status_path = fmt::format("/proc/{}/status", pid);
   std::string status_content;
-  CF_EXPECT(android::base::ReadFileToString(status_path, &status_content));
+  CF_EXPECT(android::base::ReadFileToString(status_path, &status_content,
+                                            /* follow_symlinks */ true));
   std::vector<uid_t> uids;
   for (const std::string& line :
        android::base::Tokenize(status_content, "\n")) {
@@ -189,7 +190,8 @@ static Result<void> CheckExecNameFromStatus(const std::string& exec_name,
                                             const pid_t pid) {
   std::string status_path = fmt::format("/proc/{}/status", pid);
   std::string status_content;
-  CF_EXPECT(android::base::ReadFileToString(status_path, &status_content));
+  CF_EXPECT(android::base::ReadFileToString(status_path, &status_content,
+                                            /* follow_symlinks */ true));
   bool found = false;
   for (const std::string& line :
        android::base::Tokenize(status_content, "\n")) {
@@ -309,7 +311,8 @@ Result<pid_t> Ppid(const pid_t pid) {
   std::regex uid_pattern(R"(PPid:\s*([0-9]+))");
   std::string status_path = fmt::format("/proc/{}/status", pid);
   std::string status_content;
-  CF_EXPECT(android::base::ReadFileToString(status_path, &status_content));
+  CF_EXPECT(android::base::ReadFileToString(status_path, &status_content,
+                                            /* follow_symlinks */ true));
   for (const auto& line : android::base::Tokenize(status_content, "\n")) {
     std::smatch matches;
     if (!std::regex_match(line, matches, uid_pattern)) {
