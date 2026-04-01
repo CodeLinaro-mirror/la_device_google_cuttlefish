@@ -25,3 +25,9 @@ bluetooth.profile.pbap.server.enabled=true
 
 # Increase timeouts for virtual devices
 bluetooth.hardware.degraded_performance_mode.enabled=true
+
+# Enable software offload
+persist.bluetooth.leaudio_sw_offload=true
+
+# Enable software offload for A2DP
+ro.bluetooth.a2dp_offload.supported=true
