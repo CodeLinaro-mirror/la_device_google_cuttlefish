@@ -1,1 +1,0 @@
-allow cameraserver hal_auto_camera_external_service:service_manager find;
