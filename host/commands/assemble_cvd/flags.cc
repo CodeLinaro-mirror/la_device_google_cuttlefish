@@ -53,6 +53,7 @@
 #include "host/commands/assemble_cvd/alloc.h"
 #include "host/commands/assemble_cvd/boot_config.h"
 #include "host/commands/assemble_cvd/boot_image_utils.h"
+#include "host/commands/assemble_cvd/camera.h"
 #include "host/commands/assemble_cvd/disk_flags.h"
 #include "host/commands/assemble_cvd/display.h"
 #include "host/commands/assemble_cvd/flags_defaults.h"
@@ -2318,6 +2319,12 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     }
 
     instance.set_enable_tap_devices(enable_tap_devices_vec[instance_index]);
+
+    auto cameras_configs_bindings = injector.getMultibindings<CamerasConfigs>();
+    CF_EXPECT_EQ(cameras_configs_bindings.size(), 1,
+                 "Expected a single binding?");
+    auto camera_configs = cameras_configs_bindings[0]->GetConfigs();
+    instance.set_camera_configs(camera_configs);
 
     instance_index++;
   }  // end of num_instances loop

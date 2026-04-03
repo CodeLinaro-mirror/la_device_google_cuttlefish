@@ -20,6 +20,7 @@ package {
 cc_library {
     name: "libcuttlefish_host_config",
     srcs: [
+        "camera.cpp",
         "config_flag.cpp",
         "config_utils.cpp",
         "custom_actions.cpp",
