@@ -29,7 +29,6 @@
 #include <time.h>
 
 #include <android-base/strings.h>
-#include <android-base/logging.h>
 #include <json/json.h>
 
 #include "common/libs/utils/environment.h"
@@ -48,18 +47,6 @@ const char* kInstances = "instances";
 const char* const kVhostUserVsockModeAuto = "auto";
 const char* const kVhostUserVsockModeTrue = "true";
 const char* const kVhostUserVsockModeFalse = "false";
-
-const char* const kGpuModeAuto = "auto";
-const char* const kGpuModeCustom = "custom";
-const char* const kGpuModeDrmVirgl = "drm_virgl";
-const char* const kGpuModeGfxstream = "gfxstream";
-const char* const kGpuModeGfxstreamGuestAngle = "gfxstream_guest_angle";
-const char* const kGpuModeGfxstreamGuestAngleHostSwiftShader =
-    "gfxstream_guest_angle_host_swiftshader";
-const char* const kGpuModeGfxstreamGuestAngleHostLavapipe =
-    "gfxstream_guest_angle_host_lavapipe";
-const char* const kGpuModeGuestSwiftshader = "guest_swiftshader";
-const char* const kGpuModeNone = "none";
 
 const char* const kGpuVhostUserModeAuto = "auto";
 const char* const kGpuVhostUserModeOn = "on";

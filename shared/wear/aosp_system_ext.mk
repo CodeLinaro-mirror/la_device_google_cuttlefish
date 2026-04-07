@@ -19,3 +19,4 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/base_system_ext.mk)
 PRODUCT_PACKAGES += \
     CarrierConfig \
     StatementService \
+    preinstalled-packages-aosp-system-ext.xml \

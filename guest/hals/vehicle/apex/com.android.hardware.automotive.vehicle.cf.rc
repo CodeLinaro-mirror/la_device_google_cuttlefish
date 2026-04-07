@@ -1,5 +1,5 @@
 # This is the regular VHAL using ethernet. It runs in regular build.
-service vendor.vehicle-cf-eth /apex/com.android.hardware.automotive.vehicle/bin/hw/android.hardware.automotive.vehicle@V3-cf-service eth
+service vendor.vehicle-cf-eth /apex/com.android.hardware.automotive.vehicle/bin/hw/android.hardware.automotive.vehicle@V4-cf-service eth
     class early_hal
     user vehicle_network
     group system inet
@@ -10,7 +10,7 @@ service vendor.vehicle-cf-eth /apex/com.android.hardware.automotive.vehicle/bin/
 # up, e.g. in GSI build.
 # Set this as one-shot because this service will do nothing and exit if
 # property:android.car.auto_eth_namespace_setup_complete is 1.
-service vendor.vehicle-cf-vsock /apex/com.android.hardware.automotive.vehicle/bin/hw/android.hardware.automotive.vehicle@V3-cf-service vsock
+service vendor.vehicle-cf-vsock /apex/com.android.hardware.automotive.vehicle/bin/hw/android.hardware.automotive.vehicle@V4-cf-service vsock
     class early_hal
     user vehicle_network
     group system inet

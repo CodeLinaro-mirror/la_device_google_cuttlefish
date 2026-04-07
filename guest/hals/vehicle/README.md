@@ -1,7 +1,7 @@
 # Cuttlefish auto vehicle HAL implementation
 
 This folder contains the cuttlefish auto (cf_auto) vehicle HAL (VHAL)
-implementation. The 'android.hardware.automotive.vehicle@V3-cf-service' target
+implementation. The 'android.hardware.automotive.vehicle@V4-cf-service' target
 is the VHAL binary. 'apex' folder defines the
 [vendor APEX](https://source.android.com/docs/core/ota/vendor-apex) for VHAL.
 

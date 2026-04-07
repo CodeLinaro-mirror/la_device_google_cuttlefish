@@ -1,3 +1,4 @@
+//
 // Copyright (C) 2026 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,15 +17,6 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-prebuilt_etc {
-    name: "preinstalled-packages-aosp-system.xml",
-    sub_dir: "sysconfig",
-    src: "preinstalled-packages-aosp-system.xml",
-}
-
-prebuilt_etc {
-    name: "preinstalled-packages-aosp-system-ext.xml",
-    sub_dir: "sysconfig",
-    system_ext_specific: true,
-    src: "preinstalled-packages-aosp-system-ext.xml",
+runtime_resource_overlay {
+    name: "cuttlefish_wear_overlay_wear_services",
 }
