@@ -139,5 +139,5 @@ fruit::Component<
 McuComponent();
 
 std::optional<MonitorCommand> VhalProxyServer(
-    const CuttlefishConfig&, const CuttlefishConfig::InstanceSpecific&);
+    const CuttlefishConfig::InstanceSpecific&);
 }  // namespace cuttlefish

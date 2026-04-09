@@ -223,15 +223,9 @@ DEFINE_string(netsim_args, CF_DEFAULTS_NETSIM_ARGS,
 DEFINE_bool(enable_automotive_proxy, CF_DEFAULTS_ENABLE_AUTOMOTIVE_PROXY,
             "Enable the automotive proxy service on the host.");
 
-DEFINE_bool(enable_vhal_proxy_server, CF_DEFAULTS_ENABLE_VHAL_PROXY_SERVER,
-            "Enable the vhal proxy service on the host.");
-DEFINE_int32(vhal_proxy_server_instance_num,
-             CF_DEFAULTS_VHAL_PROXY_SERVER_INSTANCE_NUM,
-             "If it is greater than 0, use an existing vhal proxy server "
-             "instance which is "
-             "launched from cuttlefish instance "
-             "with vhal_proxy_server_instance_num. Else, launch a new vhal "
-             "proxy server instance");
+DEFINE_vec(enable_vhal_proxy_server,
+           fmt::format("{}", CF_DEFAULTS_ENABLE_VHAL_PROXY_SERVER),
+           "Enable the vhal proxy service on the host.");
 
 /**
  * crosvm sandbox feature requires /var/empty and seccomp directory
@@ -1198,6 +1192,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       CF_EXPECT(GET_FLAG_STR_VALUE(vhost_user_vsock));
   std::vector<std::string> ril_dns_vec =
       CF_EXPECT(GET_FLAG_STR_VALUE(ril_dns));
+  std::vector<bool> enable_vhal_proxy_server_vec =
+      CF_EXPECT(GET_FLAG_BOOL_VALUE(enable_vhal_proxy_server));
 
   // At this time, FLAGS_enable_sandbox comes from SetDefaultFlagsForCrosvm
   std::vector<bool> enable_sandbox_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(
@@ -1331,16 +1327,6 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   auto straced = android::base::Tokenize(FLAGS_straced_host_executables, ",");
   std::set<std::string> straced_set(straced.begin(), straced.end());
   tmp_config_obj.set_straced_host_executables(straced_set);
-
-  auto vhal_proxy_server_instance_num = *instance_nums.begin() - 1;
-  if (FLAGS_vhal_proxy_server_instance_num > 0) {
-    vhal_proxy_server_instance_num = FLAGS_vhal_proxy_server_instance_num - 1;
-  }
-  tmp_config_obj.set_vhal_proxy_server_port(9300 +
-                                            vhal_proxy_server_instance_num);
-  LOG(DEBUG) << "launch vhal proxy server: "
-             << (FLAGS_enable_vhal_proxy_server &&
-                 vhal_proxy_server_instance_num <= 0);
 
   // Environment specific configs
   // Currently just setting for the default environment
@@ -1610,6 +1596,10 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_adb_ip_and_port("0.0.0.0:" + std::to_string(6520 + num - 1));
     instance.set_fastboot_host_port(const_instance.adb_host_port());
 
+    instance.set_enable_vhal_proxy_server(
+        enable_vhal_proxy_server_vec[instance_index]);
+    instance.set_vhal_proxy_server_port(9300 + num - 1);
+
     std::uint8_t ethernet_mac[6] = {};
     std::uint8_t mobile_mac[6] = {};
     std::uint8_t wifi_mac[6] = {};
@@ -1811,9 +1801,6 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 
     instance.set_start_pica(is_first_instance && !is_uwb_netsim &&
                             FLAGS_pica_instance_num <= 0);
-    instance.set_start_vhal_proxy_server(
-        is_first_instance && FLAGS_enable_vhal_proxy_server &&
-        FLAGS_vhal_proxy_server_instance_num <= 0);
 
     // TODO(b/288987294) Remove this when separating environment is done
     bool instance_start_wmediumd = is_first_instance && start_wmediumd;
