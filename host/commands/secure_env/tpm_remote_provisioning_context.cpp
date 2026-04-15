@@ -142,9 +142,9 @@ TpmRemoteProvisioningContext::GenerateBcc(bool testMode) const {
                std::vector<uint8_t>{0x20} /* keyCertSign = 1<<5 */)
           .canonicalize()
           .encode();
-  auto coseSign1 = constructCoseSign1(privKey,       /* signing key */
-                                      cppbor::Map(), /* extra protected */
-                                      sign1Payload, {} /* AAD */);
+  auto coseSign1 = constructEdDsaCoseSign1(privKey,       /* signing key */
+                                           cppbor::Map(), /* extra protected */
+                                           sign1Payload, {} /* AAD */);
   assert(coseSign1);
 
   return {privKey,
@@ -191,7 +191,8 @@ TpmRemoteProvisioningContext::BuildProtectedDataPayload(
     }
     bcc = std::move(*clone->asArray());
   }
-  auto sign1 = constructCoseSign1(devicePrivKey, macKey, aad);
+  auto sign1 = constructEdDsaCoseSign1(devicePrivKey, {} /* extra protected */,
+                                       macKey, aad);
   if (!sign1) {
     return sign1.moveMessage();
   }
@@ -241,8 +242,9 @@ cppcose::ErrMsgOr<cppbor::Array> TpmRemoteProvisioningContext::BuildCsr(
                         .add(std::move(keysToSign));
   auto signedDataPayload =
       cppbor::Array().add(challenge).add(cppbor::Bstr(csrPayload.encode()));
-  auto signedData = constructCoseSign1(
-      devicePrivKey_, signedDataPayload.encode(), {} /* aad */);
+  auto signedData =
+      constructEdDsaCoseSign1(devicePrivKey_, {} /* extra protected */,
+                              signedDataPayload.encode(), {} /* aad */);
 
   return cppbor::Array()
       .add(1 /* version */)

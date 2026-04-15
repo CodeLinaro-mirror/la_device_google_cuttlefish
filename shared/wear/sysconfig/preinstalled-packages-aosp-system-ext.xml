@@ -21,4 +21,9 @@
         <install-in user-type="FULL" />
         <install-in user-type="PROFILE" />
     </install-in-user-type>
+
+    <!-- App links domain verification agent (StatementService) -->
+    <install-in-user-type package="com.android.statementservice">
+        <install-in user-type="SYSTEM" />
+    </install-in-user-type>
 </config>

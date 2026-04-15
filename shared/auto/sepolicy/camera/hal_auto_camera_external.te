@@ -1,3 +1,0 @@
-type hal_auto_camera_external_service, service_manager_type;
-
-allow hal_camera_default hal_auto_camera_external_service:service_manager add;

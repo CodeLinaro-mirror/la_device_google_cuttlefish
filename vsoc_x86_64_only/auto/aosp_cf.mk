@@ -17,6 +17,11 @@
 #
 # All components inherited here go to system image
 #
+
+# Variable for elsewhere choosing the appropriate products based on HSUM status.
+# Ensure this is set before inheriting car_generic_system.mk (which includes handheld_system.mk)
+PRODUCT_USE_HSUM?=true
+
 $(call inherit-product, $(SRC_TARGET_DIR)/product/core_64_bit_only.mk)
 $(call inherit-product, packages/services/Car/car_product/build/car_generic_system.mk)
 

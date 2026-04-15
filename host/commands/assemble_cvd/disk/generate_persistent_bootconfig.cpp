@@ -20,12 +20,16 @@
 #include <string>
 #include <unordered_set>
 
+#include <absl/strings/str_split.h>
+
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/size_utils.h"
+#include "host/commands/assemble_cvd/boot_image_utils.h"
 #include "host/commands/assemble_cvd/bootconfig_args.h"
+#include "host/commands/assemble_cvd/misc_info.h"
 #include "host/libs/avb/avb.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/data_image.h"
@@ -34,6 +38,24 @@
 #include "host/libs/vm_manager/gem5_manager.h"
 
 namespace cuttlefish {
+
+namespace {
+
+Result<std::map<std::string, std::string>> ReadBuiltInBootconfigArgs(
+    const CuttlefishConfig::InstanceSpecific& instance) {
+  std::string pattern = "/tmp/cfbuiltinbootconfigargs.XXXXXX";
+  auto tmpdir_ptr = mkdtemp(pattern.data());
+  CF_EXPECT(tmpdir_ptr != nullptr);
+  std::string tmpdir = std::string(tmpdir_ptr);
+  CF_EXPECT(
+      UnpackVendorBootImageIfNotUnpacked(instance.vendor_boot_image(), tmpdir),
+      "Failed to extract the vendor boot image");
+  std::string content = ReadFile(tmpdir + "/bootconfig");
+  CF_EXPECT(RecursivelyRemoveDirectory(tmpdir));
+  return CF_EXPECT(ParseMiscInfo(content));
+}
+
+}  // namespace
 
 Result<void> GeneratePersistentBootconfig(
     const CuttlefishConfig& config,
@@ -59,8 +81,10 @@ Result<void> GeneratePersistentBootconfig(
   CF_EXPECT(bootconfig_fd->IsOpen(),
             "Unable to open bootconfig file: " << bootconfig_fd->StrError());
 
-  const auto bootconfig_args =
-      CF_EXPECT(BootconfigArgsFromConfig(config, instance));
+  auto builtin_bootconfig_args = CF_EXPECT(ReadBuiltInBootconfigArgs(instance));
+
+  const auto bootconfig_args = CF_EXPECT(
+      BootconfigArgsFromConfig(config, instance, builtin_bootconfig_args));
   const auto bootconfig =
       CF_EXPECT(BootconfigArgsString(bootconfig_args, "\n")) + "\n";
 
