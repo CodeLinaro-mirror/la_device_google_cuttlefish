@@ -52,6 +52,7 @@ PRODUCT_PACKAGES += \
     cuttlefish_phone_overlay_frameworks_base_core \
     cuttlefish_wear_overlay_frameworks_base_core \
     cuttlefish_wear_overlay_settings_provider \
+    cuttlefish_wear_overlay_wear_services
 
 PRODUCT_PRODUCT_PROPERTIES += \
     config.disable_cameraservice=true

@@ -41,6 +41,7 @@
 #include "common/libs/utils/subprocess.h"
 #include "host/libs/config/command_source.h"
 #include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/config/gpu_mode.h"
 #include "host/libs/vm_manager/vhost_user.h"
 
 // This is the QEMU default, but set it explicitly just in case it
@@ -130,7 +131,7 @@ QemuManager::ConfigureGraphics(
 
   std::unordered_map<std::string, std::string> bootconfig_args;
   auto gpu_mode = instance.gpu_mode();
-  if (gpu_mode == kGpuModeGuestSwiftshader) {
+  if (gpu_mode == GpuMode::GuestSwiftshader) {
     bootconfig_args = {
         {"androidboot.cpuvulkan.version", std::to_string(VK_API_VERSION_1_2)},
         {"androidboot.hardware.gralloc", "minigbm"},
@@ -143,7 +144,7 @@ QemuManager::ConfigureGraphics(
         // OpenGL ES 3.1
         {"androidboot.opengles.version", "196609"},
     };
-  } else if (gpu_mode == kGpuModeDrmVirgl) {
+  } else if (gpu_mode == GpuMode::DrmVirgl) {
     bootconfig_args = {
         {"androidboot.cpuvulkan.version", "0"},
         {"androidboot.hardware.gralloc", "minigbm"},
@@ -157,14 +158,14 @@ QemuManager::ConfigureGraphics(
         // OpenGL ES 3.0
         {"androidboot.opengles.version", "196608"},
     };
-  } else if (gpu_mode == kGpuModeGfxstream ||
-             gpu_mode == kGpuModeGfxstreamGuestAngle ||
-             gpu_mode == kGpuModeGfxstreamGuestAngleHostSwiftShader ||
-             gpu_mode == kGpuModeGfxstreamGuestAngleHostLavapipe) {
+  } else if (gpu_mode == GpuMode::Gfxstream ||
+             gpu_mode == GpuMode::GfxstreamGuestAngle ||
+             gpu_mode == GpuMode::GfxstreamGuestAngleHostLavapipe ||
+             gpu_mode == GpuMode::GfxstreamGuestAngleHostSwiftshader) {
     const bool uses_angle =
-        gpu_mode == kGpuModeGfxstreamGuestAngle ||
-        gpu_mode == kGpuModeGfxstreamGuestAngleHostSwiftShader ||
-        gpu_mode == kGpuModeGfxstreamGuestAngleHostLavapipe;
+        gpu_mode == GpuMode::GfxstreamGuestAngle ||
+        gpu_mode == GpuMode::GfxstreamGuestAngleHostLavapipe ||
+        gpu_mode == GpuMode::GfxstreamGuestAngleHostSwiftshader;
     const std::string gles_impl = uses_angle ? "angle" : "emulation";
     const std::string gltransport =
         (instance.guest_android_version() == "11.0.0") ? "virtio-gpu-pipe"
@@ -181,10 +182,10 @@ QemuManager::ConfigureGraphics(
         {"androidboot.hardware.gltransport", gltransport},
         {"androidboot.opengles.version", "196609"},  // OpenGL ES 3.1
     };
-  } else if (instance.gpu_mode() == kGpuModeNone) {
+  } else if (instance.gpu_mode() == GpuMode::None) {
     return {};
   } else {
-    return CF_ERR("Unhandled GPU mode: " << instance.gpu_mode());
+    return CF_ERR("Unhandled GPU mode: " << GpuModeString(instance.gpu_mode()));
   }
 
   if (!instance.gpu_angle_feature_overrides_enabled().empty()) {
@@ -443,18 +444,18 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
   qemu_cmd.AddParameter("-mon");
   qemu_cmd.AddParameter("chardev=charmonitor,id=monitor,mode=control");
 
-  auto gpu_mode = instance.gpu_mode();
-  if (gpu_mode == kGpuModeDrmVirgl) {
+  const GpuMode gpu_mode = instance.gpu_mode();
+  if (gpu_mode == GpuMode::DrmVirgl) {
     qemu_cmd.AddParameter("-display");
     qemu_cmd.AddParameter("egl-headless");
 
     qemu_cmd.AddParameter("-vnc");
     qemu_cmd.AddParameter("127.0.0.1:", instance.qemu_vnc_server_port());
-  } else if (gpu_mode == kGpuModeGuestSwiftshader ||
-             gpu_mode == kGpuModeGfxstream ||
-             gpu_mode == kGpuModeGfxstreamGuestAngle ||
-             gpu_mode == kGpuModeGfxstreamGuestAngleHostSwiftShader ||
-             gpu_mode == kGpuModeGfxstreamGuestAngleHostLavapipe) {
+  } else if (gpu_mode == GpuMode::GuestSwiftshader ||
+             gpu_mode == GpuMode::Gfxstream ||
+             gpu_mode == GpuMode::GfxstreamGuestAngle ||
+             gpu_mode == GpuMode::GfxstreamGuestAngleHostLavapipe ||
+             gpu_mode == GpuMode::GfxstreamGuestAngleHostSwiftshader) {
     qemu_cmd.AddParameter("-vnc");
     qemu_cmd.AddParameter("127.0.0.1:", instance.qemu_vnc_server_port());
   } else {
@@ -470,22 +471,22 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
     qemu_cmd.AddParameter("-device");
 
     std::string gpu_device;
-    if (gpu_mode == kGpuModeGuestSwiftshader || qemu_version.first < 6) {
+    if (gpu_mode == GpuMode::GuestSwiftshader || qemu_version.first < 6) {
       gpu_device = "virtio-gpu-pci";
-    } else if (gpu_mode == kGpuModeDrmVirgl) {
+    } else if (gpu_mode == GpuMode::DrmVirgl) {
       gpu_device = "virtio-gpu-gl-pci";
-    } else if (gpu_mode == kGpuModeGfxstream) {
+    } else if (gpu_mode == GpuMode::Gfxstream) {
       gpu_device =
           "virtio-gpu-rutabaga,x-gfxstream-gles=on,gfxstream-vulkan=on,"
           "x-gfxstream-composer=on,hostmem=256M";
-    } else if (gpu_mode == kGpuModeGfxstreamGuestAngle ||
-               gpu_mode == kGpuModeGfxstreamGuestAngleHostSwiftShader ||
-               gpu_mode == kGpuModeGfxstreamGuestAngleHostLavapipe) {
+    } else if (gpu_mode == GpuMode::GfxstreamGuestAngle ||
+               gpu_mode == GpuMode::GfxstreamGuestAngleHostLavapipe ||
+               gpu_mode == GpuMode::GfxstreamGuestAngleHostSwiftshader) {
       gpu_device =
           "virtio-gpu-rutabaga,gfxstream-vulkan=on,"
           "x-gfxstream-composer=on,hostmem=256M";
 
-      if (gpu_mode == kGpuModeGfxstreamGuestAngleHostSwiftShader) {
+      if (gpu_mode == GpuMode::GfxstreamGuestAngleHostSwiftshader) {
         // See https://github.com/KhronosGroup/Vulkan-Loader.
         const std::string swiftshader_icd_json =
             HostUsrSharePath("vulkan/icd.d/vk_swiftshader_icd.json");
@@ -493,7 +494,7 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
                                         swiftshader_icd_json);
         qemu_cmd.AddEnvironmentVariable("VK_ICD_FILENAMES",
                                         swiftshader_icd_json);
-      } else if (gpu_mode == kGpuModeGfxstreamGuestAngleHostLavapipe) {
+      } else if (gpu_mode == GpuMode::GfxstreamGuestAngleHostLavapipe) {
         // See https://github.com/KhronosGroup/Vulkan-Loader.
         const std::string lavapipe_icd_json =
             HostUsrSharePath("vulkan/icd.d/vk_lavapipe_icd.cf.json");

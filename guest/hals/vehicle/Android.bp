@@ -17,13 +17,13 @@ package {
 }
 
 vintf_fragment {
-    name: "android.hardware.automotive.vehicle@V3-cf-service.xml",
-    src: "android.hardware.automotive.vehicle@V3-cf-service.xml",
+    name: "android.hardware.automotive.vehicle@V4-cf-service.xml",
+    src: "android.hardware.automotive.vehicle@V4-cf-service.xml",
     vendor: true,
 }
 
 cc_binary {
-    name: "android.hardware.automotive.vehicle@V3-cf-service",
+    name: "android.hardware.automotive.vehicle@V4-cf-service",
     defaults: ["VehicleHalDefaults"],
     vendor: true,
     relative_install_path: "hw",
@@ -49,5 +49,5 @@ cc_binary {
     cflags: [
         "-Wno-unused-parameter",
     ],
-    vintf_fragment_modules: ["android.hardware.automotive.vehicle@V3-cf-service.xml"],
+    vintf_fragment_modules: ["android.hardware.automotive.vehicle@V4-cf-service.xml"],
 }

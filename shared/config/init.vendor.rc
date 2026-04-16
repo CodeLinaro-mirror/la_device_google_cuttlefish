@@ -57,6 +57,7 @@ on fs
 on post-fs-data && property:ro.vendor.disable_rename_eth0=
     # works around framework netiface enumeration issue
     # TODO(b/202731768): Add this `start rename_eth0` command to the init.rc for rename_netiface
+    wait /sys/class/net/eth0
     start rename_eth0
 
 on post-fs-data && property:ro.boot.wifi_impl=virt_wifi
