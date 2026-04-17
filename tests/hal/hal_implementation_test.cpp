@@ -66,6 +66,7 @@ static const std::set<std::string> kAutomotiveOnlyAidl = {
     "android.frameworks.automotive.telemetry",
     "android.hardware.automotive.audiocontrol",
     "android.hardware.automotive.can",
+    "android.hardware.automotive.evs",
     "android.hardware.broadcastradio",
     "android.hardware.automotive.occupant_awareness",
     "android.hardware.automotive.remoteaccess",
@@ -169,7 +170,6 @@ static const std::vector<VersionedAidlPackage> kKnownMissingAidl = {
 
     {"android.automotive.computepipe.registry.", 2, 273549907},
     {"android.automotive.computepipe.runner.", 2, 273549907},
-    {"android.hardware.automotive.evs.", 2, 274162534},
     {"android.hardware.security.see.authmgr.", 1, 379940224},
     // TODO(b/466983803): Remove this after implementing Trusted Hals on CF.
     {"android.hardware.security.see.devicestate.", 1, 466983803},
@@ -203,6 +203,18 @@ enum class DeviceType {
   WATCH,
   PHONE,
 };
+
+// As a part of AAOS-SDV, some of the services are available in cuttlefish
+// target, but they are exposing services with non-standard names.
+// TODO: b/493219046 - Remove this after the AIDLs for SDV has the package name
+// with android prefix.
+static const std::string kAaosSdvAidlPrefix = "google.sdv.";
+
+static bool isSdvInterfaceOnAutomotive(const std::string& name,
+                                       DeviceType deviceType) {
+  return base::StartsWith(name, kAaosSdvAidlPrefix) &&
+         deviceType == DeviceType::AUTOMOTIVE;
+}
 
 static DeviceType getDeviceType() {
   static DeviceType type = DeviceType::UNKNOWN;
@@ -302,11 +314,15 @@ TEST(Hal, AllAidlInterfacesAreInAosp) {
   if (!kAidlUseUnfrozen) {
     GTEST_SKIP() << "Not valid in 'next' configuration";
   }
-  if (getDeviceType() != DeviceType::PHONE) {
-    GTEST_SKIP() << "Test only supports phones right now";
+  if (getDeviceType() != DeviceType::PHONE &&
+      getDeviceType() != DeviceType::AUTOMOTIVE) {
+    GTEST_SKIP() << "Test only supports phones and automotive right now";
   }
   for (const auto& package : allAidlManifestInterfaces()) {
-    EXPECT_TRUE(isAospAidlInterface(package.name))
+    // TODO: b/493219046 - Remove the check for isSdvInterfaceOnAutomotive when
+    // SDV is fully upstreamed.
+    EXPECT_TRUE(isAospAidlInterface(package.name) ||
+                isSdvInterfaceOnAutomotive(package.name, getDeviceType()))
         << "This device should only have AOSP interfaces, not: "
         << package.name;
   }
@@ -316,8 +332,9 @@ TEST(Hal, NoExtensionsOnAospInterfaces) {
   if (!kAidlUseUnfrozen) {
     GTEST_SKIP() << "Not valid in 'next' configuration";
   }
-  if (getDeviceType() != DeviceType::PHONE) {
-    GTEST_SKIP() << "Test only supports phones right now";
+  if (getDeviceType() != DeviceType::PHONE &&
+      getDeviceType() != DeviceType::AUTOMOTIVE) {
+    GTEST_SKIP() << "Test only supports phones and automotive right now";
   }
   for (const auto& package : allAidlManifestInterfaces()) {
     if (isAospAidlInterface(package.name)) {

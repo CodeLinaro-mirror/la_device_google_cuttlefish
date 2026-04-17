@@ -36,7 +36,7 @@ apex {
     updatable: false,
     soc_specific: true,
     binaries: [
-        "android.hardware.automotive.vehicle@V3-cf-service",
+        "android.hardware.automotive.vehicle@V4-cf-service",
     ],
     prebuilts: [
         "com.android.hardware.automotive.vehicle.cf.rc",

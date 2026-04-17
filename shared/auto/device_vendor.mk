@@ -71,9 +71,9 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/auto/preinstalled-packages-product-car-cuttlefish.xml:$(TARGET_COPY_OUT_PRODUCT)/etc/sysconfig/preinstalled-packages-product-car-cuttlefish.xml
 
 # Install automotive specific battery health HAL
-PRODUCT_PACKAGES += \
+LOCAL_HEALTH_PRODUCT_PACKAGE := \
     android.hardware.health-service.automotive \
-    android.hardware.health-service.automotive_recovery \
+    android.hardware.health-service.automotive_recovery
 
 # Include display settings for an auto device.
 PRODUCT_COPY_FILES += \
@@ -140,9 +140,7 @@ $(call soong_config_set_bool,emulated_camera,use_emulated_camera2_hal_auto,$(USE
 
 # Whether to use the External Camera Provider HAL, which is used to detect V4L2
 # camera devices visible to the guest from the host using virtio-media.
-# Note that the emulated Camera2 HAL takes precedence over this one if both are
-# enabled.
-USE_CAMERA2_V4L2_HAL ?= true
+USE_CAMERA2_V4L2_HAL ?= false
 
 ifeq ($(USE_EMULATED_CAMERA2_HAL_AUTO), true)
 ENABLE_CAMERA_SERVICE := true
@@ -150,11 +148,13 @@ PRODUCT_SOONG_NAMESPACES += hardware/google/camera/devices/EmulatedCamera
 PRODUCT_PACKAGES += com.google.emulated.camera.provider.hal
 
 PRODUCT_COPY_FILES += \
-frameworks/native/data/etc/android.hardware.camera.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.xml
+frameworks/native/data/etc/android.hardware.camera.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.xml \
+device/google/cuttlefish/shared/auto/camera/ExampleSharedSessionConfiguration.xml:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/shared_session_config.xml
 
 BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy/camera
+endif
 
-else ifeq ($(USE_CAMERA2_V4L2_HAL), true)
+ifeq ($(USE_CAMERA2_V4L2_HAL), true)
 ENABLE_CAMERA_SERVICE := true
 
 PRODUCT_PACKAGES += android.hardware.camera.provider-V1-external-service
@@ -162,7 +162,8 @@ BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy/camera
 DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/auto/camera/android.hardware.camera.provider-V1-external-service.xml
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.camera.external.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.external.xml \
-    device/google/cuttlefish/shared/auto/camera/external_camera_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/external_camera_config.xml
+    device/google/cuttlefish/shared/auto/camera/external_camera_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/external_camera_config.xml \
+    device/google/cuttlefish/shared/auto/camera/ExampleSharedSessionConfiguration.xml:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/shared_session_config.xml
 endif
 
 # EVS

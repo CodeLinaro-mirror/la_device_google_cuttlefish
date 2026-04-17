@@ -31,6 +31,7 @@ cc_library {
         "esp.cpp",
         "feature.cpp",
         "fetcher_config.cpp",
+        "gpu_mode.cpp",
         "host_tools_version.cpp",
         "instance_nums.cpp",
         "kernel_args.cpp",
