@@ -29,6 +29,7 @@ rust_binary {
         "libbinder_rs",
         "libbinder_tokio_rs",
         "libbluetooth_offload_hal",
+        "libbluetooth_offload_a2dp_hci",
         "libbluetooth_offload_leaudio_hci",
         "libbytes",
         "liblibc",

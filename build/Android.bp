@@ -471,16 +471,16 @@ cvd_host_swiftshader_files = [
 genrule {
     name: "vk_lavapipe_icd.cf.json",
     srcs: [
-        ":mesa_vulkan_xml",
+        ":vk_api_xml",
     ],
     out: [
         "vk_lavapipe_icd.cf.json",
     ],
     tools: [
-        "vk_icd_gen",
+        "vk_icd_py_binary",
     ],
-    cmd: "python3 $(location vk_icd_gen) --api-version 1.4 --xml $(location :mesa_vulkan_xml) " +
-        "--lib-path ../../../../lib64/vulkan.lvp.so --out $(location vk_lavapipe_icd.cf.json)",
+    cmd: "python3 $(location vk_icd_py_binary) --api-version 1.4 --xml $(location :vk_api_xml) " +
+        "--icd-lib-path ../../../../lib64 --icd-filename vulkan.lvp.so --out $(location vk_lavapipe_icd.cf.json)",
 }
 
 prebuilt_usr_share_host {

@@ -204,6 +204,18 @@ enum class DeviceType {
   PHONE,
 };
 
+// As a part of AAOS-SDV, some of the services are available in cuttlefish
+// target, but they are exposing services with non-standard names.
+// TODO: b/493219046 - Remove this after the AIDLs for SDV has the package name
+// with android prefix.
+static const std::string kAaosSdvAidlPrefix = "google.sdv.";
+
+static bool isSdvInterfaceOnAutomotive(const std::string& name,
+                                       DeviceType deviceType) {
+  return base::StartsWith(name, kAaosSdvAidlPrefix) &&
+         deviceType == DeviceType::AUTOMOTIVE;
+}
+
 static DeviceType getDeviceType() {
   static DeviceType type = DeviceType::UNKNOWN;
   if (type != DeviceType::UNKNOWN) {
@@ -307,7 +319,10 @@ TEST(Hal, AllAidlInterfacesAreInAosp) {
     GTEST_SKIP() << "Test only supports phones and automotive right now";
   }
   for (const auto& package : allAidlManifestInterfaces()) {
-    EXPECT_TRUE(isAospAidlInterface(package.name))
+    // TODO: b/493219046 - Remove the check for isSdvInterfaceOnAutomotive when
+    // SDV is fully upstreamed.
+    EXPECT_TRUE(isAospAidlInterface(package.name) ||
+                isSdvInterfaceOnAutomotive(package.name, getDeviceType()))
         << "This device should only have AOSP interfaces, not: "
         << package.name;
   }
