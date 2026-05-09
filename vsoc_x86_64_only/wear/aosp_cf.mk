@@ -28,7 +28,6 @@ PRODUCT_PACKAGES += \
 # Hacks to boot with basic AOSP system apps
 PRODUCT_PACKAGES += \
     Contacts \
-    Launcher3QuickStep \
     Provision \
     Settings \
     StorageManager \
