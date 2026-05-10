@@ -268,12 +268,16 @@ class ConnectionObserverImpl : public webrtc_streaming::ConnectionObserver {
       std::function<bool(const Json::Value &)> lights_message_sender) override {
     LOG(DEBUG) << "Lights channel open";
 
-    lights_subscription_id_ =
-        lights_observer_->Subscribe(lights_message_sender);
+    if (lights_observer_) {
+      lights_subscription_id_ =
+          lights_observer_->Subscribe(lights_message_sender);
+    }
   }
 
   void OnLightsChannelClosed() override {
-    lights_observer_->Unsubscribe(lights_subscription_id_);
+    if (lights_observer_) {
+      lights_observer_->Unsubscribe(lights_subscription_id_);
+    }
   }
 
   void OnLocationChannelOpen(std::function<bool(const uint8_t *, size_t)>

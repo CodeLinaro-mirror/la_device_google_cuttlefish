@@ -21,4 +21,18 @@
         <install-in user-type="FULL" />
         <install-in user-type="PROFILE" />
     </install-in-user-type>
+
+    <!-- App links domain verification agent (StatementService) -->
+    <install-in-user-type package="com.android.statementservice">
+        <install-in user-type="SYSTEM" />
+    </install-in-user-type>
+
+    <!-- Quickstep Launcher (Launcher3QuickStep) -->
+    <install-in-user-type package="com.android.launcher3">
+        <!-- TODO(b/456525459): Unfortunately some things (eg recents) look specifically for
+             launcher in user 0
+        -->
+        <install-in user-type="SYSTEM" />
+        <install-in user-type="FULL" />
+    </install-in-user-type>
 </config>
