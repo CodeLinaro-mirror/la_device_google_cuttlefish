@@ -13,18 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-/*
- * TODO(b/384939093): PLEASE NOTE: The implemented here is in a WIP status.
- *
- * Currently the Composition algorithm implemented in
- * this module has a known limitation.  It uses IPC buffers in such a way where
- * it is currently possible for frames to be simultaneously
- * read and written from the same memory lcoation.  It's therefore possible to
- * have some display artifacts as partial frames are read.  To remedy there is
- * follow-up work (documented in b/384939093) planned.
- */
-
 #include "host/libs/screen_connector/composition_manager.h"
 
 #include <android-base/parseint.h>
