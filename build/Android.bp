@@ -198,6 +198,7 @@ cvd_host_tools = [
     "make_f2fs",
     "mcopy",
     "metrics",
+    "metrics_launcher",
     "mkbootfs",
     "mkbootimg",
     "mkbootimg.py",
