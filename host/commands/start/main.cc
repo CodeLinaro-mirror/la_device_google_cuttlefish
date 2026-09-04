@@ -33,6 +33,7 @@
 #include "host/commands/start/filesystem_explorer.h"
 #include "host/commands/start/flag_forwarder.h"
 #include "host/commands/start/override_bool_arg.h"
+#include "host/commands/start/validate_metrics_confirmation.h"
 #include "host/libs/config/config_utils.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/fetcher_config.h"
@@ -41,7 +42,10 @@
 
 DEFINE_int32(num_instances, CF_DEFAULTS_NUM_INSTANCES,
              "Number of Android guests to launch");
-DEFINE_string(report_anonymous_usage_stats, "", "Deprecated, no usage.");
+DEFINE_string(report_anonymous_usage_stats,
+              CF_DEFAULTS_REPORT_ANONYMOUS_USAGE_STATS,
+              "Report anonymous usage "
+              "statistics for metrics collection and analysis.");
 DEFINE_int32(
     base_instance_num, CF_DEFAULTS_BASE_INSTANCE_NUM,
     "The instance number of the device created. When `-num_instances N`"
@@ -227,6 +231,9 @@ int CvdInternalStartMain(int argc, char** argv) {
 
   setenv("CF_CONSOLE_SEVERITY", FLAGS_verbosity.c_str(), /* replace */ false);
   setenv("CF_FILE_SEVERITY", FLAGS_file_verbosity.c_str(), /* replace */ false);
+
+  auto use_metrics = FLAGS_report_anonymous_usage_stats;
+  FLAGS_report_anonymous_usage_stats = ValidateMetricsConfirmation(use_metrics);
 
   if (FLAGS_track_host_tools_crc) {
     // TODO(b/159068082) Make decisions based on this value in assemble_cvd

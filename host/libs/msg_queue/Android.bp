@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2018 The Android Open Source Project
+// Copyright (C) 2020 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,25 +17,18 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-cc_binary {
-    name: "cvd_internal_stop",
-    symlinks: ["stop_cvd"],
+cc_library {
+    name: "libcuttlefish_msg_queue",
     srcs: [
-        "main.cc",
+        "msg_queue.cc",
     ],
     shared_libs: [
         "libbase",
-        "libcuttlefish_allocd_utils",
-        "libcuttlefish_command_util",
         "libcuttlefish_fs",
         "libcuttlefish_utils",
-        "libjsoncpp",
-        "libprotobuf-cpp-full",
     ],
     static_libs: [
         "libcuttlefish_host_config",
-        "libcuttlefish_metrics",
-        "libcuttlefish_msg_queue",
         "libgflags",
     ],
     target: {
