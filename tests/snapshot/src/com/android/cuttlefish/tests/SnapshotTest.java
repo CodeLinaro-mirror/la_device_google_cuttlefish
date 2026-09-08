@@ -18,13 +18,16 @@ package com.android.cuttlefish.tests;
 import static org.junit.Assert.assertTrue;
 
 import com.android.tradefed.config.Option;
+import com.android.tradefed.device.DeviceNotAvailableException;
 import com.android.tradefed.device.internal.DeviceResetHandler;
 import com.android.tradefed.device.internal.DeviceSnapshotHandler;
 import com.android.tradefed.log.LogUtil.CLog;
 import com.android.tradefed.testtype.DeviceJUnit4ClassRunner;
 import com.android.tradefed.testtype.junit4.BaseHostJUnit4Test;
 
+import org.junit.After;
 import org.junit.Assert;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -48,11 +51,44 @@ public class SnapshotTest extends BaseHostJUnit4Test {
             description = "Number of times to restore the device back to snapshot state.")
     private int mTestCount = 10;
 
+    @Before
+    public void setUp() throws Exception {
+        // Reboot the device to make sure the device isn't dirty from previous tests.
+        // If the device is in an unresponsive state from a previous test, falls back
+        // to a hard reset (powerwash) to recover it.
+        try {
+            getDevice().reboot();
+            // Verify that the device is back online.
+            getDevice().waitForDeviceAvailable();
+        } catch (DeviceNotAvailableException e) {
+            CLog.w("Reboot failed, performing hard reset to recover device: %s", e.getMessage());
+            boolean success =
+                    new DeviceResetHandler(getInvocationContext()).resetDevice(getDevice());
+            assertTrue("Hard reset failed after reboot failure", success);
+        }
+    }
+
+    @After
+    public void tearDown() throws Exception {
+        boolean available = false;
+        try {
+            available = getDevice().waitForDeviceAvailable(5000);
+        } catch (DeviceNotAvailableException e) {
+            CLog.w("Device not available after test: %s", e.getMessage());
+        }
+        if (!available) {
+            CLog.w("Device is not available after test, performing hard reset");
+            try {
+                new DeviceResetHandler(getInvocationContext()).resetDevice(getDevice());
+            } catch (Exception e) {
+                CLog.e("Failed to hard reset device during teardown: %s", e);
+            }
+        }
+    }
+
     @Test
     public void testSnapshot() throws Exception {
         String snapshotId = UUID.randomUUID().toString();
-        // Reboot to make sure device isn't dirty from previous tests.
-        getDevice().reboot();
         // Snapshot the device
         new DeviceSnapshotHandler().snapshotDevice(getDevice(), snapshotId);
 
@@ -97,8 +133,6 @@ public class SnapshotTest extends BaseHostJUnit4Test {
     @Test
     public void testSnapshotReboot() throws Exception {
         String snapshotId = UUID.randomUUID().toString();
-        // Reboot to make sure device isn't dirty from previous tests.
-        getDevice().reboot();
         // Snapshot the device.
         new DeviceSnapshotHandler().snapshotDevice(getDevice(), snapshotId);
         try {
@@ -117,8 +151,6 @@ public class SnapshotTest extends BaseHostJUnit4Test {
     @Test
     public void testSnapshotPowerwash() throws Exception {
         String snapshotId = UUID.randomUUID().toString();
-        // Reboot to make sure device isn't dirty from previous tests.
-        getDevice().reboot();
         // Snapshot the device.
         new DeviceSnapshotHandler().snapshotDevice(getDevice(), snapshotId);
         try {
