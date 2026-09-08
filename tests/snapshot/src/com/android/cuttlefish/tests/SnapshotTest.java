@@ -99,6 +99,8 @@ public class SnapshotTest extends BaseHostJUnit4Test {
 
             // Reboot the device to make sure the file persists.
             getDevice().reboot();
+            // Verify that the device is back online.
+            getDevice().waitForDeviceAvailable();
             File file = getDevice().pullFile(tmpFile);
             if (file == null) {
                 Assert.fail("Setup failed: tmp file failed to persist after device reboot.");
@@ -141,7 +143,7 @@ public class SnapshotTest extends BaseHostJUnit4Test {
             // Reboot the device.
             getDevice().reboot();
             // Verify that the device is back online.
-            getDevice().executeShellCommand("echo test");
+            getDevice().waitForDeviceAvailable();
         } finally {
             new DeviceSnapshotHandler().deleteSnapshot(getDevice(), snapshotId);
         }
@@ -158,12 +160,14 @@ public class SnapshotTest extends BaseHostJUnit4Test {
             new DeviceSnapshotHandler().restoreSnapshotDevice(getDevice(), snapshotId);
             CLog.d("Powerwash attempt after restore");
             long start = System.currentTimeMillis();
-            boolean success = new DeviceResetHandler(getInvocationContext()).resetDevice(getDevice());
-            assertTrue(String.format("Powerwash reset failed during attempt after restore"), success);
+            boolean success =
+                    new DeviceResetHandler(getInvocationContext()).resetDevice(getDevice());
+            assertTrue(
+                    String.format("Powerwash reset failed during attempt after restore"), success);
             long duration = System.currentTimeMillis() - start;
             CLog.d("Powerwash took %dms to finish", duration);
             // Verify that the device is back online.
-            getDevice().executeShellCommand("echo test");
+            getDevice().waitForDeviceAvailable();
         } finally {
             new DeviceSnapshotHandler().deleteSnapshot(getDevice(), snapshotId);
         }
@@ -179,15 +183,15 @@ public class SnapshotTest extends BaseHostJUnit4Test {
         assertTrue(String.format("Powerwash reset failed during attempt before snapshot"), success);
         long duration = System.currentTimeMillis() - start;
         CLog.d("Powerwash took %dms to finish", duration);
-        // Verify that the device is back online.
-        getDevice().executeShellCommand("echo test");
-        // Snapshot the device>
+        // Verify that the device is back online and fully booted before snapshot.
+        getDevice().waitForDeviceAvailable();
+        // Snapshot the device
         new DeviceSnapshotHandler().snapshotDevice(getDevice(), snapshotId);
         try {
             // Restore the device.
             new DeviceSnapshotHandler().restoreSnapshotDevice(getDevice(), snapshotId);
             // Verify that the device is back online.
-            getDevice().executeShellCommand("echo test");
+            getDevice().waitForDeviceAvailable();
         } finally {
             new DeviceSnapshotHandler().deleteSnapshot(getDevice(), snapshotId);
         }
