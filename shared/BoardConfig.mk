@@ -391,8 +391,9 @@ BOARD_BUILD_SUPER_IMAGE_BY_DEFAULT := true
 BOARD_SUPER_IMAGE_IN_UPDATE_PACKAGE := true
 TARGET_RELEASETOOLS_EXTENSIONS := device/google/cuttlefish/shared
 
-# Generate a partial ota update package for partitions in vbmeta_system
-BOARD_PARTIAL_OTA_UPDATE_PARTITIONS_LIST := $(BOARD_AVB_VBMETA_SYSTEM) vbmeta_system init_boot
+# Generate a partial ota update package for partitions in vbmeta_system.
+# TODO(b/559321113): Exclude pvmfw until fetch_cvd extracts it during mixed instance provisioning.
+BOARD_PARTIAL_OTA_UPDATE_PARTITIONS_LIST := $(filter-out pvmfw,$(BOARD_AVB_VBMETA_SYSTEM)) vbmeta_system init_boot
 
 BOARD_BOOTLOADER_IN_UPDATE_PACKAGE := true
 BOARD_RAMDISK_USE_LZ4 := true
