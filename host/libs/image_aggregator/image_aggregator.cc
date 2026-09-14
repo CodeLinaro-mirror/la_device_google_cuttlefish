@@ -593,7 +593,12 @@ void CreateOrUpdateCompositeDisk(std::vector<MultipleImagePartition> partitions,
   if (composite_res.has_value() &&
       CompositeDiskEquals(composite_proto, composite_res.value())) {
     // The existing composite disk matches the given partitions, no need to
-    // regenerate
+    // regenerate, but update its modification time so it is not older than
+    // any recently updated component images.
+    if (utimensat(AT_FDCWD, output_composite_path.c_str(), nullptr, 0) != 0) {
+      PLOG(WARNING) << "Failed to update modification time for \""
+                    << output_composite_path << "\"";
+    }
     return;
   }
 
