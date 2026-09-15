@@ -154,3 +154,10 @@ on early-init
 
 on early-init && property:ro.boot.enable_bootanimation=0
     setprop debug.sf.nobootanimation 1
+
+# Codec2 linear buffer allocator selection:
+# Setting bit 19 (1 << C2PlatformAllocatorStore::BLOB = 0x80000) selects C2AllocatorBlob.
+# Poolmask 851968 (0xd0000) = ION (bit 16) | BUFFERQUEUE (bit 18) | BLOB (bit 19)
+on early-init && property:ro.boot.c2_use_blob_allocator=true
+    setprop debug.stagefright.c2-poolmask 851968
+
