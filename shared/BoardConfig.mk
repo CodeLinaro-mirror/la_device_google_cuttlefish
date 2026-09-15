@@ -25,7 +25,7 @@
 DEFAULT_TARGET_KERNEL_USE := 6.18
 
 ifneq (,$(findstring cf_gwear_arm,$(PRODUCT_NAME)))
-TARGET_KERNEL_USE ?= 6.6
+TARGET_KERNEL_USE ?= 6.12
 else ifneq (,$(findstring x86_tv,$(PRODUCT_NAME)))
 TARGET_KERNEL_USE ?= 6.1
 else ifneq (,$(filter cf_x86_64_desktop,$(PRODUCT_NAME)))
