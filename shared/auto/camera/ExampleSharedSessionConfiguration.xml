@@ -33,12 +33,16 @@
             <!-- mirrorMode: MIRROR_MODE_AUTO -->
             <mirrorMode>0</mirrorMode>
             <useReadoutTimestamp>0</useReadoutTimestamp>
-            <!-- format: HAL_PIXEL_FORMAT_RGBA_8888 -->
-            <format>1</format>
+            <!-- format: HAL_PIXEL_FORMAT_YCBCR_420_888 -->
+            <format>35</format>
             <!-- usage: AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN -->
             <usage>3</usage>
-            <!-- dataSpace: HAL_DATASPACE_UNKNOWN -->
-            <dataSpace>0</dataSpace>
+            <!-- dataSpace: HAL_DATASPACE_V0_JFIF. The framework maps every
+                 YUV_420_888 surface to this dataspace (see
+                 mapPublicFormatToHalDataspace()), so the shared stream must
+                 declare it too, otherwise OutputStreamInfo::operator== will
+                 never match and getSharedStreamIds() returns NAME_NOT_FOUND. -->
+            <dataSpace>0x8C20000</dataSpace>
         </OutputConfiguration>
         <!-- Second OutputConfiguration: All optional fields are provided -->
         <OutputConfiguration>
@@ -78,12 +82,16 @@
             <!-- mirrorMode: MIRROR_MODE_AUTO -->
             <mirrorMode>0</mirrorMode>
             <useReadoutTimestamp>0</useReadoutTimestamp>
-            <!-- format: HAL_PIXEL_FORMAT_RGBA_8888 -->
-            <format>1</format>
+            <!-- format: HAL_PIXEL_FORMAT_YCBCR_420_888 -->
+            <format>35</format>
             <!-- usage: AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN -->
             <usage>3</usage>
-            <!-- dataSpace: HAL_DATASPACE_UNKNOWN -->
-            <dataSpace>0</dataSpace>
+            <!-- dataSpace: HAL_DATASPACE_V0_JFIF. The framework maps every
+                 YUV_420_888 surface to this dataspace (see
+                 mapPublicFormatToHalDataspace()), so the shared stream must
+                 declare it too, otherwise OutputStreamInfo::operator== will
+                 never match and getSharedStreamIds() returns NAME_NOT_FOUND. -->
+            <dataSpace>0x8C20000</dataSpace>
         </OutputConfiguration>
         <!-- Second OutputConfiguration: All optional fields are provided -->
         <OutputConfiguration>
@@ -123,12 +131,16 @@
             <!-- mirrorMode: MIRROR_MODE_AUTO -->
             <mirrorMode>0</mirrorMode>
             <useReadoutTimestamp>0</useReadoutTimestamp>
-            <!-- format: HAL_PIXEL_FORMAT_RGBA_8888 -->
-            <format>1</format>
+            <!-- format: HAL_PIXEL_FORMAT_YCBCR_420_888 -->
+            <format>35</format>
             <!-- usage: AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN -->
             <usage>3</usage>
-            <!-- dataSpace: HAL_DATASPACE_UNKNOWN -->
-            <dataSpace>0</dataSpace>
+            <!-- dataSpace: HAL_DATASPACE_V0_JFIF. The framework maps every
+                 YUV_420_888 surface to this dataspace (see
+                 mapPublicFormatToHalDataspace()), so the shared stream must
+                 declare it too, otherwise OutputStreamInfo::operator== will
+                 never match and getSharedStreamIds() returns NAME_NOT_FOUND. -->
+            <dataSpace>0x8C20000</dataSpace>
         </OutputConfiguration>
         <!-- Second OutputConfiguration: All optional fields are provided -->
         <OutputConfiguration>
@@ -168,12 +180,16 @@
             <!-- mirrorMode: MIRROR_MODE_AUTO -->
             <mirrorMode>0</mirrorMode>
             <useReadoutTimestamp>0</useReadoutTimestamp>
-            <!-- format: HAL_PIXEL_FORMAT_RGBA_8888 -->
-            <format>1</format>
+            <!-- format: HAL_PIXEL_FORMAT_YCBCR_420_888 -->
+            <format>35</format>
             <!-- usage: AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN -->
             <usage>3</usage>
-            <!-- dataSpace: HAL_DATASPACE_UNKNOWN -->
-            <dataSpace>0</dataSpace>
+            <!-- dataSpace: HAL_DATASPACE_V0_JFIF. The framework maps every
+                 YUV_420_888 surface to this dataspace (see
+                 mapPublicFormatToHalDataspace()), so the shared stream must
+                 declare it too, otherwise OutputStreamInfo::operator== will
+                 never match and getSharedStreamIds() returns NAME_NOT_FOUND. -->
+            <dataSpace>0x8C20000</dataSpace>
         </OutputConfiguration>
         <!-- Second OutputConfiguration: All optional fields are provided -->
         <OutputConfiguration>
