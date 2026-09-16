@@ -28,6 +28,8 @@ ifneq (,$(findstring cf_gwear_arm,$(PRODUCT_NAME)))
 TARGET_KERNEL_USE ?= 6.12
 else ifneq (,$(findstring x86_tv,$(PRODUCT_NAME)))
 TARGET_KERNEL_USE ?= 6.1
+else ifneq (,$(findstring cf_arm_tv_gtv,$(PRODUCT_NAME)))
+TARGET_KERNEL_USE ?= 6.12
 else ifneq (,$(filter cf_x86_64_desktop,$(PRODUCT_NAME)))
 TARGET_KERNEL_USE ?= $(RELEASE_KERNEL_CUTTLEFISH_X86_64_VERSION)
 TARGET_KERNEL_DIR ?= $(RELEASE_KERNEL_CUTTLEFISH_X86_64_DIR)
