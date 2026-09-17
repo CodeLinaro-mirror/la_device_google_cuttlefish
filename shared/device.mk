@@ -576,6 +576,9 @@ PRODUCT_VENDOR_PROPERTIES += \
 PRODUCT_VENDOR_PROPERTIES += \
     ro.surface_flinger.supports_background_blur=1
 
+PRODUCT_VENDOR_PROPERTIES += \
+    ro.surface_flinger.renderengine_graphite_vulkan=true
+
 # Set Game Default Frame Rate
 # See b/286084594
 PRODUCT_DEFAULT_PROPERTY_OVERRIDES += \
