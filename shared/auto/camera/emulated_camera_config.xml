@@ -6,13 +6,13 @@
             <id>0</id>
         </ignore>
     </Provider>
-    <!-- Device configuration tailored for emulated_camera_mplane (640x480 @ 30fps) -->
+    <!-- Device configuration tailored for emulated_camera_mplane (up to 1280x720 @ 30fps) -->
     <Device>
-        <!-- Max JPEG buffer size in bytes -->
-        <MaxJpegBufferSize bytes="460800"/> <!-- ~450KB (~= 640x480 YUV420M) -->
+        <!-- Max JPEG buffer size in bytes (3MB for 720p snapshots) -->
+        <MaxJpegBufferSize bytes="3145728"/>
 
         <!-- Size of v4l2 buffer queue when streaming >= 30fps -->
-        <NumVideoBuffers count="4"/>
+        <NumVideoBuffers count="8"/>
         <!-- Size of v4l2 buffer queue when still/streaming < 30fps -->
         <NumStillBuffers count="2"/>
 
@@ -20,9 +20,9 @@
         <!-- Any image size smaller than or equal to the size listed in the row -->
         <!-- will report fps up to the fpsBound value. -->
         <FpsList>
-            <!-- Tailored to match emulated_camera_mplane discrete format (640x480@30fps) -->
-            <Limit width="640" height="480" fpsBound="30.0"/>
-            <!-- Sizes larger than the last entry (640x480) will not be advertised -->
+            <!-- Tailored to match emulated_camera_mplane discrete formats up to 1280x720@30fps -->
+            <Limit width="1280" height="720" fpsBound="30.0"/>
+            <!-- Sizes larger than the last entry (1280x720) will not be advertised -->
         </FpsList>
     </Device>
 </ExternalCamera>

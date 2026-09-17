@@ -383,27 +383,32 @@ Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
     // take the max value of modem_simulator_instance_number in each instance
     // which is used for preserving/deleting iccprofile_for_simX.xml files
     int modem_simulator_count = 0;
-
-    bool creating_os_disk = false;
-    // if any device needs to rebuild its composite disk,
-    // then don't preserve any files and delete everything.
     for (const auto& instance : config.Instances()) {
-      auto os_builder = OsCompositeDiskBuilder(config, instance);
-      creating_os_disk |= CF_EXPECT(os_builder.WillRebuildCompositeDisk());
-      if (instance.ap_boot_flow() != CuttlefishConfig::InstanceSpecific::APBootFlow::None) {
-        auto ap_builder = ApCompositeDiskBuilder(config, instance);
-        creating_os_disk |= CF_EXPECT(ap_builder.WillRebuildCompositeDisk());
-      }
       if (instance.modem_simulator_instance_number() > modem_simulator_count) {
         modem_simulator_count = instance.modem_simulator_instance_number();
       }
     }
-    // TODO(schuffelen): Add smarter decision for when to delete runtime files.
-    // Files like NVChip are tightly bound to Android keymint and should be
-    // deleted when userdata is reset. However if the user has ever run without
-    // the overlay, then we want to keep this until userdata.img was externally
-    // replaced.
-    creating_os_disk &= FLAGS_use_overlay;
+
+    bool creating_os_disk = false;
+    if (snapshot_path.empty()) {
+      // if any device needs to rebuild its composite disk,
+      // then don't preserve any files and delete everything.
+      for (const auto& instance : config.Instances()) {
+        auto os_builder = OsCompositeDiskBuilder(config, instance);
+        creating_os_disk |= CF_EXPECT(os_builder.WillRebuildCompositeDisk());
+        if (instance.ap_boot_flow() !=
+            CuttlefishConfig::InstanceSpecific::APBootFlow::None) {
+          auto ap_builder = ApCompositeDiskBuilder(config, instance);
+          creating_os_disk |= CF_EXPECT(ap_builder.WillRebuildCompositeDisk());
+        }
+      }
+      // TODO(schuffelen): Add smarter decision for when to delete runtime
+      // files. Files like NVChip are tightly bound to Android keymint and
+      // should be deleted when userdata is reset. However if the user has ever
+      // run without the overlay, then we want to keep this until userdata.img
+      // was externally replaced.
+      creating_os_disk &= FLAGS_use_overlay;
+    }
 
     std::set<std::string> preserving =
         CF_EXPECT(PreservingOnResume(creating_os_disk, modem_simulator_count),

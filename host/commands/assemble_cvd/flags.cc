@@ -376,7 +376,10 @@ DEFINE_int32(num_instances, CF_DEFAULTS_NUM_INSTANCES,
 DEFINE_string(instance_nums, CF_DEFAULTS_INSTANCE_NUMS,
               "A comma-separated list of instance numbers "
               "to use. Mutually exclusive with base_instance_num.");
-DEFINE_string(report_anonymous_usage_stats, "", "Deprecated, no usage.");
+DEFINE_string(report_anonymous_usage_stats,
+              CF_DEFAULTS_REPORT_ANONYMOUS_USAGE_STATS,
+              "Report anonymous usage "
+              "statistics for metrics collection and analysis.");
 DEFINE_vec(ril_dns, CF_DEFAULTS_RIL_DNS,
               "DNS address of mobile network (RIL)");
 DEFINE_vec(kgdb, fmt::format("{}", CF_DEFAULTS_KGDB),
@@ -1422,6 +1425,9 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   tmp_config_obj.set_sig_server_address(FLAGS_webrtc_sig_server_addr);
   tmp_config_obj.set_sig_server_path(FLAGS_webrtc_sig_server_path);
   tmp_config_obj.set_sig_server_strict(FLAGS_verify_sig_server_certificate);
+
+  tmp_config_obj.set_enable_metrics(FLAGS_report_anonymous_usage_stats);
+  // TODO(moelsherif): Handle this flag (set_metrics_binary) in the future
 
   std::optional<bool> guest_config_mac80211_hwsim =
       guest_configs[0].enforce_mac80211_hwsim;

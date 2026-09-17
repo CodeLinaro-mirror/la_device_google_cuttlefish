@@ -30,4 +30,5 @@ system_dlkm /system_dlkm ext4 noatime,ro,errors=panic wait,logical,first_stage_m
 /dev/block/zram0 none swap defaults zramsize=75%
 /dev/block/vdc1 /sdcard vfat defaults recoveryonly
 /devices/*/block/vdc auto auto defaults voldmanaged=sdcard1:auto,encryptable=userdata
+/devices/*/usb* auto auto defaults voldmanaged=usb:auto,encryptable=userdata
 shared /mnt/vendor/shared virtiofs nosuid,nodev,noatime nofail

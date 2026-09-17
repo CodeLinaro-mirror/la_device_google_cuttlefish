@@ -25,9 +25,11 @@
 DEFAULT_TARGET_KERNEL_USE := 6.18
 
 ifneq (,$(findstring cf_gwear_arm,$(PRODUCT_NAME)))
-TARGET_KERNEL_USE ?= 6.6
+TARGET_KERNEL_USE ?= 6.12
 else ifneq (,$(findstring x86_tv,$(PRODUCT_NAME)))
 TARGET_KERNEL_USE ?= 6.1
+else ifneq (,$(findstring cf_arm_tv_gtv,$(PRODUCT_NAME)))
+TARGET_KERNEL_USE ?= 6.12
 else ifneq (,$(filter cf_x86_64_desktop,$(PRODUCT_NAME)))
 TARGET_KERNEL_USE ?= $(RELEASE_KERNEL_CUTTLEFISH_X86_64_VERSION)
 TARGET_KERNEL_DIR ?= $(RELEASE_KERNEL_CUTTLEFISH_X86_64_DIR)
@@ -268,10 +270,7 @@ BOARD_AVB_VBMETA_SYSTEM_DLKM_ROLLBACK_INDEX_LOCATION := 5
 
 ifeq ($(PRODUCT_BUILD_PVMFW_IMAGE),true)
 BOARD_PVMFWIMAGE_PARTITION_SIZE := 1048576
-BOARD_AVB_PVMFW_KEY_PATH := external/avb/test/data/testkey_rsa4096.pem
-BOARD_AVB_PVMFW_ALGORITHM := SHA256_RSA4096
-BOARD_AVB_PVMFW_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
-BOARD_AVB_PVMFW_ROLLBACK_INDEX_LOCATION := 6
+BOARD_AVB_VBMETA_SYSTEM += pvmfw
 endif
 
 
@@ -394,8 +393,9 @@ BOARD_BUILD_SUPER_IMAGE_BY_DEFAULT := true
 BOARD_SUPER_IMAGE_IN_UPDATE_PACKAGE := true
 TARGET_RELEASETOOLS_EXTENSIONS := device/google/cuttlefish/shared
 
-# Generate a partial ota update package for partitions in vbmeta_system
-BOARD_PARTIAL_OTA_UPDATE_PARTITIONS_LIST := $(BOARD_AVB_VBMETA_SYSTEM) vbmeta_system init_boot
+# Generate a partial ota update package for partitions in vbmeta_system.
+# TODO(b/559321113): Exclude pvmfw until fetch_cvd extracts it during mixed instance provisioning.
+BOARD_PARTIAL_OTA_UPDATE_PARTITIONS_LIST := $(filter-out pvmfw,$(BOARD_AVB_VBMETA_SYSTEM)) vbmeta_system init_boot
 
 BOARD_BOOTLOADER_IN_UPDATE_PACKAGE := true
 BOARD_RAMDISK_USE_LZ4 := true
@@ -511,10 +511,9 @@ ifneq ($(PRODUCT_BUILD_VBMETA_IMAGE), false)
 AB_OTA_PARTITIONS += vbmeta
 endif
 
-# TODO(b/536088107): Enable PVMFW OTA once CF host package is picking it by creating partition.
-# ifeq ($(PRODUCT_BUILD_PVMFW_IMAGE),true)
-# AB_OTA_PARTITIONS += pvmfw
-# endif
+ifeq ($(PRODUCT_BUILD_PVMFW_IMAGE),true)
+AB_OTA_PARTITIONS += pvmfw
+endif
 
 BOARD_CUSTOMIMAGES_PARTITION_LIST += cuttlefish_example_custom
 

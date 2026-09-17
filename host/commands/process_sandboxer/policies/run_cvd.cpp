@@ -56,6 +56,7 @@ sandbox2::PolicyBuilder RunCvdPolicy(const HostInfo& host) {
       .AddFileAt(sandboxer_proxy, host.HostToolExe("kernel_log_monitor"))
       .AddFileAt(sandboxer_proxy, host.HostToolExe("log_tee"))
       .AddFileAt(sandboxer_proxy, host.HostToolExe("logcat_receiver"))
+      .AddFileAt(sandboxer_proxy, host.HostToolExe("metrics"))
       .AddFileAt(sandboxer_proxy, host.HostToolExe("modem_simulator"))
       .AddFileAt(sandboxer_proxy, host.HostToolExe("netsimd"))
       .AddFileAt(sandboxer_proxy, host.HostToolExe("openwrt_control_server"))

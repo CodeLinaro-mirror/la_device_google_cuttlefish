@@ -48,6 +48,7 @@
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/fastboot/fastboot.h"
 #include "host/libs/config/inject.h"
+#include "host/libs/metrics/metrics_receiver.h"
 #include "host/libs/process_monitor/process_monitor.h"
 #include "host/libs/vm_manager/vm_manager.h"
 
@@ -165,6 +166,7 @@ fruit::Component<> runCvdComponent(
       .install(AutoCmd<LogcatReceiver>::Component)
       .install(AutoDiagnostic<LogcatInfo>::Component)
       .install(KernelLogMonitorComponent)
+      .install(AutoCmd<MetricsService>::Component)
       .install(OpenwrtControlServerComponent)
       .install(AutoCmd<Pica>::Component)
       .install(RootCanalComponent)
@@ -234,6 +236,10 @@ Result<void> RunCvdMain(int argc, char** argv) {
 
   for (auto& late_injected : injector.getMultibindings<LateInjected>()) {
     CF_EXPECT(late_injected->LateInject(injector));
+  }
+
+  if (config->enable_metrics() == cuttlefish::CuttlefishConfig::Answer::kYes) {
+    MetricsReceiver::LogMetricsVMStart();
   }
 
   auto instance_bindings = injector.getMultibindings<InstanceLifecycle>();

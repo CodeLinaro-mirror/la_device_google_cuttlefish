@@ -197,6 +197,8 @@ cvd_host_tools = [
     "lz4",
     "make_f2fs",
     "mcopy",
+    "metrics",
+    "metrics_launcher",
     "mkbootfs",
     "mkbootimg",
     "mkbootimg.py",
