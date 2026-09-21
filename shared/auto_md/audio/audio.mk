@@ -13,7 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+#
+# AudioPolicy
+#
 PRODUCT_PACKAGES += audio_policy_configuration.xml
+
+#
+# AudioPolicyEngine
+#
+PRODUCT_PACKAGES += audio_policy_engine_configuration.xml
 
 #
 # Audio HAL / AudioEffect HAL
