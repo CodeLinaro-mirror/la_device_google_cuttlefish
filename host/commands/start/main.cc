@@ -13,6 +13,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <errno.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -180,6 +185,13 @@ void ExecCvd(std::vector<std::string> args) {
     args_cstr.push_back(arg.data());
   }
   args_cstr.push_back(nullptr);
+
+  const std::string invoker_name = "CVD_INVOKER";
+  const std::string invoker_value = "launch_cvd";
+  const int enable_overwrite = 1;
+  const int return_value =
+      setenv(invoker_name.c_str(), invoker_value.c_str(), enable_overwrite);
+  CHECK(return_value == 0) << strerror(errno);
 
   static constexpr char kCvdPath[] = "/usr/bin/cvd";
   execv(kCvdPath, args_cstr.data());
