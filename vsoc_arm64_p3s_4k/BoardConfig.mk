@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2025 The Android Open Source Project
+# Copyright 2026 The Android Open-Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,23 +12,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
 
 #
-# AudioPolicy
+# arm64 (64-bit only) P3S target for Cuttlefish
 #
-PRODUCT_PACKAGES += audio_policy_configuration.xml
 
-#
-# AudioPolicyEngine
-#
-PRODUCT_PACKAGES += audio_policy_engine_configuration.xml
+-include device/google/cuttlefish/vsoc_arm64_pgagnostic/BoardConfig.mk
 
-#
-# Audio HAL / AudioEffect HAL
-#
-PRODUCT_PACKAGES += audio_effects_config.xml
-
-#
-# CarService
-#
-PRODUCT_PACKAGES += car_audio_configuration.xml
+# Boot 4KB userspace on 16KB kernel
+BOARD_KERNEL_CMDLINE += p3s=1

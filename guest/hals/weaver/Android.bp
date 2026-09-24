@@ -23,7 +23,7 @@ rust_binary {
     vendor: true,
     srcs: ["src/main.rs"],
     rustlibs: [
-        "android.hardware.weaver-V3-rust",
+        "android.hardware.weaver-V4-rust",
         "libandroid_logger",
         "libbinder_rs",
         "libhal_hal",

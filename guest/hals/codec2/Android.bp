@@ -81,4 +81,8 @@ prebuilt_etc {
             src: "seccomp_policy/cuttlefish-c2-x86_64.policy",
         },
     },
+    required: [
+        "code_coverage.policy",
+        "crash_dump.policy",
+    ],
 }

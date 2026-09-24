@@ -62,7 +62,7 @@
       "name": "CtsAppSearchTestCases"
     },
     {
-      "name": "NpuManagerPlatformTest"
+      "name": "CtsNpuManagerTestCases"
     },
     {
       "name": "VtsAidlUsbHostTest"

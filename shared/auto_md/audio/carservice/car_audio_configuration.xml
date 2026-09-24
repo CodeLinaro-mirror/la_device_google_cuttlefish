@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Copyright (C) 2025 The Android Open Source Project
+<!-- Copyright (C) 2026 The Android Open Source Project
 
      Licensed under the Apache License, Version 2.0 (the "License");
      you may not use this file except in compliance with the License.
@@ -131,12 +131,10 @@
             <zoneConfigs>
                 <zoneConfig name="rear seat zone 1 config 0" isDefault="true">
                     <volumeGroups>
-                        <group>
+                        <group name="rear_seat_1_group">
                             <device address="BUS100_ZONE_1_CARD_0_DEV_6">
                                 <context context="music"/>
                             </device>
-                        </group>
-                        <group>
                             <device address="BUS101_ZONE_1_CARD_0_DEV_7">
                                 <context context="navigation"/>
                                 <context context="voice_command"/>
@@ -155,7 +153,7 @@
                 </zoneConfig>
                 <zoneConfig name="rear seat zone 1 config 1">
                     <volumeGroups>
-                        <group>
+                        <group name="rear_seat_1_group">
                             <device address="BUS110_ZONE_1_CARD_0_DEV_8">
                                 <context context="music"/>
                                 <context context="navigation"/>
@@ -179,12 +177,10 @@
             <zoneConfigs>
                 <zoneConfig name="rear seat zone 2 config 0" isDefault="true">
                     <volumeGroups>
-                        <group>
+                        <group name="rear_seat_2_group">
                             <device address="BUS200_ZONE_2_CARD_0_DEV_9">
                                 <context context="music"/>
                             </device>
-                        </group>
-                        <group>
                             <device address="BUS201_ZONE_2_CARD_0_DEV_10">
                                 <context context="navigation"/>
                                 <context context="voice_command"/>
@@ -203,7 +199,7 @@
                 </zoneConfig>
                 <zoneConfig name="rear seat zone 2 config 1">
                     <volumeGroups>
-                        <group>
+                        <group name="rear_seat_2_group">
                             <device address="BUS210_ZONE_2_CARD_0_DEV_11">
                                 <context context="music"/>
                                 <context context="navigation"/>
