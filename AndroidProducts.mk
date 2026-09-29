@@ -20,6 +20,7 @@ PRODUCT_MAKEFILES := \
 	aosp_cf_arm64_phone:$(LOCAL_DIR)/vsoc_arm64/phone/aosp_cf.mk \
 	aosp_cf_arm64_phone_vendor:$(LOCAL_DIR)/vsoc_arm64/phone/aosp_cf_vendor.mk \
 	aosp_cf_arm64_phone_pgagnostic:$(LOCAL_DIR)/vsoc_arm64_pgagnostic/phone/aosp_cf.mk \
+	aosp_cf_arm64_phone_p3s_4k:$(LOCAL_DIR)/vsoc_arm64_p3s_4k/phone/aosp_cf.mk \
 	aosp_cf_arm64_phone_fullmte:$(LOCAL_DIR)/vsoc_arm64_only/phone/aosp_cf_fullmte.mk \
 	aosp_cf_arm64_phone_hwasan:$(LOCAL_DIR)/vsoc_arm64/phone/aosp_cf_hwasan.mk \
 	aosp_cf_arm64_only_phone:$(LOCAL_DIR)/vsoc_arm64_only/phone/aosp_cf.mk \

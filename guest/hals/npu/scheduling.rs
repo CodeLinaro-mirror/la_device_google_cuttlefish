@@ -167,7 +167,7 @@ fn debounce_loop(data: Arc<Mutex<SchedulingData>>) -> Result<()> {
                 if let Err(e) = cb.onWorkEnded(&work_end.info, work_end.reason) {
                     warn!("Failed to call onWorkEnded: {e:?}");
                 } else {
-                    info!("onWorkEnded: {:?}, EndReason: {:?}", &work_end.info, &work_end.reason);
+                    info!("onWorkEnded: {:?}, EndReason: {:?}", work_end.info, work_end.reason);
                 }
             }
         }
@@ -196,7 +196,7 @@ fn worker_loop(
                 if let Err(e) = cb.onWorkStarted(&info, StartReason::INITIAL) {
                     warn!("Failed to call onWorkStarted: {e:?}");
                 } else {
-                    info!("onWorkStarted: {:?}", &info);
+                    info!("onWorkStarted: {:?}", info);
                 }
             }
         }
@@ -284,7 +284,7 @@ impl SchedulingService {
                     if let Err(e) = cb.onWorkRequested(&info) {
                         warn!("Failed to call onWorkRequested: {e:?}");
                     } else {
-                        info!("onWorkRequested: {:?}", &info);
+                        info!("onWorkRequested: {:?}", info);
                     }
                 }
             }

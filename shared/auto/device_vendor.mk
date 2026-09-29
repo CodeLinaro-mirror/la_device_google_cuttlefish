@@ -79,7 +79,7 @@ ENABLE_HIBERNATION_SWAP ?= false
 ifeq ($(ENABLE_HIBERNATION_SWAP), true)
 PRODUCT_PRODUCT_PROPERTIES += \
     ro.sys.hibernate_enabled=1 \
-    ro.sys.swap_storage_device=/dev/block/vda19
+    ro.sys.swap_storage_device=/dev/block/by-name/hibernation
 
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/auto/hibernation_swap/fstab.hibernationswap:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.hibernationswap
