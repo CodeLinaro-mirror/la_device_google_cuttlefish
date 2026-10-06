@@ -1,0 +1,5 @@
+# For expandable super, update_engine validates userdata_exp.* partitions and
+# adds them to the super metadata. liblp reads their alignment
+# (BLKIOMIN/BLKALIGNOFF); BLKGETSIZE64 and BLKSSZGET are allowed globally.
+allow update_engine userdata_exp_block_device:blk_file { getattr open read ioctl };
+allowxperm update_engine userdata_exp_block_device:blk_file ioctl { BLKIOMIN BLKALIGNOFF };
