@@ -29,7 +29,7 @@
 #include <android-base/file.h>
 #include <android-base/parseint.h>
 #include <android-base/strings.h>
-#include <fmt/core.h>
+#include <format>
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
@@ -57,7 +57,7 @@ struct ProcStatusUids {
 static Result<ProcStatusUids> OwnerUids(const pid_t pid) {
   // parse from /proc/<pid>/status
   std::regex uid_pattern(R"(Uid:\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+))");
-  std::string status_path = fmt::format("/proc/{}/status", pid);
+  std::string status_path = std::format("/proc/{}/status", pid);
   std::string status_content;
   CF_EXPECT(android::base::ReadFileToString(status_path, &status_content,
                                             /* follow_symlinks */ true));
@@ -70,7 +70,7 @@ static Result<ProcStatusUids> OwnerUids(const pid_t pid) {
     }
     // the line, then 4 uids
     CF_EXPECT_EQ(matches.size(), 5,
-                 fmt::format("Error in the Uid line: \"{}\"", line));
+                 std::format("Error in the Uid line: \"{}\"", line));
     uids.reserve(4);
     for (int i = 1; i < 5; i++) {
       unsigned uid = 0;
@@ -89,7 +89,7 @@ static Result<ProcStatusUids> OwnerUids(const pid_t pid) {
 }
 
 static std::string PidDirPath(const pid_t pid) {
-  return fmt::format("{}/{}", kProcDir, pid);
+  return std::format("{}/{}", kProcDir, pid);
 }
 
 /* ReadFile does not work for /proc/<pid>/<some files>
@@ -175,7 +175,7 @@ Result<std::vector<std::string>> GetCmdArgs(const pid_t pid) {
 
 Result<std::string> GetExecutablePath(const pid_t pid) {
   std::string exec_target_path;
-  std::string proc_exe_path = fmt::format("/proc/{}/exe", pid);
+  std::string proc_exe_path = std::format("/proc/{}/exe", pid);
   CF_EXPECT(
       android::base::Readlink(proc_exe_path, std::addressof(exec_target_path)),
       proc_exe_path << " Should be a symbolic link but it is not.");
@@ -188,7 +188,7 @@ Result<std::string> GetExecutablePath(const pid_t pid) {
 
 static Result<void> CheckExecNameFromStatus(const std::string& exec_name,
                                             const pid_t pid) {
-  std::string status_path = fmt::format("/proc/{}/status", pid);
+  std::string status_path = std::format("/proc/{}/status", pid);
   std::string status_content;
   CF_EXPECT(android::base::ReadFileToString(status_path, &status_content,
                                             /* follow_symlinks */ true));
@@ -309,7 +309,7 @@ Result<ProcInfo> ExtractProcInfo(const pid_t pid) {
 Result<pid_t> Ppid(const pid_t pid) {
   // parse from /proc/<pid>/status
   std::regex uid_pattern(R"(PPid:\s*([0-9]+))");
-  std::string status_path = fmt::format("/proc/{}/status", pid);
+  std::string status_path = std::format("/proc/{}/status", pid);
   std::string status_content;
   CF_EXPECT(android::base::ReadFileToString(status_path, &status_content,
                                             /* follow_symlinks */ true));

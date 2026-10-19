@@ -18,6 +18,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <format>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -174,7 +175,7 @@ const std::unordered_set<std::string>& BoolFlags() {
 
 bool ParentIsCvd() {
   std::string exe_path;
-  CHECK(android::base::Readlink(fmt::format("/proc/{}/exe", getppid()),
+  CHECK(android::base::Readlink(std::format("/proc/{}/exe", getppid()),
                                 &exe_path))
       << strerror(errno);
   return exe_path.ends_with("/cvd");

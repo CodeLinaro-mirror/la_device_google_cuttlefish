@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <format>  // IWYU pragma: export
 #include <optional>
 #include <ostream>
 #include <sstream>
@@ -23,19 +24,8 @@
 #include <utility>
 #include <vector>
 
-#include <android-base/format.h>  // IWYU pragma: export
 #include <android-base/logging.h>
 #include <android-base/result.h>  // IWYU pragma: export
-
-#if FMT_VERSION < 80000
-namespace fmt {
-  // fmt::runtime was added in v8.0.0
-  template<typename T>
-  const T& runtime(const T& param) {
-    return param;
-  }
-}
-#endif
 
 namespace cuttlefish {
 
@@ -116,8 +106,8 @@ class StackTraceEntry {
    * reused by formatting code for both rendering individual stack trace
    * entries, and rendering an entire stack trace with multiple entries.
    */
-  fmt::format_context::iterator format(
-      fmt::format_context& ctx, const std::vector<FormatSpecifier>& specifiers,
+  std::format_context::iterator format(
+      std::format_context& ctx, const std::vector<FormatSpecifier>& specifiers,
       std::optional<int> index) const;
 
  private:
@@ -139,16 +129,16 @@ std::string ResultErrorFormat(bool color);
 /**
  * Specialized formatting for StackTraceEntry based on user-provided specifiers.
  *
- * A StackTraceEntry can be formatted with {:specifiers} in a `fmt::format`
+ * A StackTraceEntry can be formatted with {:specifiers} in a `std::format`
  * string, where `specifiers` is an ordered list of characters deciding on the
  * format. `v` provides "verbose" output and `V` provides "very verbose" output.
  * See `StackTraceEntry::FormatSpecifiers` for more fine-grained specifiers.
  */
 template <>
-struct fmt::formatter<cuttlefish::StackTraceEntry> {
+struct std::formatter<cuttlefish::StackTraceEntry> {
  public:
-  constexpr auto parse(format_parse_context& ctx)
-      -> format_parse_context::iterator {
+  constexpr auto parse(std::format_parse_context& ctx)
+      -> std::format_parse_context::iterator {
     auto it = ctx.begin();
     while (it != ctx.end() && *it != '}') {
       if (*it == 'v') {
@@ -170,7 +160,7 @@ struct fmt::formatter<cuttlefish::StackTraceEntry> {
   }
 
   auto format(const cuttlefish::StackTraceEntry& entry,
-              format_context& ctx) const -> format_context::iterator {
+              std::format_context& ctx) const -> std::format_context::iterator {
     return entry.format(ctx, fmt_specs_, std::nullopt);
   }
 
@@ -192,15 +182,11 @@ class StackTraceError {
   }
   const std::vector<StackTraceEntry>& Stack() const { return stack_; }
 
-  std::string Message() const {
-    return fmt::format(fmt::runtime("{:m}"), *this);
-  }
+  std::string Message() const;
 
-  std::string Trace() const { return fmt::format(fmt::runtime("{:v}"), *this); }
+  std::string Trace() const;
 
-  std::string FormatForEnv(bool color = (isatty(STDERR_FILENO) == 1)) const {
-    return fmt::format(fmt::runtime(ResultErrorFormat(color)), *this);
-  }
+  std::string FormatForEnv(bool color = (isatty(STDERR_FILENO) == 1)) const;
 
   template <typename T>
   operator android::base::expected<T, StackTraceError>() && {
@@ -226,8 +212,8 @@ inline StackTraceEntry::operator android::base::expected<T,
 /**
  * Specialized formatting for a collection of StackTraceEntry elements.
  *
- * Can be formatted by a `fmt::format` string as {:specifiers}. See
- * `fmt::formatter<cuttlefish::StackTraceEntry>` for the format specifiers of
+ * Can be formatted by a `std::format` string as {:specifiers}. See
+ * `std::formatter<cuttlefish::StackTraceEntry>` for the format specifiers of
  * individual entries. By default the specifier list is passed down to all
  * indivudal entries, with the following additional rules. The `^` specifier
  * will change the ordering from inner-to-outer instead of outer-to-inner, and
@@ -235,10 +221,10 @@ inline StackTraceEntry::operator android::base::expected<T,
  * innermost stack entry, and <abc> to all other stack entries.
  */
 template <>
-struct fmt::formatter<cuttlefish::StackTraceError> {
+struct std::formatter<cuttlefish::StackTraceError> {
  public:
-  constexpr auto parse(format_parse_context& ctx)
-      -> format_parse_context::iterator {
+  constexpr auto parse(std::format_parse_context& ctx)
+      -> std::format_parse_context::iterator {
     auto it = ctx.begin();
     while (it != ctx.end() && *it != '}') {
       if (*it == 'v') {
@@ -262,8 +248,8 @@ struct fmt::formatter<cuttlefish::StackTraceError> {
     return it;
   }
 
-  format_context::iterator format(const cuttlefish::StackTraceError& error,
-                                  format_context& ctx) const;
+  std::format_context::iterator format(const cuttlefish::StackTraceError& error,
+                                       std::format_context& ctx) const;
 
  private:
   using StackTraceEntry = cuttlefish::StackTraceEntry;
@@ -276,6 +262,18 @@ struct fmt::formatter<cuttlefish::StackTraceError> {
 };
 
 namespace cuttlefish {
+
+inline std::string StackTraceError::Message() const {
+  return std::format("{:m}", *this);
+}
+
+inline std::string StackTraceError::Trace() const {
+  return std::format("{:v}", *this);
+}
+
+inline std::string StackTraceError::FormatForEnv(bool color) const {
+  return std::vformat(ResultErrorFormat(color), std::make_format_args(*this));
+}
 
 template <typename T>
 using Result = android::base::expected<T, StackTraceError>;
@@ -301,7 +299,7 @@ using Result = android::base::expected<T, StackTraceError>;
 #define CF_ERR(MSG) (CF_STACK_TRACE_ENTRY("") << MSG)
 #define CF_ERRNO(MSG) (CF_STACK_TRACE_ENTRY("") << MSG)
 #define CF_ERRF(MSG, ...) \
-  (CF_STACK_TRACE_ENTRY("") << fmt::format(FMT_STRING(MSG), __VA_ARGS__))
+  (CF_STACK_TRACE_ENTRY("") << std::format(MSG, ##__VA_ARGS__))
 
 template <typename T>
 T OutcomeDereference(std::optional<T>&& value) {
@@ -415,7 +413,7 @@ auto ErrorFromType(Result<T>&& value) {
   CF_EXPECT_OVERLOAD(__VA_ARGS__, CF_EXPECT2, CF_EXPECT1)(__VA_ARGS__)
 
 #define CF_EXPECTF(RESULT, MSG, ...) \
-  CF_EXPECT(RESULT, fmt::format(FMT_STRING(MSG), __VA_ARGS__))
+  CF_EXPECT(RESULT, std::format(MSG, ##__VA_ARGS__))
 
 #define CF_COMPARE_EXPECT4(COMPARE_OP, LHS_RESULT, RHS_RESULT, MSG)         \
   ({                                                                        \

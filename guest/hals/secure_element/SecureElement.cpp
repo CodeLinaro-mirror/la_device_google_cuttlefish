@@ -16,7 +16,7 @@
 
 #include "SecureElement.h"
 
-#include <fmt/core.h>
+#include <format>
 #include <string>
 
 #define LOG_TAG "jcardsim"
@@ -51,7 +51,7 @@ std::string toHexString(const std::vector<uint8_t>& data) {
     hexStr.reserve(data.size() * 2);
 
     for (auto ch : data) {
-        hexStr += fmt::format("{:02X}", ch);
+        hexStr += std::format("{:02X}", ch);
     }
     return hexStr;
 }

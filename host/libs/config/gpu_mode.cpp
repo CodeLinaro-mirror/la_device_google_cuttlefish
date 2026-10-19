@@ -45,41 +45,11 @@ Result<GpuMode> GpuModeFromString(std::string_view mode) {
   } else if (mode == kGpuModeNone) {
     return GpuMode::None;
   } else {
-    return CF_ERRF("Invalid gpu_mode provided: ", mode);
+    return CF_ERRF("Invalid gpu_mode provided: {}", mode);
   }
 }
 
 std::string GpuModeString(GpuMode mode) { return absl::StrCat(mode); }
-
-std::string_view format_as(GpuMode mode) {
-  switch (mode) {
-    case GpuMode::Auto:
-      return kGpuModeAuto;
-    case GpuMode::Custom:
-      return kGpuModeCustom;
-      break;
-    case GpuMode::DrmVirgl:
-      return kGpuModeDrmVirgl;
-      break;
-    case GpuMode::Gfxstream:
-      return kGpuModeGfxstream;
-      break;
-    case GpuMode::GfxstreamGuestAngle:
-      return kGpuModeGfxstreamGuestAngle;
-      break;
-    case GpuMode::GfxstreamGuestAngleHostLavapipe:
-      return kGpuModeGfxstreamGuestAngleHostLavapipe;
-      break;
-    case GpuMode::GfxstreamGuestAngleHostSwiftshader:
-      return kGpuModeGfxstreamGuestAngleHostSwiftshader;
-      break;
-    case GpuMode::GuestSwiftshader:
-      return kGpuModeGuestSwiftshader;
-      break;
-    case GpuMode::None:
-      return kGpuModeNone;
-  }
-}
 
 bool IsGfxstreamMode(GpuMode mode) {
   return mode == GpuMode::Gfxstream || mode == GpuMode::GfxstreamGuestAngle ||

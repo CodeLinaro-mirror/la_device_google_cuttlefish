@@ -41,7 +41,7 @@
 
 #include <android-base/logging.h>
 #include <android-base/strings.h>
-#include <fmt/ranges.h>
+#include <format>
 
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/subprocess.h"
@@ -125,8 +125,8 @@ Result<void> ValidateTapInterfaceUnused(const std::string& interface_name) {
 #endif
 
 std::string MacAddressToString(const std::uint8_t mac[6]) {
-  std::vector<std::uint8_t> mac_vec(mac, mac + 6);
-  return fmt::format("{:0>2x}", fmt::join(mac_vec, ":"));
+  return std::format("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}", mac[0],
+                     mac[1], mac[2], mac[3], mac[4], mac[5]);
 }
 
 std::string Ipv6ToString(const std::uint8_t ip[16]) {

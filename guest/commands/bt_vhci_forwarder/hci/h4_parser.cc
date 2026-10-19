@@ -85,7 +85,7 @@ void H4Parser::OnPacketReady() {
       iso_cb_(packet_);
       break;
     default:
-      LOG_ALWAYS_FATAL("Unimplemented packet type %d",
+      LOG_ALWAYS_FATAL("Unimplemented packet type {}",
                        static_cast<int>(hci_packet_type_));
   }
   // Get ready for the next type byte.
@@ -110,7 +110,7 @@ bool H4Parser::Consume(const uint8_t* buffer, int32_t bytes_read) {
     return false;
   }
   if ((uint32_t)bytes_read > BytesRequested()) {
-    LOG_ALWAYS_FATAL("More bytes read (%u) than expected (%u)!",
+    LOG_ALWAYS_FATAL("More bytes read ({}) than expected ({})!",
                      static_cast<int>(bytes_read),
                      static_cast<int>(bytes_to_read));
   }
@@ -136,7 +136,7 @@ bool H4Parser::Consume(const uint8_t* buffer, int32_t bytes_read) {
       // The parser can end up in a bad state when the host is restarted.
       const std::array<uint8_t, 4> reset_command{0x01, 0x03, 0x0c, 0x00};
       size_t offset = packet_.size();
-      LOG_WARN("Received byte in recovery state : 0x%x",
+      LOG_WARN("Received byte in recovery state : 0x{:x}",
                static_cast<unsigned>(*buffer));
       packet_.push_back(*buffer);
 
@@ -176,11 +176,12 @@ bool H4Parser::Consume(const uint8_t* buffer, int32_t bytes_read) {
           hci_packet_type_ != PacketType::EVENT &&
           hci_packet_type_ != PacketType::ISO) {
         if (!enable_recovery_state_) {
-          LOG_ALWAYS_FATAL("Received invalid packet type 0x%x",
+          LOG_ALWAYS_FATAL("Received invalid packet type 0x{:x}",
                            static_cast<unsigned>(packet_type_));
         }
-        LOG_ERROR("Received invalid packet type 0x%x, entering recovery state",
-                  static_cast<unsigned>(packet_type_));
+        LOG_ERROR(
+            "Received invalid packet type 0x{:x}, entering recovery state",
+            static_cast<unsigned>(packet_type_));
         state_ = HCI_RECOVERY;
         hci_packet_type_ = PacketType::COMMAND;
         bytes_wanted_ = 1;

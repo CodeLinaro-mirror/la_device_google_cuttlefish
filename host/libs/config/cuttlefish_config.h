@@ -18,15 +18,15 @@
 #include <sys/types.h>
 #include <array>
 #include <cstdint>
+#include <format>
 #include <map>
 #include <memory>
 #include <optional>
 #include <set>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
-
-#include <fmt/ostream.h>
 
 #include "common/libs/utils/architecture.h"
 #include "common/libs/utils/device_type.h"
@@ -1124,9 +1124,20 @@ extern const char* const kHwComposerRanchu;
 extern const char* const kHwComposerNone;
 }  // namespace cuttlefish
 
-#if FMT_VERSION >= 90000
 template <>
-struct fmt::formatter<cuttlefish::ExternalNetworkMode> : ostream_formatter {};
+struct std::formatter<cuttlefish::ExternalNetworkMode>
+    : std::formatter<std::string_view> {
+  auto format(cuttlefish::ExternalNetworkMode mode,
+              std::format_context& ctx) const {
+    std::stringstream ss;
+    ss << mode;
+    return std::formatter<std::string_view>::format(ss.str(), ctx);
+  }
+};
 template <>
-struct fmt::formatter<cuttlefish::VmmMode> : ostream_formatter {};
-#endif
+struct std::formatter<cuttlefish::VmmMode> : std::formatter<std::string_view> {
+  auto format(cuttlefish::VmmMode mode, std::format_context& ctx) const {
+    return std::formatter<std::string_view>::format(cuttlefish::ToString(mode),
+                                                    ctx);
+  }
+};

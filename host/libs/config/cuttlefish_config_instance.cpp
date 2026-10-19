@@ -17,6 +17,7 @@
 #include "cuttlefish_config.h"
 #include "host/libs/config/cuttlefish_config.h"
 
+#include <format>
 #include <string>
 #include <string_view>
 
@@ -606,7 +607,7 @@ ExternalNetworkMode CuttlefishConfig::InstanceSpecific::external_network_mode()
 }
 void CuttlefishConfig::MutableInstanceSpecific::set_external_network_mode(
     ExternalNetworkMode mode) {
-  (*Dictionary())[kExternalNetworkMode] = fmt::format("{}", mode);
+  (*Dictionary())[kExternalNetworkMode] = std::format("{}", mode);
 }
 
 std::string CuttlefishConfig::InstanceSpecific::kernel_log_pipe_name() const {

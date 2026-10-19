@@ -24,6 +24,7 @@
 #include <cinttypes>
 #include <cstring>
 #include <ctime>
+#include <format>
 #include <memory>
 #include <ostream>
 #include <sstream>
@@ -233,7 +234,7 @@ void TeeLogger::operator()(
         output_string = msg_with_prefix + std::string("\n");
         break;
       case MetadataLevel::TAG_AND_MESSAGE:
-        output_string = fmt::format("{}] {}{}", tag, msg_with_prefix, "\n");
+        output_string = std::format("{}] {}{}", tag, msg_with_prefix, "\n");
         break;
       default:
         struct tm now;

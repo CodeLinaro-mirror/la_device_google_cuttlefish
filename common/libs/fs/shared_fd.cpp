@@ -30,6 +30,7 @@
 #include <cstddef>
 
 #include <algorithm>
+#include <format>
 #include <sstream>
 #include <vector>
 
@@ -745,14 +746,14 @@ SharedFD SharedFD::VsockServer(
 std::string SharedFD::GetVhostUserVsockServerAddr(
     unsigned int port, int vhost_user_vsock_listening_cid) {
   // TODO(b/277909042): better path than /tmp/vsock_{}/vm.vsock_{}
-  return fmt::format(
+  return std::format(
       "{}_{}", GetVhostUserVsockClientAddr(vhost_user_vsock_listening_cid),
       port);
 }
 
 std::string SharedFD::GetVhostUserVsockClientAddr(int cid) {
   // TODO(b/277909042): better path than /tmp/vsock_{}/vm.vsock_{}
-  return fmt::format("{}/vsock_{}_{}/vm.vsock", TempDir(), cid, getuid());
+  return std::format("{}/vsock_{}_{}/vm.vsock", TempDir(), cid, getuid());
 }
 
 SharedFD SharedFD::VsockClient(unsigned int cid, unsigned int port, int type,
@@ -764,10 +765,10 @@ SharedFD SharedFD::VsockClient(unsigned int cid, unsigned int port, int type,
     // TODO(b/277909042): better path than /tmp/vsock_{}/vm.vsock
     auto client = SharedFD::SocketLocalClient(GetVhostUserVsockClientAddr(cid),
                                               false /* abstract */, type);
-    const std::string msg = fmt::format("connect {}\n", port);
+    const std::string msg = std::format("connect {}\n", port);
     SendAll(client, msg);
 
-    const std::string expected_res = fmt::format("OK {}\n", port);
+    const std::string expected_res = std::format("OK {}\n", port);
     std::string actual_res(expected_res.length(), ' ');
     if (ReadExact(client, &actual_res) != expected_res.length()) {
       client->Close();

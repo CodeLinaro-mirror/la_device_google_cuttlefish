@@ -18,6 +18,7 @@
 
 #include <unistd.h>
 
+#include <format>
 #include <iostream>
 #include <string>
 
@@ -52,7 +53,7 @@ void KmlLocationsHandler::HandleMessage(const uint8_t *msg, size_t len) {
   }
   auto instance = config->ForDefaultInstance();
   std::string socket_name =
-      fmt::format("unix:{}.sock",
+      std::format("unix:{}.sock",
                   instance.PerInstanceGrpcSocketPath("GnssGrpcProxyServer"));
   GnssClient gpsclient(
       grpc::CreateChannel(socket_name, grpc::InsecureChannelCredentials()));

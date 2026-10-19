@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <format>
 #include <memory>
 
 #include <android-base/logging.h>
@@ -317,7 +318,7 @@ int CuttlefishMain() {
     auto label_prefix =
         i < display_count ? kTouchscreenPrefix : kTouchpadPrefix;
     auto device_idx = i < display_count ? i : i - display_count;
-    auto device_label = fmt::format("{}{}", label_prefix, device_idx);
+    auto device_label = std::format("{}{}", label_prefix, device_idx);
     auto touch_shared_fd = SharedFD::Dup(touch_fd);
     if (FLAGS_multitouch) {
       inputs_builder.WithMultitouchDevice(device_label, touch_shared_fd);

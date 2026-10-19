@@ -17,6 +17,7 @@
 
 #include "host/commands/run_cvd/launch/launch.h"
 
+#include <format>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -61,7 +62,7 @@ Result<std::vector<MonitorCommand>> VhostDeviceVsock::Commands() {
       isolation_groups = ",groups=" + i.vsock_guest_group();
     }
 
-    auto param = fmt::format(
+    auto param = std::format(
         "guest-cid={1},socket={0}/vsock_{1}_{2}/vhost.socket,uds-path={0}/"
         "vsock_{1}_{2}/vm.vsock{3}",
         TempDir(), i.vsock_guest_cid(), getuid(), isolation_groups);
@@ -84,7 +85,7 @@ bool VhostDeviceVsock::Enabled() const { return instance_.vhost_user_vsock(); }
 Result<void> VhostDeviceVsock::WaitForAvailability() const {
   if (Enabled()) {
     CF_EXPECT(WaitForUnixSocket(
-        fmt::format("{}/vsock_{}_{}/vm.vsock", TempDir(),
+        std::format("{}/vsock_{}_{}/vm.vsock", TempDir(),
                     instance_.vsock_guest_cid(), std::to_string(getuid())),
         30));
   }

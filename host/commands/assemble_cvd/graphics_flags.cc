@@ -16,6 +16,7 @@
 
 #include "host/commands/assemble_cvd/graphics_flags.h"
 
+#include <format>
 #include <ostream>
 #include <string>
 #include <string_view>
@@ -26,7 +27,6 @@
 #include <absl/strings/str_split.h>
 #include <android-base/file.h>
 #include <android-base/strings.h>
-#include <fmt/format.h>
 #include <google/protobuf/io/tokenizer.h>
 #include <google/protobuf/text_format.h>
 
@@ -271,13 +271,13 @@ struct AngleFeatures {
 };
 
 std::ostream& operator<<(std::ostream& stream, const AngleFeatures& features) {
-  fmt::print(stream, "ANGLE features: \n");
-  fmt::print(stream, " - prefer_linear_filtering_for_yuv: {}\n",
-             features.prefer_linear_filtering_for_yuv);
-  fmt::print(stream, " - map_unspecified_color_space_to_pass_through: {}\n",
-             features.map_unspecified_color_space_to_pass_through);
-  fmt::print(stream, " - ignore_precision_qualifiers: {}\n",
-             features.ignore_precision_qualifiers);
+  stream << "ANGLE features: \n";
+  stream << std::format(" - prefer_linear_filtering_for_yuv: {}\n",
+                        features.prefer_linear_filtering_for_yuv);
+  stream << std::format(" - map_unspecified_color_space_to_pass_through: {}\n",
+                        features.map_unspecified_color_space_to_pass_through);
+  stream << std::format(" - ignore_precision_qualifiers: {}\n",
+                        features.ignore_precision_qualifiers);
   return stream;
 }
 

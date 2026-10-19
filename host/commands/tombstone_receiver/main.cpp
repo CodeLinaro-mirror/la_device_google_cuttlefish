@@ -15,9 +15,9 @@
  */
 
 #include <android-base/logging.h>
-#include <fmt/format.h>
 
 #include <chrono>
+#include <format>
 #include <fstream>
 
 #include "common/libs/fs/shared_fd.h"
@@ -33,7 +33,7 @@ static std::string last_tombstone_name = "";
 
 static std::string next_tombstone_path(const std::string& dir) {
   auto in_time = std::chrono::system_clock::now();
-  auto retval = fmt::format("{}/tombstone_{:%Y-%m-%d-%H%M%S}", dir, in_time);
+  auto retval = std::format("{}/tombstone_{:%Y-%m-%d-%H%M%S}", dir, in_time);
 
   // Gives tombstones unique names
   if(retval == last_tombstone_name) {
