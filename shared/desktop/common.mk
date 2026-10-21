@@ -113,3 +113,11 @@ PRODUCT_PACKAGES += \
 # Audio Managed SCO
 PRODUCT_PRODUCT_PROPERTIES += \
     bluetooth.sco.managed_by_audio=true
+
+# Display debugging and testing tool
+PRODUCT_PACKAGES += \
+    modetest
+
+PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
+    $(TARGET_COPY_OUT_SYSTEM)/bin/modetest
+
