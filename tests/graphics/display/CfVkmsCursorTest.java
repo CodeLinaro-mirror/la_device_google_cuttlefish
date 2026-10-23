@@ -25,6 +25,7 @@ import com.android.tradefed.testtype.DeviceJUnit4ClassRunner;
 import com.android.tradefed.testtype.junit4.BaseHostJUnit4Test;
 import com.android.tradefed.util.CommandResult;
 import com.android.tradefed.util.CommandStatus;
+import com.android.tradefed.util.RunUtil;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -120,8 +121,9 @@ public class CfVkmsCursorTest extends BaseHostJUnit4Test {
                 CLog.d("dumpsys SurfaceFlinger failed, UI likely not ready yet. Retrying...");
             }
 
-            long pollStartTime = System.currentTimeMillis();
-            while (System.currentTimeMillis() - pollStartTime < mVkmsTester.POLL_INTERVAL_MS) {}
+            // Nudge pointer and wake display to trigger cursor plane compositing
+            getDevice().executeShellCommand("input keyevent WAKEUP");
+            RunUtil.getDefault().sleep(CfVkmsTester.POLL_INTERVAL_MS);
         }
         assertNotNull("Timed out waiting for any cursor frames (success or failure).", output);
 
