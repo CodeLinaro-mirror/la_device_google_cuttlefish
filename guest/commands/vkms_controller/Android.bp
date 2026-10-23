@@ -28,6 +28,12 @@ cc_library_static {
         android_x86: {
             enabled: true,
         },
+        android_arm64: {
+            enabled: true,
+        },
+        android_arm: {
+            enabled: true,
+        },
         linux_glibc_x86_64: {
             enabled: true,
         },
@@ -62,6 +68,12 @@ cc_binary {
             enabled: true,
         },
         android_x86: {
+            enabled: true,
+        },
+        android_arm64: {
+            enabled: true,
+        },
+        android_arm: {
             enabled: true,
         },
     },
