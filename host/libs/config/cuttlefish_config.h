@@ -141,8 +141,13 @@ class CuttlefishConfig {
   };
 
   struct TouchpadConfig {
+    enum class Type {
+      kTouchpad,
+      kTouchNavigation,
+    };
     int width;
     int height;
+    Type type = Type::kTouchpad;
 
     static Json::Value Serialize(
         const CuttlefishConfig::TouchpadConfig& config);
