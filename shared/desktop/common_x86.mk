@@ -20,7 +20,11 @@ AL_BINARY_TRANSLATION_MODE ?= houdini_primary_ndk_translation_secondary
 
 ifeq ($(AL_BINARY_TRANSLATION_MODE), ndk_translation_only)
 
-$(call inherit-product-if-exists, vendor/unbundled_google/libs/ndk_translation/x86_64_ndk_translation_support.mk)
+ifneq ($(wildcard vendor/unbundled_google/libs/ndk_translation/x86_64_ndk_translation_support.mk),)
+$(call inherit-product, vendor/unbundled_google/libs/ndk_translation/x86_64_ndk_translation_support.mk)
+else
+$(call inherit-product-if-exists, vendor/google_shared/ndk_translation_prebuilt/current64/product_arm64.mk)
+endif
 
 else ifeq ($(AL_BINARY_TRANSLATION_MODE), houdini_only)
 
@@ -31,7 +35,11 @@ else ifeq ($(AL_BINARY_TRANSLATION_MODE), houdini_primary_ndk_translation_second
 $(call inherit-product-if-exists, vendor/google_devices/desktop_ibt/houdini64.mk)
 
 NDK_TRANSLATION_AS_2ND_NATIVE_BRIDGE=true
-$(call inherit-product-if-exists, vendor/unbundled_google/libs/ndk_translation/x86_64_ndk_translation_support.mk)
+ifneq ($(wildcard vendor/unbundled_google/libs/ndk_translation/x86_64_ndk_translation_support.mk),)
+$(call inherit-product, vendor/unbundled_google/libs/ndk_translation/x86_64_ndk_translation_support.mk)
+else
+$(call inherit-product-if-exists, vendor/google_shared/ndk_translation_prebuilt/current64/product_arm64.mk)
+endif
 
 else
 
