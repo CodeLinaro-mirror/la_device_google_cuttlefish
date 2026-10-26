@@ -116,20 +116,11 @@ class VirtioMediaCameraDevice : public BnCameraDevice {
   status_t calculateMinFps(
       ::android::hardware::camera::common::V1_0::helper::CameraMetadata*);
 
-  static void getFrameRateList(int fd, double fpsUpperBound,
-                               SupportedV4L2Format* format);
-
-  static void updateFpsBounds(
-      int fd, CroppingType cropType,
-      const std::vector<ExternalCameraConfig::FpsLimitation>& fpsLimits,
-      SupportedV4L2Format format, std::vector<SupportedV4L2Format>& outFmts);
+  static void getFrameRateList(int fd, SupportedV4L2Format* format);
 
   // Get candidate supported formats list of input cropping type.
   static std::vector<SupportedV4L2Format> getCandidateSupportedFormatsLocked(
-      int fd, CroppingType cropType,
-      const std::vector<ExternalCameraConfig::FpsLimitation>& fpsLimits,
-      const std::vector<ExternalCameraConfig::FpsLimitation>& depthFpsLimits,
-      const Size& minStreamSize, bool depthEnabled);
+      int fd, CroppingType cropType, const Size& minStreamSize);
 
   Mutex mLock;
   bool mInitialized = false;
