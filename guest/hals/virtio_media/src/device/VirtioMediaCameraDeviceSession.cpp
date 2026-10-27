@@ -1027,6 +1027,14 @@ status_t VirtioMediaCameraDeviceSession::initDefaultRequests() {
   const uint8_t oisMode = ANDROID_LENS_OPTICAL_STABILIZATION_MODE_OFF;
   UPDATE(md, ANDROID_LENS_OPTICAL_STABILIZATION_MODE, &oisMode, 1);
 
+  // Default to the first advertised focal length (single fixed lens).
+  // TODO(b/538688597): Replace this guest-side mock with host-side emulation.
+  camera_metadata_ro_entry focalLengths =
+      mCameraCharacteristics.find(ANDROID_LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
+  if (focalLengths.count > 0) {
+    UPDATE(md, ANDROID_LENS_FOCAL_LENGTH, focalLengths.data.f, 1);
+  }
+
   const uint8_t nrMode = ANDROID_NOISE_REDUCTION_MODE_OFF;
   UPDATE(md, ANDROID_NOISE_REDUCTION_MODE, &nrMode, 1);
 
