@@ -11,122 +11,18 @@ graphics {
 audio {
   pcm_devices {
     capture_streams { id: 0 channel_layout: STEREO }
-    playback_streams {
-      id: 0
-      channel_layout: STEREO
-      controls {
-        mute_control_enabled: true
-        duck_control_enabled: true
-        fade_balance_control_enabled: true
-      }
-    }
-    playback_streams {
-      id: 1
-      channel_layout: STEREO
-      controls {
-        mute_control_enabled: true
-        duck_control_enabled: true
-        fade_balance_control_enabled: true
-      }
-    }
-    playback_streams {
-      id: 2
-      channel_layout: STEREO
-      controls {
-        mute_control_enabled: true
-        duck_control_enabled: true
-        fade_balance_control_enabled: true
-      }
-    }
-    playback_streams {
-      id: 3
-      channel_layout: STEREO
-      controls {
-        mute_control_enabled: true
-        duck_control_enabled: true
-        fade_balance_control_enabled: true
-      }
-    }
-    playback_streams {
-      id: 4
-      channel_layout: STEREO
-      controls {
-        mute_control_enabled: true
-        duck_control_enabled: true
-        fade_balance_control_enabled: true
-      }
-    }
-    playback_streams {
-      id: 5
-      channel_layout: STEREO
-      controls {
-        mute_control_enabled: true
-        duck_control_enabled: true
-        fade_balance_control_enabled: true
-      }
-    }
-    playback_streams {
-      id: 6
-      channel_layout: STEREO
-      controls {
-        mute_control_enabled: true
-        duck_control_enabled: true
-        fade_balance_control_enabled: true
-      }
-    }
-    playback_streams {
-      id: 7
-      channel_layout: STEREO
-      controls {
-        mute_control_enabled: true
-        duck_control_enabled: true
-        fade_balance_control_enabled: true
-      }
-    }
-    playback_streams {
-      id: 8
-      channel_layout: STEREO
-      controls {
-        mute_control_enabled: true
-        duck_control_enabled: true
-        fade_balance_control_enabled: true
-      }
-    }
-    playback_streams {
-      id: 9
-      channel_layout: STEREO
-      controls {
-        mute_control_enabled: true
-        duck_control_enabled: true
-        fade_balance_control_enabled: true
-      }
-    }
-    playback_streams {
-      id: 10
-      channel_layout: STEREO
-      controls {
-        mute_control_enabled: true
-        duck_control_enabled: true
-        fade_balance_control_enabled: true
-      }
-    }
-    playback_streams {
-      id: 11
-      channel_layout: STEREO
-      controls {
-        mute_control_enabled: true
-        duck_control_enabled: true
-        fade_balance_control_enabled: true
-      }
-    }
-    playback_streams {
-      id: 12
-      channel_layout: STEREO
-      controls {
-        mute_control_enabled: true
-        duck_control_enabled: true
-        fade_balance_control_enabled: true
-      }
-    }
+    playback_streams { id: 0 channel_layout: STEREO }
+    playback_streams { id: 1 channel_layout: STEREO }
+    playback_streams { id: 2 channel_layout: STEREO }
+    playback_streams { id: 3 channel_layout: STEREO }
+    playback_streams { id: 4 channel_layout: STEREO }
+    playback_streams { id: 5 channel_layout: STEREO }
+    playback_streams { id: 6 channel_layout: STEREO }
+    playback_streams { id: 7 channel_layout: STEREO }
+    playback_streams { id: 8 channel_layout: STEREO }
+    playback_streams { id: 9 channel_layout: STEREO }
+    playback_streams { id: 10 channel_layout: STEREO }
+    playback_streams { id: 11 channel_layout: STEREO }
+    playback_streams { id: 12 channel_layout: STEREO }
   }
 }
