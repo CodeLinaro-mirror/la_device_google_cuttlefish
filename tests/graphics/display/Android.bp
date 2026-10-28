@@ -127,3 +127,34 @@ java_test_host {
     ],
     test_config_template: "display_config_template.xml",
 }
+
+java_test_host {
+    name: "TestEdidZoo",
+    defaults: [
+        "cuttlefish_host_test_utils_defaults",
+    ],
+    srcs: [
+        "TestEdidZoo.java",
+    ],
+    static_libs: [
+        "CfVkmsTestUtils",
+    ],
+    test_options: {
+        unit_test: false,
+    },
+    test_suites: [
+        "device-tests",
+    ],
+    data_device_bins_first: [
+        "modetest",
+    ],
+    libs: [
+        "cts-tradefed",
+        "tradefed",
+    ],
+    plugins: [
+        "auto_annotation_plugin",
+        "auto_value_plugin",
+    ],
+    test_config_template: "display_config_template.xml",
+}
