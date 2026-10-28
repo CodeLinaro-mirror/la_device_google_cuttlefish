@@ -1,0 +1,22 @@
+# This file contains a list of git SHAs of revisions to be ignored by git blame.
+# These revisions are considered "unimportant" in that they are unlikely to be
+# what you are interested in when blaming.
+#
+# Instructions:
+# - Only large (generally automated) reformatting or renaming CLs should be
+#   added to this list. Do not include every typo fix or minor change.
+# - Precede each revision with a comment containing the first line of its log.
+# - Only put full 40-character hashes on this list (not short hashes or any
+#   other revision reference).
+# - Revisions should be in chronological order from oldest to newest.
+# - Because you must use a hash, you need to append to this list in a follow-up
+#   CL to the actual reformatting CL that you are trying to ignore.
+
+# Run clang-format on configs
+8fefae75153530fa4acf1365ced0db2c6a8a5851
+
+# frontend: Fix webRTC HTML indentation and spacing
+cb53fbc2f186af94e2951048b8c8a32a34402b75
+
+# Format system_image Android.bp file
+a9b5950dbdb63c4b81164e291f03c9523f522755
