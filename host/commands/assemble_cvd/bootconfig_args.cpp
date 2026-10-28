@@ -17,6 +17,7 @@
 #include "host/commands/assemble_cvd/bootconfig_args.h"
 
 #include <array>
+#include <format>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -243,7 +244,7 @@ Result<std::unordered_map<std::string, std::string>> BootconfigArgsFromConfig(
   // Once all Cuttlefish kernel versions are at least 5.15, filename encryption
   // will not need to be set conditionally. HCTR2 will always be available.
   // At that point fstab.cf.f2fs.cts and fstab.cf.ext4.cts can be removed.
-  std::string fstab_suffix = fmt::format("cf.{}.{}", instance.userdata_format(),
+  std::string fstab_suffix = std::format("cf.{}.{}", instance.userdata_format(),
                                          instance.filename_encryption_mode());
 
   bootconfig_args["androidboot.fstab_suffix"] = fstab_suffix;
@@ -342,7 +343,7 @@ Result<std::unordered_map<std::string, std::string>> BootconfigArgsFromConfig(
               "instance id: " << instance.id() << " is not a valid int");
     // The static ethernet IP address assigned for the guest.
     bootconfig_args["androidboot.auto_eth_guest_addr"] =
-        fmt::format("192.168.98.{}", instance_id + 2);
+        std::format("192.168.98.{}", instance_id + 2);
   }
 
   if (config.virtio_mac80211_hwsim()) {

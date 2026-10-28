@@ -16,6 +16,7 @@
  *
  */
 
+#include <format>
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -61,7 +62,7 @@ namespace cuttlefish {
 
 static Status ErrorResultToStatus(const std::string_view prefix,
                                   const StackTraceError& error) {
-  std::string msg = fmt::format("{}:\n\n{}", prefix, error.FormatForEnv(false));
+  std::string msg = std::format("{}:\n\n{}", prefix, error.FormatForEnv(false));
   return Status(StatusCode::UNAVAILABLE, msg);
 }
 

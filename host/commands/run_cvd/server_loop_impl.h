@@ -17,6 +17,7 @@
 #pragma once
 
 #include <atomic>
+#include <format>
 #include <ostream>
 #include <string>
 #include <string_view>
@@ -128,3 +129,13 @@ void AbslStringify(Sink& sink, ServerLoopImpl::DeviceStatus status) {
 
 }  // namespace run_cvd_impl
 }  // namespace cuttlefish
+
+template <>
+struct std::formatter<cuttlefish::run_cvd_impl::ServerLoopImpl::DeviceStatus>
+    : std::formatter<std::string_view> {
+  auto format(cuttlefish::run_cvd_impl::ServerLoopImpl::DeviceStatus status,
+              auto& ctx) const {
+    return std::formatter<std::string_view>::format(
+        cuttlefish::run_cvd_impl::format_as(status), ctx);
+  }
+};

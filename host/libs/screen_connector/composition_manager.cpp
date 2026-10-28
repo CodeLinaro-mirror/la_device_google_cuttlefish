@@ -15,6 +15,8 @@
  */
 #include "host/libs/screen_connector/composition_manager.h"
 
+#include <format>
+
 #include <android-base/parseint.h>
 #include <android-base/strings.h>
 #include <libyuv.h>
@@ -144,7 +146,7 @@ Result<std::unique_ptr<CompositionManager>> CompositionManager::Create() {
   int instance_index = instance.index();
 
   std::string group_uuid =
-      fmt::format("{}", cvd_config->ForDefaultEnvironment().group_uuid());
+      std::format("{}", cvd_config->ForDefaultEnvironment().group_uuid());
 
   CF_EXPECT(group_uuid.length() > 0, "Invalid group UUID");
 

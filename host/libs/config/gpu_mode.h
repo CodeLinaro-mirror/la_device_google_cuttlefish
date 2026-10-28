@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <format>
 #include <string>
 #include <string_view>
 
@@ -84,9 +85,16 @@ void AbslStringify(Sink& sink, GpuMode mode) {
 
 Result<GpuMode> GpuModeFromString(std::string_view mode);
 std::string GpuModeString(GpuMode mode);
-std::string_view format_as(GpuMode mode);  // For libfmt
 
 bool IsGfxstreamMode(GpuMode mode);
 bool IsGfxstreamGuestAngleMode(GpuMode mode);
 
 }  // namespace cuttlefish
+
+template <>
+struct std::formatter<cuttlefish::GpuMode> : std::formatter<std::string_view> {
+  auto format(cuttlefish::GpuMode mode, std::format_context& ctx) const {
+    return std::formatter<std::string_view>::format(
+        cuttlefish::GpuModeString(mode), ctx);
+  }
+};

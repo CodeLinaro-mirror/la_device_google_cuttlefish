@@ -25,6 +25,7 @@
 #include <unistd.h>
 
 #include <cstdlib>
+#include <format>
 #include <iomanip>
 #include <string>
 #include <unordered_map>
@@ -505,7 +506,7 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
 
     qemu_cmd.AddParameter(
         gpu_device, ",id=gpu0",
-        fmt::format(",addr={:0>2x}.0", VmManager::kGpuPciSlotNum),
+        std::format(",addr={:0>2x}.0", VmManager::kGpuPciSlotNum),
         ",xres=", display_config.width, ",yres=", display_config.height);
   }
 
@@ -815,7 +816,7 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
     case cuttlefish::ExternalNetworkMode::kSlirp: {
       has_network_devices = true;
       const std::string net =
-          fmt::format("{}/{}", instance.ril_ipaddr(), instance.ril_prefixlen());
+          std::format("{}/{}", instance.ril_ipaddr(), instance.ril_prefixlen());
       const std::string& host = instance.ril_gateway();
       qemu_cmd.AddParameter("-netdev");
       // TODO(schuffelen): `dns` needs to match the first `nameserver` in

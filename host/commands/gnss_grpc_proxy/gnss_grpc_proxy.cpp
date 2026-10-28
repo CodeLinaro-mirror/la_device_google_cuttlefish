@@ -16,6 +16,7 @@
 
 #include <chrono>
 #include <ctime>
+#include <format>
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -458,12 +459,12 @@ void RunServer() {
     ServerBuilder builder;
 
     if (FLAGS_gnss_grpc_port >= 0) {
-      std::string address = fmt::format("0.0.0.0:{}", FLAGS_gnss_grpc_port);
+      std::string address = std::format("0.0.0.0:{}", FLAGS_gnss_grpc_port);
       builder.AddListeningPort(address, grpc::InsecureServerCredentials());
     }
 
     if (!FLAGS_gnss_grpc_socket.empty()) {
-      std::string address = fmt::format("unix:{}", FLAGS_gnss_grpc_socket);
+      std::string address = std::format("unix:{}", FLAGS_gnss_grpc_socket);
       builder.AddListeningPort(address, grpc::InsecureServerCredentials());
     }
     // Register "service" as the instance through which we'll communicate with

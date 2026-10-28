@@ -17,6 +17,7 @@
 
 #include <android-base/logging.h>
 
+#include <format>
 #include <string>
 #include <vector>
 
@@ -32,11 +33,11 @@ namespace cuttlefish {
 namespace {
 
 std::string MacCrosvmArgument(std::optional<std::string_view> mac) {
-  return mac.has_value() ? fmt::format(",mac={}", mac.value()) : "";
+  return mac.has_value() ? std::format(",mac={}", mac.value()) : "";
 }
 
 std::string PciCrosvmArgument(std::optional<pci::Address> pci) {
-  return pci.has_value() ? fmt::format(",pci-address={}", pci.value().Id())
+  return pci.has_value() ? std::format(",pci-address={}", pci.value().Id())
                          : "";
 }
 

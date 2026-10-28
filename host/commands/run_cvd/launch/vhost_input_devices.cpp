@@ -17,6 +17,7 @@
 
 #include <sys/socket.h>
 
+#include <format>
 #include <regex>
 #include <utility>
 #include <vector>
@@ -194,7 +195,7 @@ class VhostInputDevices : public CommandSource,
       const std::string spec = BuildTouchSpec(
           touchscreen_template, {.index = i, .width = width, .height = height});
       const std::string spec_path = instance_.PerInstanceInternalPath(
-          fmt::format("touchscreen_spec_{}", i));
+          std::format("touchscreen_spec_{}", i));
       CF_EXPECTF(android::base::WriteStringToFile(spec, spec_path,
                                                   true /*follow symlinks*/),
                  "Failed to write touchscreen spec to file: {}", spec_path);
@@ -203,8 +204,8 @@ class VhostInputDevices : public CommandSource,
       Command touchscreen_log_tee =
           CF_EXPECTF(log_tee_.CreateLogTee(
                          touchscreen_cmd,
-                         fmt::format("vhost_user_touchscreen_{}", i), kStdErr),
-                     "Failed to create log tee for touchscreen device", i);
+                         std::format("vhost_user_touchscreen_{}", i), kStdErr),
+                     "Failed to create log tee for touchscreen device {}", i);
       commands.emplace_back(std::move(touchscreen_cmd));
       commands.emplace_back(std::move(touchscreen_log_tee));
     }
@@ -224,7 +225,7 @@ class VhostInputDevices : public CommandSource,
           touchpad_template,
           {.index = i, .width = width, .height = height, .type = type});
       const std::string spec_path =
-          instance_.PerInstanceInternalPath(fmt::format("touchpad_spec_{}", i));
+          instance_.PerInstanceInternalPath(std::format("touchpad_spec_{}", i));
       CF_EXPECTF(android::base::WriteStringToFile(spec, spec_path,
                                                   true /*follow symlinks*/),
                  "Failed to write touchpad spec to file: {}", spec_path);
@@ -232,7 +233,7 @@ class VhostInputDevices : public CommandSource,
           NewVhostUserInputCommand(touchpad_sockets_[i], spec_path);
       Command touchpad_log_tee = CF_EXPECTF(
           log_tee_.CreateLogTee(
-              touchpad_cmd, fmt::format("vhost_user_touchpad_{}", i), kStdErr),
+              touchpad_cmd, std::format("vhost_user_touchpad_{}", i), kStdErr),
           "Failed to create log tee for touchpad {}", i);
       commands.emplace_back(std::move(touchpad_cmd));
       commands.emplace_back(std::move(touchpad_log_tee));

@@ -13,6 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <format>
 #include <iostream>
 #include <string_view>
 
@@ -95,7 +96,7 @@ FetcherConfigs FindFetcherConfigs(const std::vector<std::string>& args) {
   std::vector<FetcherConfig> fetcher_configs;
   for (size_t i = 0; i < system_image_dirs.size(); ++i) {
     std::string fetcher_file =
-        fmt::format("{}/{}", system_image_dirs[i], kFetcherConfigFile);
+        std::format("{}/{}", system_image_dirs[i], kFetcherConfigFile);
     FetcherConfig fetcher_config;
     if (FileExists(fetcher_file)) {
       if (!fetcher_config.LoadFromFile(fetcher_file)) {
@@ -480,7 +481,7 @@ Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
                                       default_mode, default_group));
       CF_EXPECT(EnsureDirectoryExists(instance.PerInstanceGrpcSocketPath(""),
                                       default_mode, default_group));
-      std::string vsock_dir = fmt::format("{}/vsock_{}_{}", TempDir(),
+      std::string vsock_dir = std::format("{}/vsock_{}_{}", TempDir(),
                                           instance.vsock_guest_cid(), getuid());
       if (DirectoryExists(vsock_dir, /* follow_symlinks */ false) &&
           !IsDirectoryEmpty(vsock_dir)) {

@@ -233,7 +233,7 @@ class ConfigFlagImpl : public ConfigFlag {
     for (const auto& name : configs) {
       CF_EXPECTF(config_reader_.HasConfig(name),
                  "Invalid --config option '{}'. Valid options: [{}]", name,
-                 fmt::join(config_reader_.AvailableConfigs(), ","));
+                 Join(config_reader_.AvailableConfigs(), ","));
     }
     configs_ = configs;
     is_default_ = false;
