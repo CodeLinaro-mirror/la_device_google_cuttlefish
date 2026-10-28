@@ -25,6 +25,7 @@ PRODUCT_MAKEFILES := \
 	aosp_cf_arm64_phone_fullmte:$(LOCAL_DIR)/vsoc_arm64_only/phone/aosp_cf_fullmte.mk \
 	aosp_cf_arm64_phone_hwasan:$(LOCAL_DIR)/vsoc_arm64/phone/aosp_cf_hwasan.mk \
 	aosp_cf_arm64_only_phone:$(LOCAL_DIR)/vsoc_arm64_only/phone/aosp_cf.mk \
+	aosp_cf_arm64_only_phone_aliasing:$(LOCAL_DIR)/vsoc_arm64_only/phone/aosp_cf_aliasing.mk \
 	aosp_cf_arm64_only_phone_vendor:$(LOCAL_DIR)/vsoc_arm64_only/phone/aosp_cf_vendor.mk \
 	aosp_cf_arm64_only_phone_hwasan:$(LOCAL_DIR)/vsoc_arm64_only/phone/aosp_cf_hwasan.mk \
 	aosp_cf_arm64_minidroid:$(LOCAL_DIR)/vsoc_arm64_minidroid/aosp_cf.mk \
@@ -46,6 +47,7 @@ PRODUCT_MAKEFILES := \
 	aosp_cf_x86_64_host:$(LOCAL_DIR)/vsoc_x86_64_host/aosp_cf.mk \
 	aosp_cf_x86_64_minidroid:$(LOCAL_DIR)/vsoc_x86_64_minidroid/aosp_cf.mk \
 	aosp_cf_x86_64_only_phone:$(LOCAL_DIR)/vsoc_x86_64_only/phone/aosp_cf.mk \
+	aosp_cf_x86_64_only_phone_aliasing:$(LOCAL_DIR)/vsoc_x86_64_only/phone/aosp_cf_aliasing.mk \
 	aosp_cf_x86_64_phone_pgagnostic:$(LOCAL_DIR)/vsoc_x86_64_pgagnostic/phone/aosp_cf.mk \
 	aosp_cf_x86_64_only_phone_hsum:$(LOCAL_DIR)/vsoc_x86_64_only/phone/aosp_cf_hsum.mk \
 	aosp_cf_x86_64_slim:$(LOCAL_DIR)/vsoc_x86_64_only/slim/aosp_cf.mk \
@@ -57,8 +59,10 @@ PRODUCT_MAKEFILES := \
 COMMON_LUNCH_CHOICES := \
 	aosp_cf_arm64_auto-trunk_staging-userdebug \
 	aosp_cf_arm64_desktop-trunk_staging-userdebug \
+	aosp_cf_arm64_only_phone_aliasing-trunk_staging-userdebug \
 	aosp_cf_arm64_phone-trunk_staging-userdebug \
 	aosp_cf_riscv64_phone-trunk_staging-userdebug \
+	aosp_cf_x86_64_only_phone_aliasing-trunk_staging-userdebug \
 	aosp_cf_x86_64_only_phone_hsum-trunk_staging-userdebug \
 	aosp_cf_x86_64_desktop-trunk_staging-userdebug \
 	aosp_cf_x86_64_phone-trunk_staging-userdebug \

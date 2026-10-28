@@ -2,3 +2,7 @@ allow vold kernel:system module_request;
 
 # vold will access /mnt/vendor/shared for unknown reasons
 allow vold mnt_vendor_file:dir r_dir_perms;
+
+# vold maps a dm-default-key device over each userdata_exp.* partition for
+# /data metadata encryption and reads the partition size (BLKGETSIZE64).
+allow vold userdata_exp_block_device:blk_file { open read ioctl };
