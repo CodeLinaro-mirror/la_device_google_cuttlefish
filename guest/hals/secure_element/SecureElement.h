@@ -18,10 +18,12 @@
 
 #include <aidl/android/hardware/secure_element/BnSecureElement.h>
 #include <aidl/android/hardware/secure_element/ISecureElementCallback.h>
+#include <aidl/android/hardware/secure_element/common/ResetReason.h>
 
 #include "common/libs/transport/channel_sharedfd.h"
 
 namespace aidl::android::hardware::secure_element {
+using ::aidl::android::hardware::secure_element::common::ResetReason;
 using cuttlefish::Result;
 using cuttlefish::transport::ManagedMessage;
 using cuttlefish::transport::SharedFdChannel;
