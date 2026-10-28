@@ -52,8 +52,7 @@ class VirtioMediaCameraDeviceSession
       const std::vector<SupportedV4L2Format>& sortedFormats,
       const CroppingType& croppingType,
       const common::V1_0::helper::CameraMetadata& chars,
-      const std::string& cameraId, ::android::base::unique_fd v4l2Fd,
-      v4l2_buf_type captureType);
+      const std::string& cameraId, ::android::base::unique_fd v4l2Fd);
   ~VirtioMediaCameraDeviceSession() override;
 
   // Caller must use this method to check if CameraDeviceSession ctor failed
@@ -399,7 +398,6 @@ class VirtioMediaCameraDeviceSession
   common::V1_0::helper::CameraMetadata mLatestReqSetting;
 
   bool mV4l2Streaming = false;
-  const v4l2_buf_type mCaptureType;
   size_t mV4L2PlaneCount = 1;
   std::vector<uint32_t> mV4L2BytesPerLine;
   SupportedV4L2Format mV4l2StreamingFmt;
