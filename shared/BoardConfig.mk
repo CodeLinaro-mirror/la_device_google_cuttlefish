@@ -184,6 +184,8 @@ TARGET_BOOTLOADER_BOARD_NAME := cutf
 endif
 
 BOARD_SYSTEMIMAGE_FILE_SYSTEM_TYPE := $(TARGET_RO_FILE_SYSTEM_TYPE)
+$(call soong_config_set_if_exist,cf_image_config,system_type,$(BOARD_SYSTEMIMAGE_FILE_SYSTEM_TYPE))
+$(call soong_config_set_if_exist,cf_image_config,system_ext4_share_dup_blocks,$(BOARD_EXT4_SHARE_DUP_BLOCKS))
 
 # Boot partition size: 64M
 # This is only used for OTA update packages. The image size on disk

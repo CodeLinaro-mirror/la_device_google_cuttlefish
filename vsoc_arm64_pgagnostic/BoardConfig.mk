@@ -54,7 +54,9 @@ HOST_CROSS_2ND_ARCH :=
 BOARD_16K_OTA_MOVE_VENDOR := true
 
 BOARD_SYSTEMIMAGE_FILE_SYSTEM_TYPE := erofs
+$(call soong_config_set_if_exist,cf_image_config,system_type,$(BOARD_SYSTEMIMAGE_FILE_SYSTEM_TYPE))
 BOARD_SYSTEMIMAGE_EROFS_BLOCKSIZE := 16384
+$(call soong_config_set_if_exist,cf_image_config,system_erofs_blocksize,$(BOARD_SYSTEMIMAGE_EROFS_BLOCKSIZE))
 BOARD_PRODUCTIMAGE_FILE_SYSTEM_TYPE := erofs
 
 BOARD_F2FS_BLOCKSIZE := 16384
