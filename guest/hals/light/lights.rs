@@ -23,8 +23,9 @@ use log::error;
 use log::info;
 
 use android_hardware_light::aidl::android::hardware::light::{
-    HwLight::HwLight, HwLightEffect::HwLightEffect, HwLightState::HwLightState, ILights::ILights,
-    LightType::LightType,
+    HwLight::HwLight, HwLightEffect::HwLightEffect, HwLightState::HwLightState,
+    HwPredefinedAnimation::HwPredefinedAnimation, ILights::ILights, LightType::LightType,
+    PredefinedAnimationType::PredefinedAnimationType,
 };
 
 use binder::{ExceptionCode, Interface, Status};
@@ -36,10 +37,14 @@ struct Light {
     hw_light: HwLight,
     state: HwLightState,
     effect: HwLightEffect,
+    predefined_animation: HwPredefinedAnimation,
 }
 
 const NUM_DEFAULT_LIGHTS: i32 = 1;
 const MIN_UPDATE_PERIOD_MS: i32 = 33;
+
+const DEFAULT_SUPPORTED_ANIMATIONS: &[PredefinedAnimationType] =
+    &[PredefinedAnimationType::PULSE, PredefinedAnimationType::BLINK];
 
 /// Defined so we can implement the ILights AIDL interface.
 pub struct LightsService {
@@ -57,7 +62,12 @@ impl LightsService {
         for hw_light in hw_lights {
             lights_map.insert(
                 hw_light.id,
-                Light { hw_light, state: Default::default(), effect: Default::default() },
+                Light {
+                    hw_light,
+                    state: Default::default(),
+                    effect: Default::default(),
+                    predefined_animation: Default::default(),
+                },
             );
         }
 
@@ -73,6 +83,28 @@ impl LightsService {
             lights: Mutex::new(lights_map),
             vsock_server: VsockServer::new(lights_server_port).unwrap(),
         }
+    }
+
+    fn to_serializable_light(light: &Light) -> SerializableLight {
+        SerializableLight::new(
+            light.hw_light.id as u32,
+            light.state.color as u32,
+            match light.hw_light.r#type {
+                LightType::BACKLIGHT => 0,
+                LightType::KEYBOARD => 1,
+                LightType::BUTTONS => 2,
+                LightType::BATTERY => 3,
+                LightType::NOTIFICATIONS => 4,
+                LightType::ATTENTION => 5,
+                LightType::BLUETOOTH => 6,
+                LightType::WIFI => 7,
+                LightType::MICROPHONE => 8,
+                LightType::CAMERA => 9,
+                LightType::APPLICATION => 10,
+                LightType::PRIORITY_NOTIFICATIONS => 11,
+                _ => todo!(),
+            },
+        )
     }
 
     fn validate_effect(&self, effect: &HwLightEffect) -> ExceptionCode {
@@ -132,6 +164,7 @@ impl Default for LightsService {
             ordinal: light_id,
             r#type: LightType::BATTERY,
             minUpdatePeriodMillis: MIN_UPDATE_PERIOD_MS,
+            supportedAnimations: DEFAULT_SUPPORTED_ANIMATIONS.to_vec(),
         };
 
         Self::new((1..=NUM_DEFAULT_LIGHTS).map(id_mapping_closure))
@@ -144,25 +177,9 @@ impl ILights for LightsService {
 
         if let Some(light) = self.lights.lock().unwrap().get_mut(&id) {
             light.state = *state;
+            light.predefined_animation = Default::default();
 
-            let ser_light = SerializableLight::new(
-                light.hw_light.id as u32,
-                light.state.color as u32,
-                match light.hw_light.r#type {
-                    LightType::BACKLIGHT => 0,
-                    LightType::KEYBOARD => 1,
-                    LightType::BUTTONS => 2,
-                    LightType::BATTERY => 3,
-                    LightType::NOTIFICATIONS => 4,
-                    LightType::ATTENTION => 5,
-                    LightType::BLUETOOTH => 6,
-                    LightType::WIFI => 7,
-                    LightType::MICROPHONE => 8,
-                    LightType::CAMERA => 9,
-                    _ => todo!(),
-                },
-            );
-
+            let ser_light = Self::to_serializable_light(light);
             self.vsock_server.send_lights_state(vec![ser_light]);
 
             Ok(())
@@ -192,8 +209,88 @@ impl ILights for LightsService {
         Ok(())
     }
 
+    fn setPredefinedAnimation(
+        &self,
+        id: i32,
+        animation: &HwPredefinedAnimation,
+    ) -> binder::Result<()> {
+        let mut lights = self.lights.lock().unwrap();
+        let Some(light) = lights.get_mut(&id) else {
+            error!("Lights predefined animation requested for unsupported light id={}", id);
+            return Err(Status::from(ExceptionCode::UNSUPPORTED_OPERATION));
+        };
+
+        if !light.hw_light.supportedAnimations.contains(&animation.animationType) {
+            error!(
+                "Lights predefined animation type {:?} is not supported for id={}",
+                animation.animationType, id
+            );
+            return Err(Status::from(ExceptionCode::ILLEGAL_ARGUMENT));
+        }
+
+        if animation.iterations < 0
+            || animation.durationMs < 0
+            || (animation.durationMs > 0
+                && animation.durationMs < light.hw_light.minUpdatePeriodMillis)
+        {
+            error!(
+                "Lights predefined animation has invalid iterations={} or durationMs={} (minUpdatePeriodMillis={}) for id={}",
+                animation.iterations,
+                animation.durationMs,
+                light.hw_light.minUpdatePeriodMillis,
+                id
+            );
+            return Err(Status::from(ExceptionCode::ILLEGAL_ARGUMENT));
+        }
+
+        info!(
+            "Lights setting predefined animation for id={}: type={:?}, color={:#x}, iterations={}, durationMs={}, preemptive={}",
+            id,
+            animation.animationType,
+            animation.color,
+            animation.iterations,
+            animation.durationMs,
+            animation.preemptive
+        );
+        light.predefined_animation = *animation;
+        light.state.color = animation.color;
+        let ser_light = Self::to_serializable_light(light);
+        self.vsock_server.send_lights_state(vec![ser_light]);
+
+        Ok(())
+    }
+
+    fn turnLightsOff(&self, light_ids: &[i32]) -> binder::Result<()> {
+        if light_ids.is_empty() {
+            error!("Lights turnLightsOff called with empty light_ids");
+            return Err(Status::from(ExceptionCode::ILLEGAL_ARGUMENT));
+        }
+
+        let mut lights = self.lights.lock().unwrap();
+        for id in light_ids {
+            if !lights.contains_key(id) {
+                error!("Lights turnLightsOff requested for unsupported light id={}", id);
+                return Err(Status::from(ExceptionCode::UNSUPPORTED_OPERATION));
+            }
+        }
+
+        let mut ser_lights = Vec::with_capacity(light_ids.len());
+        for id in light_ids {
+            if let Some(light) = lights.get_mut(id) {
+                info!("Lights turning off id={}", id);
+                light.state = Default::default();
+                light.effect = Default::default();
+                light.predefined_animation = Default::default();
+                ser_lights.push(Self::to_serializable_light(light));
+            }
+        }
+        self.vsock_server.send_lights_state(ser_lights);
+
+        Ok(())
+    }
+
     fn getLights(&self) -> binder::Result<Vec<HwLight>> {
         info!("Lights reporting supported lights");
-        Ok(self.lights.lock().unwrap().values().map(|light| light.hw_light).collect())
+        Ok(self.lights.lock().unwrap().values().map(|light| light.hw_light.clone()).collect())
     }
 }
