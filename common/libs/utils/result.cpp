@@ -15,13 +15,13 @@
 
 #include "common/libs/utils/result.h"
 
+#include <format>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include <android-base/format.h>
 #include <android-base/logging.h>
 #include <android-base/result.h>
 
@@ -71,8 +71,8 @@ bool StackTraceEntry::HasMessage() const { return !message_.str().empty(); }
  * reused by formatting code for both rendering individual stack trace
  * entries, and rendering an entire stack trace with multiple entries.
  */
-fmt::format_context::iterator StackTraceEntry::format(
-    fmt::format_context& ctx, const std::vector<FormatSpecifier>& specifiers,
+std::format_context::iterator StackTraceEntry::format(
+    std::format_context& ctx, const std::vector<FormatSpecifier>& specifiers,
     std::optional<int> index) const {
   static constexpr char kTerminalBoldRed[] = "\033[0;1;31m";
   static constexpr char kTerminalCyan[] = "\033[0;36m";
@@ -118,66 +118,66 @@ fmt::format_context::iterator StackTraceEntry::format(
   for (size_t i = 0; i < filtered_specs.size(); i++) {
     if (index.has_value() && numbers) {
       if (color) {
-        out = fmt::format_to(out, "{}{}{}. ", kTerminalYellow, *index,
+        out = std::format_to(out, "{}{}{}. ", kTerminalYellow, *index,
                              kTerminalReset);
       } else {
-        out = fmt::format_to(out, "{}. ", *index);
+        out = std::format_to(out, "{}. ", *index);
       }
     }
     if (color) {
-      out = fmt::format_to(out, "{}", kTerminalRed);
+      out = std::format_to(out, "{}", kTerminalRed);
     }
     if (numbers) {
       if (arrow && (int)i < ((int)filtered_specs.size()) - 2) {
-        out = fmt::format_to(out, "|  ");
+        out = std::format_to(out, "|  ");
       } else if (arrow && i == filtered_specs.size() - 2) {
-        out = fmt::format_to(out, "v  ");
+        out = std::format_to(out, "v  ");
       }
     } else {
       if (arrow && (int)i < ((int)filtered_specs.size()) - 2) {
-        out = fmt::format_to(out, " | ");
+        out = std::format_to(out, " | ");
       } else if (arrow && i == filtered_specs.size() - 2) {
-        out = fmt::format_to(out, " v ");
+        out = std::format_to(out, " v ");
       }
     }
     if (color) {
-      out = fmt::format_to(out, "{}", kTerminalReset);
+      out = std::format_to(out, "{}", kTerminalReset);
     }
     switch (filtered_specs[i]) {
       case FormatSpecifier::kFunction:
         if (color) {
-          out = fmt::format_to(out, "{}{}{}", kTerminalCyan, function_,
+          out = std::format_to(out, "{}{}{}", kTerminalCyan, function_,
                                kTerminalReset);
         } else {
-          out = fmt::format_to(out, "{}", function_);
+          out = std::format_to(out, "{}", function_);
         }
         break;
       case FormatSpecifier::kLongExpression:
-        out = fmt::format_to(out, "CF_EXPECT({})", expression_);
+        out = std::format_to(out, "CF_EXPECT({})", expression_);
         break;
       case FormatSpecifier::kLongLocation:
         if (color) {
-          out = fmt::format_to(out, "{}{}{}:{}{}{}", kTerminalUnderline, file_,
+          out = std::format_to(out, "{}{}{}:{}{}{}", kTerminalUnderline, file_,
                                kTerminalReset, kTerminalYellow, line_,
                                kTerminalYellow);
         } else {
-          out = fmt::format_to(out, "{}:{}", file_, line_);
+          out = std::format_to(out, "{}:{}", file_, line_);
         }
         break;
       case FormatSpecifier::kMessage:
         if (color) {
-          out = fmt::format_to(out, "{}{}{}", kTerminalBoldRed, message_.str(),
+          out = std::format_to(out, "{}{}{}", kTerminalBoldRed, message_.str(),
                                kTerminalReset);
         } else {
-          out = fmt::format_to(out, "{}", message_.str());
+          out = std::format_to(out, "{}", message_.str());
         }
         break;
       case FormatSpecifier::kPrettyFunction:
         if (color) {
-          out = fmt::format_to(out, "{}{}{}", kTerminalCyan, pretty_function_,
+          out = std::format_to(out, "{}{}{}", kTerminalCyan, pretty_function_,
                                kTerminalReset);
         } else {
-          out = fmt::format_to(out, "{}", pretty_function_);
+          out = std::format_to(out, "{}", pretty_function_);
         }
         break;
       case FormatSpecifier::kShort: {
@@ -190,37 +190,37 @@ fmt::format_context::iterator StackTraceEntry::format(
                        : message_.str();
         }
         if (color) {
-          out = fmt::format_to(out, "{}{}{}:{}{}{} | {}{}{} | {}",
+          out = std::format_to(out, "{}{}{}:{}{}{} | {}{}{} | {}",
                                kTerminalUnderline, short_file, kTerminalReset,
                                kTerminalYellow, line_, kTerminalReset,
                                kTerminalCyan, function_, kTerminalReset, last);
         } else {
-          out = fmt::format_to(out, "{}:{} | {} | {}", short_file, line_,
+          out = std::format_to(out, "{}:{} | {} | {}", short_file, line_,
                                function_, last);
         }
         break;
       }
       case FormatSpecifier::kShortExpression:
-        out = fmt::format_to(out, "{}", expression_);
+        out = std::format_to(out, "{}", expression_);
         break;
       case FormatSpecifier::kShortLocation: {
         auto last_slash = file_.rfind("/");
         auto short_file =
             file_.substr(last_slash == std::string::npos ? 0 : last_slash + 1);
         if (color) {
-          out = fmt::format_to(out, "{}{}{}:{}{}{}", kTerminalUnderline,
+          out = std::format_to(out, "{}{}{}:{}{}{}", kTerminalUnderline,
                                short_file, kTerminalReset, kTerminalYellow,
                                line_, kTerminalReset);
         } else {
-          out = fmt::format_to(out, "{}:{}", short_file, line_);
+          out = std::format_to(out, "{}:{}", short_file, line_);
         }
         break;
       }
       default:
-        fmt::format_to(out, "unknown specifier");
+        std::format_to(out, "unknown specifier");
     }
     if (i < filtered_specs.size() - 1) {
-      out = fmt::format_to(out, "\n");
+      out = std::format_to(out, "\n");
     }
   }
   return out;
@@ -239,9 +239,9 @@ std::string ResultErrorFormat(bool color) {
 
 }  // namespace cuttlefish
 
-fmt::format_context::iterator
-fmt::formatter<cuttlefish::StackTraceError>::format(
-    const cuttlefish::StackTraceError& error, format_context& ctx) const {
+std::format_context::iterator
+std::formatter<cuttlefish::StackTraceError>::format(
+    const cuttlefish::StackTraceError& error, std::format_context& ctx) const {
   auto out = ctx.out();
   auto& stack = error.Stack();
   int begin = inner_to_outer_ ? 0 : stack.size() - 1;
@@ -251,7 +251,7 @@ fmt::formatter<cuttlefish::StackTraceError>::format(
     auto& specs = has_inner_fmt_spec_ && i == 0 ? inner_fmt_specs_ : fmt_specs_;
     out = stack[i].format(ctx, specs, i);
     if (i != end - step) {
-      out = fmt::format_to(out, "\n");
+      out = std::format_to(out, "\n");
     }
   }
   return out;

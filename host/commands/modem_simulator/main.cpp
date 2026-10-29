@@ -16,8 +16,9 @@
 #include <signal.h>
 #include <unistd.h>
 
+#include <format>
+
 #include <android-base/strings.h>
-#include <fmt/format.h>
 #include <gflags/gflags.h>
 
 #include "common/libs/fs/shared_buf.h"
@@ -118,7 +119,7 @@ int ModemSimulatorMain(int argc, char** argv) {
   // Monitor exit request and
   // remote call, remote sms from other cuttlefish instance
   std::string monitor_socket_name =
-      fmt::format("modem_simulator{}", instance.modem_simulator_host_id());
+      std::format("modem_simulator{}", instance.modem_simulator_host_id());
 
   auto monitor_socket = SharedFD::SocketLocalServer(monitor_socket_name.c_str(),
                                                     true, SOCK_STREAM, 0666);

@@ -18,8 +18,9 @@
 
 #include <unistd.h>
 
+#include <format>
+
 #include <android-base/logging.h>
-#include <fmt/format.h>
 
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/location/GnssClient.h"
@@ -41,7 +42,7 @@ void LocationHandler::HandleMessage(const float longitude,
   }
   auto instance = config->ForDefaultInstance();
   std::string socket_name =
-      fmt::format("unix:{}.sock",
+      std::format("unix:{}.sock",
                   instance.PerInstanceGrpcSocketPath("GnssGrpcProxyServer"));
   GnssClient gpsclient(
       grpc::CreateChannel(socket_name, grpc::InsecureChannelCredentials()));

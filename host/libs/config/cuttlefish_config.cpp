@@ -22,6 +22,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <format>
 #include <fstream>
 #include <iomanip>
 #include <iterator>
@@ -109,7 +110,7 @@ VmmMode CuttlefishConfig::vm_manager() const {
   return ParseVmm(str).value_or(VmmMode::kUnknown);
 }
 void CuttlefishConfig::set_vm_manager(VmmMode vmm) {
-  (*dictionary_)[kVmManager] = fmt::format("{}", vmm);
+  (*dictionary_)[kVmManager] = std::format("{}", vmm);
 }
 
 static constexpr char kApVmManager[] = "ap_vm_manager";

@@ -57,6 +57,7 @@ PRODUCT_SOURCE_ROOT_DIRS += \
     -vendor/qcom/ \
     -vendor/sei/ \
     -vendor/skyworth/ \
+    -vendor/st/ \
     -vendor/auto/embedded/CarServiceGoogleRRO/ \
     -vendor/google_devices/eos/ \
     -vendor/google_devices/sw5100/ \

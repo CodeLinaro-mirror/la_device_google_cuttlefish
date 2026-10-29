@@ -90,19 +90,6 @@ public class EventReporter extends JobBase {
      */
     @Override
     public int execute() {
-        // We suspect that something is throttling our messages and preventing
-        // the following message from being logged to bugreport.
-        // The log is present in logcat log (that we collect independently), yet
-        // occasionally most of the GCEService logs never make it to show up on
-        // bug report.
-        // This may or may not prove to be effective. We need to monitor bugreports
-        // for VIRTUAL_DEVICE_BOOT_COMPLETED messages are being dropped.
-        //
-        // Number chosen at random - yet guaranteed to be prime.
-        try {
-            Thread.sleep(937);
-        } catch (InterruptedException e) {}
-
         reportMessage(VIRTUAL_DEVICE_BOOT_COMPLETED);
         return 0;
     }

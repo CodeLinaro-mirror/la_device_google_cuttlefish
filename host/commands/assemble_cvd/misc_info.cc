@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <array>
+#include <format>
 #include <memory>
 #include <set>
 #include <string>
@@ -27,7 +28,6 @@
 #include <android-base/logging.h>
 #include <android-base/parseint.h>
 #include <android-base/strings.h>
-#include <fmt/format.h>
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
@@ -73,7 +73,7 @@ Result<std::string> GetExpected(const MiscInfo& misc_info,
 std::string MergePartitionLists(const std::string& vendor,
                                 const std::string& system,
                                 const std::set<std::string>& extracted_images) {
-  const std::string full_string = fmt::format("{} {}", vendor, system);
+  const std::string full_string = std::format("{} {}", vendor, system);
   const std::vector<std::string> full_list =
       android::base::Tokenize(full_string, " ");
   // std::set removes duplicates and orders the elements, which we want
@@ -310,19 +310,19 @@ Result<VbmetaArgs> GetVbmetaArgs(const MiscInfo& misc_info,
   for (const auto& partition : kVbmetaPartitions) {
     // The key_path value should exist, but it is a build system path
     // We use a host artifacts relative path instead
-    if (Contains(misc_info, fmt::format("avb_{}_key_path", partition))) {
+    if (Contains(misc_info, std::format("avb_{}_key_path", partition))) {
       const auto partition_algorithm = CF_EXPECT(
-          GetExpected(misc_info, fmt::format("avb_{}_algorithm", partition)));
+          GetExpected(misc_info, std::format("avb_{}_algorithm", partition)));
       result.chained_partitions.emplace_back(ChainPartition{
           .name = partition,
           .rollback_index = CF_EXPECT(GetExpected(
               misc_info,
-              fmt::format("avb_{}_rollback_index_location", partition))),
+              std::format("avb_{}_rollback_index_location", partition))),
           .key_path = CF_EXPECT(GetPubKeyPath(partition_algorithm)),
       });
     } else {
       result.included_partitions.emplace_back(
-          fmt::format("{}/IMAGES/{}.img", image_path, partition));
+          std::format("{}/IMAGES/{}.img", image_path, partition));
     }
   }
   return result;

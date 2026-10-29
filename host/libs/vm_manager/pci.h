@@ -15,7 +15,8 @@
  */
 #pragma once
 
-#include <fmt/core.h>
+#include <format>
+#include <string>
 
 namespace cuttlefish {
 namespace pci {
@@ -28,7 +29,7 @@ class Address {
   unsigned int Device() const { return device_; }
   unsigned int Function() const { return function_; }
   std::string Id() const {
-    return fmt::format("{:02x}:{:02x}.{:01x}", bus_, device_, function_);
+    return std::format("{:02x}:{:02x}.{:01x}", bus_, device_, function_);
   }
 
  private:

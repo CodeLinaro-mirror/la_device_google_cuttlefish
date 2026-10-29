@@ -15,13 +15,15 @@
 
 #include "host/commands/run_cvd/launch/launch.h"
 
+#include <linux/vm_sockets.h>
+
+#include <format>
+
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/libs/config/command_source.h"
 #include "host/libs/config/known_paths.h"
 #include "host/libs/vhal_proxy_server/vhal_proxy_server_eth_addr.h"
-
-#include <linux/vm_sockets.h>
 
 namespace cuttlefish {
 
@@ -33,14 +35,14 @@ std::optional<MonitorCommand> VhalProxyServer(
   int port = instance.vhal_proxy_server_port();
   Command command = Command(VhalProxyServerBinary())
                         .AddParameter(VhalProxyServerConfig())
-                        .AddParameter(fmt::format(
+                        .AddParameter(std::format(
                             "{}:{}", vhal_proxy_server::kEthAddr, port));
   if (instance.vhost_user_vsock()) {
     command.AddParameter(
-        fmt::format("unix://{}", SharedFD::GetVhostUserVsockServerAddr(
+        std::format("unix://{}", SharedFD::GetVhostUserVsockServerAddr(
                                      port, instance.vsock_guest_cid())));
   } else {
-    command.AddParameter(fmt::format("vsock:{}:{}", VMADDR_CID_HOST, port));
+    command.AddParameter(std::format("vsock:{}:{}", VMADDR_CID_HOST, port));
   }
   return command;
 }

@@ -16,15 +16,16 @@
 
 #pragma once
 
-#include <android-base/format.h>
+#include <format>
+
 #include <android-base/logging.h>
 
 // FIXME: remove those shims
-#define LOG_DEBUG(...) LOG(DEBUG) << fmt::sprintf(__VA_ARGS__)
-#define LOG_INFO(...) LOG(INFO) << fmt::sprintf(__VA_ARGS__)
-#define LOG_WARN(...) LOG(WARNING) << fmt::sprintf(__VA_ARGS__)
-#define LOG_ERROR(...) LOG(ERROR) << fmt::sprintf(__VA_ARGS__)
-#define LOG_ALWAYS_FATAL(...) LOG(FATAL) << fmt::sprintf(__VA_ARGS__)
+#define LOG_DEBUG(...) LOG(DEBUG) << std::format(__VA_ARGS__)
+#define LOG_INFO(...) LOG(INFO) << std::format(__VA_ARGS__)
+#define LOG_WARN(...) LOG(WARNING) << std::format(__VA_ARGS__)
+#define LOG_ERROR(...) LOG(ERROR) << std::format(__VA_ARGS__)
+#define LOG_ALWAYS_FATAL(...) LOG(FATAL) << std::format(__VA_ARGS__)
 
 #define ASSERT(cond) CHECK(cond)
-#define ASSERT_LOG(cond, ...) CHECK(cond) << fmt::sprintf(__VA_ARGS__)
+#define ASSERT_LOG(cond, ...) CHECK(cond) << std::format(__VA_ARGS__)

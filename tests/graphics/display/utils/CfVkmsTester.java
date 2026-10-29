@@ -16,6 +16,7 @@
 
 package com.android.cuttlefish.tests;
 
+import com.android.tradefed.device.DeviceNotAvailableException;
 import com.android.tradefed.device.ITestDevice;
 import com.android.tradefed.log.LogUtil.CLog;
 import com.android.tradefed.util.CommandResult;
@@ -108,7 +109,9 @@ public class CfVkmsTester implements AutoCloseable {
     this.device = device;
   }
 
-  public static CfVkmsTester createWithConfig(ITestDevice device, List<VkmsConnectorSetup> configs) {
+  public static CfVkmsTester createWithConfig(ITestDevice device, List<VkmsConnectorSetup> configs)
+      throws DeviceNotAvailableException {
+    device.enableAdbRoot();
     CfVkmsTester tester = new CfVkmsTester(device);
     StringBuilder configStr = new StringBuilder();
     for (int i = 0; i < configs.size(); i++) {

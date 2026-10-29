@@ -58,9 +58,13 @@ genrule {
     out: ["fstab.cf.f2fs.hctr2"],
     tool_files: [
         "sed.f2fs",
+        "sed.f2fs.aliasing",
         "sed.hctr2",
     ],
-    cmd: "sed -f $(location sed.f2fs) -f $(location sed.hctr2) $(in) > $(out)",
+    cmd: select(soong_config_variable("cuttlefish_config", "use_userdata_exp_super"), {
+        true: "sed -f $(location sed.f2fs.aliasing) -f $(location sed.hctr2) $(in) > $(out)",
+        default: "sed -f $(location sed.f2fs) -f $(location sed.hctr2) $(in) > $(out)",
+    }),
 }
 
 genrule {
@@ -70,8 +74,12 @@ genrule {
     tool_files: [
         "sed.cts",
         "sed.f2fs",
+        "sed.f2fs.aliasing",
     ],
-    cmd: "sed -f $(location sed.f2fs) -f $(location sed.cts) $(in) > $(out)",
+    cmd: select(soong_config_variable("cuttlefish_config", "use_userdata_exp_super"), {
+        true: "sed -f $(location sed.f2fs.aliasing) -f $(location sed.cts) $(in) > $(out)",
+        default: "sed -f $(location sed.f2fs) -f $(location sed.cts) $(in) > $(out)",
+    }),
 }
 
 genrule {

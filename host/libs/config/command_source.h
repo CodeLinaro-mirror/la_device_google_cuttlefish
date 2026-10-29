@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <format>
 #include <ostream>
 #include <string_view>
 #include <utility>
@@ -79,3 +80,12 @@ class StatusCheckCommandSource : public virtual CommandSource {
 };
 
 }  // namespace cuttlefish
+
+template <>
+struct std::formatter<cuttlefish::ProcessCategory>
+    : std::formatter<std::string_view> {
+  auto format(cuttlefish::ProcessCategory category, auto& ctx) const {
+    return std::formatter<std::string_view>::format(
+        cuttlefish::format_as(category), ctx);
+  }
+};

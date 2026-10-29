@@ -37,3 +37,7 @@ allow init mcu_control_device:chr_file rw_file_perms;
 allow init mcu_uart_device:chr_file rw_file_perms;
 
 allow init frp_block_device:blk_file setattr;
+
+# Once an OTA expands super into userdata_exp.*, first stage init creates its
+# /dev/block/by-name link and second stage init relabels it.
+allow init userdata_exp_block_device:lnk_file relabelto;

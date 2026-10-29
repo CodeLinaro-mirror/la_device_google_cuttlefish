@@ -24,6 +24,9 @@
     <unavailable-feature name="android.hardware.telephony.ims.singlereg" />
     <unavailable-feature name="android.hardware.telephony.satellite" />
 
+    <!-- Desktop / virtual Cuttlefish devices do not provide hardware GPS. -->
+    <unavailable-feature name="android.hardware.location.gps" />
+
     <!-- Desktop / laptop form-factors typically feature a single webcam and do
          not support concurrent front and back camera streaming. -->
     <unavailable-feature name="android.hardware.camera.concurrent" />

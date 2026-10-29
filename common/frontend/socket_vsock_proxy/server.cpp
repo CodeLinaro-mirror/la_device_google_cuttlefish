@@ -14,6 +14,7 @@
 // limitations under the License.
 
 #include <chrono>
+#include <format>
 #include <set>
 #include <thread>
 
@@ -65,7 +66,7 @@ Result<SharedFD> TcpServer::Start() {
 }
 
 std::string TcpServer::Describe() const {
-  return fmt::format("tcp: {}", port_);
+  return std::format("tcp: {}", port_);
 }
 
 VsockServer::VsockServer(int port, std::optional<int> vhost_user_vsock_cid)
@@ -88,7 +89,7 @@ Result<SharedFD> VsockServer::Start() {
 }
 
 std::string VsockServer::Describe() const {
-  return fmt::format("vsock: {}", port_);
+  return std::format("vsock: {}", port_);
 }
 
 DupServer::DupServer(int fd) : fd_(fd), sfd_(SharedFD::Dup(fd_)) {
@@ -100,9 +101,6 @@ Result<SharedFD> DupServer::Start() {
   return sfd_;
 }
 
-std::string DupServer::Describe() const {
-  return fmt::format("fd: {}", fd_);
-}
-
+std::string DupServer::Describe() const { return std::format("fd: {}", fd_); }
 }
 }  // namespace cuttlefish

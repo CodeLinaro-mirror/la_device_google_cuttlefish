@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <format>
 #include <string>
 
 #include <android-base/logging.h>
@@ -44,7 +45,7 @@ namespace cuttlefish {
 namespace {
 
 void UpdateSecurityAlgorithm(SharedFD fd) {
-  std::string command = fmt::format(
+  std::string command = std::format(
       "REM{}{}", FLAGS_modem_num,
       GetATCommand(FLAGS_connection_event, FLAGS_encryption, FLAGS_integrity,
                    FLAGS_is_unprotected_emergency));
@@ -70,7 +71,7 @@ int UpdateSecurityAlgorithmMain(int argc, char **argv) {
 
   auto cf_config = config->ForInstance(FLAGS_instance_num);
   std::string socket_name =
-      fmt::format("modem_simulator{}", cf_config.modem_simulator_host_id());
+      std::format("modem_simulator{}", cf_config.modem_simulator_host_id());
 
   LOG(INFO) << "Connecting over local socket: " << socket_name;
   SharedFD modem_simulator_fd =

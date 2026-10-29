@@ -19,6 +19,7 @@
 #include <errno.h>
 #include <sys/stat.h>
 
+#include <format>
 #include <vector>
 
 #include <android-base/file.h>
@@ -97,7 +98,7 @@ Result<std::vector<pid_t>> GetPidsUsingFiles(
   }
   std::vector<pid_t> pids = CF_EXPECT(CollectPids(getuid()));
   for (const auto& pid : pids) {
-    std::string fd_dir_path = fmt::format("/proc/{}/fd", pid);
+    std::string fd_dir_path = std::format("/proc/{}/fd", pid);
 
     Result<std::vector<std::string>> entity_names =
         DirectoryContents(fd_dir_path);
@@ -151,8 +152,10 @@ Result<void> CleanPriorFiles(const std::vector<std::string>& paths,
     bool is_directory = (statbuf.st_mode & S_IFMT) == S_IFDIR;
     (is_directory ? prior_dirs : prior_files).emplace(path);
   }
-  LOG(DEBUG) << fmt::format("Prior dirs: {}", fmt::join(prior_dirs, ", "));
-  LOG(DEBUG) << fmt::format("Prior files: {}", fmt::join(prior_files, ", "));
+  LOG(DEBUG) << std::format("Prior dirs: {}",
+                            android::base::Join(prior_dirs, ", "));
+  LOG(DEBUG) << std::format("Prior files: {}",
+                            android::base::Join(prior_files, ", "));
 
   // TODO(schuffelen): Fix logic for host-sandboxing mode.
   if (!InSandbox() && (prior_dirs.size() > 0 || prior_files.size() > 0)) {
@@ -161,7 +164,7 @@ Result<void> CleanPriorFiles(const std::vector<std::string>& paths,
     CF_EXPECTF(
         pids.empty(),
         "Instance directory files in use. Try `cvd reset`? Observed PIDs: {}",
-        fmt::join(pids, ", "));
+        android::base::Join(pids, ", "));
   }
 
   for (const auto& path : paths) {

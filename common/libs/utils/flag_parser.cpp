@@ -36,7 +36,7 @@
 #include <android-base/parsebool.h>
 #include <android-base/scopeguard.h>
 #include <android-base/strings.h>
-#include <fmt/ranges.h>
+#include <format>
 
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/tee_logging.h"
@@ -498,7 +498,7 @@ static Result<void> GflagsCompatBoolFlagSetter(const std::string& name,
       value = false;
       return {};
     } else {
-      return CF_ERRF("Unexpected boolean value \"{}\" for \{}\"", match.value,
+      return CF_ERRF("Unexpected boolean value \"{}\" for \"{}\"", match.value,
                      name);
     }
   }
@@ -611,7 +611,7 @@ Flag GflagsCompatFlag(const std::string& name, int32_t& value) {
 
 Flag GflagsCompatFlag(const std::string& name, bool& value) {
   return GflagsCompatBoolFlagBase(name)
-      .Getter([&value]() { return fmt::format("{}", value); })
+      .Getter([&value]() { return std::format("{}", value); })
       .Setter([name, &value](const FlagMatch& match) {
         return GflagsCompatBoolFlagSetter(name, value, match);
       });
@@ -635,7 +635,7 @@ Flag GflagsCompatFlag(const std::string& name,
 
 Flag GflagsCompatFlag(const std::string& name, std::vector<unsigned>& value) {
   return GflagsCompatFlag(name)
-      .Getter([&value]() { return fmt::format("{}", fmt::join(value, ",")); })
+      .Getter([&value]() { return android::base::Join(value, ","); })
       .Setter([&value](const FlagMatch& match) -> Result<void> {
         if (match.value.empty()) {
           value.clear();
@@ -657,7 +657,16 @@ Flag GflagsCompatFlag(const std::string& name, std::vector<unsigned>& value) {
 Flag GflagsCompatFlag(const std::string& name, std::vector<bool>& value,
                       const bool def_val) {
   return GflagsCompatFlag(name)
-      .Getter([&value]() { return fmt::format("{}", fmt::join(value, ",")); })
+      .Getter([&value]() {
+        std::string res;
+        for (size_t i = 0; i < value.size(); ++i) {
+          if (i > 0) {
+            res += ",";
+          }
+          res += value[i] ? "true" : "false";
+        }
+        return res;
+      })
       .Setter([&name, &value, def_val](const FlagMatch& match) -> Result<void> {
         if (match.value.empty()) {
           value.clear();
