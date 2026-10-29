@@ -39,6 +39,7 @@
 #include <sync/sync.h>
 #include <utils/Trace.h>
 #include <deque>
+#include <optional>
 #include <tuple>
 
 #define HAVE_JPEG  // required for libyuv.h to export MJPEG decode APIs
@@ -1243,6 +1244,23 @@ status_t VirtioMediaCameraDeviceSession::fillCaptureResult(
   return fillCaptureResultCommon(md, timestamp, activeArraySize);
 }
 
+// Returns the first memory type, in order of preference, that the capture
+// queue accepts. REQBUFS(0) is used as the probe: it allocates nothing and
+// fails with EINVAL for an unsupported memory type.
+static std::optional<v4l2_memory> probeV4l2Memory(int v4l2Fd) {
+  for (v4l2_memory memory : {V4L2_MEMORY_USERPTR, V4L2_MEMORY_MMAP}) {
+    v4l2_requestbuffers probe{};
+    probe.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+    probe.memory = memory;
+    probe.count = 0;
+    if (TEMP_FAILURE_RETRY(ioctl(v4l2Fd, VIDIOC_REQBUFS, &probe)) == 0) {
+      return memory;
+    }
+  }
+  ALOGE("%s: device supports neither USERPTR nor MMAP buffers", __FUNCTION__);
+  return std::nullopt;
+}
+
 int VirtioMediaCameraDeviceSession::configureV4l2StreamLocked(
     const SupportedV4L2Format& v4l2Fmt, double requestFps) {
   ATRACE_CALL();
@@ -1360,10 +1378,19 @@ int VirtioMediaCameraDeviceSession::configureV4l2StreamLocked(
   ALOGI("%s: set mMaxLagNs to %" PRIu64 " ns, v4lBufferCount %u", __FUNCTION__,
         mMaxLagNs, v4lBufferCount);
 
+  // Drop whatever a previous, failed configuration left behind.
+  mV4l2Memory.reset();
+  const std::optional<v4l2_memory> memory = probeV4l2Memory(mV4l2Fd.get());
+  if (!memory.has_value()) {
+    return -EINVAL;
+  }
+  ALOGI("%s: using %s buffers", __FUNCTION__,
+        *memory == V4L2_MEMORY_USERPTR ? "USERPTR" : "MMAP");
+
   // VIDIOC_REQBUFS: create buffers
   v4l2_requestbuffers req_buffers{};
   req_buffers.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-  req_buffers.memory = V4L2_MEMORY_MMAP;
+  req_buffers.memory = *memory;
   req_buffers.count = v4lBufferCount;
   if (TEMP_FAILURE_RETRY(ioctl(mV4l2Fd.get(), VIDIOC_REQBUFS, &req_buffers)) <
       0) {
@@ -1377,10 +1404,20 @@ int VirtioMediaCameraDeviceSession::configureV4l2StreamLocked(
           __FUNCTION__, v4lBufferCount, req_buffers.count);
     return NO_MEMORY;
   }
-
-  // VIDIOC_QUERYBUF:  get buffer offset in the V4L2 fd
-  // VIDIOC_QBUF: send buffer to driver
   mV4L2BufferCount = req_buffers.count;
+
+  if (*memory == V4L2_MEMORY_USERPTR) {
+    mV4l2Memory = std::make_unique<UserPtrBufferMemory>(mV4L2BufferCount,
+                                                        mV4L2PlaneCount);
+  } else if (*memory == V4L2_MEMORY_MMAP) {
+    mV4l2Memory = std::make_unique<MmapBufferMemory>(mV4l2Fd.get());
+  } else {
+    ALOGE("%s: unsupported memory type %d", __FUNCTION__, *memory);
+    return -EINVAL;
+  }
+
+  // For each buffer: VIDIOC_QUERYBUF to get the planes info, attach memory to
+  // every plane, then VIDIOC_QBUF to hand it to the driver.
   mV4L2Buffers.clear();
   mV4L2Buffers.resize(mV4L2BufferCount);
 
@@ -1389,7 +1426,7 @@ int VirtioMediaCameraDeviceSession::configureV4l2StreamLocked(
     memset(&info.buffer, 0, sizeof(v4l2_buffer));
     info.buffer.index = i;
     info.buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-    info.buffer.memory = V4L2_MEMORY_MMAP;
+    info.buffer.memory = mV4l2Memory->V4l2Type();
     memset(info.planes, 0, sizeof(info.planes));
     info.buffer.m.planes = info.planes;
     info.buffer.length = VIDEO_MAX_PLANES;
@@ -1401,15 +1438,11 @@ int VirtioMediaCameraDeviceSession::configureV4l2StreamLocked(
     }
 
     for (uint32_t j = 0; j < info.buffer.length; j++) {
-      void* addr = mmap(nullptr, info.planes[j].length, PROT_READ | PROT_WRITE,
-                        MAP_SHARED, mV4l2Fd.get(), info.planes[j].m.mem_offset);
-      if (addr == MAP_FAILED) {
-        ALOGE("%s: mmap buffer %d plane %d failed: %s", __FUNCTION__, i, j,
-              strerror(errno));
+      void* addr = mV4l2Memory->Attach(i, j, &info.planes[j]);
+      if (addr == nullptr) {
         v4l2StreamOffLocked();
-        return -errno;
+        return -ENOMEM;
       }
-      info.mMappedAllocations.emplace_back(addr, info.planes[j].length);
       info.planeAddrs.push_back(addr);
       info.planeSizes.push_back(info.planes[j].length);
     }
@@ -1455,7 +1488,7 @@ int VirtioMediaCameraDeviceSession::configureV4l2StreamLocked(
     v4l2_buffer buffer{};
     memset(&buffer, 0, sizeof(buffer));
     buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-    buffer.memory = V4L2_MEMORY_MMAP;
+    buffer.memory = mV4l2Memory->V4l2Type();
     v4l2_plane planes[VIDEO_MAX_PLANES];
     memset(planes, 0, sizeof(planes));
     buffer.m.planes = planes;
@@ -1466,6 +1499,7 @@ int VirtioMediaCameraDeviceSession::configureV4l2StreamLocked(
       return -errno;
     }
 
+    buffer.m.planes = mV4L2Buffers[buffer.index].planes;
     buffer.length = mV4L2PlaneCount;
 
     if (TEMP_FAILURE_RETRY(ioctl(mV4l2Fd.get(), VIDIOC_QBUF, &buffer)) < 0) {
@@ -1508,7 +1542,7 @@ VirtioMediaCameraDeviceSession::dequeueV4l2FrameLocked(nsecs_t* shutterTs) {
     ATRACE_BEGIN("VIDIOC_DQBUF");
     memset(&buffer, 0, sizeof(buffer));
     buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-    buffer.memory = V4L2_MEMORY_MMAP;
+    buffer.memory = mV4l2Memory->V4l2Type();
     memset(planes, 0, sizeof(planes));
     buffer.m.planes = planes;
     buffer.length = VIDEO_MAX_PLANES;
@@ -1575,6 +1609,7 @@ VirtioMediaCameraDeviceSession::dequeueV4l2FrameLocked(nsecs_t* shutterTs) {
           "bufferTs: %" PRId64 ", curTime: %" PRId64,
           __FUNCTION__, buffer.index, lagNs, mMaxLagNs, *shutterTs, curTimeNs);
 
+      buffer.m.planes = mV4L2Buffers[buffer.index].planes;
       buffer.length = mV4L2PlaneCount;
       int retVal = ioctl(mV4l2Fd.get(), VIDIOC_QBUF, &buffer);
       if (retVal) {
@@ -1612,7 +1647,7 @@ void VirtioMediaCameraDeviceSession::enqueueV4l2Frame(
   v4l2_buffer buffer{};
   memset(&buffer, 0, sizeof(buffer));
   buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-  buffer.memory = V4L2_MEMORY_MMAP;
+  buffer.memory = mV4l2Memory->V4l2Type();
   buffer.index = frame->mBufferIndex;
   buffer.m.planes = mV4L2Buffers[frame->mBufferIndex].planes;
   buffer.length = mV4L2PlaneCount;
@@ -1926,15 +1961,17 @@ int VirtioMediaCameraDeviceSession::v4l2StreamOffLocked() {
   // VIDIOC_REQBUFS: clear buffers
   v4l2_requestbuffers req_buffers{};
   req_buffers.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-  req_buffers.memory = V4L2_MEMORY_MMAP;
+  req_buffers.memory = mV4l2Memory->V4l2Type();
   req_buffers.count = 0;
 
-  mV4L2Buffers.clear();  // RAII handles munmap automatically
+  mV4L2Buffers.clear();
+  mV4l2Memory->Detach();
   if (TEMP_FAILURE_RETRY(ioctl(mV4l2Fd.get(), VIDIOC_REQBUFS, &req_buffers)) <
       0) {
     ALOGE("%s: REQBUFS failed: %s", __FUNCTION__, strerror(errno));
     return -errno;
   }
+  mV4l2Memory.reset();
 
   mV4l2Streaming = false;
   return OK;

@@ -33,6 +33,8 @@
 #include <memory>
 #include <vector>
 
+#include "V4l2BufferMemory.h"
+
 namespace android {
 namespace hardware {
 namespace camera {
@@ -404,6 +406,7 @@ class VirtioMediaCameraDeviceSession
   double mV4l2StreamingFps = 0.0;
   size_t mV4L2BufferCount = 0;
   std::vector<V4L2BufferInfo> mV4L2Buffers;
+  std::unique_ptr<V4l2BufferMemory> mV4l2Memory;
 
   static const int kBufferWaitTimeoutSec =
       3;                       // TODO: handle long exposure (or not allowing)
