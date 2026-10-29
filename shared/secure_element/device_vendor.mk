@@ -14,5 +14,8 @@
 # limitations under the License.
 #
 
+# Enable OMAPI
+$(call inherit-product, device/google/cuttlefish/shared/omapi/device_secure_element_service.mk)
+
 PRODUCT_PACKAGES += \
     com.android.hardware.secure_element
