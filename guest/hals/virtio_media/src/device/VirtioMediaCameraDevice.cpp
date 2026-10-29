@@ -166,8 +166,7 @@ ndk::ScopedAStatus VirtioMediaCameraDevice::open(
   }
 
   session = createSession(in_callback, mCfg, mSupportedFormats, mCroppingType,
-                          mCameraCharacteristics, mCameraId, std::move(fd),
-                          mCaptureType);
+                          mCameraCharacteristics, mCameraId, std::move(fd));
   if (session == nullptr) {
     ALOGE("%s: camera device session allocation failed", __FUNCTION__);
     return fromStatus(Status::INTERNAL_ERROR);
@@ -209,10 +208,9 @@ VirtioMediaCameraDevice::createSession(
     const std::vector<SupportedV4L2Format>& sortedFormats,
     const CroppingType& croppingType,
     const common::V1_0::helper::CameraMetadata& chars,
-    const std::string& cameraId, unique_fd v4l2Fd, v4l2_buf_type captureType) {
+    const std::string& cameraId, unique_fd v4l2Fd) {
   return ndk::SharedRefBase::make<VirtioMediaCameraDeviceSession>(
-      cb, cfg, sortedFormats, croppingType, chars, cameraId, std::move(v4l2Fd),
-      captureType);
+      cb, cfg, sortedFormats, croppingType, chars, cameraId, std::move(v4l2Fd));
 }
 
 bool VirtioMediaCameraDevice::isInitFailed() {
@@ -302,8 +300,6 @@ status_t VirtioMediaCameraDevice::initCameraCharacteristics() {
     ALOGE("%s: v4l2 device open %s failed", __FUNCTION__, mDevicePath.c_str());
     return DEAD_OBJECT;
   }
-
-  mCaptureType = getCaptureType(fd.get());
 
   status_t ret;
   ret = initDefaultCharsKeys(&mCameraCharacteristics);
@@ -1035,7 +1031,8 @@ std::vector<SupportedV4L2Format>
 VirtioMediaCameraDevice::getCandidateSupportedFormatsLocked(
     int fd, CroppingType cropType, const Size& minStreamSize) {
   std::vector<SupportedV4L2Format> outFmts;
-  struct v4l2_fmtdesc fmtdesc{.index = 0, .type = getCaptureType(fd)};
+  struct v4l2_fmtdesc fmtdesc{.index = 0,
+                              .type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE};
   int ret = 0;
   while (ret == 0) {
     ret = TEMP_FAILURE_RETRY(ioctl(fd, VIDIOC_ENUM_FMT, &fmtdesc));
