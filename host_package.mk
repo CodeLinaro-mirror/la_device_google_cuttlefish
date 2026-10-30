@@ -23,6 +23,7 @@ cvd_host_executables := \
     adbshell \
     detect_graphics \
     launch_cvd \
+    build_super_image \
     lpmake \
     lpunpack \
     socket_vsock_proxy \
