@@ -82,3 +82,11 @@ endif
 ifeq ($(TARGET_PRODUCT),aosp_cf_x86_64_only_phone)
 PRODUCT_SOONG_INCREMENTAL_ANALYSIS := $(RELEASE_SOONG_INCREMENTAL_ANALYSIS)
 endif
+
+ifeq ($(TARGET_PRODUCT),aosp_cf_x86_64_only_phone)
+ifeq ($(RELEASE_SOONG_BWOB),true)
+  ifeq ($(SOONG_USE_BWOB),true)
+    PRODUCT_SOONG_BWOB := minimum
+  endif
+endif
+endif
