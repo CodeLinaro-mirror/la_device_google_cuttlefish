@@ -32,7 +32,8 @@ namespace device {
 namespace implementation {
 
 // Interface for the V4L2 memory type (enum v4l2_memory) backing the capture
-// buffers.
+// buffers. Implementations own the attached plane memory and release it in
+// their destructor.
 class V4l2BufferMemory {
  public:
   virtual ~V4l2BufferMemory() = default;
@@ -42,19 +43,16 @@ class V4l2BufferMemory {
   // Provides the memory for plane `plane` of buffer `index` and returns its
   // address. `desc` contains the plane info returned by VIDIOC_QUERYBUF.
   virtual void* Attach(uint32_t index, uint32_t plane, v4l2_plane* desc) = 0;
-
-  // Releases the buffers' memory from the device.
-  virtual void Detach() = 0;
 };
 
 // V4L2_MEMORY_MMAP: the memory is device-owned and mapped into the HAL.
+// Mappings are unmapped when this object is destroyed.
 class MmapBufferMemory final : public V4l2BufferMemory {
  public:
   explicit MmapBufferMemory(int device_fd) : device_fd_(device_fd) {}
 
   v4l2_memory V4l2Type() const override { return V4L2_MEMORY_MMAP; }
   void* Attach(uint32_t index, uint32_t plane, v4l2_plane* desc) override;
-  void Detach() override { mappings_.clear(); }
 
  private:
   const int device_fd_;
@@ -62,14 +60,13 @@ class MmapBufferMemory final : public V4l2BufferMemory {
 };
 
 // V4L2_MEMORY_USERPTR: the memory is HAL-owned, page-aligned, and written into
-// by the device.
+// by the device. Allocations are freed when this object is destroyed.
 class UserPtrBufferMemory final : public V4l2BufferMemory {
  public:
   UserPtrBufferMemory(uint32_t buffer_count, uint32_t plane_count);
 
   v4l2_memory V4l2Type() const override { return V4L2_MEMORY_USERPTR; }
   void* Attach(uint32_t index, uint32_t plane, v4l2_plane* desc) override;
-  void Detach() override {}
 
  private:
   struct Plane {

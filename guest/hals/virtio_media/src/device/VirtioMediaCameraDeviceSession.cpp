@@ -1964,16 +1964,14 @@ int VirtioMediaCameraDeviceSession::v4l2StreamOffLocked() {
   req_buffers.memory = mV4l2Memory->V4l2Type();
   req_buffers.count = 0;
 
-  mV4L2Buffers.clear();
-  mV4l2Memory->Detach();
+  mV4l2Memory.reset();
+  mV4l2Streaming = false;
   if (TEMP_FAILURE_RETRY(ioctl(mV4l2Fd.get(), VIDIOC_REQBUFS, &req_buffers)) <
       0) {
     ALOGE("%s: REQBUFS failed: %s", __FUNCTION__, strerror(errno));
     return -errno;
   }
-  mV4l2Memory.reset();
 
-  mV4l2Streaming = false;
   return OK;
 }
 
