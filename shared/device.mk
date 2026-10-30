@@ -405,17 +405,6 @@ endif
 endif
 
 #
-# Confirmation UI HAL
-#
-LOCAL_ENABLE_CONFIRMATIONUI ?= true
-ifeq ($(LOCAL_ENABLE_CONFIRMATIONUI),true)
-ifeq ($(LOCAL_CONFIRMATIONUI_PRODUCT_PACKAGE),)
-    LOCAL_CONFIRMATIONUI_PRODUCT_PACKAGE := com.google.cf.confirmationui
-endif
-PRODUCT_PACKAGES += $(LOCAL_CONFIRMATIONUI_PRODUCT_PACKAGE)
-endif
-
-#
 # Dumpstate HAL
 #
 ifeq ($(LOCAL_DUMPSTATE_PRODUCT_PACKAGE),)
@@ -617,9 +606,6 @@ PRODUCT_PACKAGES += \
 
 # Host packages to install
 PRODUCT_HOST_PACKAGES += socket_vsock_proxy
-
-#for Confirmation UI
-PRODUCT_SOONG_NAMESPACES += vendor/google_devices/common/proprietary/confirmatioui_hal
 
 # Need this so that the application's loop on reading input can be synchronized
 # with HW VSYNC
