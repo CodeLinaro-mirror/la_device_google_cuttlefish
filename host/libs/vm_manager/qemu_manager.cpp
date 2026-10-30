@@ -38,6 +38,7 @@
 
 #include "common/libs/utils/architecture.h"
 #include "common/libs/utils/files.h"
+#include "common/libs/utils/known_paths.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/libs/config/command_source.h"
@@ -877,9 +878,20 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
   qemu_cmd.AddParameter("timestamp=on");
 
 #ifdef __linux__
-  qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("vhost-vsock-pci-non-transitional,guest-cid=",
-                        instance.vsock_guest_cid());
+  if (instance.vhost_user_vsock()) {
+    const std::string vhost_socket =
+        std::format("{}/vsock_{}_{}/vhost.socket", TempDir(),
+                    instance.vsock_guest_cid(), getuid());
+    qemu_cmd.AddParameter("-chardev");
+    qemu_cmd.AddParameter("socket,id=char_vsock,path=", vhost_socket);
+    qemu_cmd.AddParameter("-device");
+    qemu_cmd.AddParameter(
+        "vhost-user-vsock-pci-non-transitional,chardev=char_vsock");
+  } else {
+    qemu_cmd.AddParameter("-device");
+    qemu_cmd.AddParameter("vhost-vsock-pci-non-transitional,guest-cid=",
+                          instance.vsock_guest_cid());
+  }
 #endif
 
   qemu_cmd.AddParameter("-device");
