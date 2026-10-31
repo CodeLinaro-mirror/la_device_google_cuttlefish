@@ -15,27 +15,17 @@
 
 #include "host/commands/run_cvd/launch/snapshot_control_files.h"
 
-#include <unistd.h>
+#include <sys/socket.h>
 
 namespace cuttlefish {
 
-Result<SnapshotControlFiles> SnapshotControlFiles::Create(
-    const CuttlefishConfig::InstanceSpecific& instance) {
-  auto confui_socket_path =
-      instance.PerInstanceInternalUdsPath("confui_sign.sock");
-  unlink(confui_socket_path.c_str());
-  auto confui_server_fd =
-      SharedFD::SocketLocalServer(confui_socket_path, false, SOCK_STREAM, 0600);
-  CF_EXPECTF(confui_server_fd->IsOpen(), "Could not open \"{}\": {}",
-             confui_socket_path, confui_server_fd->StrError());
-
+Result<SnapshotControlFiles> SnapshotControlFiles::Create() {
   SharedFD snapshot_control_fd;
   SharedFD run_cvd_to_secure_env_fd;
   CF_EXPECT(SharedFD::SocketPair(AF_UNIX, SOCK_STREAM, 0, &snapshot_control_fd,
                                  &run_cvd_to_secure_env_fd));
 
   return SnapshotControlFiles{
-      confui_server_fd,
       snapshot_control_fd,
       run_cvd_to_secure_env_fd,
   };

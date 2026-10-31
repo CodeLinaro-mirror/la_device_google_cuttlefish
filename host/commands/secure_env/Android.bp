@@ -118,7 +118,6 @@ cc_library {
     ],
     header_libs: ["jni_headers"],
     srcs: common_libsecure_srcs + [
-        "confui_sign_server.cpp",
         "device_tpm.cpp",
         "jcardsim_interface.cpp",
         "jcardsim_responder.cpp",
