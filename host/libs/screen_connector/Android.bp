@@ -22,7 +22,6 @@ cc_library {
     srcs: [
         "composition_manager.cpp",
         "ring_buffer_manager.cpp",
-        "wayland_screen_connector.cpp",
     ],
     shared_libs: [
         "libbase",
@@ -33,20 +32,12 @@ cc_library {
         "libyuv",
         "libprotobuf-cpp-full",
     ],
-    header_libs: [
-        "libcuttlefish_confui_host_headers",
-    ],
     static_libs: [
-        "libcuttlefish_confui",
-        "libcuttlefish_confui_host",
         "libcuttlefish_host_config",
         "libcuttlefish_guest_config_proto",
         "libcuttlefish_utils",
         "libcuttlefish_wayland_server",
         "libffi",
-        "libft2.nodep",
-        "libteeui",
-        "libteeui_localization",
         "libwayland_crosvm_gpu_display_extension_server_protocols",
         "libwayland_extension_server_protocols",
         "libwayland_server",

@@ -16,6 +16,10 @@
 
 #include "host/frontend/webrtc/display_handler.h"
 
+#include <fcntl.h>
+#include <unistd.h>
+
+#include <cerrno>
 #include <chrono>
 #include <memory>
 
@@ -24,22 +28,27 @@
 
 #include "host/frontend/webrtc/libdevice/streamer.h"
 #include "host/libs/screen_connector/composition_manager.h"
+#include "host/libs/wayland/wayland_server.h"
 
 namespace cuttlefish {
 
 DisplayHandler::DisplayHandler(
     webrtc_streaming::Streamer& streamer, ScreenshotHandler& screenshot_handler,
-    ScreenConnector& screen_connector,
+    int wayland_socket_fd, bool wayland_frames_are_rgba,
     std::optional<std::unique_ptr<CompositionManager>> composition_manager)
     : composition_manager_(std::move(composition_manager)),
       streamer_(streamer),
-      screenshot_handler_(screenshot_handler),
-      screen_connector_(screen_connector)
-  {
+      screenshot_handler_(screenshot_handler) {
   // Initialize the thread after the other members have been constructed
   frame_repeater_ = std::thread([this]() { RepeatFramesPeriodically(); });
-  screen_connector_.SetCallback(GetScreenConnectorCallback());
-  screen_connector_.SetDisplayEventCallback([this](const DisplayEvent& event) {
+
+  const int wayland_fd = fcntl(wayland_socket_fd, F_DUPFD_CLOEXEC, 3);
+  CHECK(wayland_fd != -1) << "Unable to dup server, errno " << errno;
+  close(wayland_socket_fd);
+
+  wayland_server_ = std::make_unique<wayland::WaylandServer>(
+      wayland_fd, wayland_frames_are_rgba);
+  wayland_server_->SetDisplayEventCallback([this](const DisplayEvent& event) {
     std::visit(
         [this](auto&& e) {
           using T = std::decay_t<decltype(e)>;
@@ -78,79 +87,54 @@ DisplayHandler::DisplayHandler(
         },
         event);
   });
+  wayland_server_->SetFrameCallback(
+      [this](std::uint32_t display_number, std::uint32_t frame_width,
+             std::uint32_t frame_height, std::uint32_t frame_fourcc_format,
+             std::uint32_t frame_stride_bytes, std::uint8_t* frame_pixels) {
+        if (composition_manager_.has_value()) {
+          composition_manager_.value()->OnFrame(
+              display_number, frame_width, frame_height, frame_fourcc_format,
+              frame_stride_bytes, frame_pixels);
+        }
+        auto buffer =
+            std::make_shared<CvdVideoFrameBuffer>(frame_width, frame_height);
+        if (frame_fourcc_format == DRM_FORMAT_ARGB8888 ||
+            frame_fourcc_format == DRM_FORMAT_XRGB8888) {
+          libyuv::ARGBToI420(frame_pixels, frame_stride_bytes, buffer->DataY(),
+                             buffer->StrideY(), buffer->DataU(),
+                             buffer->StrideU(), buffer->DataV(),
+                             buffer->StrideV(), frame_width, frame_height);
+        } else if (frame_fourcc_format == DRM_FORMAT_ABGR8888 ||
+                   frame_fourcc_format == DRM_FORMAT_XBGR8888) {
+          libyuv::ABGRToI420(frame_pixels, frame_stride_bytes, buffer->DataY(),
+                             buffer->StrideY(), buffer->DataU(),
+                             buffer->StrideU(), buffer->DataV(),
+                             buffer->StrideV(), frame_width, frame_height);
+        } else {
+          LOG(ERROR) << "Unhandled frame format: " << frame_fourcc_format;
+          return;
+        }
+        {
+          std::lock_guard<std::mutex> lock(last_buffers_mutex_);
+          display_last_buffers_[display_number] =
+              std::make_shared<BufferInfo>(BufferInfo{
+                  .last_sent_time_stamp = std::chrono::system_clock::now(),
+                  .buffer = std::static_pointer_cast<VideoFrameBuffer>(buffer),
+              });
+        }
+        SendLastFrame(display_number);
+      });
 }
 
 DisplayHandler::~DisplayHandler() {
+  // Stop the frame callbacks before tearing down the state they use.
+  wayland_server_.reset();
   {
     std::lock_guard lock(repeater_state_mutex_);
     repeater_state_ = RepeaterState::STOPPED;
     repeater_state_condvar_.notify_one();
   }
   frame_repeater_.join();
-}
-
-DisplayHandler::GenerateProcessedFrameCallback
-DisplayHandler::GetScreenConnectorCallback() {
-  // only to tell the producer how to create a ProcessedFrame to cache into the
-  // queue
-  auto& composition_manager = composition_manager_;
-  DisplayHandler::GenerateProcessedFrameCallback callback =
-      [&composition_manager](
-          std::uint32_t display_number, std::uint32_t frame_width,
-          std::uint32_t frame_height, std::uint32_t frame_fourcc_format,
-          std::uint32_t frame_stride_bytes, std::uint8_t* frame_pixels,
-          WebRtcScProcessedFrame& processed_frame) {
-        processed_frame.display_number_ = display_number;
-        processed_frame.buf_ =
-            std::make_unique<CvdVideoFrameBuffer>(frame_width, frame_height);
-        if (composition_manager.has_value()) {
-          composition_manager.value()->OnFrame(
-              display_number, frame_width, frame_height, frame_fourcc_format,
-              frame_stride_bytes, frame_pixels);
-        }
-        if (frame_fourcc_format == DRM_FORMAT_ARGB8888 ||
-            frame_fourcc_format == DRM_FORMAT_XRGB8888) {
-          libyuv::ARGBToI420(
-              frame_pixels, frame_stride_bytes, processed_frame.buf_->DataY(),
-              processed_frame.buf_->StrideY(), processed_frame.buf_->DataU(),
-              processed_frame.buf_->StrideU(), processed_frame.buf_->DataV(),
-              processed_frame.buf_->StrideV(), frame_width, frame_height);
-          processed_frame.is_success_ = true;
-        } else if (frame_fourcc_format == DRM_FORMAT_ABGR8888 ||
-                   frame_fourcc_format == DRM_FORMAT_XBGR8888) {
-          libyuv::ABGRToI420(
-              frame_pixels, frame_stride_bytes, processed_frame.buf_->DataY(),
-              processed_frame.buf_->StrideY(), processed_frame.buf_->DataU(),
-              processed_frame.buf_->StrideU(), processed_frame.buf_->DataV(),
-              processed_frame.buf_->StrideV(), frame_width, frame_height);
-          processed_frame.is_success_ = true;
-        } else {
-          processed_frame.is_success_ = false;
-        }
-      };
-  return callback;
-}
-
-[[noreturn]] void DisplayHandler::Loop() {
-  for (;;) {
-    auto processed_frame = screen_connector_.OnNextFrame();
-
-    std::shared_ptr<CvdVideoFrameBuffer> buffer =
-        std::move(processed_frame.buf_);
-
-    const uint32_t display_number = processed_frame.display_number_;
-    {
-      std::lock_guard<std::mutex> lock(last_buffers_mutex_);
-      display_last_buffers_[display_number] =
-          std::make_shared<BufferInfo>(BufferInfo{
-              .last_sent_time_stamp = std::chrono::system_clock::now(),
-              .buffer = std::static_pointer_cast<VideoFrameBuffer>(buffer),
-          });
-    }
-    if (processed_frame.is_success_) {
-      SendLastFrame(display_number);
-    }
-  }
 }
 
 void DisplayHandler::SendLastFrame(std::optional<uint32_t> display_number) {
