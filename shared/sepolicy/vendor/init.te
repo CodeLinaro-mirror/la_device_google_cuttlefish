@@ -28,7 +28,6 @@ allow init mnt_vendor_file:dir mounton;
 
 allow init keymaster_device:chr_file rw_file_perms;
 allow init gatekeeper_device:chr_file rw_file_perms;
-allow init confirmationui_device:chr_file rw_file_perms;
 allow init uwb_device:chr_file rw_file_perms;
 allow init oemlock_device:chr_file rw_file_perms;
 allow init keymint_device:chr_file rw_file_perms;

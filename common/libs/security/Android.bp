@@ -41,7 +41,6 @@ cc_library {
         android: {
             shared_libs: ["libcuttlefish_fs"],
             srcs: [
-                "confui_sign.cpp",
                 "gatekeeper_channel_sharedfd.cpp",
                 "keymaster_channel_sharedfd.cpp",
             ],
@@ -52,7 +51,6 @@ cc_library {
         not_windows: { // Actually means "not-windows host code"
             shared_libs: ["libcuttlefish_fs"],
             srcs: [
-                "confui_sign.cpp",
                 "gatekeeper_channel_sharedfd.cpp",
                 "keymaster_channel_sharedfd.cpp",
             ],
