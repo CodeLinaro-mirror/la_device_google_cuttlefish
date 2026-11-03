@@ -16,6 +16,7 @@
   -->
 <overlay>
     <item target="bool/audioUseDynamicRouting" value="@bool/audioUseDynamicRouting" />
+    <item target="bool/audioEnableVolumeKeyEventsToDynamicDevices" value="@bool/audioEnableVolumeKeyEventsToDynamicDevices" />
     <item target="array/config_occupant_zones" value="@array/config_occupant_zones" />
     <item target="array/config_occupant_display_mapping" value="@array/config_occupant_display_mapping" />
     <item target="array/config_carEvsService" value="@array/config_carEvsService" />
