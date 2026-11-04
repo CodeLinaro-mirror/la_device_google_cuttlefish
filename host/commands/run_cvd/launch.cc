@@ -263,10 +263,8 @@ StreamerLaunchResult LaunchVNCServer(
 }
 
 void LaunchAdbConnectorIfEnabled(cvd::ProcessMonitor* process_monitor,
-                                 const vsoc::CuttlefishConfig& config,
-                                 cvd::SharedFD adbd_events_pipe) {
+                                 const vsoc::CuttlefishConfig& config) {
   cvd::Command adb_connector(config.adb_connector_binary());
-  adb_connector.AddParameter("-adbd_events_fd=", adbd_events_pipe);
   std::set<std::string> addresses;
 
   if (AdbTcpConnectorEnabled(config)) {
@@ -315,27 +313,29 @@ StreamerLaunchResult LaunchWebRTC(cvd::ProcessMonitor* process_monitor,
 }
 
 void LaunchSocketVsockProxyIfEnabled(cvd::ProcessMonitor* process_monitor,
-                                 const vsoc::CuttlefishConfig& config) {
+                                     const vsoc::CuttlefishConfig& config,
+                                     cvd::SharedFD adbd_events_pipe) {
   auto instance = config.ForDefaultInstance();
-  if (AdbVsockTunnelEnabled(config)) {
-    cvd::Command adb_tunnel(config.socket_vsock_proxy_binary());
+  auto append_common_param = [&instance, adbd_events_pipe](
+                                 cvd::Command& adb_tunnel) {
     adb_tunnel.AddParameter("--server=tcp");
-    adb_tunnel.AddParameter("--vsock_port=6520");
-    adb_tunnel.AddParameter(
-        std::string{"--tcp_port="} + std::to_string(instance.host_port()));
+    adb_tunnel.AddParameter(std::string{"--tcp_port="} +
+                            std::to_string(instance.host_port()));
     adb_tunnel.AddParameter(std::string{"--vsock_cid="} +
                             std::to_string(instance.vsock_guest_cid()));
+    adb_tunnel.AddParameter("--adbd_events_fd=", adbd_events_pipe);
+  };
+  if (AdbVsockTunnelEnabled(config)) {
+    cvd::Command adb_tunnel(config.socket_vsock_proxy_binary());
+    adb_tunnel.AddParameter("--vsock_port=6520");
+    append_common_param(adb_tunnel);
     process_monitor->StartSubprocess(std::move(adb_tunnel),
                                      GetOnSubprocessExitCallback(config));
   }
   if (AdbVsockHalfTunnelEnabled(config)) {
     cvd::Command adb_tunnel(config.socket_vsock_proxy_binary());
-    adb_tunnel.AddParameter("--server=tcp");
     adb_tunnel.AddParameter("--vsock_port=5555");
-    adb_tunnel.AddParameter(
-        std::string{"--tcp_port="} + std::to_string(instance.host_port()));
-    adb_tunnel.AddParameter(std::string{"--vsock_cid="} +
-                            std::to_string(instance.vsock_guest_cid()));
+    append_common_param(adb_tunnel);
     process_monitor->StartSubprocess(std::move(adb_tunnel),
                                      GetOnSubprocessExitCallback(config));
   }

@@ -20,6 +20,8 @@
 #include <stdio.h>
 #include <iostream>
 
+#include "common/libs/utils/files.h"
+
 namespace cvd {
 
 std::string StringFromEnv(const std::string& varname,
@@ -80,6 +82,14 @@ std::string HostArch() {
   arch.erase(arch.find_last_not_of(whitespace) + 1); // r trim
   arch.erase(0, arch.find_first_not_of(whitespace)); // l trim
   return arch;
+}
+
+bool IsRunningInContainer() {
+  // if /.dockerenv exists, it's inside a docker container
+  static std::string docker_env_path("/.dockerenv");
+  static bool ret =
+      FileExists(docker_env_path) || DirectoryExists(docker_env_path);
+  return ret;
 }
 
 }  // namespace cvd

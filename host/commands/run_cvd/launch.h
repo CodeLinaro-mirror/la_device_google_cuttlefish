@@ -14,10 +14,10 @@ std::vector <cvd::SharedFD> LaunchKernelLogMonitor(
     cvd::ProcessMonitor* process_monitor,
     unsigned int number_of_event_pipes);
 void LaunchAdbConnectorIfEnabled(cvd::ProcessMonitor* process_monitor,
+                                 const vsoc::CuttlefishConfig& config);
+void LaunchSocketVsockProxyIfEnabled(cvd::ProcessMonitor* process_monitor,
                                  const vsoc::CuttlefishConfig& config,
                                  cvd::SharedFD adbd_events_pipe);
-void LaunchSocketVsockProxyIfEnabled(cvd::ProcessMonitor* process_monitor,
-                                 const vsoc::CuttlefishConfig& config);
 
 struct StreamerLaunchResult {
   bool launched = false;
