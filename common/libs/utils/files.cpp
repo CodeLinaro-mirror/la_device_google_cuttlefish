@@ -22,10 +22,13 @@
 #include <climits>
 #include <cstdio>
 #include <cstdlib>
+#include <dirent.h>
 #include <fstream>
+#include <libgen.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <vector>
 
 namespace cvd {
 
@@ -36,6 +39,19 @@ bool FileExists(const std::string& path) {
 
 bool FileHasContent(const std::string& path) {
   return FileSize(path) > 0;
+}
+
+std::vector<std::string> DirectoryContents(const std::string& path) {
+  std::vector<std::string> ret;
+  std::unique_ptr<DIR, int(*)(DIR*)> dir(opendir(path.c_str()), closedir);
+  CHECK(dir != nullptr) << "Could not read from dir \"" << path << "\"";
+  if (dir) {
+    struct dirent *ent;
+    while ((ent = readdir(dir.get()))) {
+      ret.push_back(ent->d_name);
+    }
+  }
+  return ret;
 }
 
 bool DirectoryExists(const std::string& path) {
@@ -119,6 +135,20 @@ std::string CurrentDirectory() {
   char* path = getcwd(nullptr, 0);
   std::string ret(path);
   free(path);
+  return ret;
+}
+
+std::string cpp_basename(const std::string& str) {
+  char* copy = strdup(str.c_str()); // basename may modify its argument
+  std::string ret(basename(copy));
+  free(copy);
+  return ret;
+}
+
+std::string cpp_dirname(const std::string& str) {
+  char* copy = strdup(str.c_str()); // dirname may modify its argument
+  std::string ret(dirname(copy));
+  free(copy);
   return ret;
 }
 
