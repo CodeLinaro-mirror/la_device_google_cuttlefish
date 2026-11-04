@@ -100,6 +100,32 @@ Only the three quirks included above are recognized at this point:
         </MediaCodec>
     </Decoders>
 
+    <Encoders>
+        <!-- Note: c2.android.hevc.encoder is pre-populated from
+             /apex/com.android.media.swcodec/etc/media_codecs.xml before vendor XML
+             parsing in Codec2InfoBuilder, so update="true" is valid here even though
+             <Include href="media_codecs_google_video.xml" /> appears later in the file. -->
+        <MediaCodec name="c2.android.hevc.encoder" type="video/hevc" update="true">
+            <Preset name="camera-recording">
+                <Parameter key="bitrate-mode" value="1" />
+                <Parameter key="complexity" value="5" />
+            </Preset>
+            <Preset name="video-communication">
+                <Parameter key="bitrate-mode" value="2" />
+                <Parameter key="complexity" value="0" />
+            </Preset>
+            <Preset name="transcoding-high-quality">
+                <Parameter key="bitrate-mode" value="1" />
+                <Parameter key="complexity" value="10" />
+                <Parameter key="max-bframes" value="1" />
+            </Preset>
+            <Preset name="transcoding-high-speed">
+                <Parameter key="bitrate-mode" value="1" />
+                <Parameter key="complexity" value="0" />
+            </Preset>
+        </MediaCodec>
+    </Encoders>
+
     <Include href="media_codecs_google_tv.xml" />
     <Include href="media_codecs_google_audio.xml" />
     <Include href="media_codecs_google_telephony.xml" />
