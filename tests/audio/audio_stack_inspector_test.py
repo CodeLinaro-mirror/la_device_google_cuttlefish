@@ -22,6 +22,15 @@ import audio_stack_inspector
 from frameworks.base.core.proto.android.media import audioattributes_pb2
 from frameworks.base.core.proto.android.server import audioservice_pb2
 
+# AudioDeviceAttributes.ROLE_OUTPUT and AudioDeviceInfo.TYPE_BUILTIN_EARPIECE.
+_ROLE_OUTPUT = 2
+_ROLE_INPUT = 1
+_TYPE_BUILTIN_EARPIECE = 1
+_TYPE_BLUETOOTH_SCO = 7
+_TYPE_BLUETOOTH_A2DP = 8
+_EARPIECE_DEVICE_STR = 'DeviceIdentity(role=2, type=1, address=CARD_0_DEV_1)'
+_EARPIECE_ROUTE_STR = f'Route(output={_EARPIECE_DEVICE_STR}, input=None)'
+
 
 SAMPLE_DUMPSYS_AUDIO = """\
 Audio Focus stack entries (last is top of stack):
@@ -112,10 +121,9 @@ class AudioStackInspectorTest(unittest.TestCase):
             mode='MODE_IN_COMMUNICATION',
             is_display_active_use_case=False,
             client_paused=False,
-            server_paused=False,
+            paused=False,
             closed=False,
             has_focus=True,
-            is_live=True,
             requested_route='Device(type: builtin_earpiece, addr: CARD_0_DEV_1)',
             target_route='Device(type: builtin_earpiece, addr: CARD_0_DEV_1)',
         ),
@@ -389,35 +397,29 @@ class AudioStackInspectorTest(unittest.TestCase):
     self.assertIn('expected pcm0p to be closed/inactive', leak_mismatches[0])
 
   def test_parse_dumpsys_audio_proto_and_focus_stack_proto_roundtrip(self):
+    earpiece = audioservice_pb2.DeviceIdentityProto(
+        role=_ROLE_OUTPUT,
+        type=_TYPE_BUILTIN_EARPIECE,
+        address='CARD_0_DEV_1',
+    )
     dump_proto = audioservice_pb2.AudioServiceDumpProto()
     dump_proto.audio_mode.requested_mode = 'MODE_IN_COMMUNICATION'
     dump_proto.audio_mode.actual_mode = 'MODE_IN_COMMUNICATION'
-    dump_proto.device_broker.computed_preferred_communication_device = (
-        'AudioDeviceAttributes: role:output type:builtin_earpiece'
-        ' addr:CARD_0_DEV_1'
-    )
-    dump_proto.device_broker.applied_preferred_communication_device = (
-        'AudioDeviceAttributes: role:output type:builtin_earpiece'
-        ' addr:CARD_0_DEV_1'
-    )
-    dump_proto.device_broker.active_communication_device = (
-        'AudioDeviceAttributes: role:output type:builtin_earpiece'
-        ' addr:CARD_0_DEV_1'
-    )
+    broker = dump_proto.device_broker
+    broker.computed_preferred_communication_device.CopyFrom(earpiece)
+    broker.applied_preferred_communication_device.CopyFrom(earpiece)
+    broker.active_communication_device.CopyFrom(earpiece)
     session = dump_proto.device_broker.mode_sessions.add()
     session.short_id = '7f3a1b'
     session.mode = 'MODE_IN_COMMUNICATION'
     session.mode_int = 3
     session.is_display_active_use_case = False
     session.client_paused = False
-    session.server_paused = False
+    session.paused = False
     session.closed = False
     session.has_focus = True
-    session.is_live = True
-    session.requested_route = (
-        'Device(type: builtin_earpiece, addr: CARD_0_DEV_1)'
-    )
-    session.target_route = 'Device(type: builtin_earpiece, addr: CARD_0_DEV_1)'
+    session.requested_route.output.CopyFrom(earpiece)
+    session.target_route.output.CopyFrom(earpiece)
 
     player = dump_proto.playback_monitor.players.add()
     player.piid = 15
@@ -440,6 +442,12 @@ class AudioStackInspectorTest(unittest.TestCase):
     parsed = audio_stack_inspector.parse_dumpsys_audio_proto(raw_bytes)
     self.assertEqual(parsed['requested_mode'], 'MODE_IN_COMMUNICATION')
     self.assertEqual(parsed['actual_mode'], 'MODE_IN_COMMUNICATION')
+    for key in (
+        'computed_preferred_comm_device',
+        'applied_preferred_comm_device',
+        'active_comm_device',
+    ):
+      self.assertEqual(parsed[key], _EARPIECE_DEVICE_STR)
     self.assertEqual(
         parsed['started_playback_usages'], ('USAGE_VOICE_COMMUNICATION',)
     )
@@ -456,16 +464,11 @@ class AudioStackInspectorTest(unittest.TestCase):
                 mode='MODE_IN_COMMUNICATION',
                 is_display_active_use_case=False,
                 client_paused=False,
-                server_paused=False,
+                paused=False,
                 closed=False,
                 has_focus=True,
-                is_live=True,
-                requested_route=(
-                    'Device(type: builtin_earpiece, addr: CARD_0_DEV_1)'
-                ),
-                target_route=(
-                    'Device(type: builtin_earpiece, addr: CARD_0_DEV_1)'
-                ),
+                requested_route=_EARPIECE_ROUTE_STR,
+                target_route=_EARPIECE_ROUTE_STR,
             ),
         ),
     )
@@ -495,6 +498,12 @@ class AudioStackInspectorTest(unittest.TestCase):
     empty_focus_proto = audioservice_pb2.AudioServiceDumpProto()
     empty_focus_proto.audio_mode.requested_mode = 'MODE_NORMAL'
     empty_focus_proto.audio_mode.actual_mode = 'MODE_NORMAL'
+    self.assertEqual(
+        audio_stack_inspector.parse_dumpsys_audio_proto(
+            empty_focus_proto.SerializeToString()
+        )['applied_preferred_comm_device'],
+        '',
+    )
     self.assertEqual(
         audio_stack_inspector.parse_focus_stack_proto(
             empty_focus_proto.SerializeToString()
@@ -556,10 +565,9 @@ class AudioStackInspectorTest(unittest.TestCase):
             mode='MODE_IN_COMMUNICATION',
             is_display_active_use_case=False,
             client_paused=False,
-            server_paused=False,
+            paused=False,
             closed=False,
             has_focus=True,
-            is_live=True,
             requested_route='Optional.empty',
             target_route=(
                 'AudioDeviceAttributes: role:output type:builtin_earpiece'
@@ -587,6 +595,92 @@ class AudioStackInspectorTest(unittest.TestCase):
         'Device(type: builtin_earpiece, addr: CARD_0_DEV_1)',
     )
 
+    device_identity_text_dump = """\
+## Audio mode:
+  - Requested mode = MODE_IN_COMMUNICATION
+  - Actual mode = MODE_IN_COMMUNICATION
+
+  Computed Preferred communication device: android.media.audio.DeviceIdentity{role: 2, type: 1, address: CARD_0_DEV_1}
+  Applied Preferred communication device: android.media.audio.DeviceIdentity{role: 2, type: 1, address: CARD_0_DEV_1}
+  Active communication device: android.media.audio.DeviceIdentity{role: 2, type: 1, address: CARD_0_DEV_1}
+
+  AudioModeSession [8a9b0c]:
+    package: com.android.cuttlefish.audiotest uid: 10142 pid: 4120
+    mode: MODE_IN_COMMUNICATION (3)
+    isDisplayActiveUseCase: false
+    lifecycle: clientPaused=false paused=false closed=false hasFocus=true
+    requestedRoute: Optional.empty
+    targetRoute: Optional[android.media.audio.IAudioModeSession.Route{output: android.media.audio.DeviceIdentity{role: 2, type: 1, address: CARD_0_DEV_1}, input: null}]
+
+  AudioModeSession [9d0e1f]:
+    package: com.android.cuttlefish.audiotest uid: 10142 pid: 4120
+    mode: MODE_IN_COMMUNICATION (3)
+    isDisplayActiveUseCase: false
+    lifecycle: clientPaused=true serverPaused=false closed=false hasFocus=false isLive=false
+    requestedRoute: Optional.empty
+"""
+    parsed_di = audio_stack_inspector.parse_dumpsys_audio(
+        device_identity_text_dump
+    )
+    di_sessions = parsed_di['mode_sessions']
+    self.assertEqual(len(di_sessions), 2)
+    self.assertFalse(di_sessions[0].paused)
+    self.assertTrue(di_sessions[1].client_paused)
+    self.assertTrue(di_sessions[1].paused)
+
+    strategies, patches = audio_stack_inspector.parse_dumpsys_audio_policy(
+        SAMPLE_DUMPSYS_AUDIO_POLICY
+    )
+    out_threads, in_threads = audio_stack_inspector.parse_dumpsys_audio_flinger(
+        SAMPLE_DUMPSYS_AUDIO_FLINGER
+    )
+    di_snap = audio_stack_inspector.AudioStackSnapshot(
+        requested_mode=str(parsed_di['requested_mode']),
+        actual_mode=str(parsed_di['actual_mode']),
+        computed_preferred_comm_device=str(
+            parsed_di['computed_preferred_comm_device']
+        ),
+        applied_preferred_comm_device=str(
+            parsed_di['applied_preferred_comm_device']
+        ),
+        active_comm_device=str(parsed_di['active_comm_device']),
+        started_playback_usages=tuple(parsed_di['started_playback_usages']),
+        mode_sessions=tuple(di_sessions),
+        strategies=strategies,
+        patches=patches,
+        output_threads=out_threads,
+        input_threads=in_threads,
+        alsa_playback_running={0: False, 1: True},
+        alsa_capture_running={0: True},
+    )
+    inspector = audio_stack_inspector.AudioStackInspector(mock.MagicMock())
+    self.assertEqual(
+        inspector.find_route_mismatches(
+            di_snap,
+            strategy_name='STRATEGY_PHONE',
+            expected_device_token='AUDIO_DEVICE_OUT_EARPIECE',
+            expected_address='CARD_0_DEV_1',
+            expected_alsa_dev=1,
+            inactive_alsa_devs=(0,),
+            expected_mode='MODE_IN_COMMUNICATION',
+        ),
+        [],
+    )
+    wrong_type_mismatches = [
+        m
+        for m in inspector.find_route_mismatches(
+            di_snap,
+            strategy_name='STRATEGY_PHONE',
+            expected_device_token='AUDIO_DEVICE_OUT_SPEAKER',
+            expected_address='CARD_0_DEV_1',
+            expected_alsa_dev=1,
+            inactive_alsa_devs=(0,),
+            expected_mode='MODE_IN_COMMUNICATION',
+        )
+        if m.startswith('Layer 1')
+    ]
+    self.assertEqual(len(wrong_type_mismatches), 2)
+
   def test_find_route_mismatches_rejects_wrong_bt_profile_sharing_mac_address(
       self,
   ):
@@ -606,10 +700,9 @@ class AudioStackInspectorTest(unittest.TestCase):
                 mode='MODE_IN_COMMUNICATION',
                 is_display_active_use_case=False,
                 client_paused=False,
-                server_paused=False,
+                paused=False,
                 closed=False,
                 has_focus=True,
-                is_live=True,
                 requested_route=bt_addr,
                 target_route=bt_addr,
             ),
@@ -756,6 +849,189 @@ class AudioStackInspectorTest(unittest.TestCase):
         poll_interval_sec=0.0,
     )
     self.assertEqual((base_frames, latest_frames), (48000, 96000))
+
+  def test_find_route_mismatches_checks_proto_device_type_and_output_segment(
+      self,
+  ):
+    dut = mock.MagicMock()
+    inspector = audio_stack_inspector.AudioStackInspector(dut)
+    bt_addr = 'F0:F1:F2:F3:F4:F5'
+    anon_addr = 'XX:XX:XX:XX:F4:F5'
+
+    def device(device_type: int, address: str, role: int = _ROLE_OUTPUT):
+      return audio_stack_inspector._format_device_identity_proto(
+          audioservice_pb2.DeviceIdentityProto(
+              role=role, type=device_type, address=address
+          )
+      )
+
+    def route(output: str, input_device: str = 'None'):
+      return f'Route(output={output}, input={input_device})'
+
+    sco_out = device(_TYPE_BLUETOOTH_SCO, anon_addr)
+    a2dp_out = device(_TYPE_BLUETOOTH_A2DP, anon_addr)
+    sco_in = device(_TYPE_BLUETOOTH_SCO, anon_addr, role=_ROLE_INPUT)
+    earpiece = device(_TYPE_BUILTIN_EARPIECE, 'CARD_0_DEV_1')
+
+    def snapshot(target_route: str, applied_device: str):
+      return audio_stack_inspector.AudioStackSnapshot(
+          requested_mode='MODE_IN_COMMUNICATION',
+          actual_mode='MODE_IN_COMMUNICATION',
+          computed_preferred_comm_device=applied_device,
+          applied_preferred_comm_device=applied_device,
+          active_comm_device=applied_device,
+          started_playback_usages=('USAGE_VOICE_COMMUNICATION',),
+          mode_sessions=(
+              audio_stack_inspector.AudioModeSessionInfo(
+                  short_id='7f3a1b',
+                  mode='MODE_IN_COMMUNICATION',
+                  is_display_active_use_case=False,
+                  client_paused=False,
+                  paused=False,
+                  closed=False,
+                  has_focus=True,
+                  requested_route=target_route,
+                  target_route=target_route,
+              ),
+          ),
+          strategies={
+              'STRATEGY_PHONE': audio_stack_inspector.StrategyRoute(
+                  name='STRATEGY_PHONE',
+                  device_types='AUDIO_DEVICE_OUT_BLUETOOTH_SCO',
+                  address=bt_addr,
+              ),
+          },
+          patches=(
+              audio_stack_inspector.AudioPatchInfo(
+                  handle=42,
+                  src_mix_port_id=31,
+                  io_handle=29,
+                  sink_device_port_id=12,
+                  sink_device=f'AUDIO_DEVICE_OUT_BLUETOOTH_SCO, @:{bt_addr}',
+              ),
+          ),
+          output_threads={
+              29: audio_stack_inspector.OutputThreadInfo(
+                  io_handle=29,
+                  standby=False,
+                  output_devices='0x10 (AUDIO_DEVICE_OUT_BLUETOOTH_SCO)',
+                  frames_written=48000,
+                  active_tracks=1,
+              ),
+          },
+          input_threads={},
+          alsa_playback_running={0: False, 1: False},
+          alsa_capture_running={0: False},
+      )
+
+    def layer1_mismatches(snap, expected_address=bt_addr):
+      return [
+          m
+          for m in inspector.find_route_mismatches(
+              snap,
+              strategy_name='STRATEGY_PHONE',
+              expected_device_token='AUDIO_DEVICE_OUT_BLUETOOTH_SCO',
+              expected_address=expected_address,
+              expected_alsa_dev=None,
+              inactive_alsa_devs=(0, 1),
+              expected_mode='MODE_IN_COMMUNICATION',
+          )
+          if m.startswith('Layer 1')
+      ]
+
+    # SCO output with the matching anonymized MAC converges.
+    self.assertEqual(layer1_mismatches(snapshot(route(sco_out), sco_out)), [])
+
+    # A2DP (type=8) sharing the MAC address of the SCO (type=7) profile is a
+    # different device, both in the session route and in the broker.
+    a2dp_mismatches = layer1_mismatches(snapshot(route(a2dp_out), a2dp_out))
+    self.assertEqual(len(a2dp_mismatches), 2)
+    self.assertIn('Layer 1 (AudioService)', a2dp_mismatches[0])
+    self.assertIn('Layer 1 (AudioDeviceBroker)', a2dp_mismatches[1])
+
+    # The expected address on the input= device does not make the route match
+    # when output= is routed elsewhere.
+    self.assertEqual(
+        len(layer1_mismatches(snapshot(route(earpiece, sco_in), sco_out))), 1
+    )
+
+    # An empty expected address still requires the expected device type.
+    self.assertEqual(
+        layer1_mismatches(snapshot(route(sco_out), sco_out), ''), []
+    )
+    self.assertEqual(
+        len(layer1_mismatches(snapshot(route(earpiece), earpiece), '')), 2
+    )
+
+    # Text-dump routes without a numeric type still match by address only.
+    text_route = f'Device(type: bluetooth_sco_hs, addr: {anon_addr})'
+    self.assertEqual(
+        layer1_mismatches(snapshot(text_route, text_route)), []
+    )
+
+    # An unset output device, an invalid (negative) type, or a DeviceIdentity
+    # without a type never matches, even with an empty expected address.
+    for bad in (
+        route('None'),
+        'None',
+        'null',
+        '',
+        route(device(-1, anon_addr)),
+        f'DeviceIdentity(role=2, address={anon_addr})',
+    ):
+      for expected_address in (bt_addr, ''):
+        self.assertFalse(
+            audio_stack_inspector.device_matches(
+                audio_stack_inspector.route_output(bad),
+                'AUDIO_DEVICE_OUT_BLUETOOTH_SCO',
+                expected_address,
+            ),
+            msg=f'{bad!r} with expected_address={expected_address!r}',
+        )
+
+    # Every token mirrors AudioDeviceInfo.INT_TO_EXT_DEVICE_MAPPING, so the
+    # newer tokens disambiguate too.
+    for token, ext_type in (
+        ('AUDIO_DEVICE_OUT_BLE_HEARING_AID', 33),
+        ('AUDIO_DEVICE_OUT_BLE_CENTRAL', 34),
+        ('AUDIO_DEVICE_OUT_BUS', 21),
+        ('AUDIO_DEVICE_OUT_SPEAKER_SAFE', 24),
+    ):
+      self.assertTrue(
+          audio_stack_inspector.device_matches(
+              device(ext_type, anon_addr), token, bt_addr
+          )
+      )
+      self.assertFalse(
+          audio_stack_inspector.device_matches(
+              device(ext_type + 1, anon_addr), token, bt_addr
+          )
+      )
+    # BLE hearing aids (type 33) are not BLE headsets (type 26).
+    self.assertFalse(
+        audio_stack_inspector.device_matches(
+            device(33, anon_addr), 'AUDIO_DEVICE_OUT_BLE_HEADSET', bt_addr
+        )
+    )
+    # Unmapped tokens (e.g. input tokens) fail closed on DeviceIdentity strings.
+    for unmapped_token in (
+        'AUDIO_DEVICE_IN_BUILTIN_MIC',
+        'AUDIO_DEVICE_OUT_UNKNOWN',
+    ):
+      for expected_address in (bt_addr, ''):
+        self.assertFalse(
+            audio_stack_inspector.device_matches(
+                sco_out, unmapped_token, expected_address
+            )
+        )
+
+    self.assertEqual(
+        audio_stack_inspector.route_output(
+            f'Route{{output: DeviceIdentity{{role: 2, type: 7, address: {anon_addr}}},'
+            ' input: null}'
+        ),
+        f'DeviceIdentity{{role: 2, type: 7, address: {anon_addr}}}',
+    )
 
 
 if __name__ == '__main__':
