@@ -31,11 +31,13 @@ cvd_host_executables := \
     extract-vmlinux \
     crosvm \
     aarch64-linux-gnu/crosvm \
+    aarch64-linux-gnu/libdrm.so.2 \
     aarch64-linux-gnu/libepoxy.so.0 \
     aarch64-linux-gnu/libgbm.so.1 \
     aarch64-linux-gnu/libminijail.so \
     aarch64-linux-gnu/libvirglrenderer.so.1 \
     x86_64-linux-gnu/crosvm \
+    x86_64-linux-gnu/libdrm.so.2 \
     x86_64-linux-gnu/libepoxy.so.0 \
     x86_64-linux-gnu/libgbm.so.1 \
     x86_64-linux-gnu/libminijail.so \
