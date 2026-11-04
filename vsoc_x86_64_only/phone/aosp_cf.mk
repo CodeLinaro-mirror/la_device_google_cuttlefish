@@ -36,6 +36,7 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/aosp_product.mk)
 #
 # All components inherited here go to vendor image
 #
+LOCAL_PREFER_VENDOR_APEX := true
 $(call inherit-product, device/google/cuttlefish/shared/phone/device_vendor.mk)
 
 # Nested virtualization support
@@ -47,13 +48,20 @@ $(call inherit-product, packages/modules/Virtualization/apex/product_packages.mk
 $(call inherit-product, device/google/cuttlefish/vsoc_x86_64/bootloader.mk)
 
 # Exclude features that are not available on AOSP devices.
+ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
+PRODUCT_PACKAGES += com.google.aosp_cf_phone.hardware.core_permissions
+else
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/aosp_excluded_hardware.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/aosp_excluded_hardware.xml
+endif
 
 PRODUCT_NAME := aosp_cf_x86_64_only_phone
 PRODUCT_DEVICE := vsoc_x86_64_only
 PRODUCT_MANUFACTURER := Google
 PRODUCT_MODEL := Cuttlefish x86_64 phone 64-bit only
+
+# Window Extensions
+$(call inherit-product, $(SRC_TARGET_DIR)/product/window_extensions.mk)
 
 PRODUCT_VENDOR_PROPERTIES += \
     ro.soc.manufacturer=$(PRODUCT_MANUFACTURER) \
