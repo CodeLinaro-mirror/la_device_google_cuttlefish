@@ -29,8 +29,6 @@
 
     <!-- Desktop / laptop form-factors typically feature a single webcam and do
          not support concurrent front and back camera streaming. -->
-    <unavailable-feature name="android.hardware.camera" />
-    <unavailable-feature name="android.hardware.camera.front" />
     <unavailable-feature name="android.hardware.camera.concurrent" />
 
     <!-- Virtual Cuttlefish instances lack hardware-backed device ID attestation -->
