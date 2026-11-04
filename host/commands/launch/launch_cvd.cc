@@ -114,7 +114,7 @@ int main(int argc, char** argv) {
   }
 
   auto instance_num_str = std::to_string(FLAGS_base_instance_num);
-  setenv("CUTTLEFISH_INSTANCE", instance_num_str.c_str(), /* overwrite */ 0);
+  setenv("CUTTLEFISH_INSTANCE", instance_num_str.c_str(), /* overwrite */ 1);
 
   // SharedFDs are std::move-d in to avoid dangling references.
   // Removing the std::move will probably make run_cvd hang as its stdin never closes.

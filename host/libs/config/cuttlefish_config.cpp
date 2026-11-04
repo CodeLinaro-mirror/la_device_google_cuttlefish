@@ -55,9 +55,6 @@ int InstanceFromEnvironment() {
       return kDefaultInstance;
     }
     instance_str += sizeof(vsoc::kVsocUserPrefix) - 1;
-
-    // Set the environment variable so that child processes see it
-    setenv(kInstanceEnvironmentVariable, instance_str, 0);
   }
 
   int instance = std::atoi(instance_str);
