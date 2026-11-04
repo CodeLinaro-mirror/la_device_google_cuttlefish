@@ -184,6 +184,9 @@ DEFINE_string(boot_slot, "", "Force booting into the given slot. If empty, "
              "bootloader. It will default to 'a' if empty and not using a "
              "bootloader.");
 DEFINE_int32(num_instances, 1, "Number of Android guests to launch");
+DEFINE_int32(vsock_guest_cid,
+             vsoc::GetDefaultVsockCid(),
+             "Guest identifier for vsock. Disabled if under 3.");
 DEFINE_bool(resume, true, "Resume using the disk from the last session, if "
                           "possible. i.e., if --noresume is passed, the disk "
                           "will be reset to the state it was initially launched "
@@ -422,7 +425,7 @@ vsoc::CuttlefishConfig InitializeCuttlefishConfiguration(
 
     instance.set_wifi_tap_name(StrForInstance("cvd-wtap-", num));
 
-    instance.set_vsock_guest_cid(3 + num - 1);
+    instance.set_vsock_guest_cid(FLAGS_vsock_guest_cid + num - vsoc::GetInstance());
 
     instance.set_uuid(FLAGS_uuid);
 

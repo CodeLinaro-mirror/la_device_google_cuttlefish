@@ -991,6 +991,12 @@ int GetInstance() {
   return instance_id;
 }
 
+int GetDefaultVsockCid() {
+  // we assume that vsock cid is 3 for the first instance (1)
+  static int default_vsock_cid = 3 + GetInstance() - 1;
+  return default_vsock_cid;
+}
+
 std::string GetGlobalConfigFileLink() {
   return cvd::StringFromEnv("HOME", ".") + "/.cuttlefish_config.json";
 }
