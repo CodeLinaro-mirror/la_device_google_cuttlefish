@@ -84,6 +84,19 @@ DEFINE_string(
     "to "
     "be vbmeta_vendor_dlkm.img in the directory specified by "
     "-system_image_dir.");
+DEFINE_string(
+    vbmeta_system_dlkm_image, CF_DEFAULTS_VBMETA_SYSTEM_DLKM_IMAGE,
+    "Location of cuttlefish vbmeta_system_dlkm image. If empty it is assumed "
+    "to "
+    "be vbmeta_system_dlkm.img in the directory specified by "
+    "-system_image_dir.");
+
+DEFINE_string(
+    default_target_zip, CF_DEFAULTS_DEFAULT_TARGET_ZIP,
+    "Location of default target zip file.");
+DEFINE_string(
+    system_target_zip, CF_DEFAULTS_SYSTEM_TARGET_ZIP,
+    "Location of system target zip file.");
 
 DEFINE_string(linux_kernel_path, CF_DEFAULTS_LINUX_KERNEL_PATH,
               "Location of linux kernel for cuttlefish otheros flow.");
@@ -138,6 +151,7 @@ Result<void> ResolveInstanceFiles() {
   std::string default_vbmeta_image = "";
   std::string default_vbmeta_system_image = "";
   std::string default_vbmeta_vendor_dlkm_image = "";
+  std::string default_vbmeta_system_dlkm_image = "";
 
   std::string cur_system_image_dir;
   std::string comma_str = "";
@@ -169,6 +183,8 @@ Result<void> ResolveInstanceFiles() {
     default_vbmeta_system_image += comma_str + cur_system_image_dir + "/vbmeta_system.img";
     default_vbmeta_vendor_dlkm_image +=
         comma_str + cur_system_image_dir + "/vbmeta_vendor_dlkm.img";
+    default_vbmeta_system_dlkm_image +=
+        comma_str + cur_system_image_dir + "/vbmeta_system_dlkm.img";
   }
   SetCommandLineOptionWithMode("boot_image", default_boot_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
@@ -195,6 +211,9 @@ Result<void> ResolveInstanceFiles() {
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
   SetCommandLineOptionWithMode("vbmeta_vendor_dlkm_image",
                                default_vbmeta_vendor_dlkm_image.c_str(),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  SetCommandLineOptionWithMode("vbmeta_system_dlkm_image",
+                               default_vbmeta_system_dlkm_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
 
   return {};
@@ -308,6 +327,22 @@ std::vector<ImagePartition> android_composite_disk_config(
     partitions.push_back(ImagePartition{
         .label = "vbmeta_vendor_dlkm_b",
         .image_file_path = AbsolutePath(vbmeta_vendor_dlkm_img),
+        .read_only = FLAGS_use_overlay,
+    });
+  }
+  auto vbmeta_system_dlkm_img = instance.new_vbmeta_system_dlkm_image();
+  if (!FileExists(vbmeta_system_dlkm_img)) {
+    vbmeta_system_dlkm_img = instance.vbmeta_system_dlkm_image();
+  }
+  if (FileExists(vbmeta_system_dlkm_img)) {
+    partitions.push_back(ImagePartition{
+        .label = "vbmeta_system_dlkm_a",
+        .image_file_path = AbsolutePath(vbmeta_system_dlkm_img),
+        .read_only = FLAGS_use_overlay,
+    });
+    partitions.push_back(ImagePartition{
+        .label = "vbmeta_system_dlkm_b",
+        .image_file_path = AbsolutePath(vbmeta_system_dlkm_img),
         .read_only = FLAGS_use_overlay,
     });
   }
@@ -1123,7 +1158,7 @@ class VbmetaEnforceMinimumSize : public SetupFeature {
     // provide a partition which matches this or the read will fail
     for (const auto& vbmeta_image :
          {instance_.vbmeta_image(), instance_.vbmeta_system_image(),
-          instance_.vbmeta_vendor_dlkm_image()}) {
+          instance_.vbmeta_vendor_dlkm_image(), instance_.vbmeta_system_dlkm_image()}) {
       // In some configurations of cuttlefish, the vendor dlkm vbmeta image does
       // not exist
       if (FileExists(vbmeta_image) && FileSize(vbmeta_image) != VBMETA_MAX_SIZE) {
@@ -1198,7 +1233,8 @@ static fruit::Component<> DiskChangesPerInstanceComponent(
       .install(InitBootloaderEnvPartitionComponent);
 }
 
-Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const FetcherConfig& fetcher_config) {
+Result<void> DiskImageFlagsVectorization(
+    CuttlefishConfig& config, const FetcherConfigs& fetcher_configs) {
   std::vector<std::string> boot_image =
       android::base::Split(FLAGS_boot_image, ",");
   std::vector<std::string> init_boot_image =
@@ -1221,6 +1257,13 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
       android::base::Split(FLAGS_vbmeta_system_image, ",");
   auto vbmeta_vendor_dlkm_image =
       android::base::Split(FLAGS_vbmeta_vendor_dlkm_image, ",");
+  auto vbmeta_system_dlkm_image =
+      android::base::Split(FLAGS_vbmeta_system_dlkm_image, ",");
+
+  std::vector<std::string> default_target_zip_vec =
+      android::base::Split(FLAGS_default_target_zip, ",");
+  std::vector<std::string> system_target_zip_vec =
+      android::base::Split(FLAGS_system_target_zip, ",");
 
   std::vector<std::string> linux_kernel_path =
       android::base::Split(FLAGS_linux_kernel_path, ",");
@@ -1308,11 +1351,17 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
     } else {
       instance.set_vbmeta_system_image(vbmeta_system_image[instance_index]);
     }
-    if (instance_index >= vbmeta_system_image.size()) {
+    if (instance_index >= vbmeta_vendor_dlkm_image.size()) {
       instance.set_vbmeta_vendor_dlkm_image(vbmeta_vendor_dlkm_image[0]);
     } else {
       instance.set_vbmeta_vendor_dlkm_image(
           vbmeta_vendor_dlkm_image[instance_index]);
+    }
+    if (instance_index >= vbmeta_system_dlkm_image.size()) {
+      instance.set_vbmeta_system_dlkm_image(vbmeta_system_dlkm_image[0]);
+    } else {
+      instance.set_vbmeta_system_dlkm_image(
+          vbmeta_system_dlkm_image[instance_index]);
     }
     if (instance_index >= super_image.size()) {
       cur_super_image = super_image[0];
@@ -1432,9 +1481,23 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
       }
     }
 
+    if (instance_index >= default_target_zip_vec.size()) {
+      instance.set_default_target_zip(default_target_zip_vec[0]);
+    } else {
+      instance.set_default_target_zip(default_target_zip_vec[instance_index]);
+    }
+    if (instance_index >= system_target_zip_vec.size()) {
+      instance.set_system_target_zip(system_target_zip_vec[0]);
+    } else {
+      instance.set_system_target_zip(system_target_zip_vec[instance_index]);
+    }
+
     // We will need to rebuild vendor_dlkm if custom ramdisk is specified, as a
     // result super image would need to be rebuilt as well.
-    if (SuperImageNeedsRebuilding(fetcher_config) ||
+    if (CF_EXPECT(SuperImageNeedsRebuilding(
+            fetcher_configs.ForInstance(instance_index),
+            const_instance.default_target_zip(),
+            const_instance.system_target_zip())) ||
         cur_initramfs_path.size()) {
       const std::string new_super_image_path =
           const_instance.PerInstancePath("super.img");
@@ -1464,21 +1527,24 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
   return {};
 }
 
-Result<void> CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
+Result<void> CreateDynamicDiskFiles(const FetcherConfigs& fetcher_configs,
                                     const CuttlefishConfig& config) {
+  size_t instance_index = 0;
   for (const auto& instance : config.Instances()) {
     // TODO(schuffelen): Unify this with the other injector created in
     // assemble_cvd.cpp
-    fruit::Injector<> injector(DiskChangesComponent, &fetcher_config, &config,
-                               &instance);
+    fruit::Injector<> injector(DiskChangesComponent,
+                               &fetcher_configs.ForInstance(instance_index),
+                               &config, &instance);
     for (auto& late_injected : injector.getMultibindings<LateInjected>()) {
       CF_EXPECT(late_injected->LateInject(injector));
     }
 
     const auto& features = injector.getMultibindings<SetupFeature>();
     CF_EXPECT(SetupFeature::RunSetup(features));
-    fruit::Injector<> instance_injector(DiskChangesPerInstanceComponent,
-                                        &fetcher_config, &config, &instance);
+    fruit::Injector<> instance_injector(
+        DiskChangesPerInstanceComponent,
+        &fetcher_configs.ForInstance(instance_index), &config, &instance);
     for (auto& late_injected :
          instance_injector.getMultibindings<LateInjected>()) {
       CF_EXPECT(late_injected->LateInject(instance_injector));
@@ -1544,6 +1610,7 @@ Result<void> CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
         CF_EXPECT(ap_disk_builder.BuildOverlayIfNecessary());
       }
     }
+    instance_index++;
   }
 
   for (auto instance : config.Instances()) {

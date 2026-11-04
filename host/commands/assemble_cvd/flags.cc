@@ -770,9 +770,8 @@ Result<std::vector<std::string>> GetFlagStrValueForInstances(
 } // namespace
 
 Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
-    const std::string& root_dir,
-    const std::vector<GuestConfig>& guest_configs,
-    fruit::Injector<>& injector, const FetcherConfig& fetcher_config) {
+    const std::string& root_dir, const std::vector<GuestConfig>& guest_configs,
+    fruit::Injector<>& injector, const FetcherConfigs& fetcher_configs) {
   CuttlefishConfig tmp_config_obj;
 
   for (const auto& fragment : injector.getMultibindings<ConfigFragment>()) {
@@ -1472,7 +1471,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance_index++;
   }
 
-  DiskImageFlagsVectorization(tmp_config_obj, fetcher_config);
+  CF_EXPECT(DiskImageFlagsVectorization(tmp_config_obj, fetcher_configs));
 
   return tmp_config_obj;
 }
