@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include <fmt/format.h>
+#include <format>
 #include <string>
 
 #include "host/commands/cvd_send_id_disclosure/cellular_identifier_disclosure_command_builder.h"
@@ -23,7 +23,7 @@ namespace cuttlefish {
 
 std::string GetATCommand(const std::string &plmn, int32_t identifierType,
                          int32_t protocolMessage, bool isEmergency) {
-  return fmt::format("AT+REMOTEIDDISCLOSURE:\"{}\",{},{},{:d}\r", plmn,
+  return std::format("AT+REMOTEIDDISCLOSURE:\"{}\",{},{},{:d}\r", plmn,
                      identifierType, protocolMessage, isEmergency);
 }
 }  // namespace cuttlefish

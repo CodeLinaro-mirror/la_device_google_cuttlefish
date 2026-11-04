@@ -16,6 +16,7 @@
 
 #include "host/commands/assemble_cvd/boot_config.h"
 
+#include <format>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -83,7 +84,7 @@ void WriteEFIEnvironment(const CuttlefishConfig::InstanceSpecific& instance,
                          std::optional<std::uint16_t> partition_num,
                          std::ostream& env) {
   std::string partition_str =
-      partition_num ? fmt::format("setenv devplist {:x};", *partition_num) : "";
+      partition_num ? std::format("setenv devplist {:x};", *partition_num) : "";
   WritePausedEntrypoint(
       partition_str +
           "load virtio 0:${devplist} ${loadaddr} efi/boot/bootaa64.efi "

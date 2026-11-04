@@ -16,15 +16,14 @@
 
 #include "host/commands/cvd_update_security_algorithm/update_security_algorithm_command_builder.h"
 
+#include <format>
 #include <string>
-
-#include <fmt/format.h>
 
 namespace cuttlefish {
 
 std::string GetATCommand(int32_t connection_event, int32_t encryption,
                          int32_t integrity, bool is_unprotected_emergency) {
-  return fmt::format("AT+UPDATESECURITYALGORITHM:{},{},{},{:d}\r",
+  return std::format("AT+UPDATESECURITYALGORITHM:{},{},{},{:d}\r",
                      connection_event, encryption, integrity,
                      is_unprotected_emergency);
 }

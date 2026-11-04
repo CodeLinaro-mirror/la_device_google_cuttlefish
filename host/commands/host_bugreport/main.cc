@@ -15,6 +15,7 @@
  */
 
 #include <stdio.h>
+#include <format>
 #include <fstream>
 #include <string>
 
@@ -61,7 +62,7 @@ void AddNetsimdLogs(ZipWriter& writer) {
   std::string user = StringFromEnv("USER", "");
   std::string dir = user.empty()
                         ? TempDir() + "/android/netsimd"
-                        : fmt::format("{}/android-{}/netsimd", TempDir(), user);
+                        : std::format("{}/android-{}/netsimd", TempDir(), user);
   if (!DirectoryExists(dir)) {
     LOG(INFO) << "netsimd logs directory: `" << dir << "` does not exist.";
     return;

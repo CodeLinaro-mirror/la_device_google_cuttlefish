@@ -21,7 +21,6 @@
 
 #include <android-base/logging.h>
 #include <android-base/scopeguard.h>
-#include <fmt/core.h>
 #include <google/protobuf/text_format.h>
 
 #include "common/libs/fs/shared_fd.h"

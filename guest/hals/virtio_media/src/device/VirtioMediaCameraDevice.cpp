@@ -235,13 +235,9 @@ bool VirtioMediaCameraDevice::isInitFailedLocked() {
 
 void VirtioMediaCameraDevice::initSupportedFormatsLocked(int fd) {
   std::vector<SupportedV4L2Format> horizontalFmts =
-      getCandidateSupportedFormatsLocked(fd, HORIZONTAL, mCfg.fpsLimits,
-                                         mCfg.depthFpsLimits,
-                                         mCfg.minStreamSize, mCfg.depthEnabled);
+      getCandidateSupportedFormatsLocked(fd, HORIZONTAL, mCfg.minStreamSize);
   std::vector<SupportedV4L2Format> verticalFmts =
-      getCandidateSupportedFormatsLocked(fd, VERTICAL, mCfg.fpsLimits,
-                                         mCfg.depthFpsLimits,
-                                         mCfg.minStreamSize, mCfg.depthEnabled);
+      getCandidateSupportedFormatsLocked(fd, VERTICAL, mCfg.minStreamSize);
 
   size_t horiSize = horizontalFmts.size();
   size_t vertSize = verticalFmts.size();
@@ -619,6 +615,7 @@ status_t VirtioMediaCameraDevice::initDefaultCharsKeys(
       ANDROID_JPEG_QUALITY,
       ANDROID_JPEG_THUMBNAIL_QUALITY,
       ANDROID_JPEG_THUMBNAIL_SIZE,
+      ANDROID_LENS_FOCAL_LENGTH,
       ANDROID_LENS_OPTICAL_STABILIZATION_MODE,
       ANDROID_NOISE_REDUCTION_MODE,
       ANDROID_SCALER_CROP_REGION,
@@ -992,7 +989,7 @@ status_t VirtioMediaCameraDevice::calculateMinFps(
 #undef ARRAY_SIZE
 #undef UPDATE
 
-void VirtioMediaCameraDevice::getFrameRateList(int fd, double fpsUpperBound,
+void VirtioMediaCameraDevice::getFrameRateList(int fd,
                                                SupportedV4L2Format* format) {
   format->frameRates.clear();
 
@@ -1012,16 +1009,12 @@ void VirtioMediaCameraDevice::getFrameRateList(int fd, double fpsUpperBound,
         SupportedV4L2Format::FrameRate fr = {
             frameInterval.discrete.numerator,
             frameInterval.discrete.denominator};
-        double framerate = fr.getFramesPerSecond();
-        if (framerate > fpsUpperBound) {
-          continue;
-        }
         ALOGV("index:%d, format:%c%c%c%c, w %d, h %d, framerate %f",
               frameInterval.index, frameInterval.pixel_format & 0xFF,
               (frameInterval.pixel_format >> 8) & 0xFF,
               (frameInterval.pixel_format >> 16) & 0xFF,
               (frameInterval.pixel_format >> 24) & 0xFF, frameInterval.width,
-              frameInterval.height, framerate);
+              frameInterval.height, fr.getFramesPerSecond());
         format->frameRates.push_back(fr);
       }
     }
@@ -1038,40 +1031,9 @@ void VirtioMediaCameraDevice::getFrameRateList(int fd, double fpsUpperBound,
   }
 }
 
-void VirtioMediaCameraDevice::updateFpsBounds(
-    int fd, CroppingType cropType,
-    const std::vector<ExternalCameraConfig::FpsLimitation>& fpsLimits,
-    SupportedV4L2Format format, std::vector<SupportedV4L2Format>& outFmts) {
-  double fpsUpperBound = -1.0;
-  for (const auto& limit : fpsLimits) {
-    if (cropType == VERTICAL) {
-      if (format.width <= limit.size.width) {
-        fpsUpperBound = limit.fpsUpperBound;
-        break;
-      }
-    } else {  // HORIZONTAL
-      if (format.height <= limit.size.height) {
-        fpsUpperBound = limit.fpsUpperBound;
-        break;
-      }
-    }
-  }
-  if (fpsUpperBound < 0.f) {
-    return;
-  }
-
-  getFrameRateList(fd, fpsUpperBound, &format);
-  if (!format.frameRates.empty()) {
-    outFmts.push_back(format);
-  }
-}
-
 std::vector<SupportedV4L2Format>
 VirtioMediaCameraDevice::getCandidateSupportedFormatsLocked(
-    int fd, CroppingType cropType,
-    const std::vector<ExternalCameraConfig::FpsLimitation>& fpsLimits,
-    const std::vector<ExternalCameraConfig::FpsLimitation>& depthFpsLimits,
-    const Size& minStreamSize, bool depthEnabled) {
+    int fd, CroppingType cropType, const Size& minStreamSize) {
   std::vector<SupportedV4L2Format> outFmts;
   struct v4l2_fmtdesc fmtdesc{.index = 0, .type = getCaptureType(fd)};
   int ret = 0;
@@ -1123,10 +1085,9 @@ VirtioMediaCameraDevice::getCandidateSupportedFormatsLocked(
             .height = static_cast<int32_t>(frameSize.discrete.height),
             .fourcc = fmtdesc.pixelformat};
 
-        if (format.fourcc == V4L2_PIX_FMT_Z16 && depthEnabled) {
-          updateFpsBounds(fd, cropType, depthFpsLimits, format, outFmts);
-        } else {
-          updateFpsBounds(fd, cropType, fpsLimits, format, outFmts);
+        getFrameRateList(fd, &format);
+        if (!format.frameRates.empty()) {
+          outFmts.push_back(format);
         }
       }
     }

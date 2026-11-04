@@ -19,6 +19,7 @@
 #include <sys/utsname.h>
 
 #include <android-base/logging.h>
+#include <android-base/strings.h>
 #include <fruit/fruit.h>
 
 #include "common/libs/utils/in_sandbox.h"
@@ -64,9 +65,9 @@ Result<void> ValidateHostConfiguration() {
   std::vector<std::string> config_commands;
   CF_EXPECTF(vm_manager::ValidateHostConfiguration(&config_commands),
              "Validation of user configuration failed.\n"
-             "Execute the following to correctly configure: \n[{}]\n",
+             "Execute the following to correctly configure: \n[{}]\n"
              "You may need to logout for the changes to take effect.\n",
-             fmt::join(config_commands, "\n"));
+             android::base::Join(config_commands, "\n"));
 #endif
   return {};
 }

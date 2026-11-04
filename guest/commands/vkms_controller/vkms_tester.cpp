@@ -263,7 +263,7 @@ std::optional<std::string> VkmsTester::WaitForNewDrmDevice(
 }
 
 VkmsTester::~VkmsTester() {
-  if (mOwnsResources) {
+  if (mOwnsResources && mInitialized) {
     ShutdownAndCleanUpVkms();
   }
 }

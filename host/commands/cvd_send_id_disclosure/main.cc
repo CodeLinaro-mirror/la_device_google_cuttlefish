@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <format>
 #include <string>
 
 #include <android-base/logging.h>
@@ -43,7 +44,7 @@ namespace {
 
 void SendDisclosure(SharedFD fd) {
   std::string command =
-      fmt::format("REM{}{}", FLAGS_modem_num,
+      std::format("REM{}{}", FLAGS_modem_num,
                   GetATCommand(FLAGS_plmn, FLAGS_identifier,
                                FLAGS_protocol_message, FLAGS_is_emergency));
 
@@ -68,7 +69,7 @@ int SendIdDisclosureMain(int argc, char **argv) {
 
   auto cf_config = config->ForInstance(FLAGS_instance_num);
   std::string socket_name =
-      fmt::format("modem_simulator{}", cf_config.modem_simulator_host_id());
+      std::format("modem_simulator{}", cf_config.modem_simulator_host_id());
 
   LOG(INFO) << "Connecting over local socket: " << socket_name;
   SharedFD modem_simulator_fd =

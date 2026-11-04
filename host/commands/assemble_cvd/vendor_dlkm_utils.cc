@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <deque>
+#include <format>
 #include <map>
 #include <set>
 #include <sstream>
@@ -27,7 +28,6 @@
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
-#include <fmt/format.h>
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
@@ -280,7 +280,7 @@ Result<void> GenerateFileContexts(const std::string& output_path,
                                O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
   CF_EXPECTF(fd->IsOpen(), "Can't open '{}': {}", output_path, fd->StrError());
 
-  std::string line = fmt::format("{}(/.*)?         u:object_r:{}:s0\n",
+  std::string line = std::format("{}(/.*)?         u:object_r:{}:s0\n",
                                  mount_point, file_label);
   CF_EXPECT_EQ(WriteAll(fd, line), line.size(), fd->StrError());
 
@@ -462,13 +462,13 @@ bool SplitRamdiskModules(const std::string& ramdisk_path,
     }
 
     const auto module_location =
-        fmt::format("{}/{}", module_base_dir, module_path);
+        std::format("{}/{}", module_base_dir, module_path);
     if (!FileExists(module_location)) {
       continue;
     }
     if (IsKernelModuleSigned(module_location)) {
       const auto system_dlkm_module_location =
-          fmt::format("{}/{}", system_modules_dir, module_path);
+          std::format("{}/{}", system_modules_dir, module_path);
       auto res = EnsureDirectoryExists(
           android::base::Dirname(system_dlkm_module_location));
       CHECK(res.has_value()) << res.error().FormatForEnv();
@@ -477,7 +477,7 @@ bool SplitRamdiskModules(const std::string& ramdisk_path,
       system_dlkm_modules.emplace(module_path);
     } else {
       const auto vendor_dlkm_module_location =
-          fmt::format("{}/{}", vendor_modules_dir, module_path);
+          std::format("{}/{}", vendor_modules_dir, module_path);
       auto res = EnsureDirectoryExists(
           android::base::Dirname(vendor_dlkm_module_location));
       CHECK(res.has_value()) << res.error().FormatForEnv();
@@ -506,7 +506,7 @@ bool SplitRamdiskModules(const std::string& ramdisk_path,
   const auto initramfs_blocklist_path = module_base_dir + "/modules.blocklist";
   if (FileExists(initramfs_blocklist_path)) {
     const auto vendor_dlkm_blocklist_path =
-        fmt::format("{}/{}", vendor_modules_dir, "modules.blocklist");
+        std::format("{}/{}", vendor_modules_dir, "modules.blocklist");
     auto ret = RenameFile(initramfs_blocklist_path, vendor_dlkm_blocklist_path);
     CHECK(ret.has_value()) << ret.error().FormatForEnv();
   }

@@ -15,6 +15,7 @@
  */
 #include "host/frontend/webrtc/libdevice/recording_manager.h"
 
+#include <format>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -118,8 +119,9 @@ void RecordingManager::StartSingleRecorder(const std::string& label) {
   }
 
   int recording_time = rtc::TimeMillis();
-  std::string recording_path = fmt::format("{}recording_{}_{}_{}.webm", recording_directory_,
-                                           instance_name_, label, recording_time);
+  std::string recording_path =
+      std::format("{}recording_{}_{}_{}.webm", recording_directory_,
+                  instance_name_, label, recording_time);
   std::unique_ptr<cuttlefish::webrtc_streaming::LocalRecorder> local_recorder =
       LocalRecorder::Create(recording_path);
   CHECK(local_recorder) << "Could not create local recorder";

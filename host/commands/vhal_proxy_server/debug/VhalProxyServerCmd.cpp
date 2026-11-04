@@ -22,6 +22,8 @@
 #include "VehicleServer.grpc.pb.h"
 #include "VehicleServer.pb.h"
 
+#include <format>
+
 #include <android-base/logging.h>
 #include <grpc++/grpc++.h>
 #include "common/libs/utils/flag_parser.h"
@@ -64,7 +66,7 @@ int main(int argc, char* argv[]) {
     dump_options.add_options(arg);
   }
 
-  auto eth_addr = fmt::format("{}:{}", kEthAddr, eth_port);
+  auto eth_addr = std::format("{}:{}", kEthAddr, eth_port);
 
   auto channel = CreateChannel(eth_addr, InsecureChannelCredentials());
   auto stub = VehicleServer::NewStub(channel);

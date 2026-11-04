@@ -14,6 +14,7 @@
 // limitations under the License.
 
 #include <android-base/strings.h>
+#include <format>
 #include <string>
 
 #include "common/frontend/socket_vsock_proxy/client.h"
@@ -81,7 +82,7 @@ SharedFD TcpClient::Start() {
 }
 
 std::string TcpClient::Describe() const {
-  return fmt::format("tcp: {}:{}", host_, port_);
+  return std::format("tcp: {}:{}", host_, port_);
 }
 
 VsockClient::VsockClient(int id, int port, bool vhost_user_vsock)
@@ -106,7 +107,7 @@ SharedFD VsockClient::Start() {
 }
 
 std::string VsockClient::Describe() const {
-  return fmt::format("vsock: {}:{} vhost_user: {}", id_, port_,
+  return std::format("vsock: {}:{} vhost_user: {}", id_, port_,
                      vhost_user_vsock_);
 }
 

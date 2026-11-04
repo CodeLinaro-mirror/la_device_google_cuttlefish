@@ -14,3 +14,20 @@ android_filesystem {
         },
     ],
 }
+
+android_filesystem {
+    name: "userdata_exp.super",
+
+    mount_point: "/userdata_exp.super",
+    partition_size: 4294967296, // 4 GB
+    type: "f2fs",
+
+    dists: [
+        {
+            targets: [
+                "droidcore",
+                "droidcore-unbundled",
+            ],
+        },
+    ],
+}

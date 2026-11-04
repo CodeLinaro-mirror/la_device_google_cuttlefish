@@ -24,6 +24,7 @@
 #include <unistd.h>
 
 #include <cstdlib>
+#include <format>
 #include <string>
 #include <utility>
 
@@ -48,9 +49,9 @@ Result<VhostUserDeviceCommands> VhostUserBlockDevice(
   CF_EXPECT(instance.vhost_user_block(), "Feature is not enabled");
 
   auto block_device_socket_path = instance.PerInstanceInternalUdsPath(
-      fmt::format("vhost-user-block-{}-socket", num));
+      std::format("vhost-user-block-{}-socket", num));
   auto block_device_logs_path = instance.PerInstanceInternalPath(
-      fmt::format("crosvm_vhost_user_block_{}.fifo", num));
+      std::format("crosvm_vhost_user_block_{}.fifo", num));
   auto block_device_logs =
       CF_EXPECT(SharedFD::Fifo(block_device_logs_path, 0666));
 

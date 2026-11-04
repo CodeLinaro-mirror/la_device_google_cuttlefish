@@ -15,6 +15,7 @@
  */
 #include "host/libs/vm_manager/crosvm_cpu.h"
 
+#include <format>
 #include <string>
 #include <vector>
 
@@ -77,25 +78,25 @@ Result<std::vector<std::string>> CrosvmCpuArguments(
       frequencies_arg += ";";
     }
 
-    std::string cpu_cluster = fmt::format("--cpu-cluster={}", i);
+    std::string cpu_cluster = std::format("--cpu-cluster={}", i);
 
     // Assume that non-contiguous logical CPU ids are malformed.
-    std::string cpu = fmt::format("cpu{}", i);
+    std::string cpu = std::format("cpu{}", i);
     const Json::Value cpu_json = CF_EXPECT(
         GetValue<Json::Value>(cpus_json, {cpu}), "Missing vCPU config!");
 
     const int affinity = CF_EXPECT(GetValue<int>(cpu_json, {"affinity"}));
-    std::string affine_arg = fmt::format("{}={}", i, affinity);
+    std::string affine_arg = std::format("{}={}", i, affinity);
 
     const std::string freqs =
         CF_EXPECT(GetValue<std::string>(cpu_json, {"frequencies"}));
-    std::string freq_arg = fmt::format("{}={}", i, freqs);
+    std::string freq_arg = std::format("{}={}", i, freqs);
 
     const int capacity = CF_EXPECT(GetValue<int>(cpu_json, {"capacity"}));
-    std::string cap_arg = fmt::format("{}={}", i, capacity);
+    std::string cap_arg = std::format("{}={}", i, capacity);
 
     const int cpu_ipc_ratio = CF_EXPECT(GetValue<int>(cpu_json, {"ipc_ratio"}));
-    std::string ipc_arg = fmt::format("{}={}", i, cpu_ipc_ratio);
+    std::string ipc_arg = std::format("{}={}", i, cpu_ipc_ratio);
 
     const int domain = CF_EXPECT(GetValue<int>(cpu_json, {"freq_domain"}));
 
@@ -119,7 +120,7 @@ Result<std::vector<std::string>> CrosvmCpuArguments(
   cpu_arguments.emplace_back("--virt-cpufreq-upstream");
 
   cpu_arguments.emplace_back(
-      fmt::format("--cpus={},freq-domains={}", cpus, freq_domain_arg));
+      std::format("--cpus={},freq-domains={}", cpus, freq_domain_arg));
 
   return cpu_arguments;
 }

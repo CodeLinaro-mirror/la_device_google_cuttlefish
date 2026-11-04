@@ -90,9 +90,9 @@ Result<int> RunProcessRestarter(std::vector<std::string> args) {
     // The Execute() API and all APIs effectively called by it show the proper
     // error message using LOG(ERROR).
     auto options = CF_EXPECT(OptionsForExecutable(exec_args.front()));
-    siginfo_t info =
-        CF_EXPECTF(Execute(exec_args, std::move(options), WEXITED),
-                   "Executing '{}' failed.", fmt::join(exec_args, "' '"));
+    siginfo_t info = CF_EXPECTF(Execute(exec_args, std::move(options), WEXITED),
+                                "Executing '{}' failed.",
+                                android::base::Join(exec_args, "' '"));
 
     if (needs_pop) {
       needs_pop = false;

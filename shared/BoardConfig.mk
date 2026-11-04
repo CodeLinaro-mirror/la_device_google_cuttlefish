@@ -184,6 +184,8 @@ TARGET_BOOTLOADER_BOARD_NAME := cutf
 endif
 
 BOARD_SYSTEMIMAGE_FILE_SYSTEM_TYPE := $(TARGET_RO_FILE_SYSTEM_TYPE)
+$(call soong_config_set_if_exist,cf_image_config,system_type,$(BOARD_SYSTEMIMAGE_FILE_SYSTEM_TYPE))
+$(call soong_config_set_if_exist,cf_image_config,system_ext4_share_dup_blocks,$(BOARD_EXT4_SHARE_DUP_BLOCKS))
 
 # Boot partition size: 64M
 # This is only used for OTA update packages. The image size on disk
@@ -529,6 +531,11 @@ else
 endif
 
 BOARD_CUTTLEFISH_EXAMPLE_CUSTOM_IMAGE_LIST := $(OUT_DIR)/soong/.intermediates/device/google/cuttlefish/custom_partition/cuttlefish_example_custom/$(VARIANT_DIR)/cuttlefish_example_custom.img
+
+ifeq ($(TARGET_USE_USERDATA_EXP_SUPER),true)
+BOARD_CUSTOMIMAGES_PARTITION_LIST += userdata_exp.super
+BOARD_USERDATA_EXP.SUPER_IMAGE_LIST := $(OUT_DIR)/soong/.intermediates/device/google/cuttlefish/custom_partition/userdata_exp.super/$(VARIANT_DIR)/userdata_exp.super.img
+endif
 
 BOARD_ANDROID_ESPIMAGE_PARTITION_SIZE := 16777216
 BOARD_ANDROID_ESPIMAGE_FILE_SYSTEM_TYPE := vfat:16

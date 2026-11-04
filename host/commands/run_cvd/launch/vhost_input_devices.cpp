@@ -17,6 +17,7 @@
 
 #include <sys/socket.h>
 
+#include <format>
 #include <regex>
 #include <utility>
 #include <vector>
@@ -92,16 +93,31 @@ struct TemplateVars {
   int index;
   int width;
   int height;
+  CuttlefishConfig::TouchpadConfig::Type type =
+      CuttlefishConfig::TouchpadConfig::Type::kTouchpad;
 };
 
 std::string BuildTouchSpec(const std::string& spec_template,
                            TemplateVars vars) {
-  std::pair<std::string, int> replacements[] = {{"%INDEX%", vars.index},
-                                                {"%WIDTH%", vars.width},
-                                                {"%HEIGHT%", vars.height}};
+  std::string properties;
+  switch (vars.type) {
+    case CuttlefishConfig::TouchpadConfig::Type::kTouchpad:
+      properties =
+          "\"INPUT_PROP_POINTER\": 0,\n    \"INPUT_PROP_BUTTONPAD\": 2";
+      break;
+    case CuttlefishConfig::TouchpadConfig::Type::kTouchNavigation:
+      properties = "";
+      break;
+  }
+  std::pair<std::string, std::string> replacements[] = {
+      {"%INDEX%", std::to_string(vars.index)},
+      {"%WIDTH%", std::to_string(vars.width)},
+      {"%HEIGHT%", std::to_string(vars.height)},
+      {"%PROPERTIES%", properties},
+  };
   std::string spec = spec_template;
   for (const auto& [key, value] : replacements) {
-    spec = std::regex_replace(spec, std::regex(key), std::to_string(value));
+    spec = std::regex_replace(spec, std::regex(key), value);
   }
   return spec;
 }
@@ -179,7 +195,7 @@ class VhostInputDevices : public CommandSource,
       const std::string spec = BuildTouchSpec(
           touchscreen_template, {.index = i, .width = width, .height = height});
       const std::string spec_path = instance_.PerInstanceInternalPath(
-          fmt::format("touchscreen_spec_{}", i));
+          std::format("touchscreen_spec_{}", i));
       CF_EXPECTF(android::base::WriteStringToFile(spec, spec_path,
                                                   true /*follow symlinks*/),
                  "Failed to write touchscreen spec to file: {}", spec_path);
@@ -188,8 +204,8 @@ class VhostInputDevices : public CommandSource,
       Command touchscreen_log_tee =
           CF_EXPECTF(log_tee_.CreateLogTee(
                          touchscreen_cmd,
-                         fmt::format("vhost_user_touchscreen_{}", i), kStdErr),
-                     "Failed to create log tee for touchscreen device", i);
+                         std::format("vhost_user_touchscreen_{}", i), kStdErr),
+                     "Failed to create log tee for touchscreen device {}", i);
       commands.emplace_back(std::move(touchscreen_cmd));
       commands.emplace_back(std::move(touchscreen_log_tee));
     }
@@ -203,10 +219,13 @@ class VhostInputDevices : public CommandSource,
     for (int i = 0; i < instance_.touchpad_configs().size(); ++i) {
       const int width = instance_.touchpad_configs()[i].width;
       const int height = instance_.touchpad_configs()[i].height;
+      const CuttlefishConfig::TouchpadConfig::Type type =
+          instance_.touchpad_configs()[i].type;
       const std::string spec = BuildTouchSpec(
-          touchpad_template, {.index = i, .width = width, .height = height});
+          touchpad_template,
+          {.index = i, .width = width, .height = height, .type = type});
       const std::string spec_path =
-          instance_.PerInstanceInternalPath(fmt::format("touchpad_spec_{}", i));
+          instance_.PerInstanceInternalPath(std::format("touchpad_spec_{}", i));
       CF_EXPECTF(android::base::WriteStringToFile(spec, spec_path,
                                                   true /*follow symlinks*/),
                  "Failed to write touchpad spec to file: {}", spec_path);
@@ -214,7 +233,7 @@ class VhostInputDevices : public CommandSource,
           NewVhostUserInputCommand(touchpad_sockets_[i], spec_path);
       Command touchpad_log_tee = CF_EXPECTF(
           log_tee_.CreateLogTee(
-              touchpad_cmd, fmt::format("vhost_user_touchpad_{}", i), kStdErr),
+              touchpad_cmd, std::format("vhost_user_touchpad_{}", i), kStdErr),
           "Failed to create log tee for touchpad {}", i);
       commands.emplace_back(std::move(touchpad_cmd));
       commands.emplace_back(std::move(touchpad_log_tee));

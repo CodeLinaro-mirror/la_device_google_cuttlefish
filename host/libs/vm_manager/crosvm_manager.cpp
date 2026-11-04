@@ -22,6 +22,7 @@
 #include <sys/types.h>
 
 #include <cassert>
+#include <format>
 #include <map>
 #include <string>
 #include <unordered_map>
@@ -337,7 +338,7 @@ Result<VhostUserDeviceCommands> BuildVhostUserGpu(
                         << " not yet supported with vhost user gpu.");
 
   const std::string gpu_pci_address =
-      fmt::format("00:{:0>2x}.0", VmManager::kGpuPciSlotNum);
+      std::format("00:{:0>2x}.0", VmManager::kGpuPciSlotNum);
 
   // Why does this need JSON instead of just following the normal flags style...
   Json::Value gpu_params_json;
@@ -466,7 +467,7 @@ Result<void> ConfigureGpu(const CuttlefishConfig& config, Command* crosvm_cmd) {
           : "";
 
   const std::string gpu_common_string =
-      fmt::format(",pci-address=00:{:0>2x}.0", VmManager::kGpuPciSlotNum) +
+      std::format(",pci-address=00:{:0>2x}.0", VmManager::kGpuPciSlotNum) +
       gpu_udmabuf_string + gpu_pci_bar_size;
   const std::string gpu_common_3d_string =
       gpu_common_string + ",egl=true,surfaceless=true,glx=false" + gles_string +
@@ -687,7 +688,7 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
         return CF_ERR("Unhandled check if vhost user block ready.");
 #endif
       });
-      auto pci_addr = fmt::format("00:{:0>2x}.0", 0x13 + disk_i);
+      auto pci_addr = std::format("00:{:0>2x}.0", 0x13 + disk_i);
       crosvm_cmd.Cmd().AddParameter("--vhost-user=block,socket=", socket_path,
                                     ",pci-address=", pci_addr);
     } else {
@@ -770,7 +771,7 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   if (instance.vsock_guest_cid() >= 2) {
     if (instance.vhost_user_vsock()) {
       crosvm_cmd.AddVhostUser(
-          "vsock", fmt::format("{}/vsock_{}_{}/vhost.socket", TempDir(),
+          "vsock", std::format("{}/vsock_{}_{}/vhost.socket", TempDir(),
                                instance.vsock_guest_cid(), getuid()));
     } else if (config.vhost_vsock_path().empty()) {
       crosvm_cmd.Cmd().AddParameter("--vsock=cid=", instance.vsock_guest_cid());

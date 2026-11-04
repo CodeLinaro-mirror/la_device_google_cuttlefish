@@ -26,6 +26,7 @@
 #include <sys/socket.h>
 
 #include <chrono>
+#include <format>
 #include <memory>
 #include <utility>
 
@@ -77,7 +78,7 @@ int main(int argc, char* argv[]) {
     serverAddr = vsock.str();
     LOG(INFO) << "Connecting to vsock server at " << serverAddr;
   } else {
-    serverAddr = fmt::format("{}:{}", kEthServerAddr, port);
+    serverAddr = std::format("{}:{}", kEthServerAddr, port);
     LOG(INFO) << "Connecting to ethernet server at " << serverAddr;
   }
 

@@ -46,9 +46,9 @@ size_t H4Packetizer::Send(uint8_t type, const uint8_t* data, size_t length) {
   } while (-1 == ret && (EINTR == errno || EAGAIN == errno));
 
   if (ret == -1) {
-    LOG_ERROR("Error writing to UART (%s)", strerror(errno));
+    LOG_ERROR("Error writing to UART ({})", strerror(errno));
   } else if (ret < static_cast<ssize_t>(length + 1)) {
-    LOG_ERROR("%d / %d bytes written - something went wrong...",
+    LOG_ERROR("{} / {} bytes written - something went wrong...",
               static_cast<int>(ret), static_cast<int>(length + 1));
   }
   return ret;
@@ -84,7 +84,7 @@ void H4Packetizer::OnDataReady(int fd) {
       return;
     }
 
-    LOG_ALWAYS_FATAL("Read error in %d: %s",
+    LOG_ALWAYS_FATAL("Read error in {}: {}",
                      static_cast<int>(h4_parser_.CurrentState()),
                      strerror(errno));
   }
