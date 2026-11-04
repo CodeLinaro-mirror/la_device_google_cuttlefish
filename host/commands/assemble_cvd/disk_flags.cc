@@ -1233,7 +1233,8 @@ static fruit::Component<> DiskChangesPerInstanceComponent(
       .install(InitBootloaderEnvPartitionComponent);
 }
 
-Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const FetcherConfig& fetcher_config) {
+Result<void> DiskImageFlagsVectorization(
+    CuttlefishConfig& config, const FetcherConfigs& fetcher_configs) {
   std::vector<std::string> boot_image =
       android::base::Split(FLAGS_boot_image, ",");
   std::vector<std::string> init_boot_image =
@@ -1493,9 +1494,10 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
 
     // We will need to rebuild vendor_dlkm if custom ramdisk is specified, as a
     // result super image would need to be rebuilt as well.
-    if (CF_EXPECT(SuperImageNeedsRebuilding(fetcher_config,
-                  const_instance.default_target_zip(),
-                  const_instance.system_target_zip())) ||
+    if (CF_EXPECT(SuperImageNeedsRebuilding(
+            fetcher_configs.ForInstance(instance_index),
+            const_instance.default_target_zip(),
+            const_instance.system_target_zip())) ||
         cur_initramfs_path.size()) {
       const std::string new_super_image_path =
           const_instance.PerInstancePath("super.img");
@@ -1525,21 +1527,24 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
   return {};
 }
 
-Result<void> CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
+Result<void> CreateDynamicDiskFiles(const FetcherConfigs& fetcher_configs,
                                     const CuttlefishConfig& config) {
+  size_t instance_index = 0;
   for (const auto& instance : config.Instances()) {
     // TODO(schuffelen): Unify this with the other injector created in
     // assemble_cvd.cpp
-    fruit::Injector<> injector(DiskChangesComponent, &fetcher_config, &config,
-                               &instance);
+    fruit::Injector<> injector(DiskChangesComponent,
+                               &fetcher_configs.ForInstance(instance_index),
+                               &config, &instance);
     for (auto& late_injected : injector.getMultibindings<LateInjected>()) {
       CF_EXPECT(late_injected->LateInject(injector));
     }
 
     const auto& features = injector.getMultibindings<SetupFeature>();
     CF_EXPECT(SetupFeature::RunSetup(features));
-    fruit::Injector<> instance_injector(DiskChangesPerInstanceComponent,
-                                        &fetcher_config, &config, &instance);
+    fruit::Injector<> instance_injector(
+        DiskChangesPerInstanceComponent,
+        &fetcher_configs.ForInstance(instance_index), &config, &instance);
     for (auto& late_injected :
          instance_injector.getMultibindings<LateInjected>()) {
       CF_EXPECT(late_injected->LateInject(instance_injector));
@@ -1605,6 +1610,7 @@ Result<void> CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
         CF_EXPECT(ap_disk_builder.BuildOverlayIfNecessary());
       }
     }
+    instance_index++;
   }
 
   for (auto instance : config.Instances()) {
