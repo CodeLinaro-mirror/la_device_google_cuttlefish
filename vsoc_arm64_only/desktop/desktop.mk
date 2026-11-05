@@ -14,5 +14,4 @@
 # limitations under the License.
 #
 
-DESKTOP_USE_TRUSTY_GK_KM := true
 PRODUCT_PACKAGES += pvmfw-cf

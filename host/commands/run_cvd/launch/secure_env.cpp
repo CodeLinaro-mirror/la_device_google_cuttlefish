@@ -36,8 +36,6 @@ Result<MonitorCommand> SecureEnv(
     AutoSnapshotControlFiles::Type& snapshot_control_files,
     KernelLogPipeProvider& kernel_log_pipe_provider) {
   Command command(SecureEnvBinary());
-  command.AddParameter("-confui_server_fd=",
-                       snapshot_control_files->confui_server_fd);
   command.AddParameter("-snapshot_control_fd=",
                        snapshot_control_files->secure_env_snapshot_control_fd);
 

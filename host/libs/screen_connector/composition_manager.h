@@ -15,11 +15,17 @@
  */
 #pragma once
 
+#include <cstdint>
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include <android-base/logging.h>
 #include "common/libs/utils/result.h"
 #include "host/libs/screen_connector/ring_buffer_manager.h"
-#include "host/libs/screen_connector/screen_connector.h"
 #include "host/libs/screen_connector/video_frame_buffer.h"
+#include "host/libs/wayland/wayland_server_callbacks.h"
 
 namespace cuttlefish {
 

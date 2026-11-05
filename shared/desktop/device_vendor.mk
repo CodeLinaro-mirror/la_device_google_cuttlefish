@@ -17,6 +17,8 @@
 PRODUCT_MANIFEST_FILES += device/google/cuttlefish/shared/config/product_manifest.xml
 SYSTEM_EXT_MANIFEST_FILES += device/google/cuttlefish/shared/config/system_ext_manifest.xml
 
+TARGET_PRODUCT_PROP += device/google/cuttlefish/shared/desktop/bluetooth.prop
+
 # Extend cuttlefish common sepolicy with desktop-specific functionality.
 BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/desktop/sepolicy
 
@@ -37,5 +39,6 @@ $(call inherit-product, device/google/cuttlefish/shared/camera/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/camera/config/standard.mk)
 
 PRODUCT_PACKAGES += \
+    android.hardware.bluetooth.audio-impl \
     desktop_core_hardware.prebuilt.xml \
     desktop_excluded_hardware.prebuilt.xml

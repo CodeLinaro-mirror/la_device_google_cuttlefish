@@ -1894,10 +1894,11 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     }
 
     if (vhost_user_vsock_vec[instance_index] == kVhostUserVsockModeAuto) {
-      std::set<Arch> default_on_arch = {Arch::Arm64};
+      std::set<Arch> default_on_arch = {Arch::Arm64, Arch::RiscV64};
       if (guest_configs[instance_index].vhost_user_vsock) {
         instance.set_vhost_user_vsock(true);
-      } else if (tmp_config_obj.vm_manager() == VmmMode::kCrosvm &&
+      } else if ((tmp_config_obj.vm_manager() == VmmMode::kCrosvm ||
+                  tmp_config_obj.vm_manager() == VmmMode::kQemu) &&
                  default_on_arch.find(
                      guest_configs[instance_index].target_arch) !=
                      default_on_arch.end()) {
@@ -1907,8 +1908,9 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       }
     } else if (vhost_user_vsock_vec[instance_index] ==
                kVhostUserVsockModeTrue) {
-      CHECK(tmp_config_obj.vm_manager() == VmmMode::kCrosvm)
-          << "For now, only crosvm supports vhost_user_vsock";
+      CHECK(tmp_config_obj.vm_manager() == VmmMode::kCrosvm ||
+            tmp_config_obj.vm_manager() == VmmMode::kQemu)
+          << "For now, only crosvm and qemu support vhost_user_vsock";
       instance.set_vhost_user_vsock(true);
     } else if (vhost_user_vsock_vec[instance_index] ==
                kVhostUserVsockModeFalse) {

@@ -19,23 +19,7 @@ package {
 
 cc_binary_host {
     name: "cvd_internal_display",
-    srcs: [
-        "main.cpp",
-    ],
+    srcs: ["main.cpp"],
     stl: "libc++_static",
-    static_libs: [
-        "libbase",
-        "libcuttlefish_command_util",
-        "libcuttlefish_fs",
-        "libcuttlefish_host_config",
-        "libcuttlefish_guest_config_proto",
-        "libcuttlefish_run_cvd_proto",
-        "libcuttlefish_utils",
-        "libcuttlefish_vm_manager",
-        "libgflags",
-        "libjsoncpp",
-        "liblog",
-        "libprotobuf-cpp-full",
-    ],
     defaults: ["cuttlefish_host"],
 }

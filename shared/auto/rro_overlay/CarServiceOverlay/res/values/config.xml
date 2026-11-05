@@ -23,6 +23,7 @@
 -->
 <resources>
     <bool name="audioUseDynamicRouting">true</bool>
+    <bool name="audioEnableVolumeKeyEventsToDynamicDevices">true</bool>
     <bool name="audioUseCarVolumeGroupEvent">true</bool>
      <!--  Configuration to enable min/max activation volume. If this is set to true, the volume of
           the volume group with min/max activation volume setting will be set to min activation

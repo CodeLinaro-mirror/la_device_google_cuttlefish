@@ -38,6 +38,7 @@
 
 #include "common/libs/utils/architecture.h"
 #include "common/libs/utils/files.h"
+#include "common/libs/utils/known_paths.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/libs/config/command_source.h"
@@ -592,18 +593,9 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
     }
   }
 
-  /* Added one for confirmation UI.
-   *
-   * b/237452165
-   *
-   * Confirmation UI is not supported with QEMU for now. In order
-   * to not conflict with confirmation UI-related configurations used
-   * w/ Crosvm, we should add one generic avc.
-   *
-   * confui_fifo_vm.{in/out} are created along with the streamer process,
-   * which is not created w/ QEMU.
-   */
   // /dev/hvc8 = confirmationui
+  // The host no longer implements confirmation UI. Keep the port as a sink so
+  // guests with the HAL can still open it and later PCI IDs do not move.
   add_hvc_sink();
 
   // /dev/hvc9 = uwb
@@ -877,9 +869,20 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
   qemu_cmd.AddParameter("timestamp=on");
 
 #ifdef __linux__
-  qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("vhost-vsock-pci-non-transitional,guest-cid=",
-                        instance.vsock_guest_cid());
+  if (instance.vhost_user_vsock()) {
+    const std::string vhost_socket =
+        std::format("{}/vsock_{}_{}/vhost.socket", TempDir(),
+                    instance.vsock_guest_cid(), getuid());
+    qemu_cmd.AddParameter("-chardev");
+    qemu_cmd.AddParameter("socket,id=char_vsock,path=", vhost_socket);
+    qemu_cmd.AddParameter("-device");
+    qemu_cmd.AddParameter(
+        "vhost-user-vsock-pci-non-transitional,chardev=char_vsock");
+  } else {
+    qemu_cmd.AddParameter("-device");
+    qemu_cmd.AddParameter("vhost-vsock-pci-non-transitional,guest-cid=",
+                          instance.vsock_guest_cid());
+  }
 #endif
 
   qemu_cmd.AddParameter("-device");

@@ -78,8 +78,7 @@ class VirtioMediaCameraDevice : public BnCameraDevice {
       const std::vector<SupportedV4L2Format>& sortedFormats,
       const CroppingType& croppingType,
       const common::V1_0::helper::CameraMetadata& chars,
-      const std::string& cameraId, ::android::base::unique_fd v4l2Fd,
-      v4l2_buf_type captureType);
+      const std::string& cameraId, ::android::base::unique_fd v4l2Fd);
 
   bool isInitFailedLocked();
 
@@ -130,7 +129,6 @@ class VirtioMediaCameraDevice : public BnCameraDevice {
   const ExternalCameraConfig& mCfg;
   std::vector<SupportedV4L2Format> mSupportedFormats;
   CroppingType mCroppingType;
-  v4l2_buf_type mCaptureType = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
   std::weak_ptr<VirtioMediaCameraDeviceSession> mSession =
       std::weak_ptr<VirtioMediaCameraDeviceSession>();

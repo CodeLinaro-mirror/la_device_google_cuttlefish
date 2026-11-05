@@ -21,9 +21,11 @@
 #include <android-base/logging.h>
 #include <keymaster/cppcose/cppcose.h>
 #include <openssl/bn.h>
+#include <openssl/bytestring.h>
 #include <openssl/ec.h>
 #include <openssl/err.h>
 #include <openssl/hkdf.h>
+#include <openssl/mldsa.h>
 #include <openssl/rand.h>
 
 #include "host/commands/secure_env/primary_key_builder.h"
@@ -116,22 +118,62 @@ TpmRemoteProvisioningContext::GenerateBcc(bool testMode) const {
   std::vector<uint8_t> stage1_seed;
   std::vector<uint8_t> stage2_seed;
 
+#ifdef DICE_PROFILE_ANDROID_18
+  constexpr size_t kUdsSeedBytes = MLDSA_SEED_BYTES;
+  constexpr std::string_view kProfileName = "android.18";
+#else
+  constexpr size_t kUdsSeedBytes = 32;
+  constexpr std::string_view kProfileName = "android.16";
+#endif
+
   if (testMode) {
-    uds_seed.resize(32);
+    uds_seed.resize(kUdsSeedBytes);
     RAND_bytes(uds_seed.data(), uds_seed.size());
     stage1_seed.resize(32);
     RAND_bytes(stage1_seed.data(), stage1_seed.size());
     stage2_seed.resize(32);
     RAND_bytes(stage2_seed.data(), stage2_seed.size());
   } else {
-    uds_seed = DeriveBytesFromHbk("UdsKey", 32);
+    uds_seed = DeriveBytesFromHbk("UdsKey", kUdsSeedBytes);
     stage1_seed = DeriveBytesFromHbk("Stage1Key", 32);
     stage2_seed = DeriveBytesFromHbk("Stage2Key", 32);
   }
 
+#ifdef DICE_PROFILE_ANDROID_18
+  auto uds_priv = std::make_unique<MLDSA87_private_key>();
+  if (!MLDSA87_private_key_from_seed(uds_priv.get(), uds_seed.data(),
+                                     uds_seed.size())) {
+    LOG(FATAL) << "Failed to derive ML-DSA-87 private key from seed";
+  }
+  auto uds_pub_struct = std::make_unique<MLDSA87_public_key>();
+  if (!MLDSA87_public_from_private(uds_pub_struct.get(), uds_priv.get())) {
+    LOG(FATAL) << "Failed to extract ML-DSA-87 public key";
+  }
+  std::vector<uint8_t> uds_pub(MLDSA87_PUBLIC_KEY_BYTES);
+  CBB cbb;
+  CBB_init_fixed(&cbb, uds_pub.data(), uds_pub.size());
+  if (!MLDSA87_marshal_public_key(&cbb, uds_pub_struct.get())) {
+    LOG(FATAL) << "Failed to marshal ML-DSA-87 public key";
+  }
+
+  auto udsCoseKey = cppbor::Map()
+                        .add(CoseKey::KEY_TYPE, ALGORITHM_KEY_PAIR)
+                        .add(CoseKey::ALGORITHM, ML_DSA_87)
+                        .add(CoseKey::KEY_OPS, cppbor::Array().add(VERIFY))
+                        .add(CoseKey::AKP_PUBLIC_KEY, uds_pub)
+                        .canonicalize();
+#else
   std::vector<uint8_t> uds_priv(ED25519_PRIVATE_KEY_LEN);
   std::vector<uint8_t> uds_pub(ED25519_PUBLIC_KEY_LEN);
   ED25519_keypair_from_seed(uds_pub.data(), uds_priv.data(), uds_seed.data());
+
+  auto udsCoseKey = cppbor::Map()
+                        .add(CoseKey::KEY_TYPE, OCTET_KEY_PAIR)
+                        .add(CoseKey::ALGORITHM, EDDSA)
+                        .add(CoseKey::CURVE, ED25519)
+                        .add(CoseKey::PUBKEY_X, uds_pub)
+                        .canonicalize();
+#endif
 
   std::vector<uint8_t> stage1_priv(ED25519_PRIVATE_KEY_LEN);
   std::vector<uint8_t> stage1_pub(ED25519_PUBLIC_KEY_LEN);
@@ -142,13 +184,6 @@ TpmRemoteProvisioningContext::GenerateBcc(bool testMode) const {
   std::vector<uint8_t> stage2_pub(ED25519_PUBLIC_KEY_LEN);
   ED25519_keypair_from_seed(stage2_pub.data(), stage2_priv.data(),
                             stage2_seed.data());
-
-  auto udsCoseKey = cppbor::Map()
-                        .add(CoseKey::KEY_TYPE, OCTET_KEY_PAIR)
-                        .add(CoseKey::ALGORITHM, EDDSA)
-                        .add(CoseKey::CURVE, ED25519)
-                        .add(CoseKey::PUBKEY_X, uds_pub)
-                        .canonicalize();
 
   auto stage1CoseKey = cppbor::Map()
                            .add(CoseKey::KEY_TYPE, OCTET_KEY_PAIR)
@@ -172,12 +207,18 @@ TpmRemoteProvisioningContext::GenerateBcc(bool testMode) const {
           .add(-4670545 /* Code Hash */, std::vector<uint8_t>(64, 0))
           .add(-4670548 /* Config Desc */, configDescStage1)
           .add(-4670549 /* Authority Hash */, std::vector<uint8_t>(64, 0))
-          .add(-4670554 /* Profile Name */, "android.16")
+          .add(-4670554 /* Profile Name */, std::string(kProfileName))
           .canonicalize()
           .encode();
+#ifdef DICE_PROFILE_ANDROID_18
+  auto cert1 = constructCoseSign1(uds_seed,      /* signing key seed */
+                                  cppbor::Map(), /* extra protected */
+                                  cert1Payload, {} /* AAD */, ML_DSA_87);
+#else
   auto cert1 = constructEdDsaCoseSign1(uds_priv,      /* signing key */
                                        cppbor::Map(), /* extra protected */
                                        cert1Payload, {} /* AAD */);
+#endif
   assert(cert1);
 
   auto stage2CoseKey = cppbor::Map()
@@ -203,7 +244,7 @@ TpmRemoteProvisioningContext::GenerateBcc(bool testMode) const {
           .add(-4670545 /* Code Hash */, std::vector<uint8_t>(64, 0))
           .add(-4670548 /* Config Desc */, configDescStage2)
           .add(-4670549 /* Authority Hash */, std::vector<uint8_t>(64, 0))
-          .add(-4670554 /* Profile Name */, "android.16")
+          .add(-4670554 /* Profile Name */, std::string(kProfileName))
           .canonicalize()
           .encode();
   auto cert2 = constructEdDsaCoseSign1(stage1_priv,   /* signing key */

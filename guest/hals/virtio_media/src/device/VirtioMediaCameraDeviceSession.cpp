@@ -39,6 +39,7 @@
 #include <sync/sync.h>
 #include <utils/Trace.h>
 #include <deque>
+#include <optional>
 #include <tuple>
 
 #define HAVE_JPEG  // required for libyuv.h to export MJPEG decode APIs
@@ -121,7 +122,7 @@ VirtioMediaCameraDeviceSession::VirtioMediaCameraDeviceSession(
     const std::vector<SupportedV4L2Format>& sortedFormats,
     const CroppingType& croppingType,
     const common::V1_0::helper::CameraMetadata& chars,
-    const std::string& cameraId, unique_fd v4l2Fd, v4l2_buf_type captureType)
+    const std::string& cameraId, unique_fd v4l2Fd)
     : mCallback(callback),
       mCfg(cfg),
       mCameraCharacteristics(chars),
@@ -129,7 +130,6 @@ VirtioMediaCameraDeviceSession::VirtioMediaCameraDeviceSession(
       mCroppingType(croppingType),
       mCameraId(cameraId),
       mV4l2Fd(std::move(v4l2Fd)),
-      mCaptureType(captureType),
       mMaxThumbResolution(getMaxThumbResolution()),
       mMaxJpegResolution(getMaxJpegResolution()) {}
 
@@ -1244,6 +1244,23 @@ status_t VirtioMediaCameraDeviceSession::fillCaptureResult(
   return fillCaptureResultCommon(md, timestamp, activeArraySize);
 }
 
+// Returns the first memory type, in order of preference, that the capture
+// queue accepts. REQBUFS(0) is used as the probe: it allocates nothing and
+// fails with EINVAL for an unsupported memory type.
+static std::optional<v4l2_memory> probeV4l2Memory(int v4l2Fd) {
+  for (v4l2_memory memory : {V4L2_MEMORY_USERPTR, V4L2_MEMORY_MMAP}) {
+    v4l2_requestbuffers probe{};
+    probe.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+    probe.memory = memory;
+    probe.count = 0;
+    if (TEMP_FAILURE_RETRY(ioctl(v4l2Fd, VIDIOC_REQBUFS, &probe)) == 0) {
+      return memory;
+    }
+  }
+  ALOGE("%s: device supports neither USERPTR nor MMAP buffers", __FUNCTION__);
+  return std::nullopt;
+}
+
 int VirtioMediaCameraDeviceSession::configureV4l2StreamLocked(
     const SupportedV4L2Format& v4l2Fmt, double requestFps) {
   ATRACE_CALL();
@@ -1256,17 +1273,11 @@ int VirtioMediaCameraDeviceSession::configureV4l2StreamLocked(
   // VIDIOC_S_FMT w/h/fmt
   v4l2_format fmt;
   memset(&fmt, 0, sizeof(fmt));
-  fmt.type = mCaptureType;
-  if (isMultiPlanar(mCaptureType)) {
-    fmt.fmt.pix_mp.width = v4l2Fmt.width;
-    fmt.fmt.pix_mp.height = v4l2Fmt.height;
-    fmt.fmt.pix_mp.pixelformat = v4l2Fmt.fourcc;
-    fmt.fmt.pix_mp.num_planes = getPlaneCountForFormat(v4l2Fmt.fourcc);
-  } else {
-    fmt.fmt.pix.width = v4l2Fmt.width;
-    fmt.fmt.pix.height = v4l2Fmt.height;
-    fmt.fmt.pix.pixelformat = v4l2Fmt.fourcc;
-  }
+  fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+  fmt.fmt.pix_mp.width = v4l2Fmt.width;
+  fmt.fmt.pix_mp.height = v4l2Fmt.height;
+  fmt.fmt.pix_mp.pixelformat = v4l2Fmt.fourcc;
+  fmt.fmt.pix_mp.num_planes = getPlaneCountForFormat(v4l2Fmt.fourcc);
 
   {
     int numAttempt = 0;
@@ -1287,66 +1298,37 @@ int VirtioMediaCameraDeviceSession::configureV4l2StreamLocked(
     }
   }
 
-  if (mCaptureType != fmt.type) {
+  if (fmt.type != V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
     ALOGE("%s: S_FMT returned mismatched type %d, expected %d", __FUNCTION__,
-          fmt.type, mCaptureType);
+          fmt.type, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE);
     return -EINVAL;
   }
 
-  if (isMultiPlanar(mCaptureType)) {
-    if (v4l2Fmt.width != fmt.fmt.pix_mp.width ||
-        v4l2Fmt.height != fmt.fmt.pix_mp.height ||
-        v4l2Fmt.fourcc != fmt.fmt.pix_mp.pixelformat) {
-      ALOGE("%s: S_FMT expect %c%c%c%c %dx%d, got %c%c%c%c %dx%d instead!",
-            __FUNCTION__, v4l2Fmt.fourcc & 0xFF, (v4l2Fmt.fourcc >> 8) & 0xFF,
-            (v4l2Fmt.fourcc >> 16) & 0xFF, (v4l2Fmt.fourcc >> 24) & 0xFF,
-            v4l2Fmt.width, v4l2Fmt.height, fmt.fmt.pix_mp.pixelformat & 0xFF,
-            (fmt.fmt.pix_mp.pixelformat >> 8) & 0xFF,
-            (fmt.fmt.pix_mp.pixelformat >> 16) & 0xFF,
-            (fmt.fmt.pix_mp.pixelformat >> 24) & 0xFF, fmt.fmt.pix_mp.width,
-            fmt.fmt.pix_mp.height);
-      return -EINVAL;
-    }
-  } else {
-    if (v4l2Fmt.width != fmt.fmt.pix.width ||
-        v4l2Fmt.height != fmt.fmt.pix.height ||
-        v4l2Fmt.fourcc != fmt.fmt.pix.pixelformat) {
-      ALOGE("%s: S_FMT expect %c%c%c%c %dx%d, got %c%c%c%c %dx%d instead!",
-            __FUNCTION__, v4l2Fmt.fourcc & 0xFF, (v4l2Fmt.fourcc >> 8) & 0xFF,
-            (v4l2Fmt.fourcc >> 16) & 0xFF, (v4l2Fmt.fourcc >> 24) & 0xFF,
-            v4l2Fmt.width, v4l2Fmt.height, fmt.fmt.pix.pixelformat & 0xFF,
-            (fmt.fmt.pix.pixelformat >> 8) & 0xFF,
-            (fmt.fmt.pix.pixelformat >> 16) & 0xFF,
-            (fmt.fmt.pix.pixelformat >> 24) & 0xFF, fmt.fmt.pix.width,
-            fmt.fmt.pix.height);
-      return -EINVAL;
-    }
+  if (v4l2Fmt.width != fmt.fmt.pix_mp.width ||
+      v4l2Fmt.height != fmt.fmt.pix_mp.height ||
+      v4l2Fmt.fourcc != fmt.fmt.pix_mp.pixelformat) {
+    ALOGE("%s: S_FMT expect %c%c%c%c %dx%d, got %c%c%c%c %dx%d instead!",
+          __FUNCTION__, v4l2Fmt.fourcc & 0xFF, (v4l2Fmt.fourcc >> 8) & 0xFF,
+          (v4l2Fmt.fourcc >> 16) & 0xFF, (v4l2Fmt.fourcc >> 24) & 0xFF,
+          v4l2Fmt.width, v4l2Fmt.height, fmt.fmt.pix_mp.pixelformat & 0xFF,
+          (fmt.fmt.pix_mp.pixelformat >> 8) & 0xFF,
+          (fmt.fmt.pix_mp.pixelformat >> 16) & 0xFF,
+          (fmt.fmt.pix_mp.pixelformat >> 24) & 0xFF, fmt.fmt.pix_mp.width,
+          fmt.fmt.pix_mp.height);
+    return -EINVAL;
   }
 
   uint32_t bufferSize = 0;
-  if (isMultiPlanar(mCaptureType)) {
-    mV4L2PlaneCount = fmt.fmt.pix_mp.num_planes;
-    mV4L2BytesPerLine.resize(mV4L2PlaneCount);
-    for (uint32_t i = 0; i < mV4L2PlaneCount; i++) {
-      mV4L2BytesPerLine[i] = fmt.fmt.pix_mp.plane_fmt[i].bytesperline;
-      bufferSize += fmt.fmt.pix_mp.plane_fmt[i].sizeimage;
-    }
-  } else {
-    mV4L2PlaneCount = 1;
-    mV4L2BytesPerLine.resize(1);
-    mV4L2BytesPerLine[0] = fmt.fmt.pix.bytesperline;
-    bufferSize = fmt.fmt.pix.sizeimage;
+  mV4L2PlaneCount = fmt.fmt.pix_mp.num_planes;
+  mV4L2BytesPerLine.resize(mV4L2PlaneCount);
+  for (uint32_t i = 0; i < mV4L2PlaneCount; i++) {
+    mV4L2BytesPerLine[i] = fmt.fmt.pix_mp.plane_fmt[i].bytesperline;
+    bufferSize += fmt.fmt.pix_mp.plane_fmt[i].sizeimage;
   }
   ALOGI("%s: V4L2 buffer size is %d", __FUNCTION__, bufferSize);
 
-  uint32_t expectedMaxBufferSize = 0;
-  if (isMultiPlanar(mCaptureType)) {
-    expectedMaxBufferSize =
-        kMaxBytesPerPixel * fmt.fmt.pix_mp.width * fmt.fmt.pix_mp.height;
-  } else {
-    expectedMaxBufferSize =
-        kMaxBytesPerPixel * fmt.fmt.pix.width * fmt.fmt.pix.height;
-  }
+  const uint32_t expectedMaxBufferSize =
+      kMaxBytesPerPixel * fmt.fmt.pix_mp.width * fmt.fmt.pix_mp.height;
   if (bufferSize == 0) {
     ALOGE("%s: Invalid V4L2 buffer size = 0", __FUNCTION__);
     return -EINVAL;
@@ -1396,10 +1378,19 @@ int VirtioMediaCameraDeviceSession::configureV4l2StreamLocked(
   ALOGI("%s: set mMaxLagNs to %" PRIu64 " ns, v4lBufferCount %u", __FUNCTION__,
         mMaxLagNs, v4lBufferCount);
 
+  // Drop whatever a previous, failed configuration left behind.
+  mV4l2Memory.reset();
+  const std::optional<v4l2_memory> memory = probeV4l2Memory(mV4l2Fd.get());
+  if (!memory.has_value()) {
+    return -EINVAL;
+  }
+  ALOGI("%s: using %s buffers", __FUNCTION__,
+        *memory == V4L2_MEMORY_USERPTR ? "USERPTR" : "MMAP");
+
   // VIDIOC_REQBUFS: create buffers
   v4l2_requestbuffers req_buffers{};
-  req_buffers.type = mCaptureType;
-  req_buffers.memory = V4L2_MEMORY_MMAP;
+  req_buffers.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+  req_buffers.memory = *memory;
   req_buffers.count = v4lBufferCount;
   if (TEMP_FAILURE_RETRY(ioctl(mV4l2Fd.get(), VIDIOC_REQBUFS, &req_buffers)) <
       0) {
@@ -1413,10 +1404,20 @@ int VirtioMediaCameraDeviceSession::configureV4l2StreamLocked(
           __FUNCTION__, v4lBufferCount, req_buffers.count);
     return NO_MEMORY;
   }
-
-  // VIDIOC_QUERYBUF:  get buffer offset in the V4L2 fd
-  // VIDIOC_QBUF: send buffer to driver
   mV4L2BufferCount = req_buffers.count;
+
+  if (*memory == V4L2_MEMORY_USERPTR) {
+    mV4l2Memory = std::make_unique<UserPtrBufferMemory>(mV4L2BufferCount,
+                                                        mV4L2PlaneCount);
+  } else if (*memory == V4L2_MEMORY_MMAP) {
+    mV4l2Memory = std::make_unique<MmapBufferMemory>(mV4l2Fd.get());
+  } else {
+    ALOGE("%s: unsupported memory type %d", __FUNCTION__, *memory);
+    return -EINVAL;
+  }
+
+  // For each buffer: VIDIOC_QUERYBUF to get the planes info, attach memory to
+  // every plane, then VIDIOC_QBUF to hand it to the driver.
   mV4L2Buffers.clear();
   mV4L2Buffers.resize(mV4L2BufferCount);
 
@@ -1424,14 +1425,11 @@ int VirtioMediaCameraDeviceSession::configureV4l2StreamLocked(
     V4L2BufferInfo& info = mV4L2Buffers[i];
     memset(&info.buffer, 0, sizeof(v4l2_buffer));
     info.buffer.index = i;
-    info.buffer.type = mCaptureType;
-    info.buffer.memory = V4L2_MEMORY_MMAP;
-
-    if (isMultiPlanar(mCaptureType)) {
-      memset(info.planes, 0, sizeof(info.planes));
-      info.buffer.m.planes = info.planes;
-      info.buffer.length = VIDEO_MAX_PLANES;
-    }
+    info.buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+    info.buffer.memory = mV4l2Memory->V4l2Type();
+    memset(info.planes, 0, sizeof(info.planes));
+    info.buffer.m.planes = info.planes;
+    info.buffer.length = VIDEO_MAX_PLANES;
 
     if (TEMP_FAILURE_RETRY(
             ioctl(mV4l2Fd.get(), VIDIOC_QUERYBUF, &info.buffer)) < 0) {
@@ -1439,38 +1437,17 @@ int VirtioMediaCameraDeviceSession::configureV4l2StreamLocked(
       return -errno;
     }
 
-    if (isMultiPlanar(mCaptureType)) {
-      for (uint32_t j = 0; j < info.buffer.length; j++) {
-        void* addr =
-            mmap(nullptr, info.planes[j].length, PROT_READ | PROT_WRITE,
-                 MAP_SHARED, mV4l2Fd.get(), info.planes[j].m.mem_offset);
-        if (addr == MAP_FAILED) {
-          ALOGE("%s: mmap buffer %d plane %d failed: %s", __FUNCTION__, i, j,
-                strerror(errno));
-          v4l2StreamOffLocked();
-          return -errno;
-        }
-        info.mMappedAllocations.emplace_back(addr, info.planes[j].length);
-        info.planeAddrs.push_back(addr);
-        info.planeSizes.push_back(info.planes[j].length);
-      }
-    } else {
-      void* addr = mmap(nullptr, info.buffer.length, PROT_READ | PROT_WRITE,
-                        MAP_SHARED, mV4l2Fd.get(), info.buffer.m.offset);
-      if (addr == MAP_FAILED) {
-        ALOGE("%s: mmap buffer %d failed: %s", __FUNCTION__, i,
-              strerror(errno));
+    for (uint32_t j = 0; j < info.buffer.length; j++) {
+      void* addr = mV4l2Memory->Attach(i, j, &info.planes[j]);
+      if (addr == nullptr) {
         v4l2StreamOffLocked();
-        return -errno;
+        return -ENOMEM;
       }
-      info.mMappedAllocations.emplace_back(addr, info.buffer.length);
       info.planeAddrs.push_back(addr);
-      info.planeSizes.push_back(info.buffer.length);
+      info.planeSizes.push_back(info.planes[j].length);
     }
 
-    if (isMultiPlanar(mCaptureType)) {
-      info.buffer.length = mV4L2PlaneCount;
-    }
+    info.buffer.length = mV4L2PlaneCount;
 
     if (TEMP_FAILURE_RETRY(ioctl(mV4l2Fd.get(), VIDIOC_QBUF, &info.buffer)) <
         0) {
@@ -1481,7 +1458,7 @@ int VirtioMediaCameraDeviceSession::configureV4l2StreamLocked(
 
   {
     // VIDIOC_STREAMON: start streaming
-    v4l2_buf_type capture_type = mCaptureType;
+    v4l2_buf_type capture_type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
     int numAttempt = 0;
     do {
       ret = TEMP_FAILURE_RETRY(
@@ -1510,23 +1487,20 @@ int VirtioMediaCameraDeviceSession::configureV4l2StreamLocked(
   for (int i = 0; i < kBadFramesAfterStreamOn; i++) {
     v4l2_buffer buffer{};
     memset(&buffer, 0, sizeof(buffer));
-    buffer.type = mCaptureType;
-    buffer.memory = V4L2_MEMORY_MMAP;
+    buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+    buffer.memory = mV4l2Memory->V4l2Type();
     v4l2_plane planes[VIDEO_MAX_PLANES];
-    if (isMultiPlanar(mCaptureType)) {
-      memset(planes, 0, sizeof(planes));
-      buffer.m.planes = planes;
-      buffer.length = VIDEO_MAX_PLANES;
-    }
+    memset(planes, 0, sizeof(planes));
+    buffer.m.planes = planes;
+    buffer.length = VIDEO_MAX_PLANES;
 
     if (TEMP_FAILURE_RETRY(ioctl(mV4l2Fd.get(), VIDIOC_DQBUF, &buffer)) < 0) {
       ALOGE("%s: DQBUF fails: %s", __FUNCTION__, strerror(errno));
       return -errno;
     }
 
-    if (isMultiPlanar(mCaptureType)) {
-      buffer.length = mV4L2PlaneCount;
-    }
+    buffer.m.planes = mV4L2Buffers[buffer.index].planes;
+    buffer.length = mV4L2PlaneCount;
 
     if (TEMP_FAILURE_RETRY(ioctl(mV4l2Fd.get(), VIDIOC_QBUF, &buffer)) < 0) {
       ALOGE("%s: QBUF index %d fails: %s", __FUNCTION__, buffer.index,
@@ -1567,13 +1541,11 @@ VirtioMediaCameraDeviceSession::dequeueV4l2FrameLocked(nsecs_t* shutterTs) {
   do {
     ATRACE_BEGIN("VIDIOC_DQBUF");
     memset(&buffer, 0, sizeof(buffer));
-    buffer.type = mCaptureType;
-    buffer.memory = V4L2_MEMORY_MMAP;
-    if (isMultiPlanar(mCaptureType)) {
-      memset(planes, 0, sizeof(planes));
-      buffer.m.planes = planes;
-      buffer.length = VIDEO_MAX_PLANES;
-    }
+    buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+    buffer.memory = mV4l2Memory->V4l2Type();
+    memset(planes, 0, sizeof(planes));
+    buffer.m.planes = planes;
+    buffer.length = VIDEO_MAX_PLANES;
     if (TEMP_FAILURE_RETRY(ioctl(mV4l2Fd.get(), VIDIOC_DQBUF, &buffer)) < 0) {
       ALOGE("%s: DQBUF fails: %s", __FUNCTION__, strerror(errno));
       return ret;
@@ -1591,12 +1563,8 @@ VirtioMediaCameraDeviceSession::dequeueV4l2FrameLocked(nsecs_t* shutterTs) {
     }
 
     uint32_t bytesused = 0;
-    if (isMultiPlanar(mCaptureType)) {
-      for (uint32_t i = 0; i < buffer.length; i++) {
-        bytesused += planes[i].bytesused;
-      }
-    } else {
-      bytesused = buffer.bytesused;
+    for (uint32_t i = 0; i < buffer.length; i++) {
+      bytesused += planes[i].bytesused;
     }
 
     if (bytesused > mMaxV4L2BufferSize) {
@@ -1641,9 +1609,8 @@ VirtioMediaCameraDeviceSession::dequeueV4l2FrameLocked(nsecs_t* shutterTs) {
           "bufferTs: %" PRId64 ", curTime: %" PRId64,
           __FUNCTION__, buffer.index, lagNs, mMaxLagNs, *shutterTs, curTimeNs);
 
-      if (isMultiPlanar(mCaptureType)) {
-        buffer.length = mV4L2PlaneCount;
-      }
+      buffer.m.planes = mV4L2Buffers[buffer.index].planes;
+      buffer.length = mV4L2PlaneCount;
       int retVal = ioctl(mV4l2Fd.get(), VIDIOC_QBUF, &buffer);
       if (retVal) {
         ALOGE("%s: unexpected VIDIOC_QBUF failed, retVal %d", __FUNCTION__,
@@ -1660,14 +1627,9 @@ VirtioMediaCameraDeviceSession::dequeueV4l2FrameLocked(nsecs_t* shutterTs) {
 
   std::vector<size_t> bytesused_vec;
   std::vector<uint32_t> data_offsets;
-  if (isMultiPlanar(mCaptureType)) {
-    for (uint32_t i = 0; i < mV4L2PlaneCount; i++) {
-      bytesused_vec.push_back(planes[i].bytesused);
-      data_offsets.push_back(planes[i].data_offset);
-    }
-  } else {
-    bytesused_vec.push_back(buffer.bytesused);
-    data_offsets.push_back(0);
+  for (uint32_t i = 0; i < mV4L2PlaneCount; i++) {
+    bytesused_vec.push_back(planes[i].bytesused);
+    data_offsets.push_back(planes[i].data_offset);
   }
 
   const V4L2BufferInfo& info = mV4L2Buffers[buffer.index];
@@ -1684,14 +1646,11 @@ void VirtioMediaCameraDeviceSession::enqueueV4l2Frame(
   ATRACE_BEGIN("VIDIOC_QBUF");
   v4l2_buffer buffer{};
   memset(&buffer, 0, sizeof(buffer));
-  buffer.type = mCaptureType;
-  buffer.memory = V4L2_MEMORY_MMAP;
+  buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+  buffer.memory = mV4l2Memory->V4l2Type();
   buffer.index = frame->mBufferIndex;
-
-  if (isMultiPlanar(mCaptureType)) {
-    buffer.m.planes = mV4L2Buffers[frame->mBufferIndex].planes;
-    buffer.length = mV4L2PlaneCount;
-  }
+  buffer.m.planes = mV4L2Buffers[frame->mBufferIndex].planes;
+  buffer.length = mV4L2PlaneCount;
   if (TEMP_FAILURE_RETRY(ioctl(mV4l2Fd.get(), VIDIOC_QBUF, &buffer)) < 0) {
     ALOGE("%s: QBUF index %d fails: %s", __FUNCTION__, frame->mBufferIndex,
           strerror(errno));
@@ -1992,7 +1951,7 @@ int VirtioMediaCameraDeviceSession::v4l2StreamOffLocked() {
   mV4L2BufferCount = 0;
 
   // VIDIOC_STREAMOFF
-  v4l2_buf_type capture_type = mCaptureType;
+  v4l2_buf_type capture_type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
   if (TEMP_FAILURE_RETRY(
           ioctl(mV4l2Fd.get(), VIDIOC_STREAMOFF, &capture_type)) < 0) {
     ALOGE("%s: STREAMOFF failed: %s", __FUNCTION__, strerror(errno));
@@ -2001,24 +1960,24 @@ int VirtioMediaCameraDeviceSession::v4l2StreamOffLocked() {
 
   // VIDIOC_REQBUFS: clear buffers
   v4l2_requestbuffers req_buffers{};
-  req_buffers.type = mCaptureType;
-  req_buffers.memory = V4L2_MEMORY_MMAP;
+  req_buffers.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+  req_buffers.memory = mV4l2Memory->V4l2Type();
   req_buffers.count = 0;
 
-  mV4L2Buffers.clear();  // RAII handles munmap automatically
+  mV4l2Memory.reset();
+  mV4l2Streaming = false;
   if (TEMP_FAILURE_RETRY(ioctl(mV4l2Fd.get(), VIDIOC_REQBUFS, &req_buffers)) <
       0) {
     ALOGE("%s: REQBUFS failed: %s", __FUNCTION__, strerror(errno));
     return -errno;
   }
 
-  mV4l2Streaming = false;
   return OK;
 }
 
 int VirtioMediaCameraDeviceSession::setV4l2FpsLocked(double fps) {
   // VIDIOC_G_PARM/VIDIOC_S_PARM: set fps
-  v4l2_streamparm streamparm = {.type = mCaptureType};
+  v4l2_streamparm streamparm = {.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE};
   // The following line checks that the driver knows about framerate get/set.
   int ret =
       TEMP_FAILURE_RETRY(ioctl(mV4l2Fd.get(), VIDIOC_G_PARM, &streamparm));

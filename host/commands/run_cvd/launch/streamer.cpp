@@ -129,6 +129,9 @@ class StreamerSockets : public virtual SetupFeature {
     if (instance_.enable_audio()) {
       cmd.AddParameter("--audio_server_fd=", audio_server_);
     }
+    // Nothing serves confirmation UI anymore, but older webRTC binaries that
+    // cvd fetch substitutes in from the Debian host package abort at startup
+    // without these fds.
     cmd.AddParameter("--confui_in_fd=", confui_in_fd_);
     cmd.AddParameter("--confui_out_fd=", confui_out_fd_);
     cmd.AddParameter("-switches_fd=",

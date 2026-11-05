@@ -84,10 +84,18 @@ bool VhostDeviceVsock::Enabled() const { return instance_.vhost_user_vsock(); }
 
 Result<void> VhostDeviceVsock::WaitForAvailability() const {
   if (Enabled()) {
-    CF_EXPECT(WaitForUnixSocket(
-        std::format("{}/vsock_{}_{}/vm.vsock", TempDir(),
-                    instance_.vsock_guest_cid(), std::to_string(getuid())),
-        30));
+    CF_EXPECT(
+        WaitForUnixSocket(std::format("{}/vsock_{}_{}/vm.vsock", TempDir(),
+                                      instance_.vsock_guest_cid(), getuid()),
+                          30));
+    // vhost.socket is bound after vm.vsock. QEMU connects to it once at
+    // startup, while crosvm retries via --vhost-user-connect-timeout-ms.
+    if (cfconfig_.vm_manager() == VmmMode::kQemu) {
+      CF_EXPECT(WaitForUnixSocketListeningWithoutConnect(
+          std::format("{}/vsock_{}_{}/vhost.socket", TempDir(),
+                      instance_.vsock_guest_cid(), getuid()),
+          30));
+    }
   }
   return {};
 }

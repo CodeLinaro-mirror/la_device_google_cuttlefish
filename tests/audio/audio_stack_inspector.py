@@ -94,10 +94,9 @@ class AudioModeSessionInfo:
   mode: str
   is_display_active_use_case: bool
   client_paused: bool
-  server_paused: bool
+  paused: bool
   closed: bool
   has_focus: bool
-  is_live: bool
   requested_route: str
   target_route: str
 
@@ -157,7 +156,7 @@ _MODE_SESSION_RE = re.compile(
     r'\s+mode:\s*(\S+)\s*\(-?\d+\)\s*\n'
     r'\s+isDisplayActiveUseCase:\s*(true|false)\s*\n'
     r'\s+lifecycle:\s*clientPaused=(true|false)\s+(?:serverPaused|paused)=(true|false)'
-    r'\s+closed=(true|false)\s+hasFocus=(true|false)(?:\s+isLive=(true|false))?\s*\n'
+    r'\s+closed=(true|false)\s+hasFocus=(true|false)(?:\s+isLive=(?:true|false))?\s*\n'
     r'\s+requestedRoute:\s*(.+)(?:\n[ \t]+(?:appliedRoute|targetRoute):\s*(.+))?',
     re.MULTILINE,
 )
@@ -215,6 +214,97 @@ def address_matches(actual: str, expected: str) -> bool:
     return True
   anon_expected = anonymize_bluetooth_address(expected)
   return expected in actual or anon_expected in actual
+
+
+# External `AudioDeviceInfo.TYPE_*` value that `dumpsys audio --proto` writes
+# in `DeviceIdentityProto.type`, keyed by the internal `AUDIO_DEVICE_OUT_*`
+# token that Layers 2-4 report. Mirrors the output half of
+# `AudioDeviceInfo.INT_TO_EXT_DEVICE_MAPPING` (frameworks/base). Several
+# internal tokens share one external type (e.g. the three SCO tokens).
+_DEVICE_TOKEN_EXTERNAL_TYPE: Mapping[str, int] = {
+    'AUDIO_DEVICE_OUT_EARPIECE': 1,  # TYPE_BUILTIN_EARPIECE
+    'AUDIO_DEVICE_OUT_SPEAKER': 2,  # TYPE_BUILTIN_SPEAKER
+    'AUDIO_DEVICE_OUT_WIRED_HEADSET': 3,  # TYPE_WIRED_HEADSET
+    'AUDIO_DEVICE_OUT_WIRED_HEADPHONE': 4,  # TYPE_WIRED_HEADPHONES
+    'AUDIO_DEVICE_OUT_LINE': 5,  # TYPE_LINE_ANALOG
+    'AUDIO_DEVICE_OUT_SPDIF': 6,  # TYPE_LINE_DIGITAL
+    'AUDIO_DEVICE_OUT_BLUETOOTH_SCO': 7,  # TYPE_BLUETOOTH_SCO
+    'AUDIO_DEVICE_OUT_BLUETOOTH_SCO_HEADSET': 7,
+    'AUDIO_DEVICE_OUT_BLUETOOTH_SCO_CARKIT': 7,
+    'AUDIO_DEVICE_OUT_BLUETOOTH_A2DP': 8,  # TYPE_BLUETOOTH_A2DP
+    'AUDIO_DEVICE_OUT_BLUETOOTH_A2DP_HEADPHONES': 8,
+    'AUDIO_DEVICE_OUT_BLUETOOTH_A2DP_SPEAKER': 8,
+    'AUDIO_DEVICE_OUT_HDMI': 9,  # TYPE_HDMI
+    'AUDIO_DEVICE_OUT_HDMI_ARC': 10,  # TYPE_HDMI_ARC
+    'AUDIO_DEVICE_OUT_USB_DEVICE': 11,  # TYPE_USB_DEVICE
+    'AUDIO_DEVICE_OUT_USB_ACCESSORY': 12,  # TYPE_USB_ACCESSORY
+    'AUDIO_DEVICE_OUT_DGTL_DOCK_HEADSET': 13,  # TYPE_DOCK
+    'AUDIO_DEVICE_OUT_FM': 14,  # TYPE_FM
+    'AUDIO_DEVICE_OUT_TELEPHONY_TX': 18,  # TYPE_TELEPHONY
+    'AUDIO_DEVICE_OUT_AUX_LINE': 19,  # TYPE_AUX_LINE
+    'AUDIO_DEVICE_OUT_IP': 20,  # TYPE_IP
+    'AUDIO_DEVICE_OUT_BUS': 21,  # TYPE_BUS
+    'AUDIO_DEVICE_OUT_USB_HEADSET': 22,  # TYPE_USB_HEADSET
+    'AUDIO_DEVICE_OUT_HEARING_AID': 23,  # TYPE_HEARING_AID
+    'AUDIO_DEVICE_OUT_SPEAKER_SAFE': 24,  # TYPE_BUILTIN_SPEAKER_SAFE
+    'AUDIO_DEVICE_OUT_REMOTE_SUBMIX': 25,  # TYPE_REMOTE_SUBMIX
+    'AUDIO_DEVICE_OUT_BLE_HEADSET': 26,  # TYPE_BLE_HEADSET
+    'AUDIO_DEVICE_OUT_BLE_SPEAKER': 27,  # TYPE_BLE_SPEAKER
+    'AUDIO_DEVICE_OUT_HDMI_EARC': 29,  # TYPE_HDMI_EARC
+    'AUDIO_DEVICE_OUT_BLE_BROADCAST': 30,  # TYPE_BLE_BROADCAST
+    'AUDIO_DEVICE_OUT_ANLG_DOCK_HEADSET': 31,  # TYPE_DOCK_ANALOG
+    'AUDIO_DEVICE_OUT_MULTICHANNEL_GROUP': 32,  # TYPE_MULTICHANNEL_GROUP
+    'AUDIO_DEVICE_OUT_BLE_HEARING_AID': 33,  # TYPE_BLE_HEARING_AID
+    'AUDIO_DEVICE_OUT_BLE_CENTRAL': 34,  # TYPE_BLE_CENTRAL
+}
+
+# `output=`/`output:` segment of a formatted route, in either the proto form
+# `Route(output=DeviceIdentity(...), input=...)` or the AIDL text form
+# `Route{output: DeviceIdentity{...}, input: ...}`.
+_ROUTE_OUTPUT_RE = re.compile(r'\boutput[=:]\s*(.*?)(?:,\s*input[=:]|\}?\)?$)')
+# `type=<n>`/`type: <n>` of a formatted `DeviceIdentity` (may be negative).
+_DEVICE_TYPE_RE = re.compile(r'\btype[=:]\s*(-?\d+)\b')
+# Placeholders for an unset device in formatted routes and broker fields.
+_UNSET_DEVICE_VALUES = frozenset({'', 'None', 'null', 'Optional.empty'})
+
+
+def route_output(route: str) -> str:
+  """Returns the output device segment of a formatted route, or `route`.
+
+  Formatted routes with an `output=`/`output:` segment (see
+  `_format_route_field` and `IAudioModeSession.Route.toString()`) are
+  narrowed to that segment so that an `input=` device sharing the expected
+  address does not make the route match. Other strings are returned as is.
+  """
+  match = _ROUTE_OUTPUT_RE.search(route)
+  return match.group(1).strip() if match else route
+
+
+def device_matches(
+    actual: str, expected_device_token: str, expected_address: str
+) -> bool:
+  """Returns True if a formatted device matches the expected type and address.
+
+  An unset device (`''`, `None`, `null`, `Optional.empty`) never matches. When
+  `actual` is a formatted `DeviceIdentity`, `expected_device_token` must map to
+  an external `AudioDeviceInfo.TYPE_*` value and `actual`'s `type=<n>` must be
+  present and equal to that value; this separates the HFP SCO, A2DP, and BLE
+  profiles of one headset that share a MAC address, and rejects unmapped tokens
+  and wrong, missing, or invalid (negative) types even when `expected_address`
+  is empty. Strings without a `DeviceIdentity` (legacy text-dump devices) are
+  matched by address only.
+  """
+  actual = actual.strip()
+  if actual in _UNSET_DEVICE_VALUES:
+    return False
+  if 'DeviceIdentity' in actual:
+    expected_type = _DEVICE_TOKEN_EXTERNAL_TYPE.get(expected_device_token)
+    if expected_type is None:
+      return False
+    type_match = _DEVICE_TYPE_RE.search(actual)
+    if type_match is None or int(type_match.group(1)) != expected_type:
+      return False
+  return address_matches(actual, expected_address)
 
 
 def parse_focus_stack(dump: str) -> str:
@@ -275,6 +365,33 @@ def _unwrap_optional_route(val: str) -> str:
   if val.startswith('Optional[') and val.endswith(']'):
     return val[9:-1]
   return val
+
+
+def _format_device_identity_proto(
+    device: audioservice_pb2.DeviceIdentityProto,
+) -> str:
+  """Formats a `DeviceIdentityProto` for address matching and failure logs."""
+  return (
+      f'DeviceIdentity(role={device.role}, type={device.type},'
+      f' address={device.address})'
+  )
+
+
+def _format_device_field(msg: message.Message, field: str) -> str:
+  """Formats the `DeviceIdentityProto` in `field` of `msg`, or '' if unset."""
+  if not msg.HasField(field):
+    return ''
+  return _format_device_identity_proto(getattr(msg, field))
+
+
+def _format_route_field(msg: message.Message, field: str) -> str:
+  """Formats the `AudioModeSessionProto.Route` in `field` of `msg`, or ''."""
+  if not msg.HasField(field):
+    return ''
+  route = getattr(msg, field)
+  output = _format_device_field(route, 'output') or 'None'
+  input_device = _format_device_field(route, 'input') or 'None'
+  return f'Route(output={output}, input={input_device})'
 
 
 def parse_focus_stack_proto(raw_bytes: bytes) -> str:
@@ -378,26 +495,25 @@ def parse_dumpsys_audio_proto(raw_bytes: bytes) -> dict[str, object]:
           mode=s.mode,
           is_display_active_use_case=s.is_display_active_use_case,
           client_paused=s.client_paused,
-          server_paused=s.server_paused,
+          paused=s.paused,
           closed=s.closed,
           has_focus=s.has_focus,
-          is_live=s.is_live,
-          requested_route=s.requested_route,
-          target_route=s.target_route,
+          requested_route=_format_route_field(s, 'requested_route'),
+          target_route=_format_route_field(s, 'target_route'),
       )
       for s in dump_proto.device_broker.mode_sessions
   )
   return {
       'requested_mode': dump_proto.audio_mode.requested_mode,
       'actual_mode': dump_proto.audio_mode.actual_mode,
-      'computed_preferred_comm_device': (
-          dump_proto.device_broker.computed_preferred_communication_device
+      'computed_preferred_comm_device': _format_device_field(
+          dump_proto.device_broker, 'computed_preferred_communication_device'
       ),
-      'applied_preferred_comm_device': (
-          dump_proto.device_broker.applied_preferred_communication_device
+      'applied_preferred_comm_device': _format_device_field(
+          dump_proto.device_broker, 'applied_preferred_communication_device'
       ),
-      'active_comm_device': (
-          dump_proto.device_broker.active_communication_device
+      'active_comm_device': _format_device_field(
+          dump_proto.device_broker, 'active_communication_device'
       ),
       'started_playback_usages': tuple(started_usages),
       'mode_sessions': mode_sessions,
@@ -417,17 +533,12 @@ def parse_dumpsys_audio(dump: str) -> dict[str, object]:
   mode_sessions: list[AudioModeSessionInfo] = []
   for match in _MODE_SESSION_RE.finditer(dump):
     client_paused = match.group(4) == 'true'
-    server_paused = match.group(5) == 'true'
     closed = match.group(6) == 'true'
-    is_live = (
-        match.group(8) == 'true'
-        if match.group(8) is not None
-        else (not client_paused and not server_paused and not closed)
-    )
-    requested_route = _unwrap_optional_route(match.group(9).strip())
+    paused = (match.group(5) == 'true') or client_paused or closed
+    requested_route = _unwrap_optional_route(match.group(8).strip())
     raw_target = (
-        _unwrap_optional_route(match.group(10).strip())
-        if match.group(10) is not None
+        _unwrap_optional_route(match.group(9).strip())
+        if match.group(9) is not None
         else ''
     )
     if raw_target and raw_target not in ('Optional.empty', 'null', 'None'):
@@ -442,10 +553,9 @@ def parse_dumpsys_audio(dump: str) -> dict[str, object]:
             mode=match.group(2).strip(),
             is_display_active_use_case=match.group(3) == 'true',
             client_paused=client_paused,
-            server_paused=server_paused,
+            paused=paused,
             closed=closed,
             has_focus=match.group(7) == 'true',
-            is_live=is_live,
             requested_route=requested_route,
             target_route=target_route,
         )
@@ -711,29 +821,33 @@ class AudioStackInspector:
         )
       if expected_mode != 'MODE_NORMAL':
         if not any(
-            s.is_live
+            not s.paused
+            and not s.client_paused
+            and not s.closed
             and s.mode == expected_mode
-            and bool(s.target_route)
-            and address_matches(s.target_route, expected_address)
+            and device_matches(
+                route_output(s.target_route),
+                expected_device_token,
+                expected_address,
+            )
             for s in snap.mode_sessions
         ):
           mismatches.append(
               f'Layer 1 (AudioService): expected live AudioModeSession in'
-              f' {expected_mode} with route matching {expected_address!r}, got'
+              f' {expected_mode} with output route matching'
+              f' {expected_device_token} ({expected_address!r}), got'
               f' {snap.mode_sessions}'
           )
-        if (
-            not snap.applied_preferred_comm_device
-            or snap.applied_preferred_comm_device in ('null', 'None')
-            or not address_matches(
-                snap.applied_preferred_comm_device, expected_address
-            )
+        if not device_matches(
+            snap.applied_preferred_comm_device,
+            expected_device_token,
+            expected_address,
         ):
           mismatches.append(
               'Layer 1 (AudioDeviceBroker):'
               ' appliedPreferredCommunicationDevice'
               f' {snap.applied_preferred_comm_device!r} != expected'
-              f' {expected_address!r}'
+              f' {expected_device_token} ({expected_address!r})'
           )
 
     strat = snap.strategies.get(strategy_name)
