@@ -32,9 +32,6 @@
 /dev/gnss0 0666 system system
 /dev/gnss1 0666 system system
 
-# confirmation UI
-/dev/hvc8 0666 system system
-
 # uwb
 /dev/hvc9 0660 uwb uwb
 

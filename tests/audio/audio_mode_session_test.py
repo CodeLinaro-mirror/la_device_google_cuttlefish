@@ -96,7 +96,7 @@ class CuttlefishVoipModeSessionTest(audio_test_base.CuttlefishAudioTestBase):
     )
     asserts.assert_true(
         any(
-            s.is_live
+            not s.paused
             and s.has_focus
             and s.mode == 'MODE_IN_COMMUNICATION'
             and EARPIECE_ADDRESS in s.target_route
@@ -280,7 +280,7 @@ class CuttlefishVoipModeSessionTest(audio_test_base.CuttlefishAudioTestBase):
         expected_mode='MODE_IN_COMMUNICATION',
     )
     asserts.assert_true(
-        any(s.is_live and s.has_focus for s in voip_snap.mode_sessions),
+        any(not s.paused and s.has_focus for s in voip_snap.mode_sessions),
         f'Expected live AudioModeSession to hold audio focus, got'
         f' {voip_snap.mode_sessions}',
     )

@@ -33,6 +33,8 @@
 #include <memory>
 #include <vector>
 
+#include "V4l2BufferMemory.h"
+
 namespace android {
 namespace hardware {
 namespace camera {
@@ -52,8 +54,7 @@ class VirtioMediaCameraDeviceSession
       const std::vector<SupportedV4L2Format>& sortedFormats,
       const CroppingType& croppingType,
       const common::V1_0::helper::CameraMetadata& chars,
-      const std::string& cameraId, ::android::base::unique_fd v4l2Fd,
-      v4l2_buf_type captureType);
+      const std::string& cameraId, ::android::base::unique_fd v4l2Fd);
   ~VirtioMediaCameraDeviceSession() override;
 
   // Caller must use this method to check if CameraDeviceSession ctor failed
@@ -399,13 +400,13 @@ class VirtioMediaCameraDeviceSession
   common::V1_0::helper::CameraMetadata mLatestReqSetting;
 
   bool mV4l2Streaming = false;
-  const v4l2_buf_type mCaptureType;
   size_t mV4L2PlaneCount = 1;
   std::vector<uint32_t> mV4L2BytesPerLine;
   SupportedV4L2Format mV4l2StreamingFmt;
   double mV4l2StreamingFps = 0.0;
   size_t mV4L2BufferCount = 0;
   std::vector<V4L2BufferInfo> mV4L2Buffers;
+  std::unique_ptr<V4l2BufferMemory> mV4l2Memory;
 
   static const int kBufferWaitTimeoutSec =
       3;                       // TODO: handle long exposure (or not allowing)

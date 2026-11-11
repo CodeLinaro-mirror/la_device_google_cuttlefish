@@ -41,6 +41,8 @@ $(call inherit-product, device/google/cuttlefish/shared/device.mk)
 # Loads the camera HAL and which set of cameras is required.
 $(call inherit-product, device/google/cuttlefish/shared/camera/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/camera/config/standard.mk)
+# TODO(b/578978517): Remove once the HAL uses V4L2_MEMORY_DMABUF.
+BOARD_KERNEL_CMDLINE += virtio_media.allow_userptr=1
 
 # Support mixing CF system onto previous versions of vendor
 PRODUCT_EXTRA_VNDK_VERSIONS := 31 32 33 34

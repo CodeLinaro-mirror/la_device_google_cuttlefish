@@ -22,8 +22,11 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/omapi/hal_uuid_map_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/hal_uuid_map_config.xml \
     frameworks/native/data/etc/android.hardware.se.omapi.ese.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.se.omapi.ese.xml
 
-# Enable Java OMAPI if Native OMAPI is not enabled
-ifeq (,$(filter true,$(NATIVE_OMAPI)))
+# Enable Java OMAPI if Native OMAPI is not enabled.
+# Also check RELEASE_NATIVE_OMAPI* directly because some product makefiles
+# (e.g., cf_x86_64_tablet.mk) inherit shared/phone/device_vendor.mk before
+# base_system.mk, where NATIVE_OMAPI is assigned.
+ifeq (,$(filter true,$(NATIVE_OMAPI) $(RELEASE_NATIVE_OMAPI) $(RELEASE_NATIVE_OMAPI_CUTTLEFISH)))
 # Enable Java OMAPI
 DEVICE_PACKAGE_OVERLAYS += \
     device/google/cuttlefish/shared/omapi/overlay

@@ -20,9 +20,6 @@ SYSTEM_EXT_MANIFEST_FILES += device/google/cuttlefish/shared/config/system_ext_m
 # Disable UWB
 CF_VENDOR_NO_UWB := true
 
-# Disable Confirmation UI HAL
-LOCAL_ENABLE_CONFIRMATIONUI := false
-
 $(call inherit-product, device/google/atv/products/atv_vendor.mk)
 
 # Choose the audio HAL interfaces version which is the same as the system image uses.

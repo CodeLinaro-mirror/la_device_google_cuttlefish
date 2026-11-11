@@ -202,9 +202,11 @@ Result<std::unordered_map<std::string, std::string>> BootconfigArgsFromConfig(
         std::to_string(instance.openthread_node_id());
   }
 
-  const auto enable_confui = (config.vm_manager() == VmmMode::kQemu ? 0 : 1);
-  bootconfig_args["androidboot.enable_confirmationui"] =
-      std::to_string(enable_confui);
+  // The host no longer implements confirmation UI. Guests that still ship the
+  // ConfirmationUI HAL only start it when this property is set, and report
+  // UNIMPLEMENTED when it is not "1".
+  // TODO: b/430308370 - Remove once no supported guest ships the HAL.
+  bootconfig_args["androidboot.enable_confirmationui"] = "0";
 
   if (instance.audiocontrol_server_port()) {
     bootconfig_args["androidboot.vendor.audiocontrol.server.cid"] =

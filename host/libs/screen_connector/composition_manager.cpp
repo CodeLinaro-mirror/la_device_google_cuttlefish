@@ -15,6 +15,7 @@
  */
 #include "host/libs/screen_connector/composition_manager.h"
 
+#include <cstring>
 #include <format>
 
 #include <android-base/parseint.h>
@@ -22,6 +23,7 @@
 #include <libyuv.h>
 
 #include <drm/drm_fourcc.h>
+#include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/screen_connector/ring_buffer_manager.h"
 
 static const int kRedIdx = 0;

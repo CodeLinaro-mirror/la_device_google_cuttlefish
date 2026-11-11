@@ -19,6 +19,7 @@
 #ifdef __linux__
 #include <linux/fiemap.h>
 #include <linux/fs.h>
+#include <linux/net.h>
 #include <sys/inotify.h>
 #include <sys/sendfile.h>
 #endif
@@ -39,8 +40,10 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
+#include <charconv>
 #include <chrono>
 #include <climits>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -53,7 +56,9 @@
 #include <ostream>
 #include <ratio>
 #include <regex>
+#include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <android-base/file.h>
@@ -705,6 +710,33 @@ auto WaitForFile(const std::string& path, int timeoutSec)
   return {};
 }
 
+static Result<bool> IsUnixSocketListeningViaProc(const std::string& path) {
+  std::ifstream proc_unix("/proc/net/unix");
+  CF_EXPECTF(proc_unix.is_open(), "Failed to open /proc/net/unix: {}",
+             strerror(errno));
+  // Columns: Num RefCount Protocol Flags Type St Inode Path
+  // `Flags` carries `__SO_ACCEPTCON` once the socket has called listen(2).
+  // Accepted sockets alias the listener's path, so check every match.
+  std::string line;
+  while (std::getline(proc_unix, line)) {
+    std::istringstream iss(line);
+    std::string num, refcount, protocol, flags, type, st, inode, socket_path;
+    if (!(iss >> num >> refcount >> protocol >> flags >> type >> st >> inode >>
+          socket_path)) {
+      continue;
+    }
+    uint32_t flags_value = 0;
+    const char* flags_end = flags.data() + flags.size();
+    auto [ptr, ec] =
+        std::from_chars(flags.data(), flags_end, flags_value, 16);
+    if (socket_path == path && ec == std::errc{} && ptr == flags_end &&
+        (flags_value & __SO_ACCEPTCON) != 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 Result<void> WaitForUnixSocket(const std::string& path, int timeoutSec) {
   const auto targetTime =
       std::chrono::system_clock::now() + std::chrono::seconds(timeoutSec);
@@ -730,7 +762,7 @@ Result<void> WaitForUnixSocket(const std::string& path, int timeoutSec) {
       return {};
     }
 
-    sched_yield();
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
   }
 
   return CF_ERR("This shouldn't be executed");
@@ -745,8 +777,6 @@ Result<void> WaitForUnixSocketListeningWithoutConnect(const std::string& path,
             "Waiting for socket path creation failed");
   CF_EXPECT(FileIsSocket(path), "Specified path is not a socket");
 
-  std::regex socket_state_regex("TST=(.*)");
-
   while (true) {
     const auto currentTime = std::chrono::system_clock::now();
 
@@ -754,31 +784,11 @@ Result<void> WaitForUnixSocketListeningWithoutConnect(const std::string& path,
       return CF_ERR("Timed out");
     }
 
-    Command lsof("/usr/bin/lsof");
-    lsof.AddParameter(/*"format"*/ "-F", /*"connection state"*/ "TST");
-    lsof.AddParameter(path);
-    std::string lsof_out;
-    std::string lsof_err;
-    int rval =
-        RunWithManagedStdio(std::move(lsof), nullptr, &lsof_out, &lsof_err);
-    if (rval != 0) {
-      return CF_ERR("Failed to run `lsof`, stderr: " << lsof_err);
+    if (CF_EXPECT(IsUnixSocketListeningViaProc(path))) {
+      return {};
     }
 
-    LOG(DEBUG) << "lsof stdout:|" << lsof_out << "|";
-    LOG(DEBUG) << "lsof stderr:|" << lsof_err << "|";
-
-    std::smatch socket_state_match;
-    if (std::regex_search(lsof_out, socket_state_match, socket_state_regex)) {
-      if (socket_state_match.size() == 2) {
-        const std::string& socket_state = socket_state_match[1];
-        if (socket_state == "LISTEN") {
-          return {};
-        }
-      }
-    }
-
-    sched_yield();
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
   }
 
   return CF_ERR("This shouldn't be executed");

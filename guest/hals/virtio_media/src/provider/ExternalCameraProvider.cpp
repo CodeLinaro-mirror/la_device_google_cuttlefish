@@ -240,11 +240,9 @@ void ExternalCameraProvider::deviceAdded(const char* devName) {
       return;
     }
 
-    if (!(capability.device_caps &
-          (V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_VIDEO_CAPTURE_MPLANE))) {
-      ALOGW(
-          "%s device %s does not support VIDEO_CAPTURE or VIDEO_CAPTURE_MPLANE",
-          __FUNCTION__, devName);
+    if (!(capability.device_caps & V4L2_CAP_VIDEO_CAPTURE_MPLANE)) {
+      ALOGW("%s device %s does not support VIDEO_CAPTURE_MPLANE", __FUNCTION__,
+            devName);
       return;
     }
 

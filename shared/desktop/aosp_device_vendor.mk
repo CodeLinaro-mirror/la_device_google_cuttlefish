@@ -17,6 +17,8 @@
 PRODUCT_MANIFEST_FILES += device/google/cuttlefish/shared/config/product_manifest.xml
 SYSTEM_EXT_MANIFEST_FILES += device/google/cuttlefish/shared/config/system_ext_manifest.xml
 
+TARGET_PRODUCT_PROP += device/google/cuttlefish/shared/desktop/bluetooth.prop
+
 $(call inherit-product, $(SRC_TARGET_DIR)/product/handheld_vendor.mk)
 
 $(call inherit-product, frameworks/native/build/tablet-7in-xhdpi-2048-dalvik-heap.mk)
